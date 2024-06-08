@@ -1,0 +1,9 @@
+[package]
+name = "actor"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+actor = { path = "../../rush-rs/actor" }
+store = { path = "../../rush-rs/store" }
+thiserror = { workspace = true }
