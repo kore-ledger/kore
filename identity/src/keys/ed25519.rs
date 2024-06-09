@@ -1,4 +1,7 @@
-use super::{create_seed, BaseKeyPair, KeyGenerator, KeyMaterial, KeyPair, Payload, DHKE, DSA};
+use super::{
+    create_seed, BaseKeyPair, KeyGenerator, KeyMaterial, KeyPair, Payload,
+    DHKE, DSA,
+};
 
 use crate::identifier;
 use ed25519_dalek::pkcs8::DecodePrivateKey;
@@ -6,7 +9,8 @@ use ed25519_dalek::pkcs8::EncodePrivateKey;
 use identifier::error::Error;
 
 use ed25519_dalek::{
-    Signature, Signer, SigningKey, Verifier, VerifyingKey, KEYPAIR_LENGTH, SECRET_KEY_LENGTH,
+    Signature, Signer, SigningKey, Verifier, VerifyingKey, KEYPAIR_LENGTH,
+    SECRET_KEY_LENGTH,
 };
 
 use base64::{engine::general_purpose, Engine as _};
@@ -31,13 +35,15 @@ impl KeyGenerator for Ed25519KeyPair {
 
     fn from_public_key(public_key: &[u8]) -> Self {
         Self {
-            public_key: VerifyingKey::try_from(public_key).expect("invalid public key"),
+            public_key: VerifyingKey::try_from(public_key)
+                .expect("invalid public key"),
             secret_key: None,
         }
     }
 
     fn from_secret_key(secret_key: &[u8]) -> Ed25519KeyPair {
-        let sk = SigningKey::try_from(secret_key).expect("cannot generate secret key");
+        let sk = SigningKey::try_from(secret_key)
+            .expect("cannot generate secret key");
         let pk = (&sk).into();
 
         let mut kp = Ed25519KeyPair {
@@ -74,7 +80,10 @@ impl KeyMaterial for Ed25519KeyPair {
         Ok(der.as_bytes().to_vec())
     }
 
-    fn from_secret_der(kp_type: super::KeyPairType, der: &[u8]) -> Result<Self, Error>
+    fn from_secret_der(
+        kp_type: super::KeyPairType,
+        der: &[u8],
+    ) -> Result<Self, Error>
     where
         Self: Sized,
     {
@@ -107,7 +116,9 @@ impl DSA for Ed25519KeyPair {
         let signig_key = SigningKey::try_from(sk.as_ref())
             .map_err(|_| Error::Sign("Cannot generate signing key".into()))?;
         match payload {
-            Payload::Buffer(msg) => Ok(signig_key.sign(msg.as_slice()).to_bytes().to_vec()),
+            Payload::Buffer(msg) => {
+                Ok(signig_key.sign(msg.as_slice()).to_bytes().to_vec())
+            }
             _ => Err(Error::Sign(
                 "Payload type not supported for this key".into(),
             )),
@@ -118,10 +129,12 @@ impl DSA for Ed25519KeyPair {
         let sig = Signature::try_from(signature)
             .map_err(|_| Error::Sign("Invalid signature data".into()))?;
         match payload {
-            Payload::Buffer(payload) => match self.public_key.verify(payload.as_slice(), &sig) {
-                Ok(_) => Ok(()),
-                _ => Err(Error::Sign("Signature verify failed".into())),
-            },
+            Payload::Buffer(payload) => {
+                match self.public_key.verify(payload.as_slice(), &sig) {
+                    Ok(_) => Ok(()),
+                    _ => Err(Error::Sign("Signature verify failed".into())),
+                }
+            }
             _ => Err(Error::Sign(
                 "Payload type not supported for this key".into(),
             )),
@@ -191,7 +204,8 @@ mod tests {
         let kp = Ed25519KeyPair::new();
         let signature = kp.sign(Payload::Buffer(msg.to_vec())).unwrap();
         let kp_str = serde_json::to_string_pretty(&kp).unwrap();
-        let new_kp: Result<Ed25519KeyPair, serde_json::Error> = serde_json::from_str(&kp_str);
+        let new_kp: Result<Ed25519KeyPair, serde_json::Error> =
+            serde_json::from_str(&kp_str);
         assert!(new_kp.is_ok());
         let result = new_kp
             .unwrap()
@@ -204,7 +218,9 @@ mod tests {
         use super::{super::KeyPairType, KeyMaterial};
         let kp = Ed25519KeyPair::new();
         let der = kp.to_secret_der().unwrap();
-        let new_kp = Ed25519KeyPair::from_secret_der(KeyPairType::Ed25519, &der).unwrap();
+        let new_kp =
+            Ed25519KeyPair::from_secret_der(KeyPairType::Ed25519, &der)
+                .unwrap();
         assert_eq!(kp.public_key_bytes(), new_kp.public_key_bytes());
     }
 }

@@ -13,7 +13,17 @@ use super::{
 };
 
 /// Signature based identifier
-#[derive(Debug, PartialEq, Clone, Eq, Hash, BorshSerialize, BorshDeserialize, PartialOrd, Ord)]
+#[derive(
+    Debug,
+    PartialEq,
+    Clone,
+    Eq,
+    Hash,
+    BorshSerialize,
+    BorshDeserialize,
+    PartialOrd,
+    Ord,
+)]
 pub struct SignatureIdentifier {
     pub derivator: SignatureDerivator,
     pub signature: Vec<u8>,
@@ -87,7 +97,8 @@ impl<'de> Deserialize<'de> for SignatureIdentifier {
     where
         D: Deserializer<'de>,
     {
-        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        let s =
+            <std::string::String as Deserialize>::deserialize(deserializer)?;
 
         SignatureIdentifier::from_str(&s).map_err(serde::de::Error::custom)
     }
@@ -115,7 +126,8 @@ mod tests {
         // ECDSAsecp256k1
         #[cfg(feature = "secp256k1")]
         {
-            let sig_str = "SSdKRafkDIPL3IM8zc5RfGcNo502fQxK-3pzOkNCO8tg4tEyOZUwx\
+            let sig_str =
+                "SSdKRafkDIPL3IM8zc5RfGcNo502fQxK-3pzOkNCO8tg4tEyOZUwx\
             qntzDmAwaHINVAN7hwHYfVq5HabqEodrxxQ";
             let si = SignatureIdentifier::from_str(&sig_str).unwrap();
             let key_str = "SAsH8KCN4qfIKmas-2HZeI4IRhTbmMlsjC0EunOP66dqy";
@@ -132,18 +144,21 @@ mod tests {
         println!("{}", sig_str.len());
         let si = SignatureIdentifier::from_str(sig_str).unwrap();
         let ser_si = serde_json::to_string_pretty(&si).unwrap();
-        let des_si: SignatureIdentifier = serde_json::from_str(&ser_si).unwrap();
+        let des_si: SignatureIdentifier =
+            serde_json::from_str(&ser_si).unwrap();
         assert_eq!(si, des_si);
         assert_eq!(si.derivator, SignatureDerivator::Ed25519Sha512);
         // ECDSAsecp256k1
         #[cfg(feature = "secp256k1")]
         {
-            let sig_str = "SSRFbutVG3-KHv_Fuexdx24aukwvj_RqN9jiPt9EQyDYRWsMJ-kpcLfX7\
+            let sig_str =
+                "SSRFbutVG3-KHv_Fuexdx24aukwvj_RqN9jiPt9EQyDYRWsMJ-kpcLfX7\
             CHmERmULScNSiG2l4_DDQF1qui8rEjQ";
             println!("{}", sig_str.len());
             let si = SignatureIdentifier::from_str(sig_str).unwrap();
             let ser_si = serde_json::to_string_pretty(&si).unwrap();
-            let des_si: SignatureIdentifier = serde_json::from_str(&ser_si).unwrap();
+            let des_si: SignatureIdentifier =
+                serde_json::from_str(&ser_si).unwrap();
             assert_eq!(si, des_si);
             assert_eq!(si.derivator, SignatureDerivator::ECDSAsecp256k1);
         }

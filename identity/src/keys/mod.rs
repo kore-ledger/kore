@@ -47,15 +47,20 @@ impl KeyPair {
         }
     }
 
-    pub fn from_hex(derivator: &KeyDerivator, hex_key: &str) -> Result<KeyPair, Error> {
+    pub fn from_hex(
+        derivator: &KeyDerivator,
+        hex_key: &str,
+    ) -> Result<KeyPair, Error> {
         match derivator {
-            KeyDerivator::Ed25519 => Ok(KeyPair::Ed25519(Ed25519KeyPair::from_secret_key(
-                &hex::decode(hex_key).unwrap(),
-            ))),
+            KeyDerivator::Ed25519 => Ok(KeyPair::Ed25519(
+                Ed25519KeyPair::from_secret_key(&hex::decode(hex_key).unwrap()),
+            )),
             #[cfg(feature = "secp256k1")]
-            KeyDerivator::Secp256k1 => Ok(KeyPair::Secp256k1(Secp256k1KeyPair::from_secret_key(
-                &hex::decode(hex_key).unwrap(),
-            ))),
+            KeyDerivator::Secp256k1 => {
+                Ok(KeyPair::Secp256k1(Secp256k1KeyPair::from_secret_key(
+                    &hex::decode(hex_key).unwrap(),
+                )))
+            }
         }
     }
 }
@@ -68,7 +73,9 @@ impl Default for KeyPair {
 
 /// Generate key pair
 #[allow(dead_code)]
-pub fn generate<T: KeyGenerator + DSA + Into<KeyPair>>(seed: Option<&[u8]>) -> KeyPair {
+pub fn generate<T: KeyGenerator + DSA + Into<KeyPair>>(
+    seed: Option<&[u8]>,
+) -> KeyPair {
     T::from_seed(seed.map_or(vec![].as_slice(), |x| x)).into()
 }
 
@@ -84,20 +91,23 @@ impl<P> BaseKeyPair<P> {
     fn decrypt_secret_bytes(&self) -> Result<Vec<u8>, Error> {
         match &self.secret_key {
             Some(x) => {
-                let bytes = x
-                    .decrypt()
-                    .map_err(|_| Error::KeyPair("secret key decrypting".to_owned()))?;
+                let bytes = x.decrypt().map_err(|_| {
+                    Error::KeyPair("secret key decrypting".to_owned())
+                })?;
                 Ok(Vec::from(bytes.as_ref()))
             }
-            None => Err(Error::KeyPair("secret key is not available".to_owned())),
+            None => {
+                Err(Error::KeyPair("secret key is not available".to_owned()))
+            }
         }
     }
 
     /// Encrypt secret key into encrypted memory.
     fn encrypt_secret_bytes(&mut self, secret_key: &[u8]) -> Result<(), Error> {
         let encr = self.secret_key.get_or_insert(EncryptedMem::new());
-        encr.encrypt(&secret_key.to_vec())
-            .map_err(|_| Error::KeyPair("cannot encrypt the secret in memory".to_owned()))?;
+        encr.encrypt(&secret_key.to_vec()).map_err(|_| {
+            Error::KeyPair("cannot encrypt the secret in memory".to_owned())
+        })?;
         Ok(())
     }
 }
@@ -181,15 +191,15 @@ pub trait DHKE {
 impl Clone for KeyPair {
     fn clone(&self) -> Self {
         match self {
-            KeyPair::Ed25519(kp) => {
-                KeyPair::Ed25519(Ed25519KeyPair::from_secret_key(&kp.secret_key_bytes()))
-            }
+            KeyPair::Ed25519(kp) => KeyPair::Ed25519(
+                Ed25519KeyPair::from_secret_key(&kp.secret_key_bytes()),
+            ),
             #[cfg(feature = "secp256k1")]
-            KeyPair::Secp256k1(kp) => {
-                KeyPair::Secp256k1(Secp256k1KeyPair::from_secret_key(&kp.secret_key_bytes()))
-            } // KeyPair::X25519(kp) => KeyPair::X25519(
-              //     X25519KeyPair::from_secret_key(&kp.secret_key_bytes()),
-              // ),
+            KeyPair::Secp256k1(kp) => KeyPair::Secp256k1(
+                Secp256k1KeyPair::from_secret_key(&kp.secret_key_bytes()),
+            ), // KeyPair::X25519(kp) => KeyPair::X25519(
+               //     X25519KeyPair::from_secret_key(&kp.secret_key_bytes()),
+               // ),
         }
     }
 }
@@ -234,13 +244,13 @@ impl KeyMaterial for KeyPair {
         Self: Sized,
     {
         match kp_type {
-            KeyPairType::Ed25519 => Ok(KeyPair::Ed25519(Ed25519KeyPair::from_secret_der(
-                kp_type, der,
-            )?)),
+            KeyPairType::Ed25519 => Ok(KeyPair::Ed25519(
+                Ed25519KeyPair::from_secret_der(kp_type, der)?,
+            )),
             #[cfg(feature = "secp256k1")]
-            KeyPairType::Secp256k1 => Ok(KeyPair::Secp256k1(Secp256k1KeyPair::from_secret_der(
-                kp_type, der,
-            )?)),
+            KeyPairType::Secp256k1 => Ok(KeyPair::Secp256k1(
+                Secp256k1KeyPair::from_secret_der(kp_type, der)?,
+            )),
         }
     }
 }
@@ -265,7 +275,10 @@ impl DSA for KeyPair {
 
 impl BorshSerialize for KeyPair {
     #[inline]
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+    ) -> std::io::Result<()> {
         match &self {
             KeyPair::Ed25519(x) => {
                 BorshSerialize::serialize(&0u8, writer)?;
@@ -288,12 +301,14 @@ impl BorshDeserialize for KeyPair {
         let order: u8 = BorshDeserialize::deserialize_reader(reader)?;
         match order {
             0 => {
-                let data: [u8; 32] = BorshDeserialize::deserialize_reader(reader)?;
+                let data: [u8; 32] =
+                    BorshDeserialize::deserialize_reader(reader)?;
                 Ok(KeyPair::Ed25519(Ed25519KeyPair::from_secret_key(&data)))
             }
             #[cfg(feature = "secp256k1")]
             1 => {
-                let data: [u8; 32] = BorshDeserialize::deserialize_reader(reader)?;
+                let data: [u8; 32] =
+                    BorshDeserialize::deserialize_reader(reader)?;
                 Ok(KeyPair::Secp256k1(Secp256k1KeyPair::from_secret_key(&data)))
             }
             _ => Err(std::io::Error::new(
@@ -330,8 +345,9 @@ pub enum Payload {
 pub fn create_seed(initial_seed: &[u8]) -> Result<[u8; 32], Error> {
     let mut seed = [0u8; 32];
     if initial_seed.is_empty() {
-        getrandom::getrandom(&mut seed)
-            .map_err(|_| Error::SeedError("couldn't generate random seed".to_owned()))?;
+        getrandom::getrandom(&mut seed).map_err(|_| {
+            Error::SeedError("couldn't generate random seed".to_owned())
+        })?;
     } else if initial_seed.len() <= 32 {
         seed[..initial_seed.len()].copy_from_slice(initial_seed);
     } else {
@@ -363,9 +379,11 @@ mod tests {
     fn test_ed25519() {
         let key_pair = generate::<Ed25519KeyPair>(None);
         let message = b"secret message";
-        let signature = key_pair.sign(Payload::Buffer(message.to_vec())).unwrap();
+        let signature =
+            key_pair.sign(Payload::Buffer(message.to_vec())).unwrap();
         println!("Tamaño: {}", signature.len());
-        let valid = key_pair.verify(Payload::Buffer(message.to_vec()), &signature);
+        let valid =
+            key_pair.verify(Payload::Buffer(message.to_vec()), &signature);
         matches!(valid, Ok(()));
     }
 
@@ -374,9 +392,11 @@ mod tests {
     fn test_secp256k1() {
         let key_pair = generate::<Secp256k1KeyPair>(None);
         let message = b"secret message";
-        let signature = key_pair.sign(Payload::Buffer(message.to_vec())).unwrap();
+        let signature =
+            key_pair.sign(Payload::Buffer(message.to_vec())).unwrap();
         println!("Tamaño: {}", signature.len());
-        let valid = key_pair.verify(Payload::Buffer(message.to_vec()), &signature);
+        let valid =
+            key_pair.verify(Payload::Buffer(message.to_vec()), &signature);
         matches!(valid, Ok(()));
     }
 }

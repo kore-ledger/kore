@@ -1,9 +1,14 @@
 [package]
-name = "actor"
+name = "kore-base"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 actor = { path = "../../rush-rs/actor" }
+borsh = { workspace = true }
+identity = { path = "../identity"}
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 store = { path = "../../rush-rs/store" }
 thiserror = { workspace = true }
+time = { workspace = true, features = ["std"] }

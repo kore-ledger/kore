@@ -9,7 +9,17 @@ use std::str::FromStr;
 use super::Derivable;
 
 /// Digest based identifier
-#[derive(Debug, PartialEq, Clone, Eq, Hash, BorshSerialize, BorshDeserialize, PartialOrd, Ord)]
+#[derive(
+    Debug,
+    PartialEq,
+    Clone,
+    Eq,
+    Hash,
+    BorshSerialize,
+    BorshDeserialize,
+    PartialOrd,
+    Ord,
+)]
 pub struct DigestIdentifier {
     pub derivator: DigestDerivator,
     pub digest: Vec<u8>,
@@ -26,13 +36,17 @@ impl DigestIdentifier {
         serializable: T,
         digest_derivator: DigestDerivator,
     ) -> Result<Self, Error> {
-        let bytes = to_vec(&serializable).map_err(|_| Error::BorshSerializationFailed)?;
+        let bytes = to_vec(&serializable)
+            .map_err(|_| Error::BorshSerializationFailed)?;
         let bytes = digest_derivator.digest(&bytes);
         Ok(DigestIdentifier::new(digest_derivator, &bytes))
     }
 
-    pub fn generate_with_blake3<T: BorshSerialize>(serializable: T) -> Result<Self, Error> {
-        let bytes = to_vec(&serializable).map_err(|_| Error::BorshSerializationFailed)?;
+    pub fn generate_with_blake3<T: BorshSerialize>(
+        serializable: T,
+    ) -> Result<Self, Error> {
+        let bytes = to_vec(&serializable)
+            .map_err(|_| Error::BorshSerializationFailed)?;
         let bytes = DigestDerivator::Blake3_256.digest(&bytes);
         Ok(DigestIdentifier::new(DigestDerivator::Blake3_256, &bytes))
     }
@@ -104,7 +118,8 @@ impl<'de> Deserialize<'de> for DigestIdentifier {
     where
         D: Deserializer<'de>,
     {
-        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        let s =
+            <std::string::String as Deserialize>::deserialize(deserializer)?;
         if s.is_empty() {
             Ok(DigestIdentifier::default())
         } else {
