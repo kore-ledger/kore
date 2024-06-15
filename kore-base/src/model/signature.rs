@@ -55,14 +55,18 @@ impl Signature {
         keys: &KeyPair,
         derivator: DigestDerivator,
     ) -> Result<Self, Error> {
-        let signer = KeyIdentifier::new(keys.get_key_derivator(), &keys.public_key_bytes());
+        let signer = KeyIdentifier::new(
+            keys.get_key_derivator(),
+            &keys.public_key_bytes(),
+        );
         let timestamp = TimeStamp::now();
         // TODO: Analyze if we should remove HashId and change it for BorshSerialize
         // let content_hash = content.hash_id()?;
-        let signature_hash =
-            DigestIdentifier::from_serializable_borsh((&content, &timestamp), derivator).map_err(
-                |_| Error::Signature("Signature hash fails".to_string()),
-            )?;
+        let signature_hash = DigestIdentifier::from_serializable_borsh(
+            (&content, &timestamp),
+            derivator,
+        )
+        .map_err(|_| Error::Signature("Signature hash fails".to_string()))?;
         let signature = keys
             .sign(Payload::Buffer(signature_hash.derivative()))
             .map_err(|_| Error::Signature("Keys sign fails".to_owned()))?;
@@ -70,7 +74,10 @@ impl Signature {
             signer: signer.clone(),
             timestamp,
             content_hash: signature_hash,
-            value: SignatureIdentifier::new(signer.to_signature_derivator(), &signature),
+            value: SignatureIdentifier::new(
+                signer.to_signature_derivator(),
+                &signature,
+            ),
         })
     }
 
@@ -78,11 +85,11 @@ impl Signature {
     pub fn verify<T: HashId>(&self, content: &T) -> Result<(), Error> {
         let derivator = self.content_hash.derivator;
         // let content_hash = content.hash_id(derivator)?;
-        let signature_hash =
-            DigestIdentifier::from_serializable_borsh((&content, &self.timestamp), derivator)
-                .map_err(|_| {
-                    Error::Signature("Signature hash fails".to_string())
-                })?;
+        let signature_hash = DigestIdentifier::from_serializable_borsh(
+            (&content, &self.timestamp),
+            derivator,
+        )
+        .map_err(|_| Error::Signature("Signature hash fails".to_string()))?;
         self.signer
             .verify(&signature_hash.digest, &self.value)
             .map_err(|_| Error::Signature("Signature verify fails".to_owned()))
@@ -90,6 +97,7 @@ impl Signature {
 }
 
 /// Helper struct to validate the unique signature.
+#[derive(Debug)]
 pub(crate) struct UniqueSignature {
     pub signature: Signature,
 }
@@ -132,5 +140,84 @@ mod tests {
 
     use super::*;
 
-    
+    use identity::{
+        identifier::derive::digest::DigestDerivator,
+        keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
+    };
+
+    // Generate key pair for testing
+    pub fn generate_key_pair() -> KeyPair {
+        let kp = Ed25519KeyPair::new();
+        KeyPair::Ed25519(kp)
+    }
+
+    // Generate signature for testing
+    pub fn generate_signature<T: HashId>(
+        content: &T,
+        key_pair: &KeyPair,
+    ) -> Signature {
+        Signature::new(content, key_pair, DigestDerivator::SHA2_256).unwrap()
+    }
+
+    #[derive(
+        Debug,
+        Clone,
+        Serialize,
+        Deserialize,
+        BorshSerialize,
+        BorshDeserialize,
+        PartialEq,
+    )]
+    struct TestContent {
+        pub value: String,
+    }
+
+    impl HashId for TestContent {
+        fn hash_id(
+            &self,
+            derivator: DigestDerivator,
+        ) -> Result<DigestIdentifier, Error> {
+            DigestIdentifier::from_serializable_borsh(self, derivator)
+                .map_err(|_| Error::Signature("Hash fails".to_string()))
+        }
+    }
+
+    #[test]
+    fn test_signature() {
+        let key_pair = generate_key_pair();
+        let content = TestContent {
+            value: "test".to_owned(),
+        };
+        let signature = generate_signature(&content, &key_pair);
+        assert!(signature.verify(&content).is_ok());
+    }
+
+    #[test]
+    fn test_signed() {
+        let key_pair = generate_key_pair();
+        let content = TestContent {
+            value: "test".to_owned(),
+        };
+        let signature = generate_signature(&content, &key_pair);
+        let signed = Signed { content, signature };
+        assert!(signed.signature.verify(&signed.content).is_ok());
+    }
+
+    #[test]
+    fn tes_unique_signature() {
+        let key_pair = generate_key_pair();
+        let content1 = TestContent {
+            value: "test1".to_owned(),
+        };
+        let signature = generate_signature(&content1, &key_pair);
+
+        let unique_signature1 = UniqueSignature { signature };
+        let content2 = TestContent {
+            value: "test2".to_owned(),
+        };
+        let signature = generate_signature(&content2, &key_pair);
+
+        let unique_signature2 = UniqueSignature { signature };
+        assert_eq!(unique_signature1, unique_signature2);
+    }
 }

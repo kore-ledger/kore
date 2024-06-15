@@ -160,11 +160,12 @@ impl<'de> Deserialize<'de> for KeyIdentifier {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
     use super::{Derivable, KeyIdentifier, SignatureIdentifier};
     #[cfg(feature = "secp256k1")]
     use crate::keys::secp256k1::Secp256k1KeyPair;
+
     use crate::keys::{
         ed25519::Ed25519KeyPair, KeyGenerator, KeyMaterial, Payload, DSA,
     };

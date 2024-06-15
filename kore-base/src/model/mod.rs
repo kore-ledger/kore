@@ -6,9 +6,9 @@
 //! This module contains the data model for the Kore base.
 //!
 
-mod request;
-mod signature;
-mod wrapper;
+pub mod request;
+pub mod signature;
+pub mod wrapper;
 
 use crate::Error;
 

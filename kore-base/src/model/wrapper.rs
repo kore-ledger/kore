@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Wrapper for Json Value.
-//! 
+//!
 
 use super::HashId;
 
 use crate::Error;
 
-use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,10 @@ impl ValueWrapper {
 }
 
 impl HashId for ValueWrapper {
-    fn hash_id(&self, derivator: DigestDerivator) -> Result<DigestIdentifier, Error> {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator)
             .map_err(|_| Error::Digest("Hashing error".to_string()))
     }
@@ -101,28 +104,38 @@ impl BorshDeserialize for ValueWrapper {
                 Ok(ValueWrapper(Value::Bool(data)))
             }
             1 => {
-                let internal_order: u8 = BorshDeserialize::deserialize_reader(reader)?;
+                let internal_order: u8 =
+                    BorshDeserialize::deserialize_reader(reader)?;
                 match internal_order {
                     0 => {
-                        let data: f64 = BorshDeserialize::deserialize_reader(reader)?;
-                        Ok(ValueWrapper(Value::Number(Number::from_f64(data).unwrap())))
+                        let data: f64 =
+                            BorshDeserialize::deserialize_reader(reader)?;
+                        Ok(ValueWrapper(Value::Number(
+                            Number::from_f64(data).unwrap(),
+                        )))
                     }
                     1 => {
-                        let data: i64 = BorshDeserialize::deserialize_reader(reader)?;
+                        let data: i64 =
+                            BorshDeserialize::deserialize_reader(reader)?;
                         Ok(ValueWrapper(Value::Number(Number::from(data))))
                     }
                     2 => {
-                        let data: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                        let data: u64 =
+                            BorshDeserialize::deserialize_reader(reader)?;
                         Ok(ValueWrapper(Value::Number(Number::from(data))))
                     }
                     _ => Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
-                        format!("Invalid Number representation: {}", internal_order),
+                        format!(
+                            "Invalid Number representation: {}",
+                            internal_order
+                        ),
                     )),
                 }
             }
             2 => {
-                let data: String = BorshDeserialize::deserialize_reader(reader)?;
+                let data: String =
+                    BorshDeserialize::deserialize_reader(reader)?;
                 Ok(ValueWrapper(Value::String(data)))
             }
             3 => {
@@ -132,7 +145,8 @@ impl BorshDeserialize for ValueWrapper {
                 } else {
                     let mut result = Vec::with_capacity(len as usize);
                     for _ in 0..len {
-                        result.push(ValueWrapper::deserialize_reader(reader)?.0);
+                        result
+                            .push(ValueWrapper::deserialize_reader(reader)?.0);
                     }
                     Ok(ValueWrapper(Value::Array(result)))
                 }
@@ -153,5 +167,23 @@ impl BorshDeserialize for ValueWrapper {
                 format!("Invalid Value representation: {}", order),
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_value_wrapper() {
+        let value = Value::String("test".to_string());
+        let wrapper = ValueWrapper(value.clone());
+        let mut buffer: Vec<u8> = Vec::new();
+        borsh::BorshSerialize::serialize(&wrapper, &mut buffer).unwrap();
+        let deserialized: ValueWrapper =
+            borsh::BorshDeserialize::deserialize(&mut buffer.as_slice())
+                .unwrap();
+        assert_eq!(deserialized.0, value);
     }
 }

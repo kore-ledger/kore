@@ -5,10 +5,23 @@ edition.workspace = true
 
 [dependencies]
 actor = { path = "../../rush-rs/actor" }
+async-trait = { workspace = true }
 borsh = { workspace = true }
 identity = { path = "../identity"}
+rocksdb_db = { path = "../../rush-rs/databases/rocksdb_db", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sqlite_db = { path = "../../rush-rs/databases/sqlite_db", optional = true }
 store = { path = "../../rush-rs/store" }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[features]
+default = ["rocksdb"]
+rocksdb = ["rocksdb_db"]
+sqlite = ["sqlite_db"]
