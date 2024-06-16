@@ -43,7 +43,7 @@ impl Database {
     where
         P: PersistentActor,
     {
-        Store::<P>::new(name, self.clone())
+        Store::<P>::new(name, self.clone(), None)
             .map_err(|e| Error::Store(format!("Failed to create store: {}", e)))
     }
 }

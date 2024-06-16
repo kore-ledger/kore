@@ -5,6 +5,7 @@ mod api;
 pub mod config;
 mod db;
 mod error;
+mod governance;
 mod model;
 mod node;
 mod request;

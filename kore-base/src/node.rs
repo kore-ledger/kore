@@ -9,8 +9,8 @@ use crate::{db::Database, Config, Error};
 use identity::keys::KeyPair;
 
 use actor::{
-    Actor, ActorContext, ActorSystem, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorSystem, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -35,7 +35,11 @@ pub struct Node {
 
 impl Node {
     /// Creates a new node.
-    pub fn new(key_pair: KeyPair, config: Config) -> Result<Self, Error> {
+    pub fn new(
+        key_pair: KeyPair,
+        config: Config,
+        password: &str,
+    ) -> Result<Self, Error> {
         // Create de actor system.
         let (system, mut runner) = ActorSystem::create();
 
@@ -146,7 +150,7 @@ impl Actor for Node {
         };
         // Start store
         debug!("Creating Node store");
-        self.start_store(ctx, db).await?;
+        self.start_store(ctx, db, None).await?;
 
         Ok(())
     }

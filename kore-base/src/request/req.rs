@@ -26,24 +26,22 @@ impl Request {
     }
 }
 
-pub enum RequestState {
-
-}
+pub enum RequestState {}
 
 #[derive(Debug, Clone)]
 pub struct RequestCommand;
 
-impl Message for RequestCommand{}      
+impl Message for RequestCommand {}
 
 #[derive(Debug, Clone)]
 pub struct RequestResponse;
 
-impl Response for RequestResponse{}
+impl Response for RequestResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestEvent;
 
-impl Event for RequestEvent{}
+impl Event for RequestEvent {}
 
 #[async_trait]
 impl Actor for Request {
@@ -54,9 +52,11 @@ impl Actor for Request {
 
 #[async_trait]
 impl Handler<Request> for Request {
-
-    async fn handle_message(&mut self, msg: RequestCommand, ctx: &mut ActorContext<Request>) -> RequestResponse {
+    async fn handle_message(
+        &mut self,
+        msg: RequestCommand,
+        ctx: &mut ActorContext<Request>,
+    ) -> RequestResponse {
         RequestResponse
     }
-    
 }

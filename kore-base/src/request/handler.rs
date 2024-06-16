@@ -185,7 +185,7 @@ impl Actor for RequestHandler {
             }
         };
         // Start store
-        self.start_store(ctx, db).await?;
+        self.start_store(ctx, db, None).await?;
         Ok(())
     }
 
@@ -228,7 +228,11 @@ impl Handler<RequestHandler> for RequestHandler {
         match event.clone() {
             RequestHandlerEvent::Start { id, request } => {
                 // Create child request
-                if ctx.create_child(&id.to_string(), Request::new(id, request)).await.is_err() {
+                if ctx
+                    .create_child(&id.to_string(), Request::new(id, request))
+                    .await
+                    .is_err()
+                {
                     let _ = ctx
                         .emit_fail(ActorError::CreateStore(
                             "Failed to create child request".to_string(),
@@ -247,17 +251,18 @@ impl Handler<RequestHandler> for RequestHandler {
             }
             RequestHandlerEvent::End { id } => {
                 // Stop child.
-                let child = match ctx.get_child::<Request>(&id.to_string()).await {
-                    Some(child) => child,
-                    None => {
-                        let _ = ctx
-                            .emit_fail(ActorError::CreateStore(
-                                format!("Failed to get child {}", id),
-                            ))
-                            .await;
-                        return;
-                    }
-                };
+                let child =
+                    match ctx.get_child::<Request>(&id.to_string()).await {
+                        Some(child) => child,
+                        None => {
+                            let _ =
+                                ctx.emit_fail(ActorError::CreateStore(
+                                    format!("Failed to get child {}", id),
+                                ))
+                                .await;
+                            return;
+                        }
+                    };
                 child.stop().await;
                 if self.persist(event.clone(), ctx).await.is_err() {
                     let _ = ctx
