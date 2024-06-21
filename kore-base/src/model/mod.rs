@@ -6,9 +6,13 @@
 //! This module contains the data model for the Kore base.
 //!
 
+pub mod namespace;
 pub mod request;
 pub mod signature;
 pub mod wrapper;
+
+pub use namespace::Namespace;
+pub use wrapper::ValueWrapper;
 
 use crate::Error;
 

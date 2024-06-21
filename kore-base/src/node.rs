@@ -4,12 +4,20 @@
 //! Node module
 //!
 
-use crate::{db::Database, Config, Error};
+use crate::{
+    db::Database,
+    helpers::encrypted_pass::EncryptedPass,
+    model::{request::EventRequest, signature::Signed},
+    Api, Config, Error,
+};
 
-use identity::keys::KeyPair;
+use identity::{
+    identifier::{DigestIdentifier, KeyIdentifier},
+    keys::{KeyMaterial, KeyPair},
+};
 
 use actor::{
-    Actor, ActorContext, ActorSystem, Error as ActorError, Event, Handler,
+    Actor, ActorContext, ActorSystem, Error as ActorError, Event, Handler, SystemRef,
     Message, Response,
 };
 use async_trait::async_trait;
@@ -20,6 +28,9 @@ use tracing::{debug, error};
 /// Node struct.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
+    /// Owner of the node.
+    #[serde(skip)]
+    owner: KeyIdentifier,
     /// The node's owned subjects.
     owned_subjects: Vec<String>,
     /// The node's known subjects.
@@ -28,36 +39,30 @@ pub struct Node {
     owned_governances: Vec<String>,
     /// The node's known governances.
     known_governances: Vec<String>,
-    /// The node's key pair.
-    #[serde(skip)]
-    key_pair: KeyPair,
-}
+  }
 
 impl Node {
+
     /// Creates a new node.
-    pub fn new(
-        key_pair: KeyPair,
-        config: Config,
-        password: &str,
-    ) -> Result<Self, Error> {
-        // Create de actor system.
-        let (system, mut runner) = ActorSystem::create();
-
-        let db_manager = Database::open(&config.database)?;
-
-        // Spawn the runner.
-        tokio::spawn(async move {
-            system.add_helper("store", db_manager).await;
-            runner.run().await;
-        });
+    pub fn new(id: &KeyIdentifier) -> Result<Self, Error> {
 
         Ok(Self {
+            owner: id.clone(),
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             owned_governances: Vec::new(),
             known_governances: Vec::new(),
-            key_pair,
         })
+    }
+
+    /// Gets the node's owner identifier.
+    /// 
+    /// # Returns
+    /// 
+    /// A `KeyIdentifier` with the node's owner identifier.
+    /// 
+    pub fn owner(&self) -> KeyIdentifier {
+        self.owner.clone()
     }
 
     /// Adds a subject to the node's known subjects.
@@ -104,7 +109,8 @@ impl Node {
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessasge {
-    GetSubject(String),
+    RequestEvent(Signed<EventRequest>),
+    GetOwnerIdentifier,
 }
 
 impl Message for NodeMessasge {}
@@ -112,7 +118,11 @@ impl Message for NodeMessasge {}
 /// Node response.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeResponse {
-    Subject,
+    /// Event request.
+    RequestIdentifier(Result<DigestIdentifier, Error>),
+    /// Owner identifier.
+    OwnerIdentifier(KeyIdentifier),
+    None,
 }
 
 impl Response for NodeResponse {}
@@ -168,19 +178,19 @@ impl Actor for Node {
 #[async_trait]
 impl PersistentActor for Node {
     /// Change node state.
-    fn apply(&mut self, event: Self::Event) {
+    fn apply(&mut self, event: &Self::Event) {
         match event {
             NodeEvent::OwnedSubject(subject_id) => {
-                self.add_owned_subject(subject_id);
+                self.add_owned_subject(subject_id.clone());
             }
             NodeEvent::KnownSubject(subject_id) => {
-                self.add_known_subject(subject_id);
+                self.add_known_subject(subject_id.clone());
             }
             NodeEvent::OwnedGovernance(governance_id) => {
-                self.add_owned_governance(governance_id);
+                self.add_owned_governance(governance_id.clone());
             }
             NodeEvent::KnownGovernance(governance_id) => {
-                self.add_known_governance(governance_id);
+                self.add_known_governance(governance_id.clone());
             }
         }
     }
@@ -202,7 +212,18 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> NodeResponse {
         match msg {
-            NodeMessasge::GetSubject(subject_id) => NodeResponse::Subject,
+            NodeMessasge::RequestEvent(event) => NodeResponse::None,
+            NodeMessasge::GetOwnerIdentifier => {
+                NodeResponse::OwnerIdentifier(self.owner.clone())
+            }
         }
     }
+}
+
+#[cfg(test)]
+pub mod tests {
+
+    use super::*;
+
+
 }

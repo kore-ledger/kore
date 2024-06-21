@@ -1,41 +1,38 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::req::Request;
-
 use crate::{
-    db::Database,
-    model::{request::EventRequest, signature::Signed},
-    Error,
+    db::Database, governance::{self, Governance}, model::{request::EventRequest, signature::Signed}, Error
 };
 
 use actor::{
-    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
+    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response, ActorPath,
 };
-use identity::identifier::DigestIdentifier;
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
-use tracing::{debug, error};
+use tracing::{debug, error, field::debug};
 
 use std::collections::HashSet;
 
 /// Request handler.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestHandler {
+    /// Owner identifier.
+    id: KeyIdentifier,
     requests: HashSet<DigestIdentifier>,
 }
 
 impl RequestHandler {
     /// Creates a new `RequestHandler`.
-    pub fn new() -> Self {
-        RequestHandler::default()
-    }
-
-    /// Does the request exist?
-    pub fn request_exists(&self, request_id: &DigestIdentifier) -> bool {
-        self.requests.contains(request_id)
+    pub fn new(id: KeyIdentifier) -> Self {
+        debug!("Create Request handler for: {}", id);
+        Self {
+            id,
+            requests: HashSet::new(),
+        }
     }
 
     /// Handles the `StartRequest` message.
@@ -52,6 +49,16 @@ impl RequestHandler {
                 "invalid signature".to_owned(),
             ));
         }
+        // Check if the signer is the owner of the node for creation events.
+        if let EventRequest::Create(start) = &msg.content {
+            if msg.signature.signer != self.id {
+                error!("invalid signer for request");
+                return RequestResponse::Error(Error::RequestEvent(
+                    "invalid signer".to_owned(),
+                ));
+            }
+        } 
+
         // Generates request identifier.
         let request_id = match DigestIdentifier::generate_with_blake3(&msg) {
             Ok(id) => id,
@@ -62,14 +69,15 @@ impl RequestHandler {
                 ));
             }
         };
-
+        
         // Does the request exist?
-        if self.request_exists(&request_id) {
+        if self.requests.contains(&request_id) {
             error!("request already exists: {}", request_id);
             return RequestResponse::Error(Error::RequestEvent(
                 "request already exists".to_owned(),
             ));
         }
+
 
         // Emits the `RequestEvent` event.
         if ctx
@@ -97,7 +105,7 @@ impl RequestHandler {
         ctx: &mut ActorContext<RequestHandler>,
     ) -> RequestResponse {
         // Does the request exist?
-        if !self.request_exists(&id) {
+        if !self.requests.contains(&id) {
             error!("request does not exist: {}", id);
             return RequestResponse::Error(Error::RequestEvent(
                 "request does not exist".to_owned(),
@@ -113,14 +121,6 @@ impl RequestHandler {
         }
 
         RequestResponse::None
-    }
-}
-
-impl Default for RequestHandler {
-    fn default() -> Self {
-        RequestHandler {
-            requests: HashSet::new(),
-        }
     }
 }
 
@@ -211,6 +211,7 @@ impl Handler<RequestHandler> for RequestHandler {
     ) -> RequestResponse {
         match msg {
             RequestHandlerCommand::StartRequest(msg) => {
+                debug!("Handle start request");
                 self.handle_start_request(msg, ctx).await
             }
             RequestHandlerCommand::EndRequest(id) => {
@@ -227,68 +228,90 @@ impl Handler<RequestHandler> for RequestHandler {
     ) {
         match event.clone() {
             RequestHandlerEvent::Start { id, request } => {
-                // Create child request
-                if ctx
-                    .create_child(&id.to_string(), Request::new(id, request))
-                    .await
-                    .is_err()
-                {
-                    let _ = ctx
-                        .emit_fail(ActorError::CreateStore(
-                            "Failed to create child request".to_string(),
-                        ))
-                        .await;
-                    return;
+                match &request.content {
+                    EventRequest::Create(request) => {
+                        debug!("Create request actor");
+
+
+                    }
+                    _ => {}
                 }
-                if self.persist(event.clone(), ctx).await.is_err() {
-                    let _ = ctx
-                        .emit_fail(ActorError::CreateStore(
-                            "Failed to persist event".to_string(),
-                        ))
-                        .await;
-                    return;
-                }
-            }
+
+            },
             RequestHandlerEvent::End { id } => {
-                // Stop child.
-                let child =
-                    match ctx.get_child::<Request>(&id.to_string()).await {
-                        Some(child) => child,
-                        None => {
-                            let _ =
-                                ctx.emit_fail(ActorError::CreateStore(
-                                    format!("Failed to get child {}", id),
-                                ))
-                                .await;
-                            return;
-                        }
-                    };
-                child.stop().await;
-                if self.persist(event.clone(), ctx).await.is_err() {
-                    let _ = ctx
-                        .emit_fail(ActorError::CreateStore(
-                            "Failed to persist event".to_string(),
-                        ))
-                        .await;
-                    return;
-                }
+
+            },
+        }
+        if let Err(error) = self.persist(&event, ctx).await {
+            if ctx.emit_fail(error).await.is_err(){
+                error!("Emit fail");
             }
         }
-        self.apply(event);
+        self.apply(&event);
     }
 }
 
 #[async_trait]
 impl PersistentActor for RequestHandler {
     /// Change request handler state.
-    fn apply(&mut self, event: Self::Event) {
+    fn apply(&mut self, event: &Self::Event) {
         match event {
             RequestHandlerEvent::Start { id, .. } => {
-                self.requests.insert(id);
+                self.requests.insert(id.clone());
             }
             RequestHandlerEvent::End { id } => {
                 self.requests.remove(&id);
             }
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use identity::{
+        identifier::derive::digest::DigestDerivator,
+        keys::{Ed25519KeyPair, KeyPair, KeyGenerator, KeyMaterial}
+    };
+
+    use crate::{model::{request::EventRequest, signature::Signature}, system, Config, DbConfig};
+
+    use super::*;
+
+    use tracing_test::traced_test;
+    use serde_json::{self, json};
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_request_handler() {
+        let kp = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let dir =
+            tempfile::tempdir().expect("Can not create temporal directory.");
+        let path = dir.path().to_str().unwrap().to_owned(); 
+        let db = DbConfig::Rocksdb { path };
+        let config = Config { database: db};
+        let system = system(config, "password").await.unwrap();
+
+        let request_actor = RequestHandler::new(kp.key_identifier());
+        let request_handler = system.create_root_actor("request", request_actor).await.unwrap();
+
+        let event = create_gov(&kp);
+    }
+
+    fn create_gov(keys: &KeyPair) -> Signed<EventRequest> {
+        let id = keys.key_identifier();
+        let value = json!({
+            "Create": {
+                "governance_id": "",
+                "schema_id": "governance",
+                "namespace": "",
+                "name": "EasyTutorial",
+                "public_key": id
+            }           
+        });
+        let content: EventRequest = serde_json::from_value(value).unwrap();
+        let signature = Signature::new(&content, keys, DigestDerivator::SHA2_256).unwrap();
+        Signed { content, signature }
+    }
+
 }

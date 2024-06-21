@@ -5,9 +5,14 @@ edition.workspace = true
 
 [dependencies]
 actor = { path = "../../rush-rs/actor" }
+argon2 = "0.5"
 async-trait = { workspace = true }
 borsh = { workspace = true }
+generic-array = {version = "1.0", features = ["zeroize"] }
 identity = { path = "../identity"}
+json-patch = { version = "2.0" }
+jsonschema = { version = "0.18", default_features = false }
+memsecurity = { version = "3.5", features = ["encryption"]}
 rocksdb_db = { path = "../../rush-rs/databases/rocksdb_db", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -20,6 +25,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tracing-test = { workspace = true }
 
 [features]
 default = ["rocksdb"]

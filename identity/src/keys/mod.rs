@@ -20,7 +20,7 @@ pub use ed25519::Ed25519KeyPair;
 pub use secp256k1::Secp256k1KeyPair;
 use serde::{Deserialize, Serialize};
 
-use crate::identifier::{self, derive::KeyDerivator};
+use crate::identifier::{self, derive::KeyDerivator, KeyIdentifier};
 
 /// Asymmetric key pair
 #[derive(Serialize, Deserialize, Debug)]
@@ -45,6 +45,10 @@ impl KeyPair {
             #[cfg(feature = "secp256k1")]
             KeyPair::Secp256k1(_) => KeyDerivator::Secp256k1,
         }
+    }
+
+    pub fn key_identifier(&self) -> KeyIdentifier {
+        KeyIdentifier::new(self.get_key_derivator(), &self.public_key_bytes())
     }
 
     pub fn from_hex(
@@ -110,14 +114,6 @@ impl<P> BaseKeyPair<P> {
         })?;
         Ok(())
     }
-}
-
-// TODO: remove this
-/// Represents asymetric key pair for storage (deprecated: KeyPair is serializable)
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CryptoBox {
-    pub public_key: Vec<u8>,
-    pub secret_key: Vec<u8>,
 }
 
 /// Return key material bytes
