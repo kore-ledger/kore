@@ -30,6 +30,12 @@ impl ValueWrapper {
     }
 }
 
+impl Default for ValueWrapper {
+    fn default() -> Self {
+        ValueWrapper(Value::Null)
+    }
+}
+
 impl HashId for ValueWrapper {
     fn hash_id(
         &self,

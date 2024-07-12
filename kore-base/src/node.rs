@@ -17,8 +17,8 @@ use identity::{
 };
 
 use actor::{
-    Actor, ActorContext, ActorSystem, Error as ActorError, Event, Handler, SystemRef,
-    Message, Response,
+    Actor, ActorContext, ActorSystem, Error as ActorError, Event, Handler,
+    Message, Response, SystemRef,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -39,13 +39,11 @@ pub struct Node {
     owned_governances: Vec<String>,
     /// The node's known governances.
     known_governances: Vec<String>,
-  }
+}
 
 impl Node {
-
     /// Creates a new node.
     pub fn new(id: &KeyIdentifier) -> Result<Self, Error> {
-
         Ok(Self {
             owner: id.clone(),
             owned_subjects: Vec::new(),
@@ -56,11 +54,11 @@ impl Node {
     }
 
     /// Gets the node's owner identifier.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// A `KeyIdentifier` with the node's owner identifier.
-    /// 
+    ///
     pub fn owner(&self) -> KeyIdentifier {
         self.owner.clone()
     }
@@ -209,12 +207,12 @@ impl Handler<Node> for Node {
     async fn handle_message(
         &mut self,
         msg: NodeMessasge,
-        ctx: &mut actor::ActorContext<Node>,
-    ) -> NodeResponse {
+        _ctx: &mut actor::ActorContext<Node>,
+    ) -> Result<NodeResponse, ActorError> {
         match msg {
-            NodeMessasge::RequestEvent(event) => NodeResponse::None,
+            NodeMessasge::RequestEvent(event) => Ok(NodeResponse::None),
             NodeMessasge::GetOwnerIdentifier => {
-                NodeResponse::OwnerIdentifier(self.owner.clone())
+                Ok(NodeResponse::OwnerIdentifier(self.owner.clone()))
             }
         }
     }
@@ -224,6 +222,4 @@ impl Handler<Node> for Node {
 pub mod tests {
 
     use super::*;
-
-
 }

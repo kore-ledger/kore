@@ -17,6 +17,8 @@ pub use protocol::ProtocolSupport;
 pub use codec::binary;
 #[cfg(feature = "borsh")]
 pub use codec::borsh;
+#[cfg(feature = "cbor")]
+pub use codec::cbor;
 #[cfg(feature = "json")]
 pub use codec::json;
 

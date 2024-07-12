@@ -35,4 +35,10 @@ pub enum Error {
     /// Governance error.
     #[error("Governance error: {0}")]
     Governance(String),
+    /// Subject error.
+    #[error("Subject error: {0}")]
+    Subject(String),
+    /// Event error.
+    #[error("Event error: {0}")]
+    Event(String),
 }

@@ -6,6 +6,7 @@
 
 use crate::{DbConfig, Error};
 
+use actor::{ActorContext, Error as ActorError};
 use rocksdb_db::{RocksDbManager, RocksDbStore};
 #[cfg(feature = "sqlite")]
 use sqlite_db::SqliteManager;
@@ -14,6 +15,9 @@ use store::{
     store::{PersistentActor, Store},
     Error as StoreError,
 };
+
+use async_trait::async_trait;
+use tracing::{debug, error};
 
 #[derive(Clone)]
 pub enum Database {
@@ -119,5 +123,28 @@ impl Collection for DbCollection {
             #[cfg(feature = "sqlite")]
             DbCollection::SQLite(store) => store.iter(reverse),
         }
+    }
+}
+
+#[async_trait]
+pub trait Storable: PersistentActor {
+    async fn init_store(
+        &mut self,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        debug!("Creating store");
+        // Gets database
+        let db = match ctx.system().get_helper::<Database>("store").await {
+            Some(db) => db,
+            None => {
+                error!("Database not found");
+                return Err(ActorError::CreateStore(
+                    "Database not found".to_string(),
+                ));
+            }
+        };
+        // Start store
+        self.start_store(ctx, db, None).await?;
+        Ok(())
     }
 }

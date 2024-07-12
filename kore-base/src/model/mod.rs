@@ -6,6 +6,7 @@
 //! This module contains the data model for the Kore base.
 //!
 
+pub mod event;
 pub mod namespace;
 pub mod request;
 pub mod signature;

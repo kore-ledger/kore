@@ -17,14 +17,16 @@ pub use api::Api;
 pub use config::{Config, DbConfig};
 pub use error::Error;
 
-use node::Node;
-use db::Database;
 use actor::{ActorSystem, SystemRef};
-use identity::keys::KeyPair;
+use db::Database;
 use helpers::encrypted_pass::EncryptedPass;
+use identity::keys::KeyPair;
+use node::Node;
 
-
-pub async fn system(config: Config, password: &str) -> Result<SystemRef, Error> {
+pub async fn system(
+    config: Config,
+    password: &str,
+) -> Result<SystemRef, Error> {
     // Create de actor system.
     let (system, mut runner) = ActorSystem::create();
 
@@ -40,12 +42,14 @@ pub async fn system(config: Config, password: &str) -> Result<SystemRef, Error> 
     tokio::spawn(async move {
         runner.run().await;
     });
-    
+
     Ok(system)
 }
 
 #[cfg(test)]
 pub mod tests {
+
+    use identity::identifier::derive::KeyDerivator;
 
     use super::*;
 
@@ -54,18 +58,21 @@ pub mod tests {
 
     #[tokio::test]
     async fn test_system() {
-        let dir =
-            tempfile::tempdir().expect("Can not create temporal directory.");
-        let path = dir.path().to_str().unwrap().to_owned(); 
-        let db = DbConfig::Rocksdb { path };
-        let config = Config { database: db};
-        let system = system(config, "password").await.unwrap();
+        let system = create_system().await;
         let db: Option<Database> = system.get_helper("store").await;
         assert!(db.is_some());
-        let ep: Option<EncryptedPass> = system.get_helper("encrypted_pass").await;
+        let ep: Option<EncryptedPass> =
+            system.get_helper("encrypted_pass").await;
         assert!(ep.is_some());
         let any: Option<Dummy> = system.get_helper("dummy").await;
         assert!(any.is_none());
-
     }
-} 
+
+    pub async fn create_system() -> SystemRef {
+        let dir =
+            tempfile::tempdir().expect("Can not create temporal directory.");
+        let path = dir.path().to_str().unwrap().to_owned();
+        let config = Config::new(&path);
+        system(config, "password").await.unwrap()
+    }
+}

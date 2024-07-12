@@ -9,6 +9,8 @@
 pub mod binary;
 #[cfg(feature = "borsh")]
 pub mod borsh;
+#[cfg(feature = "cbor")]
+pub mod cbor;
 #[cfg(feature = "json")]
 pub mod json;
 

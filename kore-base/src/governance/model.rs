@@ -398,7 +398,7 @@ pub struct Contract {
 }
 
 /// Governance member.
-#[derive(Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 pub struct Member {
     pub id: String,
     pub name: String,
@@ -407,13 +407,13 @@ pub struct Member {
 }
 
 /// Governance validation (from quorum).
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Validation {
     quorum: Quorum,
 }
 
 /// Governance policy.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Policy {
     pub id: String,
     pub approve: Validation,
@@ -423,7 +423,7 @@ pub struct Policy {
 
 /// Governance model.
 /// This struct represents the governance model.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GovernanceModel {
     /// The version of the governance model.
     pub version: u64,

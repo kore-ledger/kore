@@ -8,6 +8,7 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 borsh = { workspace = true, optional = true }
+cbor4ii = { version = "0.3", features = ["serde1", "use_std"], optional = true }
 futures = { workspace = true }
 futures-bounded = "0.2"
 libp2p = { workspace = true, default_features = false, features = [
@@ -30,6 +31,7 @@ rand = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [features]
-default = ["binary", "borsh", "json"]
+default = ["binary", "borsh", "json", "cbor"]
 json = ["serde_json"]
 binary = []
+cbor = ["cbor4ii"]

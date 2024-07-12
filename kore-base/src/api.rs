@@ -5,16 +5,16 @@
 //!
 
 use crate::{
-    model::{request::EventRequest, signature::Signed}, node::Node, request::handler::{
+    model::{request::EventRequest, signature::Signed},
+    node::Node,
+    request::handler::{
         RequestHandler, RequestHandlerCommand, RequestResponse,
-    }, Error
+    },
+    Error,
 };
 
-use actor::{ActorContext, ActorPath, ActorRef, SystemRef, Handler, Actor};
-use identity::{
-    identifier::KeyIdentifier,
-    keys::KeyPair,
-};
+use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler, SystemRef};
+use identity::{identifier::KeyIdentifier, keys::KeyPair};
 
 pub struct Api {
     keys: KeyPair,
@@ -24,26 +24,26 @@ pub struct Api {
 impl Api {
     /// Creates a new `Api`.
     pub fn new(keys: KeyPair, request: ActorRef<RequestHandler>) -> Self {
-        Self {
-            keys,
-            request,
-        }
+        Self { keys, request }
     }
-    
+
     /// Request from issuer.
     pub async fn external_request(
         &self,
         event: Signed<EventRequest>,
     ) -> Result<RequestResponse, Error> {
-        Ok(self.request
+        Ok(self
+            .request
             .ask(RequestHandlerCommand::StartRequest(event))
             .await
             .map_err(|e| Error::Actor(e.to_string()))?)
     }
-    
-    /// Own request.
-    pub async fn own_request(&self, event: EventRequest) -> Result<RequestResponse, Error> {
-        todo!()
 
+    /// Own request.
+    pub async fn own_request(
+        &self,
+        event: EventRequest,
+    ) -> Result<RequestResponse, Error> {
+        todo!()
     }
 }

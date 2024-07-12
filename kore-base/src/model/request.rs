@@ -222,7 +222,7 @@ impl TryFrom<Signed<EventRequest>> for KoreRequest {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
     use super::*;
 
@@ -234,18 +234,20 @@ mod tests {
     // Mocks
 
     // Create governance request mock.
-    fn create_start_request_mock(issuer: &str) -> StartRequest {
+    pub fn create_start_request_mock(issuer: &str) -> Signed<EventRequest> {
         let (key_pair, key_id) = issuer_identity(issuer);
-        StartRequest {
+        let req = StartRequest {
             governance_id: DigestIdentifier::default(),
             schema_id: "schema_id".to_string(),
             namespace: "namespace".to_string(),
             name: "name".to_string(),
-            public_key: KeyIdentifier::new(
-                KeyDerivator::Ed25519,
-                &key_pair.public_key_bytes(),
-            ),
-        }
+            public_key: key_id,
+        };
+        let content = EventRequest::Create(req);
+        let signature =
+            Signature::new(&content, &key_pair, DigestDerivator::SHA2_256)
+                .unwrap();
+        Signed::new(content, signature)
     }
 
     // Mokcs

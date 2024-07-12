@@ -4,35 +4,43 @@
 //! # Governance module.
 //!
 
-mod init;
+pub mod init;
 mod model;
 mod schema;
 
-use crate::{model::{request, wrapper::ValueWrapper, Namespace}, subject::SubjectState, Error};
+use crate::{
+    db::{Database, Storable},
+    model::{request, wrapper::ValueWrapper, Namespace},
+    subject::SubjectState,
+    Error,
+};
 
 pub use schema::schema;
 
-use model::{GovernanceModel, Member, Policy, Quorum, RequestStage, Role, Schema, Who};
+use model::{
+    GovernanceModel, Member, Policy, Quorum, RequestStage, Role, Schema, Who,
+};
 
 use identity::{
     identifier::{DigestIdentifier, KeyIdentifier},
     keys::KeyPair,
 };
 
-use actor::{Actor, Handler, Message, Response, Event, ActorContext};
+use actor::{
+    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
+};
 
-use serde::{Deserialize, Serialize};
+use store::{database::DbManager, store::PersistentActor};
+
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
-use std::{
-    collections::HashSet,
-    sync::atomic::AtomicU64,
-};
+use std::{collections::HashSet, sync::atomic::AtomicU64};
 
 /// Governance struct.
 ///
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Governance {
     /// The identifier of the governance.
     subject_id: DigestIdentifier,
@@ -51,11 +59,12 @@ pub struct Governance {
 }
 
 impl Governance {
-
     /// Creates a new `Governance`.
     pub fn new() -> Result<Self, Error> {
-        let model: GovernanceModel = serde_json::from_value(init::init_state().0)
-            .map_err(|_| Error::Governance("Model not found.".to_owned()))?;
+        let model: GovernanceModel =
+            serde_json::from_value(init::init_state().0).map_err(|_| {
+                Error::Governance("Model not found.".to_owned())
+            })?;
 
         Ok(Governance {
             subject_id: DigestIdentifier::default(),
@@ -90,11 +99,11 @@ impl Governance {
 
     /// Get the schema by id.
     ///
-    pub fn get_schema(&self, schema_id: &str) -> Result<&Schema, Error> {
+    pub fn get_schema(&self, schema_id: &str) -> Result<Schema, Error> {
         for schema in &self.model.schemas {
             debug!("Schema found: {}", schema_id);
             if &schema.id == schema_id {
-                return Ok(schema);
+                return Ok(schema.clone());
             }
         }
         error!("Schema not found: {}", schema_id);
@@ -105,22 +114,13 @@ impl Governance {
     pub fn get_signers(&self, stage: RequestStage) -> Vec<DigestIdentifier> {
         let mut signers = Vec::new();
         // Create hashset of members.
-        let members: HashSet<Member> = self.model.members.iter().cloned().collect(); 
+        let members: HashSet<Member> =
+            self.model.members.iter().cloned().collect();
         for rol in &self.model.roles {
             // Check if the stage is for the role.
-            if stage.to_role() == &rol.role {
-
-            }
+            if stage.to_role() == &rol.role {}
         }
-        /*for policy in &self.model.policies {
-            if policy.stage == stage {
-                for role in &policy.roles {
-                    for member in &role.members {
-                        signers.push(member.id.clone());
-                    }
-                }
-            }
-        }*/
+
         signers
     }
 
@@ -145,6 +145,11 @@ impl Governance {
         false
     }
 
+    /// Governance version.
+    pub fn version(&self) -> u64 {
+        self.model.version
+    }
+
     /// Check if the key is a member.
     fn is_member(&self, id: &KeyIdentifier) -> bool {
         for member in &self.model.members {
@@ -160,8 +165,10 @@ impl TryFrom<SubjectState> for Governance {
     type Error = Error;
 
     fn try_from(subject: SubjectState) -> Result<Self, Self::Error> {
-        let model: GovernanceModel = serde_json::from_value(subject.properties.0)
-            .map_err(|_| Error::Governance("Model not found.".to_owned()))?;
+        let model: GovernanceModel =
+            serde_json::from_value(subject.properties.0).map_err(|_| {
+                Error::Governance("Model not found.".to_owned())
+            })?;
         Ok(Governance {
             subject_id: subject.subject_id,
             governance_id: subject.governance_id,
@@ -177,10 +184,24 @@ impl TryFrom<SubjectState> for Governance {
 /// Governance command.
 #[derive(Debug, Clone)]
 pub enum GovernanceCommand {
-    GetSchema { schema_id: String },
-    GetInitialState { schema_id: String },
-    GetSigners { stage: RequestStage, schema_id: String, namespace: Namespace },
-    IsAllowed { id: KeyIdentifier, stage: RequestStage, name: String },
+    GetSchema {
+        schema_id: String,
+    },
+    GetInitialState {
+        schema_id: String,
+    },
+    GetSigners {
+        stage: RequestStage,
+        schema_id: String,
+        namespace: Namespace,
+    },
+    GetVersion,
+
+    IsAllowed {
+        id: KeyIdentifier,
+        stage: RequestStage,
+        name: String,
+    },
 }
 
 impl Message for GovernanceCommand {}
@@ -191,7 +212,9 @@ pub enum GovernanceResponse {
     Schema(Schema),
     InitialState(ValueWrapper),
     Signers(Vec<DigestIdentifier>, Quorum),
+    Version(u64),
     Allow(bool),
+    Error(Error),
     None,
 }
 
@@ -213,6 +236,21 @@ impl Actor for Governance {
     type Event = GovernanceEvent;
     type Message = GovernanceCommand;
     type Response = GovernanceResponse;
+
+    /// Pre-start implementation for `Governance`.
+    async fn pre_start(
+        &mut self,
+        ctx: &mut actor::ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        self.init_store(ctx).await
+    }
+
+    async fn post_stop(
+        &mut self,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        self.stop_store(ctx).await
+    }
 }
 
 /// Handler implementation for `Governance`.
@@ -222,12 +260,40 @@ impl Handler<Governance> for Governance {
         &mut self,
         msg: GovernanceCommand,
         ctx: &mut ActorContext<Governance>,
-    ) -> GovernanceResponse {
+    ) -> Result<GovernanceResponse, ActorError> {
         match msg {
-            GovernanceCommand::IsAllowed { id, stage, name } => 
-                GovernanceResponse::Allow(self.is_allowed(id, &name, stage)),
-        
-            _ => GovernanceResponse::None,
-        } 
+            GovernanceCommand::GetSchema { schema_id } => {
+                match self.get_schema(&schema_id) {
+                    Ok(schema) => Ok(GovernanceResponse::Schema(schema)),
+                    Err(e) => Ok(GovernanceResponse::Error(e)),
+                }
+            }
+            GovernanceCommand::IsAllowed { id, stage, name } => {
+                Ok(GovernanceResponse::Allow(self.is_allowed(id, &name, stage)))
+            }
+            GovernanceCommand::GetInitialState { schema_id } => {
+                match self.get_initial_state(&schema_id) {
+                    Ok(initial_state) => {
+                        Ok(GovernanceResponse::InitialState(initial_state))
+                    }
+                    Err(e) => Ok(GovernanceResponse::Error(e)),
+                }
+            }
+            GovernanceCommand::GetVersion => {
+                Ok(GovernanceResponse::Version(self.version()))
+            }
+            _ => Ok(GovernanceResponse::None),
+        }
     }
 }
+
+#[async_trait]
+impl PersistentActor for Governance {
+    /// Change request handler state.
+    fn apply(&mut self, event: &Self::Event) {
+        unimplemented!()
+    }
+}
+
+#[async_trait]
+impl Storable for Governance {}

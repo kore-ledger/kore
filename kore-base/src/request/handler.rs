@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    db::Database, governance::{self, Governance}, model::{request::EventRequest, signature::Signed}, Error
+    db::Database,
+    governance::{self, Governance},
+    model::{request::EventRequest, signature::Signed},
+    Error,
 };
 
 use actor::{
-    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response, ActorPath,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
@@ -57,7 +61,7 @@ impl RequestHandler {
                     "invalid signer".to_owned(),
                 ));
             }
-        } 
+        }
 
         // Generates request identifier.
         let request_id = match DigestIdentifier::generate_with_blake3(&msg) {
@@ -69,7 +73,7 @@ impl RequestHandler {
                 ));
             }
         };
-        
+
         // Does the request exist?
         if self.requests.contains(&request_id) {
             error!("request already exists: {}", request_id);
@@ -77,7 +81,6 @@ impl RequestHandler {
                 "request already exists".to_owned(),
             ));
         }
-
 
         // Emits the `RequestEvent` event.
         if ctx
@@ -175,7 +178,7 @@ impl Actor for RequestHandler {
     ) -> Result<(), ActorError> {
         debug!("Creating RequestHandler store");
         // Gets database
-        let db = match ctx.system().get_helper::<Database>("db").await {
+        let db = match ctx.system().get_helper::<Database>("store").await {
             Some(db) => db,
             None => {
                 error!("Database not found");
@@ -208,20 +211,20 @@ impl Handler<RequestHandler> for RequestHandler {
         &mut self,
         msg: RequestHandlerCommand,
         ctx: &mut ActorContext<RequestHandler>,
-    ) -> RequestResponse {
+    ) -> Result<RequestResponse, ActorError> {
         match msg {
             RequestHandlerCommand::StartRequest(msg) => {
                 debug!("Handle start request");
-                self.handle_start_request(msg, ctx).await
+                Ok(self.handle_start_request(msg, ctx).await)
             }
             RequestHandlerCommand::EndRequest(id) => {
-                self.handle_end_request(id, ctx).await
+                Ok(self.handle_end_request(id, ctx).await)
             }
         }
     }
 
     /// Handles the `EventRequest` event.
-    async fn handle_event(
+    async fn on_event(
         &mut self,
         event: RequestHandlerEvent,
         ctx: &mut ActorContext<RequestHandler>,
@@ -231,19 +234,14 @@ impl Handler<RequestHandler> for RequestHandler {
                 match &request.content {
                     EventRequest::Create(request) => {
                         debug!("Create request actor");
-
-
                     }
                     _ => {}
                 }
-
-            },
-            RequestHandlerEvent::End { id } => {
-
-            },
+            }
+            RequestHandlerEvent::End { id } => {}
         }
         if let Err(error) = self.persist(&event, ctx).await {
-            if ctx.emit_fail(error).await.is_err(){
+            if ctx.emit_fail(error).await.is_err() {
                 error!("Emit fail");
             }
         }
@@ -271,31 +269,40 @@ mod tests {
 
     use identity::{
         identifier::derive::digest::DigestDerivator,
-        keys::{Ed25519KeyPair, KeyPair, KeyGenerator, KeyMaterial}
+        keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair},
     };
 
-    use crate::{model::{request::EventRequest, signature::Signature}, system, Config, DbConfig};
+    use crate::{
+        model::{request::EventRequest, signature::Signature},
+        system,
+        tests::create_system,
+        Config, DbConfig,
+    };
 
     use super::*;
 
-    use tracing_test::traced_test;
     use serde_json::{self, json};
+    use tracing_test::traced_test;
 
     #[tokio::test]
     #[traced_test]
     async fn test_request_handler() {
         let kp = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let dir =
-            tempfile::tempdir().expect("Can not create temporal directory.");
-        let path = dir.path().to_str().unwrap().to_owned(); 
-        let db = DbConfig::Rocksdb { path };
-        let config = Config { database: db};
-        let system = system(config, "password").await.unwrap();
+        let system = create_system().await;
 
         let request_actor = RequestHandler::new(kp.key_identifier());
-        let request_handler = system.create_root_actor("request", request_actor).await.unwrap();
+        let request_handler = system
+            .create_root_actor("request", request_actor)
+            .await
+            .unwrap();
 
         let event = create_gov(&kp);
+
+        let response = request_handler
+            .ask(RequestHandlerCommand::StartRequest(event))
+            .await;
+
+        assert!(response.is_ok());
     }
 
     fn create_gov(keys: &KeyPair) -> Signed<EventRequest> {
@@ -307,11 +314,11 @@ mod tests {
                 "namespace": "",
                 "name": "EasyTutorial",
                 "public_key": id
-            }           
+            }
         });
         let content: EventRequest = serde_json::from_value(value).unwrap();
-        let signature = Signature::new(&content, keys, DigestDerivator::SHA2_256).unwrap();
+        let signature =
+            Signature::new(&content, keys, DigestDerivator::SHA2_256).unwrap();
         Signed { content, signature }
     }
-
 }
