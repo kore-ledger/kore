@@ -14,10 +14,11 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
+use core::str;
 use std::io::{Read, Write};
 
 /// Wrapper of serde_json::Value implementing serialization and deserialization with Borsh.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ValueWrapper(pub Value);
 
 impl ValueWrapper {
@@ -44,6 +45,30 @@ impl HashId for ValueWrapper {
         DigestIdentifier::from_serializable_borsh(self, derivator)
             .map_err(|_| Error::Digest("Hashing error".to_string()))
     }
+}
+
+impl Serialize for ValueWrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_str(&self.0.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for ValueWrapper
+{
+    fn deserialize<D>(deserializer: D) -> Result<ValueWrapper, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        let value = serde_json::from_str::<Value>(&s)
+            .map_err(serde::de::Error::custom)?;
+        Ok(ValueWrapper(value))
+
+    }
+
 }
 
 impl BorshSerialize for ValueWrapper {
@@ -191,5 +216,14 @@ mod tests {
             borsh::BorshDeserialize::deserialize(&mut buffer.as_slice())
                 .unwrap();
         assert_eq!(deserialized.0, value);
+    }
+
+    #[test]
+    fn test_serialize_deserialize() {
+        let value = crate::governance::init::init_state();
+        //let wrapper = ValueWrapper(value.clone());
+        let bytes = bincode::serialize(&value).unwrap();
+        let wrapper = bincode::deserialize::<ValueWrapper>(&bytes);
+        println!("Result: {:?}", wrapper);
     }
 }

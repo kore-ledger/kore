@@ -13,7 +13,7 @@ use super::{
     HashId,
 };
 
-use crate::{model::Namespace, subject::Subject, Error};
+use crate::{governance::init::init_state, model::Namespace, subject::Subject, Error};
 
 use identity::{
     identifier::{
@@ -77,10 +77,6 @@ impl Event {
         let EventRequest::Create(start_request) = &request.content else {
             return Err(Error::Event("Invalid Event Request".to_string()));
         };
-        let json_patch = serde_json::to_value(diff(&json!({}), &init_state.0))
-            .map_err(|_| {
-                Error::Event("Error converting patch to value".to_owned())
-            })?;
         let public_key = KeyIdentifier::new(
             subject_keys.get_key_derivator(),
             &subject_keys.public_key_bytes(),
@@ -105,7 +101,7 @@ impl Event {
             event_request: request.clone(),
             sn: 0,
             gov_version: governance_version,
-            patch: ValueWrapper(json_patch),
+            patch: init_state.clone(),
             state_hash,
             eval_success: true,
             appr_required: false,

@@ -103,7 +103,7 @@ impl Subject {
                 creator: event.content.event_request.signature.signer.clone(),
                 active: true,
                 sn: AtomicU64::new(0),
-                properties: ValueWrapper::default(),
+                properties: event.content.patch.clone(),
             };
             Ok(subject)
         } else {
@@ -291,7 +291,7 @@ pub enum SubjectCommand {
     /// Get the subject metadata.
     GetSubjectMetadata,
     /// Update the subject.
-    UpdateSubject { patch: ValueWrapper, sn: u64 },
+    UpdateSubject { event: Signed<KoreEvent> },
 }
 
 impl Message for SubjectCommand {}
@@ -317,7 +317,7 @@ pub enum SubjectEvent {
     /// The subject was created.
     Create { subject: SubjectState },
     /// The subject was updated.
-    Update { patch: ValueWrapper, sn: u64 },
+    Update { event: Signed<KoreEvent> },
     /// The subject was deleted.
     Delete { subject_id: DigestIdentifier },
 }
@@ -360,11 +360,19 @@ impl Handler<Subject> for Subject {
             SubjectCommand::GetSubjectMetadata => {
                 Ok(SubjectResponse::SubjectMetadata(self.metadata()))
             }
-            SubjectCommand::UpdateSubject { patch, sn } => {
+            SubjectCommand::UpdateSubject { event } => {
+                ctx.event(SubjectEvent::Update { event: event.clone() })
+                    .await?;
                 Ok(SubjectResponse::None)
             }
         }
     }
+
+    async fn on_event(
+        &mut self,
+        event: SubjectEvent,
+        ctx: &mut ActorContext<Subject>,
+    ) -> () {}
 }
 
 impl PersistentActor for Subject {
@@ -417,14 +425,20 @@ mod tests {
             .await
             .unwrap();
         let path = subject_actor.path().clone();
-        
-        let response = subject_actor.ask(SubjectCommand::GetSubjectState).await.unwrap();
+
+        let response = subject_actor
+            .ask(SubjectCommand::GetSubjectState)
+            .await
+            .unwrap();
         if let SubjectResponse::SubjectState(state) = response {
             assert_eq!(state.namespace, Namespace::from("namespace"));
         } else {
             panic!("Invalid response");
         }
-        let response = subject_actor.ask(SubjectCommand::GetSubjectMetadata).await.unwrap();
+        let response = subject_actor
+            .ask(SubjectCommand::GetSubjectMetadata)
+            .await
+            .unwrap();
         if let SubjectResponse::SubjectMetadata(metadata) = response {
             assert_eq!(metadata.namespace, Namespace::from("namespace"));
         } else {
@@ -444,18 +458,48 @@ mod tests {
 
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-        let response = subject_actor.ask(SubjectCommand::GetSubjectState).await.unwrap();
+        let response = subject_actor
+            .ask(SubjectCommand::GetSubjectState)
+            .await
+            .unwrap();
         if let SubjectResponse::SubjectState(state) = response {
             assert_eq!(state.namespace, Namespace::from("namespace"));
         } else {
             panic!("Invalid response");
         }
-        /*let response = subject_actor.ask(SubjectCommand::GetSubjectMetadata).await.unwrap();
+        let response = subject_actor.ask(SubjectCommand::GetSubjectMetadata).await.unwrap();
         if let SubjectResponse::SubjectMetadata(metadata) = response {
             assert_eq!(metadata.namespace, Namespace::from("namespace"));
         } else {
             panic!("Invalid response");
-        }*/
-    
+        }
+    }
+
+    #[test]
+    fn test_serialize_deserialize() {
+        let value = init_state();
+        let request = create_start_request_mock("issuer");
+        let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let event = KoreEvent::from_create_request(
+            &keys,
+            &request,
+            0,
+            &value,
+            DigestDerivator::Blake3_256,
+        )
+        .unwrap();
+        let signature =
+            Signature::new(&event, &keys, DigestDerivator::Blake3_256).unwrap();
+        let signed_event = Signed {
+            content: event,
+            signature,
+        };
+        let subject_a = Subject::from_event(keys, &signed_event).unwrap();
+
+
+        let bytes = bincode::serialize(&subject_a).unwrap();
+
+        let subject_b = bincode::deserialize::<Subject>(&bytes).unwrap();
+        assert_eq!(subject_a.subject_id, subject_b.subject_id);
     }
 }
