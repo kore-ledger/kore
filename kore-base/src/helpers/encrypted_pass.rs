@@ -32,11 +32,13 @@ impl EncryptedPass {
             )
             .map_err(|e| Error::Password(e.to_string()))?;
 
-        password.encrypt(&output_key_material);
+        password.encrypt(&output_key_material).map_err(|_| {
+            Error::Password("Encrypt password error.".to_owned())
+        })?;
         Ok(Self { password })
     }
 
-    fn key(&self) -> Option<[u8; 32]> {
+    pub fn key(&self) -> Option<[u8; 32]> {
         if let Ok(value) = self.password.decrypt() {
             let bytes: &GenericArray<u8, U32> =
                 GenericArray::from_slice(value.as_ref());

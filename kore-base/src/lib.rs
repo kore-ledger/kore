@@ -12,6 +12,7 @@ mod model;
 mod node;
 mod request;
 mod subject;
+mod validation;
 
 pub use api::Api;
 pub use config::{Config, DbConfig};
@@ -20,13 +21,31 @@ pub use error::Error;
 use actor::{ActorSystem, SystemRef};
 use db::Database;
 use helpers::encrypted_pass::EncryptedPass;
-use identity::keys::KeyPair;
-use node::Node;
+use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
+
+use lazy_static::lazy_static;
+
+use std::sync::Mutex;
+
+lazy_static! {
+    /// The digest derivator for the system.
+    pub static ref DIGEST_DERIVATOR: Mutex<DigestDerivator> = Mutex::new(DigestDerivator::Blake3_256);
+    /// The key derivator for the system.
+    pub static ref KEY_DERIVATOR: Mutex<KeyDerivator> = Mutex::new(KeyDerivator::Ed25519);
+}
 
 pub async fn system(
     config: Config,
     password: &str,
 ) -> Result<SystemRef, Error> {
+    // Update statics.
+    if let Ok(mut derivator) = DIGEST_DERIVATOR.lock() {
+        *derivator = config.digest_derivator;
+    }
+    if let Ok(mut derivator) = KEY_DERIVATOR.lock() {
+        *derivator = config.key_derivator;
+    }
+
     // Create de actor system.
     let (system, mut runner) = ActorSystem::create();
 

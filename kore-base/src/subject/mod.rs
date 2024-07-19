@@ -5,12 +5,9 @@
 //!
 
 use crate::{
-    db::{Database, Storable},
-    governance,
+    db::Storable,
     model::{
-        event::Event as KoreEvent,
-        request::{EventRequest, StartRequest},
-        signature::Signed,
+        event::Event as KoreEvent, request::EventRequest, signature::Signed,
         Namespace, ValueWrapper,
     },
     Error,
@@ -18,12 +15,9 @@ use crate::{
 
 use identity::{
     identifier::{
-        derive::{digest::DigestDerivator, KeyDerivator},
-        DigestIdentifier, KeyIdentifier,
+        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
     },
-    keys::{
-        Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair, Secp256k1KeyPair,
-    },
+    keys::{KeyMaterial, KeyPair},
 };
 
 use actor::{
@@ -31,7 +25,7 @@ use actor::{
 };
 
 use async_trait::async_trait;
-use borsh::{error, BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use json_patch::{patch, Patch};
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
@@ -45,11 +39,13 @@ pub struct Subject {
     /// The key pair used to sign the subject.
     keys: KeyPair,
     /// The identifier of the subject.
-    subject_id: DigestIdentifier,
+    pub subject_id: DigestIdentifier,
     /// The identifier of the governance that drives this subject.
-    governance_id: DigestIdentifier,
+    pub governance_id: DigestIdentifier,
     /// The governance version.
-    governance_version: u64,
+    pub governance_version: u64,
+    /// The version of the governance contract that created the subject.
+    pub genesis_gov_version: u64,
     /// The namespace of the subject.
     pub namespace: Namespace,
     /// The name of the subject.
@@ -96,6 +92,7 @@ impl Subject {
                 subject_id: event.content.subject_id.clone(),
                 governance_id: request.governance_id.clone(),
                 governance_version: event.content.gov_version,
+                genesis_gov_version: event.content.gov_version,
                 namespace: Namespace::from(request.namespace.as_str()),
                 name: request.name.clone(),
                 schema_id: request.schema_id.clone(),
@@ -110,6 +107,32 @@ impl Subject {
             error!("Invalid create event request");
             Err(Error::Subject("Invalid create event request".to_string()))
         }
+    }
+
+    /// Build a new `Subject` from a subject id with default values.
+    ///
+    /// # Arguments
+    ///
+    /// * `subject_id` - The subject identifier.
+    ///
+    /// # Returns
+    ///
+    /// A new `Subject` with default values.
+    ///
+    pub fn from_subject_id(subject_id: DigestIdentifier) -> Self {
+        let mut subject = Subject::default();
+        subject.with_subject_id(subject_id);
+        subject
+    }
+
+    /// Updates the subject with a new subject id.
+    ///
+    /// # Arguments
+    ///
+    /// * `subject_id` - The subject identifier.
+    ///
+    pub fn with_subject_id(&mut self, subject_id: DigestIdentifier) {
+        self.subject_id = subject_id;
     }
 
     /// Creates subject identifier.
@@ -169,6 +192,8 @@ impl Subject {
             ),
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
+            governance_version: self.governance_version,
+            genesis_gov_version: self.genesis_gov_version,
             namespace: self.namespace.clone(),
             name: self.name.clone(),
             schema_id: self.schema_id.clone(),
@@ -195,6 +220,41 @@ impl Subject {
             namespace: self.namespace.clone(),
         }
     }
+
+    /// Updates the subject with patch and a new sequence number.
+    ///
+    /// # Arguments
+    ///
+    /// * `json_patch` - The json patch.
+    /// * `new_sn` - The new sequence number.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the `()` or an `Error`.
+    ///
+    /// # Errors
+    ///
+    /// An error is returned if the patch cannot be applied.
+    ///
+    pub fn update_subject(
+        &mut self,
+        json_patch: ValueWrapper,
+        new_sn: u64,
+    ) -> Result<(), Error> {
+        let Ok(patch_json) = serde_json::from_value::<Patch>(json_patch.0)
+        else {
+            error!("Subject: Json Patch conversion fails");
+            return Err(Error::Subject(
+                "Json Patch conversion fails".to_owned(),
+            ));
+        };
+        let Ok(()) = patch(&mut self.properties.0, &patch_json) else {
+            error!("Subject: Error Applying Patch");
+            return Err(Error::Subject("Error Applying Patch".to_owned()));
+        };
+        self.sn = new_sn.into();
+        Ok(())
+    }
 }
 
 impl Clone for Subject {
@@ -204,6 +264,7 @@ impl Clone for Subject {
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
             governance_version: self.governance_version,
+            genesis_gov_version: self.genesis_gov_version,
             namespace: self.namespace.clone(),
             name: self.name.clone(),
             schema_id: self.schema_id.clone(),
@@ -227,6 +288,10 @@ pub struct SubjectState {
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance that drives this subject.
     pub governance_id: DigestIdentifier,
+    /// The governance version.
+    pub governance_version: u64,
+    /// The version of the governance contract that created the subject.
+    pub genesis_gov_version: u64,
     /// The namespace of the subject.
     pub namespace: Namespace,
     /// The name of the subject.
@@ -271,6 +336,8 @@ impl From<Subject> for SubjectState {
             ),
             subject_id: subject.subject_id,
             governance_id: subject.governance_id,
+            governance_version: subject.governance_version,
+            genesis_gov_version: subject.genesis_gov_version,
             namespace: subject.namespace,
             name: subject.name,
             schema_id: subject.schema_id,
@@ -303,8 +370,6 @@ pub enum SubjectResponse {
     SubjectState(SubjectState),
     /// The subject metadata.
     SubjectMetadata(SubjectMetadata),
-    /// Error.
-    Error(Error),
     /// None.
     None,
 }
@@ -314,20 +379,20 @@ impl Response for SubjectResponse {}
 /// Subject event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SubjectEvent {
-    /// The subject was created.
-    Create { subject: SubjectState },
     /// The subject was updated.
     Update { event: Signed<KoreEvent> },
+    /// The subject was patched.
+    Patch { value: ValueWrapper },
     /// The subject was deleted.
     Delete { subject_id: DigestIdentifier },
 }
 
-impl Event for SubjectEvent {}
+impl Event for Signed<KoreEvent> {}
 
 /// Actor implementation for `Subject`.
 #[async_trait]
 impl Actor for Subject {
-    type Event = SubjectEvent;
+    type Event = Signed<KoreEvent>;
     type Message = SubjectCommand;
     type Response = SubjectResponse;
 
@@ -335,13 +400,15 @@ impl Actor for Subject {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store(ctx).await
+        debug!("Starting subject actor with init store.");
+        self.init_store("subject", true, ctx).await
     }
 
     async fn post_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
+        debug!("Stopping subject actor with stop store.");
         self.stop_store(ctx).await
     }
 }
@@ -361,8 +428,8 @@ impl Handler<Subject> for Subject {
                 Ok(SubjectResponse::SubjectMetadata(self.metadata()))
             }
             SubjectCommand::UpdateSubject { event } => {
-                ctx.event(SubjectEvent::Update { event: event.clone() })
-                    .await?;
+                debug!("Emit event to update subject.");
+                ctx.event(event).await?;
                 Ok(SubjectResponse::None)
             }
         }
@@ -370,14 +437,43 @@ impl Handler<Subject> for Subject {
 
     async fn on_event(
         &mut self,
-        event: SubjectEvent,
+        event: Signed<KoreEvent>,
         ctx: &mut ActorContext<Subject>,
-    ) -> () {}
+    ) {
+        debug!("Persisting subject event.");
+        if let Err(err) = self.persist(&event, ctx).await {
+            error!("Error persisting subject event: {:?}", err);
+            let _ = ctx.emit_error(err).await;
+        };
+    }
 }
 
+#[async_trait]
 impl PersistentActor for Subject {
-    fn apply(&mut self, event: &Self::Event) {
-        todo!()
+    fn apply(&mut self, event: &Signed<KoreEvent>) {
+        match &event.content.event_request.content {
+            EventRequest::Fact(_) => {
+                if event.content.approved {
+                    if let Err(e) = self.update_subject(
+                        event.content.patch.clone(),
+                        event.content.sn,
+                    ) {
+                        error!("Error applying patch: {:?}", e);
+                    }
+                } else {
+                    self.sn = event.content.sn.into();
+                }
+            }
+            EventRequest::Transfer(_) => {
+                // TODO: Implement transfer
+                //self.active = false;
+            }
+            EventRequest::EOL(_) => {
+                self.sn = event.content.sn.into();
+                self.active = false;
+            }
+            _ => {}
+        }
     }
 }
 
@@ -396,6 +492,8 @@ mod tests {
         },
         tests::create_system,
     };
+
+    use identity::keys::{Ed25519KeyPair, KeyGenerator};
 
     #[tokio::test]
     async fn test_subject() {
@@ -467,7 +565,10 @@ mod tests {
         } else {
             panic!("Invalid response");
         }
-        let response = subject_actor.ask(SubjectCommand::GetSubjectMetadata).await.unwrap();
+        let response = subject_actor
+            .ask(SubjectCommand::GetSubjectMetadata)
+            .await
+            .unwrap();
         if let SubjectResponse::SubjectMetadata(metadata) = response {
             assert_eq!(metadata.namespace, Namespace::from("namespace"));
         } else {
@@ -495,7 +596,6 @@ mod tests {
             signature,
         };
         let subject_a = Subject::from_event(keys, &signed_event).unwrap();
-
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

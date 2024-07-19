@@ -56,19 +56,17 @@ impl Serialize for ValueWrapper {
     }
 }
 
-impl<'de> Deserialize<'de> for ValueWrapper
-{
+impl<'de> Deserialize<'de> for ValueWrapper {
     fn deserialize<D>(deserializer: D) -> Result<ValueWrapper, D::Error>
     where
         D: serde::de::Deserializer<'de>,
     {
-        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
+        let s =
+            <std::string::String as Deserialize>::deserialize(deserializer)?;
         let value = serde_json::from_str::<Value>(&s)
             .map_err(serde::de::Error::custom)?;
         Ok(ValueWrapper(value))
-
     }
-
 }
 
 impl BorshSerialize for ValueWrapper {

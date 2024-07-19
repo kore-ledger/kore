@@ -4,7 +4,7 @@
 //! # Store module.
 //!
 
-use crate::{DbConfig, Error};
+use crate::{helpers::encrypted_pass::EncryptedPass, DbConfig, Error};
 
 use actor::{ActorContext, Error as ActorError};
 use rocksdb_db::{RocksDbManager, RocksDbStore};
@@ -12,7 +12,7 @@ use rocksdb_db::{RocksDbManager, RocksDbStore};
 use sqlite_db::SqliteManager;
 use store::{
     database::{Collection, DbManager},
-    store::{PersistentActor, Store},
+    store::PersistentActor,
     Error as StoreError,
 };
 
@@ -42,29 +42,22 @@ impl Database {
             _ => Err(Error::Store("Database not supported".to_string())),
         }
     }
-
-    pub async fn create_store<P>(&self, name: &str) -> Result<Store<P>, Error>
-    where
-        P: PersistentActor,
-    {
-        Store::<P>::new(name, self.clone(), None)
-            .map_err(|e| Error::Store(format!("Failed to create store: {}", e)))
-    }
 }
 
 impl DbManager<DbCollection> for Database {
     fn create_collection(
         &self,
         name: &str,
+        prefix: &str,
     ) -> Result<DbCollection, StoreError> {
         match self {
             Database::RocksDb(manager) => {
-                let store = manager.create_collection(name)?;
+                let store = manager.create_collection(name, prefix)?;
                 Ok(DbCollection::RocksDb(store))
             }
             #[cfg(feature = "sqlite")]
             Database::SQLite(manager) => {
-                let store = manager.create_collection(name)?;
+                let store = manager.create_collection(name, prefix)?;
                 Ok(DbCollection::SQLite(store))
             }
             #[allow(unreachable_patterns)]
@@ -130,6 +123,8 @@ impl Collection for DbCollection {
 pub trait Storable: PersistentActor {
     async fn init_store(
         &mut self,
+        name: &str,
+        encrypt: bool,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Creating store");
@@ -143,8 +138,22 @@ pub trait Storable: PersistentActor {
                 ));
             }
         };
+        // Encrypted store?
+        let key = if encrypt {
+            if let Some(enc) = ctx
+                .system()
+                .get_helper::<EncryptedPass>("encrypted_pass")
+                .await
+            {
+                enc.key()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         // Start store
-        self.start_store(ctx, db, None).await?;
+        self.start_store(name, ctx, db, key).await?;
         Ok(())
     }
 }

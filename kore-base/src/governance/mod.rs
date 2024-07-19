@@ -167,7 +167,7 @@ impl TryFrom<SubjectState> for Governance {
     fn try_from(subject: SubjectState) -> Result<Self, Self::Error> {
         let model: GovernanceModel =
             serde_json::from_value(subject.properties.0).map_err(|_| {
-                Error::Governance("Model not found.".to_owned())
+                Error::Governance("Governance model not found.".to_owned())
             })?;
         Ok(Governance {
             subject_id: subject.subject_id,
@@ -242,14 +242,14 @@ impl Actor for Governance {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store(ctx).await
+        Ok(())
     }
 
     async fn post_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.stop_store(ctx).await
+        Ok(())
     }
 }
 
@@ -286,14 +286,3 @@ impl Handler<Governance> for Governance {
         }
     }
 }
-
-#[async_trait]
-impl PersistentActor for Governance {
-    /// Change request handler state.
-    fn apply(&mut self, event: &Self::Event) {
-        unimplemented!()
-    }
-}
-
-#[async_trait]
-impl Storable for Governance {}

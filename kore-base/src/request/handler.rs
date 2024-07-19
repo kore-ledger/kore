@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    db::Database,
+    db::{Database, Storable},
     governance::{self, Governance},
     model::{request::EventRequest, signature::Signed},
     Error,
@@ -188,7 +188,7 @@ impl Actor for RequestHandler {
             }
         };
         // Start store
-        self.start_store(ctx, db, None).await?;
+        self.init_store("request_handler", false, ctx).await?;
         Ok(())
     }
 
@@ -263,6 +263,9 @@ impl PersistentActor for RequestHandler {
         }
     }
 }
+
+#[async_trait]
+impl Storable for RequestHandler {}
 
 #[cfg(test)]
 mod tests {

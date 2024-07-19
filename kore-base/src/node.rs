@@ -5,7 +5,7 @@
 //!
 
 use crate::{
-    db::Database,
+    db::{Database, Storable},
     helpers::encrypted_pass::EncryptedPass,
     model::{request::EventRequest, signature::Signed},
     Api, Config, Error,
@@ -30,7 +30,7 @@ use tracing::{debug, error};
 pub struct Node {
     /// Owner of the node.
     #[serde(skip)]
-    owner: KeyIdentifier,
+    owner: KeyPair,
     /// The node's owned subjects.
     owned_subjects: Vec<String>,
     /// The node's known subjects.
@@ -43,7 +43,7 @@ pub struct Node {
 
 impl Node {
     /// Creates a new node.
-    pub fn new(id: &KeyIdentifier) -> Result<Self, Error> {
+    pub fn new(id: &KeyPair) -> Result<Self, Error> {
         Ok(Self {
             owner: id.clone(),
             owned_subjects: Vec::new(),
@@ -60,7 +60,7 @@ impl Node {
     /// A `KeyIdentifier` with the node's owner identifier.
     ///
     pub fn owner(&self) -> KeyIdentifier {
-        self.owner.clone()
+        self.owner.key_identifier()
     }
 
     /// Adds a subject to the node's known subjects.
@@ -146,19 +146,9 @@ impl Actor for Node {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        // Gets database
-        let db = match ctx.system().get_helper::<Database>("db").await {
-            Some(db) => db,
-            None => {
-                error!("Database not found");
-                return Err(ActorError::CreateStore(
-                    "Database not found".to_string(),
-                ));
-            }
-        };
         // Start store
         debug!("Creating Node store");
-        self.start_store(ctx, db, None).await?;
+        self.init_store("node", false, ctx).await?;
 
         Ok(())
     }
@@ -212,11 +202,14 @@ impl Handler<Node> for Node {
         match msg {
             NodeMessasge::RequestEvent(event) => Ok(NodeResponse::None),
             NodeMessasge::GetOwnerIdentifier => {
-                Ok(NodeResponse::OwnerIdentifier(self.owner.clone()))
+                Ok(NodeResponse::OwnerIdentifier(self.owner()))
             }
         }
     }
 }
+
+#[async_trait]
+impl Storable for Node {}
 
 #[cfg(test)]
 pub mod tests {

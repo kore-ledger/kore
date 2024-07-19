@@ -13,6 +13,7 @@ generic-array = {version = "1.0", features = ["zeroize"] }
 identity = { path = "../identity"}
 json-patch = { version = "2.0" }
 jsonschema = { version = "0.18", default_features = false }
+lazy_static = { workspace = true }
 memsecurity = { version = "3.5", features = ["encryption"]}
 rocksdb_db = { path = "../../rush-rs/databases/rocksdb_db", optional = true }
 serde = { workspace = true, features = ["derive"] }

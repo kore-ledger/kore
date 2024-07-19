@@ -13,7 +13,9 @@ use super::{
     HashId,
 };
 
-use crate::{governance::init::init_state, model::Namespace, subject::Subject, Error};
+use crate::{
+    governance::init::init_state, model::Namespace, subject::Subject, Error,
+};
 
 use identity::{
     identifier::{
