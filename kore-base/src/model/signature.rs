@@ -127,12 +127,27 @@ impl Hash for UniqueSignature {
     PartialOrd,
     Hash,
 )]
-pub struct Signed<T: BorshSerialize + BorshDeserialize + Clone> {
+pub struct Signed<T: BorshSerialize + BorshDeserialize + Clone + HashId> {
     #[serde(flatten)]
     /// The data that is signed
     pub content: T,
     /// The signature accompanying the data
     pub signature: Signature,
+}
+
+impl<T: BorshSerialize + BorshDeserialize + Clone + HashId> Signed<T> {
+    /// It allows the creation of a new signed entity
+    /// # Arguments
+    /// - content: The content to sign
+    /// - keys: The [KeyPair] to use to generate the signature
+    pub fn new(content: T, signature: Signature) -> Self {
+        Signed { content, signature }
+    }
+
+    /// It allow verify the signature. It checks if the content and the signer are correct
+    pub fn verify(&self) -> Result<(), Error> {
+        self.signature.verify(&self.content)
+    }
 }
 
 #[cfg(test)]

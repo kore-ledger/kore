@@ -454,6 +454,7 @@ impl PersistentActor for Subject {
         match &event.content.event_request.content {
             EventRequest::Fact(_) => {
                 if event.content.approved {
+                    debug!("Applying patch to subject: {:?}", self.subject_id);
                     if let Err(e) = self.update_subject(
                         event.content.patch.clone(),
                         event.content.sn,
@@ -466,7 +467,7 @@ impl PersistentActor for Subject {
             }
             EventRequest::Transfer(_) => {
                 // TODO: Implement transfer
-                //self.active = false;
+                //self.
             }
             EventRequest::EOL(_) => {
                 self.sn = event.content.sn.into();

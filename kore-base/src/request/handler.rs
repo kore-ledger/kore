@@ -177,16 +177,6 @@ impl Actor for RequestHandler {
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Creating RequestHandler store");
-        // Gets database
-        let db = match ctx.system().get_helper::<Database>("store").await {
-            Some(db) => db,
-            None => {
-                error!("Database not found");
-                return Err(ActorError::CreateStore(
-                    "Database not found".to_string(),
-                ));
-            }
-        };
         // Start store
         self.init_store("request_handler", false, ctx).await?;
         Ok(())

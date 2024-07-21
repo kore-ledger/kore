@@ -139,19 +139,6 @@ impl HashId for EventRequest {
     }
 }
 
-impl Signed<EventRequest> {
-    pub fn new(request: EventRequest, signature: Signature) -> Self {
-        Self {
-            content: request,
-            signature,
-        }
-    }
-
-    pub fn verify(&self) -> Result<(), Error> {
-        self.signature.verify(&self.content)
-    }
-}
-
 /// Indicates the current status of an event request.
 #[derive(
     Debug,
@@ -247,7 +234,7 @@ pub mod tests {
         let signature =
             Signature::new(&content, &key_pair, DigestDerivator::SHA2_256)
                 .unwrap();
-        Signed::new(content, signature)
+        Signed{ content, signature}
     }
 
     // Mokcs

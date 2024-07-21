@@ -17,7 +17,7 @@ use crate::{
 
 pub use schema::schema;
 
-use model::{
+pub use model::{
     GovernanceModel, Member, Policy, Quorum, RequestStage, Role, Schema, Who,
 };
 

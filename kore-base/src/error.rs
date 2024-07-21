@@ -44,4 +44,10 @@ pub enum Error {
     /// Validation error.
     #[error("Validation error: {0}")]
     Validation(String),
+    /// Evaluation error.
+    #[error("Evaluation error: {0}")]
+    Evaluation(String),
+    /// Approval error.
+    #[error("Approval error: {0}")]
+    Approval(String),
 }

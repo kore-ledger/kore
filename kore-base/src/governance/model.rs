@@ -440,12 +440,13 @@ pub struct GovernanceModel {
 }
 
 /// Request stage.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum RequestStage {
     Approve,
     Evaluate,
     Validate,
     Witness,
+    #[default]
     Create,
     Invoke,
 }

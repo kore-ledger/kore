@@ -3,9 +3,11 @@
 #![recursion_limit = "256"]
 
 mod api;
+mod approval;
 pub mod config;
 mod db;
 mod error;
+mod evaluation;
 mod governance;
 mod helpers;
 mod model;
