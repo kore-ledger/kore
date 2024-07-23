@@ -1,0 +1,6 @@
+[package]
+name = "kore-base"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
