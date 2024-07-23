@@ -4,15 +4,15 @@
 use libp2p::{
     core::{ConnectedPoint, Endpoint},
     identify::{
-        Behaviour as Identify, Config as IdentifyConfig,
-        Event as IdentifyEvent, Info as IdentifyInfo,
+        Behaviour as Identify, Config as IdentifyConfig, Event as IdentifyEvent,
+        Info as IdentifyInfo,
     },
     identity::PublicKey,
     ping::{Behaviour as Ping, Config as PingConfig, Event as PingEvent},
     swarm::{
         behaviour::{ConnectionClosed, ConnectionEstablished, ListenFailure},
-        ConnectionDenied, ConnectionHandler, ConnectionHandlerSelect,
-        ConnectionId, DialFailure, FromSwarm, NetworkBehaviour, ToSwarm,
+        ConnectionDenied, ConnectionHandler, ConnectionHandlerSelect, ConnectionId, DialFailure,
+        FromSwarm, NetworkBehaviour, ToSwarm,
     },
     Multiaddr, PeerId,
 };
@@ -78,15 +78,13 @@ pub struct ExternalAddresses {
 impl ExternalAddresses {
     /// Add an external address.
     pub fn add(&mut self, addr: Multiaddr) {
-        let mut addresses =
-            self.addresses.lock().expect("Mutex should not be poisoned");
+        let mut addresses = self.addresses.lock().expect("Mutex should not be poisoned");
         addresses.insert(addr);
     }
 
     /// Remove an external address.
     pub fn remove(&mut self, addr: &Multiaddr) {
-        let mut addresses =
-            self.addresses.lock().expect("Mutex should not be poisoned");
+        let mut addresses = self.addresses.lock().expect("Mutex should not be poisoned");
         addresses.remove(addr);
     }
 }
@@ -116,12 +114,9 @@ impl Behaviour {
         external_addresses: Arc<Mutex<HashSet<Multiaddr>>>,
     ) -> Self {
         let identify = {
-            let identify_config = IdentifyConfig::new(
-                "/kore/1.0.0".to_owned(),
-                public_key.clone(),
-            )
-            .with_agent_version(user_agent.to_owned())
-            .with_cache_size(0); // We don't need to cache anything.
+            let identify_config = IdentifyConfig::new("/kore/1.0.0".to_owned(), public_key.clone())
+                .with_agent_version(user_agent.to_owned())
+                .with_cache_size(0); // We don't need to cache anything.
             Identify::new(identify_config)
         };
         let ping_config = PingConfig::new();
@@ -160,15 +155,10 @@ impl Behaviour {
 
     /// Inserts an identify record in the cache. Has no effect if we don't have any entry for that
     /// node, which shouldn't happen.
-    fn handle_identify_report(
-        &mut self,
-        peer_id: &PeerId,
-        info: &IdentifyInfo,
-    ) {
+    fn handle_identify_report(&mut self, peer_id: &PeerId, info: &IdentifyInfo) {
         trace!(target: TARGET_NODE, "Identified {:?} => {:?}", peer_id, info);
         if let Some(entry) = self.nodes_info.get_mut(peer_id) {
-            entry.reachable =
-                info.listen_addrs.iter().any(crate::utils::is_reachable);
+            entry.reachable = info.listen_addrs.iter().any(crate::utils::is_reachable);
             entry.client_version = Some(info.agent_version.clone());
         } else {
             error!(target: TARGET_NODE,
@@ -234,21 +224,19 @@ impl NetworkBehaviour for Behaviour {
         peer: PeerId,
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
-    ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied>
-    {
+    ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
         let ping_handler = self.ping.handle_established_inbound_connection(
             connection_id,
             peer,
             local_addr,
             remote_addr,
         )?;
-        let identify_handler =
-            self.identify.handle_established_inbound_connection(
-                connection_id,
-                peer,
-                local_addr,
-                remote_addr,
-            )?;
+        let identify_handler = self.identify.handle_established_inbound_connection(
+            connection_id,
+            peer,
+            local_addr,
+            remote_addr,
+        )?;
         Ok(ping_handler.select(identify_handler))
     }
 
@@ -258,21 +246,19 @@ impl NetworkBehaviour for Behaviour {
         peer: PeerId,
         addr: &Multiaddr,
         role_override: Endpoint,
-    ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied>
-    {
+    ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
         let ping_handler = self.ping.handle_established_outbound_connection(
             connection_id,
             peer,
             addr,
             role_override,
         )?;
-        let identify_handler =
-            self.identify.handle_established_outbound_connection(
-                connection_id,
-                peer,
-                addr,
-                role_override,
-            )?;
+        let identify_handler = self.identify.handle_established_outbound_connection(
+            connection_id,
+            peer,
+            addr,
+            role_override,
+        )?;
         Ok(ping_handler.select(identify_handler))
     }
 
@@ -282,16 +268,10 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<(), ConnectionDenied> {
-        self.ping.handle_pending_inbound_connection(
-            connection_id,
-            local_addr,
-            remote_addr,
-        )?;
-        self.identify.handle_pending_inbound_connection(
-            connection_id,
-            local_addr,
-            remote_addr,
-        )
+        self.ping
+            .handle_pending_inbound_connection(connection_id, local_addr, remote_addr)?;
+        self.identify
+            .handle_pending_inbound_connection(connection_id, local_addr, remote_addr)
     }
 
     fn handle_pending_outbound_connection(
@@ -343,22 +323,20 @@ impl NetworkBehaviour for Behaviour {
                 endpoint,
                 remaining_established,
             }) => {
-                self.ping.on_swarm_event(FromSwarm::ConnectionClosed(
-                    ConnectionClosed {
+                self.ping
+                    .on_swarm_event(FromSwarm::ConnectionClosed(ConnectionClosed {
                         peer_id,
                         connection_id,
                         endpoint,
                         remaining_established,
-                    },
-                ));
-                self.identify.on_swarm_event(FromSwarm::ConnectionClosed(
-                    ConnectionClosed {
+                    }));
+                self.identify
+                    .on_swarm_event(FromSwarm::ConnectionClosed(ConnectionClosed {
                         peer_id,
                         connection_id,
                         endpoint,
                         remaining_established,
-                    },
-                ));
+                    }));
 
                 if let Some(entry) = self.nodes_info.get_mut(&peer_id) {
                     if remaining_established == 0 {
@@ -381,13 +359,12 @@ impl NetworkBehaviour for Behaviour {
                         error,
                         connection_id,
                     }));
-                self.identify.on_swarm_event(FromSwarm::DialFailure(
-                    DialFailure {
+                self.identify
+                    .on_swarm_event(FromSwarm::DialFailure(DialFailure {
                         peer_id,
                         error,
                         connection_id,
-                    },
-                ));
+                    }));
             }
             FromSwarm::ListenerClosed(e) => {
                 self.ping.on_swarm_event(FromSwarm::ListenerClosed(e));
@@ -399,22 +376,20 @@ impl NetworkBehaviour for Behaviour {
                 error,
                 connection_id,
             }) => {
-                self.ping.on_swarm_event(FromSwarm::ListenFailure(
-                    ListenFailure {
+                self.ping
+                    .on_swarm_event(FromSwarm::ListenFailure(ListenFailure {
                         local_addr,
                         send_back_addr,
                         error,
                         connection_id,
-                    },
-                ));
-                self.identify.on_swarm_event(FromSwarm::ListenFailure(
-                    ListenFailure {
+                    }));
+                self.identify
+                    .on_swarm_event(FromSwarm::ListenFailure(ListenFailure {
                         local_addr,
                         send_back_addr,
                         error,
                         connection_id,
-                    },
-                ));
+                    }));
             }
             FromSwarm::ListenerError(e) => {
                 self.ping.on_swarm_event(FromSwarm::ListenerError(e));
@@ -467,28 +442,22 @@ impl NetworkBehaviour for Behaviour {
         event: libp2p::swarm::THandlerOutEvent<Self>,
     ) {
         match event {
-            Either::Left(event) => self.ping.on_connection_handler_event(
-                peer_id,
-                connection_id,
-                event,
-            ),
-            Either::Right(event) => self.identify.on_connection_handler_event(
-                peer_id,
-                connection_id,
-                event,
-            ),
+            Either::Left(event) => {
+                self.ping
+                    .on_connection_handler_event(peer_id, connection_id, event)
+            }
+            Either::Right(event) => {
+                self.identify
+                    .on_connection_handler_event(peer_id, connection_id, event)
+            }
         }
     }
 
     fn poll(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<
-        libp2p::swarm::ToSwarm<
-            Self::ToSwarm,
-            libp2p::swarm::THandlerInEvent<Self>,
-        >,
-    > {
+    ) -> std::task::Poll<libp2p::swarm::ToSwarm<Self::ToSwarm, libp2p::swarm::THandlerInEvent<Self>>>
+    {
         // Loop for the ping behaviour.
         loop {
             match self.ping.poll(cx) {
@@ -503,9 +472,7 @@ impl NetworkBehaviour for Behaviour {
                         self.handle_ping_report(&peer, rtt)
                     }
                 }
-                Poll::Ready(ToSwarm::Dial { opts }) => {
-                    return Poll::Ready(ToSwarm::Dial { opts })
-                }
+                Poll::Ready(ToSwarm::Dial { opts }) => return Poll::Ready(ToSwarm::Dial { opts }),
                 Poll::Ready(ToSwarm::NotifyHandler {
                     peer_id,
                     handler,
@@ -561,9 +528,7 @@ impl NetworkBehaviour for Behaviour {
                     IdentifyEvent::Pushed { .. } => {}
                     IdentifyEvent::Sent { .. } => {}
                 },
-                Poll::Ready(ToSwarm::Dial { opts }) => {
-                    return Poll::Ready(ToSwarm::Dial { opts })
-                }
+                Poll::Ready(ToSwarm::Dial { opts }) => return Poll::Ready(ToSwarm::Dial { opts }),
                 Poll::Ready(ToSwarm::NotifyHandler {
                     peer_id,
                     handler,
@@ -604,9 +569,7 @@ impl NetworkBehaviour for Behaviour {
         }
 
         // Garbage collect the nodes info.
-        while let Poll::Ready(Some(())) =
-            self.garbage_collect.poll_next_unpin(cx)
-        {
+        while let Poll::Ready(Some(())) = self.garbage_collect.poll_next_unpin(cx) {
             self.nodes_info.retain(|_, node| {
                 node.info_expire
                     .as_ref()

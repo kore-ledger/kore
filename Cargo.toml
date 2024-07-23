@@ -11,6 +11,14 @@ resolver = "2"
 [workspace.package]
 version = "0.1.1"
 edition = "2021"
+authors = ["Kore Ledger, SL <info@kore-ledger.net>"]
+description = "Kore Ledger base library"
+readme = "README.md"
+homepage = "https://www.kore-ledger.net"
+repository = "https://github.com/kore-ledger/kore-base"
+license = "AGPL-3.0-only"
+keywords = ["traceability", "distributed-ledger", "kore", "sustainability"]
+rust-version = "1.75"
 
 [workspace.dependencies]
 async-trait = "0.1.56"

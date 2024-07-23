@@ -48,9 +48,7 @@ impl<T: Hash + Eq> LruHashSet<T> {
 }
 
 /// Convert boot nodes to `PeerId` and `Multiaddr`.
-pub fn convert_boot_nodes(
-    boot_nodes: Vec<RoutingNode>,
-) -> Vec<(PeerId, Vec<Multiaddr>)> {
+pub fn convert_boot_nodes(boot_nodes: Vec<RoutingNode>) -> Vec<(PeerId, Vec<Multiaddr>)> {
     let mut boot_nodes_aux: Vec<(PeerId, Vec<Multiaddr>)> = vec![];
     for node in boot_nodes {
         let peer = match bs58::decode(node.peer_id.clone()).into_vec() {
@@ -81,13 +79,11 @@ pub fn convert_boot_nodes(
 }
 
 /// Gets the list of external (public) addresses for the node from string array.
-pub fn convert_external_addresses(
-    addresses: &[String],
-) -> Result<HashSet<Multiaddr>, Error> {
-    let mut external_addresses = HashSet::new();
+pub fn convert_addresses(addresses: &[String]) -> Result<HashSet<Multiaddr>, Error> {
+    let mut addrs = HashSet::new();
     for address in addresses {
         if let Some(value) = multiaddr(address) {
-            external_addresses.insert(value);
+            addrs.insert(value);
         } else {
             return Err(Error::Address(format!(
                 "Invalid MultiAddress conversion in External Address: {}",
@@ -95,7 +91,7 @@ pub fn convert_external_addresses(
             )));
         }
     }
-    Ok(external_addresses)
+    Ok(addrs)
 }
 
 /// Parses a string into a `Multiaddr` if possible.
@@ -116,9 +112,7 @@ pub fn is_reachable(addr: &Multiaddr) -> bool {
     let ip = match addr.iter().next() {
         Some(Protocol::Ip4(ip)) => IpNetwork::from(ip),
         Some(Protocol::Ip6(ip)) => IpNetwork::from(ip),
-        Some(Protocol::Dns(_))
-        | Some(Protocol::Dns4(_))
-        | Some(Protocol::Dns6(_)) => return true,
+        Some(Protocol::Dns(_)) | Some(Protocol::Dns4(_)) | Some(Protocol::Dns6(_)) => return true,
         _ => return false,
     };
     ip.is_global()
@@ -130,14 +124,6 @@ pub fn is_memory(addr: &Multiaddr) -> bool {
         return true;
     }
     false
-}
-
-/// Check if the given `Multiaddr` is a relay circuit address.
-///
-/// A relay circuit address is a `Multiaddr` that contains a `P2pCircuit` protocol.
-///
-pub fn is_relay_circuit(addr: &Multiaddr) -> bool {
-    addr.iter().any(|p| matches!(p, Protocol::P2pCircuit))
 }
 
 /// Compare generic arrays.
