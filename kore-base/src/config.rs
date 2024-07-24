@@ -10,11 +10,11 @@ use serde::Deserialize;
 #[derive(Clone, Debug, Deserialize)]
 pub struct Config {
     /// Key derivator.
-    pub key_derivator: KeyDerivator,
+    key_derivator: KeyDerivator,
     /// Digest derivator.
-    pub digest_derivator: DigestDerivator,
+    digest_derivator: DigestDerivator,
     /// Database configuration.
-    pub database: DbConfig,
+    database: DbConfig,
 }
 
 impl Config {
@@ -27,6 +27,33 @@ impl Config {
                 path: path.to_owned(),
             },
         }
+    }
+    /// Sets the key derivator.
+    pub fn with_key_derivator(mut self, key_derivator: KeyDerivator) -> Self {
+        self.key_derivator = key_derivator;
+        self
+    }
+    /// Sets the digest derivator.
+    pub fn with_digest_derivator(mut self, digest_derivator: DigestDerivator) -> Self {
+        self.digest_derivator = digest_derivator;
+        self
+    }
+    /// Sets the database configuration.
+    pub fn with_database(mut self, database: DbConfig) -> Self {
+        self.database = database;
+        self
+    }
+    /// Returns the key derivator.
+    pub fn get_key_derivator(&self) -> KeyDerivator {
+        self.key_derivator
+    }
+    /// Returns the digest derivator.
+    pub fn get_digest_derivator(&self) -> DigestDerivator {
+        self.digest_derivator
+    }
+    /// Returns the database configuration.
+    pub fn get_database(&self) -> &DbConfig {
+        &self.database
     }
 }
 

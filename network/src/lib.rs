@@ -38,28 +38,28 @@ const MAX_CONNECTIONS_PER_PEER: usize = 2;
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
     /// The user agent.
-    pub user_agent: String,
+    user_agent: String,
 
     /// The node type.
-    pub node_type: NodeType,
+    node_type: NodeType,
 
     /// Listen addresses.
-    pub listen_addresses: Vec<String>,
+    listen_addresses: Vec<String>,
 
     /// External addresses.
-    pub external_addresses: Vec<String>,
+    external_addresses: Vec<String>,
 
     /// Message telling configuration.
-    pub tell: tell::Config,
+    tell: tell::Config,
 
     /// Routing configuration.
-    pub routing: routing::Config,
+    routing: routing::Config,
 
     /// Configures port reuse for local sockets, which implies reuse of listening ports for outgoing connections to enhance NAT traversal capabilities.
-    pub port_reuse: bool,
+    port_reuse: bool,
 
     /// Control List configuration.
-    pub control_list: control_list::Config,
+    control_list: control_list::Config,
 }
 
 impl Config {
@@ -82,6 +82,79 @@ impl Config {
             control_list: control_list::Config::default(),
         }
     }
+    /// Sets the user agent.
+    pub fn with_user_agent(mut self, user_agent: String) -> Self {
+        self.user_agent = user_agent;
+        self
+    }
+    /// Sets the node type.
+    pub fn with_node_type(mut self, node_type: NodeType) -> Self {
+        self.node_type = node_type;
+        self
+    }
+    /// Sets the listen addresses.
+    pub fn with_listen_addresses(mut self, listen_addresses: Vec<String>) -> Self {
+        self.listen_addresses = listen_addresses;
+        self
+    }
+    /// Sets the external addresses.
+    pub fn with_external_addresses(mut self, external_addresses: Vec<String>) -> Self {
+        self.external_addresses = external_addresses;
+        self
+    }
+    /// Sets the message telling configuration.
+    pub fn with_tell(mut self, tell: tell::Config) -> Self {
+        self.tell = tell;
+        self
+    }
+    /// Sets the routing configuration.
+    pub fn with_routing(mut self, routing: routing::Config) -> Self {
+        self.routing = routing;
+        self
+    }
+    /// Sets the port reuse configuration.
+    pub fn with_port_reuse(mut self, port_reuse: bool) -> Self {
+        self.port_reuse = port_reuse;
+        self
+    }
+    /// Sets the control list configuration.
+    pub fn with_control_list(mut self, control_list: control_list::Config) -> Self {
+        self.control_list = control_list;
+        self
+    }
+    /// Returns the user agent.
+    pub fn get_user_agent(&self) -> &String {
+        &self.user_agent
+    }
+    /// Returns the node type.
+    pub fn get_node_type(&self) -> NodeType {
+        self.node_type.clone()
+    }
+    /// Returns the listen addresses.
+    pub fn get_listen_addresses(&self) -> &Vec<String> {
+        &self.listen_addresses
+    }
+    /// Returns the external addresses.
+    pub fn get_external_addresses(&self) -> &Vec<String> {
+        &self.external_addresses
+    }
+    /// Returns the message telling configuration.
+    pub fn get_tell(&self) -> &tell::Config {
+        &self.tell
+    }
+    /// Returns the routing configuration.
+    pub fn get_routing(&self) -> &routing::Config {
+        &self.routing
+    }
+    /// Returns the port reuse configuration.
+    pub fn get_port_reuse(&self) -> bool {
+        self.port_reuse
+    }
+    /// Returns the control list configuration.
+    pub fn get_control_list(&self) -> &control_list::Config {
+        &self.control_list
+    }
+    
 }
 
 /// Type of a node.
