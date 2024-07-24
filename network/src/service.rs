@@ -22,10 +22,7 @@ impl NetworkService {
     }
 
     /// Send command to the network worker.
-    pub async fn send_command(
-        &mut self,
-        command: Command,
-    ) -> Result<(), Error> {
+    pub async fn send_command(&mut self, command: Command) -> Result<(), Error> {
         self.command_sender
             .send(command)
             .await

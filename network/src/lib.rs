@@ -6,6 +6,7 @@
 #![warn(missing_docs)]
 
 mod behaviour;
+mod control_list;
 pub mod error;
 mod node;
 mod routing;
@@ -14,6 +15,7 @@ mod transport;
 mod utils;
 mod worker;
 
+pub use control_list::Config as ControlListConfig;
 pub use error::Error;
 pub use libp2p::PeerId;
 pub use routing::{Config as RoutingConfig, RoutingNode};
@@ -21,7 +23,7 @@ pub use service::NetworkService;
 pub use tell::Config as TellConfig;
 pub use worker::{NetworkError, NetworkState, NetworkWorker};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The maximum allowed number of established connections per peer.
 ///
@@ -44,6 +46,9 @@ pub struct Config {
     /// Listen addresses.
     pub listen_addresses: Vec<String>,
 
+    /// External addresses.
+    pub external_addresses: Vec<String>,
+
     /// Message telling configuration.
     pub tell: tell::Config,
 
@@ -52,6 +57,9 @@ pub struct Config {
 
     /// Configures port reuse for local sockets, which implies reuse of listening ports for outgoing connections to enhance NAT traversal capabilities.
     pub port_reuse: bool,
+
+    /// Control List configuration.
+    pub control_list: control_list::Config,
 }
 
 impl Config {
@@ -59,6 +67,7 @@ impl Config {
     pub fn new(
         node_type: NodeType,
         listen_addresses: Vec<String>,
+        external_addresses: Vec<String>,
         boot_nodes: Vec<RoutingNode>,
         port_reuse: bool,
     ) -> Self {
@@ -66,9 +75,11 @@ impl Config {
             user_agent: "kore-node".to_owned(),
             node_type,
             listen_addresses,
+            external_addresses,
             tell: tell::Config::default(),
             routing: routing::Config::new(boot_nodes),
             port_reuse,
+            control_list: control_list::Config::default(),
         }
     }
 }
@@ -86,6 +97,7 @@ pub enum NodeType {
 }
 
 /// Command enumeration for the network service.
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Command {
     /// Start providing the given keys.
     StartProviding {
@@ -104,7 +116,7 @@ pub enum Command {
 }
 
 /// Event enumeration for the network service.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Event {
     /// Connected to a bootstrap node.
     ConnectedToBootstrap {
@@ -135,7 +147,7 @@ pub enum Event {
     },
 
     /// Network state changed.
-    StateChanged(NetworkState),
+    StateChanged(worker::NetworkState),
 
     /// Network error.
     Error(Error),

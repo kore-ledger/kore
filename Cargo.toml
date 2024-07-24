@@ -9,8 +9,16 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.1"
 edition = "2021"
+version = "0.1.0"
+authors = ["Kore Ledger, S.L.<info@kore-ledger.com>"]
+description = "Kore Client official implementation"
+readme = "./README.md"
+homepage = "https://kore-ledger.com"
+repository = "https://github.com/kore-ledger/kore-client"
+license = "AGPL-3.0-only"
+keywords = ["blockchain", "distributed-ledger", "kore", "sustainability"]
+rust-version = "1.73"
 
 [workspace.dependencies]
 async-trait = "0.1.56"
