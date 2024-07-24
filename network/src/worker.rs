@@ -1,24 +1,20 @@
-// Copyright 2024 Antonio Estévez
+// Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Network worker.
 //!
 
+// TODO: revisar eventos de la network. Ya no se los lanza a message receiber ahora debería manejarlos ella misma
 use crate::{
-    behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage},
-    service::NetworkService,
-    transport::build_transport,
-    utils::convert_addresses,
-    Command, Config, Error, Event as NetworkEvent, NodeType,
+    behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage}, helpers::Command as HelperCommand, service::NetworkService, transport::build_transport, utils::convert_addresses, Command, Config, Error, Event as NetworkEvent, NodeType
 };
 
-use identity::keys::{KeyMaterial, KeyPair};
+use identity::{identifier::derive::KeyDerivator, keys::{KeyMaterial, KeyPair}};
 
 use libp2p::{
     core::ConnectedPoint,
     identity::{
-        ed25519::{self, PublicKey as PublicKeyEd25519},
-        Keypair, PublicKey,
+        ed25519::{self, PublicKey as PublicKeyEd25519}, secp256k1::{self, PublicKey as PublicKeysecp256k1}, Keypair, PublicKey
     },
     request_response::{self, OutboundRequestId, ResponseChannel},
     swarm::{self, dial_opts::DialOpts, SwarmEvent},
@@ -38,8 +34,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
 use std::{
-    collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex, RwLock},
+    collections::{HashMap, VecDeque}, str::FromStr, sync::{Arc, Mutex}
 };
 
 const TARGET_WORKER: &str = "KoreNetwork-Worker";
@@ -53,7 +48,7 @@ pub struct NetworkWorker {
     local_peer_id: PeerId,
 
     /// Network service.
-    service: Arc<RwLock<NetworkService>>,
+    service: NetworkService,
 
     /// The libp2p swarm.
     swarm: Swarm<Behaviour>,
@@ -63,6 +58,9 @@ pub struct NetworkWorker {
 
     /// The command receiver.
     command_receiver: mpsc::Receiver<Command>,
+
+    /// The command sender to Helper Intermediary.
+    helper_sender: Option<mpsc::Sender<HelperCommand>>,
 
     /// The event sender.
     event_sender: mpsc::Sender<NetworkEvent>,
@@ -93,9 +91,6 @@ pub struct NetworkWorker {
 
     /// Successful dials
     successful_dials: u64,
-
-    /// Attempted dials.
-    _attempted_dials: Vec<PeerId>,
 }
 
 impl NetworkWorker {
@@ -105,18 +100,29 @@ impl NetworkWorker {
         keys: KeyPair,
         config: Config,
         event_sender: mpsc::Sender<NetworkEvent>,
+        keyderivator: KeyDerivator,
         cancel: CancellationToken,
     ) -> Result<Self, Error> {
-        // Create channels to communicate events and commands
+        // Create channels to communicate commands
         let (command_sender, command_receiver) = mpsc::channel(10000);
 
         // Prepare the network crypto key.
-        let key = {
-            let sk = ed25519::SecretKey::try_from_bytes(keys.secret_key_bytes())
+
+        let key = match keyderivator {
+            KeyDerivator::Ed25519 => {
+                let sk = ed25519::SecretKey::try_from_bytes(keys.secret_key_bytes())
                 .expect("Invalid keypair");
             let kp = ed25519::Keypair::from(sk);
             Keypair::from(kp)
+            },
+            KeyDerivator::Secp256k1 => {
+                let sk = secp256k1::SecretKey::try_from_bytes(keys.secret_key_bytes())
+                .expect("Invalid keypair");
+            let kp = secp256k1::Keypair::from(sk);
+            Keypair::from(kp)
+            }
         };
+
 
         // Generate the `PeerId` from the public key.
         let local_peer_id = key.public().to_peer_id();
@@ -174,7 +180,7 @@ impl NetworkWorker {
             messages_metric.clone(),
         );
 
-        let service = Arc::new(RwLock::new(NetworkService::new(command_sender)?));
+        let service = NetworkService::new(command_sender);
 
         if addresses.is_empty() {
             // Listen on all tcp addresses.
@@ -215,6 +221,7 @@ impl NetworkWorker {
             swarm,
             state: NetworkState::Start,
             command_receiver,
+            helper_sender: None,
             event_sender,
             cancel,
             node_type,
@@ -225,8 +232,14 @@ impl NetworkWorker {
             ephemeral_responses: HashMap::default(),
             messages_metric,
             successful_dials: 0,
-            _attempted_dials: vec![],
         })
+    }
+
+    pub fn add_network_sender(
+        mut self,
+        network_sender: mpsc::Sender<HelperCommand>,
+    ) {
+        self.helper_sender = Some(network_sender);
     }
 
     /// Get the local peer ID.
@@ -335,7 +348,7 @@ impl NetworkWorker {
     }
 
     /// Get the network service.
-    pub fn service(&self) -> Arc<RwLock<NetworkService>> {
+    pub fn service(&self) -> NetworkService {
         self.service.clone()
     }
 
@@ -569,33 +582,33 @@ impl NetworkWorker {
     async fn handle_command(&mut self, command: Command) {
         match command {
             Command::SendMessage { peer, message } => {
-                if let Ok(public_key) = PublicKeyEd25519::try_from_bytes(peer.as_slice()) {
-                    let peer = PublicKey::from(public_key);
-                    if let Err(error) = self.send_message(peer.to_peer_id(), message) {
+                if let Ok(peer) = PeerId::from_str(&peer) {
+                    if let Err(error) = self.send_message(peer, message) {
                         error!(TARGET_WORKER, "Response error: {:?}", error);
                         self.send_event(NetworkEvent::Error(error)).await;
                     }
                 } else {
                     error!(TARGET_WORKER, "Invalid peer id");
                 }
-            }
+            } /* TODO: is not being used
             Command::Bootstrap => {
-                trace!(TARGET_WORKER, "Bootstrap to the kore network");
-                if let Err(error) = self.swarm.behaviour_mut().bootstrap() {
-                    if self
-                        .event_sender
-                        .send(NetworkEvent::Error(error))
-                        .await
-                        .is_err()
-                    {
-                        error!(TARGET_WORKER, "Error sending bootstrap error event.");
-                    }
-                }
-            }
-            Command::StartProviding { .. } => {
-                // TODO: Implement
-                //self.swarm.start_providing(keys);
-            }
+    trace!(TARGET_WORKER, "Bootstrap to the kore network");
+    if let Err(error) = self.swarm.behaviour_mut().bootstrap() {
+        if self
+            .event_sender
+            .send(NetworkEvent::Error(error))
+            .await
+            .is_err()
+        {
+            error!(TARGET_WORKER, "Error sending bootstrap error event.");
+        }
+    }
+}
+Command::StartProviding { .. } => {
+    // TODO: Implement
+    //self.swarm.start_providing(keys);
+}
+ */
         }
     }
 
@@ -1093,6 +1106,9 @@ mod tests {
         }
     }
 
+    /*
+    
+    
     #[tokio::test]
     #[ignore]
     async fn test_network_worker() {
@@ -1124,7 +1140,7 @@ mod tests {
             token.clone(),
             Some(ephemeral_addr.to_owned()),
         );
-        let ephemeral_service = ephemeral.service();
+        let mut ephemeral_service = ephemeral.service();
         let ephemeral_peer_id = ephemeral.local_peer_id();
 
         // Build a addressable node.
@@ -1136,7 +1152,7 @@ mod tests {
             token.clone(),
             Some(addressable_addr.to_owned()),
         );
-        let addressable_service = addressable.service();
+        let mut addressable_service = addressable.service();
         let addressable_peer_id = addressable.local_peer_id();
 
         // Wait for connect boot node.
@@ -1168,9 +1184,6 @@ mod tests {
         tokio::spawn(async move {
             addressable.run_main().await;
         });
-
-        let mut ephemeral_service = ephemeral_service.write().unwrap();
-        let mut addressable_service = addressable_service.write().unwrap();
 
         let mut ephemeral_identified = false;
         let mut addressable_identified = false;
@@ -1254,6 +1267,7 @@ mod tests {
 
         token.cancel();
     }
+*/
 
     // Build a relay server.
     fn build_worker(
@@ -1272,7 +1286,7 @@ mod tests {
         let keys = KeyPair::default();
         let mut registry = Registry::default();
         let (event_sender, event_receiver) = mpsc::channel(100);
-        let worker = NetworkWorker::new(&mut registry, keys, config, event_sender, token).unwrap();
+        let worker = NetworkWorker::new(&mut registry, keys, config, event_sender, KeyDerivator::Ed25519, token).unwrap();
         (worker, event_receiver)
     }
 

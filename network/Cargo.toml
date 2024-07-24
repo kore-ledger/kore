@@ -38,7 +38,8 @@ libp2p = { workspace = true, default_features = false, features = [
 	"quic",
 	"plaintext",
 	"request-response",
-	"cbor"
+	"cbor",
+	"secp256k1"
 ] }
 linked_hash_set = { workspace = true }
 metrics = { workspace = true }
@@ -50,6 +51,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "sync"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+actor = { workspace = true }
 
 [dev-dependencies]
 libp2p-swarm-test = { workspace = true }

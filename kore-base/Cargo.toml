@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-actor = { path = "../../rush-rs/actor" }
+actor = { workspace = true }
 argon2 = "0.5"
 async-trait = { workspace = true }
 bincode = { workspace = true }
@@ -24,6 +24,7 @@ thiserror = { workspace = true }
 time = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
 tracing = { workspace = true }
+network = { path = "../network" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

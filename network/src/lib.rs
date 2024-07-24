@@ -1,4 +1,4 @@
-// Copyright 2024 Antonio Estévez
+// Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Network package.
@@ -14,6 +14,7 @@ mod service;
 mod transport;
 mod utils;
 mod worker;
+mod helpers;
 
 pub use control_list::Config as ControlListConfig;
 pub use error::Error;
@@ -99,20 +100,22 @@ pub enum NodeType {
 /// Command enumeration for the network service.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Command {
-    /// Start providing the given keys.
+    /// Send a message to the given peer.
+    SendMessage {
+        /// The peer to send the message to.
+        peer: String,
+        /// The message to send.
+        message: Vec<u8>,
+    },
+    /* TODO: is not being used
+    /// Bootstrap the network.
+    Bootstrap,
+        /// Start providing the given keys.
     StartProviding {
         /// The keys to provide.
         keys: Vec<String>,
     },
-    /// Send a message to the given peer.
-    SendMessage {
-        /// The peer to send the message to.
-        peer: Vec<u8>,
-        /// The message to send.
-        message: Vec<u8>,
-    },
-    /// Bootstrap the network.
-    Bootstrap,
+    */
 }
 
 /// Event enumeration for the network service.

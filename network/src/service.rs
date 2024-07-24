@@ -1,4 +1,4 @@
-// Copyright 2024 Antonio Estévez
+// Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Network service
@@ -17,12 +17,15 @@ pub struct NetworkService {
 
 impl NetworkService {
     /// Create a new `NetworkService`.
-    pub fn new(command_sender: Sender<Command>) -> Result<Self, Error> {
-        Ok(Self { command_sender })
+    pub fn new(command_sender: Sender<Command>) -> Self {
+        Self { command_sender }
     }
 
     /// Send command to the network worker.
-    pub async fn send_command(&mut self, command: Command) -> Result<(), Error> {
+    pub async fn send_command(
+        &mut self,
+        command: Command,
+    ) -> Result<(), Error> {
         self.command_sender
             .send(command)
             .await

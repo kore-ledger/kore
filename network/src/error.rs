@@ -1,4 +1,4 @@
-// Copyright 2024 Antonio Estévez
+// Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Network errors.
@@ -22,9 +22,6 @@ pub enum Error {
     /// DNS error
     #[error("DNS error: {0}")]
     Dns(String),
-    /// Relay error.
-    #[error("Relay error: {0}")]
-    Relay(String),
     /// Behaviour error.
     #[error("Behaviour error: {0}")]
     Behaviour(String),
