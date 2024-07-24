@@ -42,17 +42,17 @@ pub async fn system(
 ) -> Result<SystemRef, Error> {
     // Update statics.
     if let Ok(mut derivator) = DIGEST_DERIVATOR.lock() {
-        *derivator = config.digest_derivator;
+        *derivator = config.get_digest_derivator();
     }
     if let Ok(mut derivator) = KEY_DERIVATOR.lock() {
-        *derivator = config.key_derivator;
+        *derivator = config.get_key_derivator();
     }
 
     // Create de actor system.
     let (system, mut runner) = ActorSystem::create();
 
     // Build database manager.
-    let db_manager = Database::open(&config.database)?;
+    let db_manager = Database::open(&config.get_database())?;
     system.add_helper("store", db_manager).await;
 
     // Helper memory encryption for passwords to be used in secure stores.
