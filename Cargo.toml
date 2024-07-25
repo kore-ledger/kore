@@ -4,6 +4,7 @@ members = [
     "kore-base",
     "network",
     "protocols/tell",
+    "kore-types"
 ]
 
 resolver = "2"

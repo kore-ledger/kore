@@ -1,6 +1,13 @@
 [package]
-name = "kore-base"
+name = "kore-types"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
+identity = { path = "../identity"}
+borsh = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+json-patch = { version = "2.0" }
+time = { workspace = true, features = ["std"] }
+thiserror = { workspace = true }
