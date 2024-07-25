@@ -10,106 +10,102 @@ pub mod response;
 pub mod validator;
 
 use crate::{
-    governance::Governance, model::{
-        event::Event as KoreEvent, request::EventRequest, signature::{Signature, Signed},
+    governance::Governance,
+    model::{
+        event::Event as KoreEvent,
+        request::EventRequest,
+        signature::{Signature, Signed},
         HashId, Namespace,
-    }, subject::SubjectState, Error, DIGEST_DERIVATOR
+    },
+    subject::SubjectState,
+    Error, DIGEST_DERIVATOR,
 };
-use actor::{Actor, ActorContext, Message, Event, Response, Handler, Error as ActorError};
+use actor::{
+    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
+};
 
+use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{
     derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
 };
-use request::ValidationRequest;
+use request::ValidationReq;
+use response::ValidationRes;
 use serde::{Deserialize, Serialize};
-use async_trait::async_trait;
 use tracing::{debug, error};
 
 use std::collections::HashSet;
 
-pub struct Validator {
-    subject: SubjectState,
-    governance: Governance,
-    event: Signed<KoreEvent>,
-}
-
 /// A struct for passing validation information.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ValidationInfo {
     pub subject: SubjectState,
     pub event: Signed<KoreEvent>,
     pub gov_version: u64,
 }
 
-/* 
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct Validation {
+    // Quorum
+    // A quien preguntar
+    // Respuestas
+}
+
+#[derive(Debug, Clone)]
+pub enum ValidationCommand {
+    Create(ValidationInfo),
+    Response((ValidationResponse, KeyIdentifier)),
+}
+
 impl Message for ValidationCommand {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ValidationEvent {}
 
 impl Event for ValidationEvent {}
 
-impl Response for ValidationResponse {}
-
-impl Actor for Validator {
-    type Message = ValidationCommand;
-    type Event = ValidationEvent;
-    type Response = ValidationResponse;
-}
-
-#[async_trait]
-impl Handler<Validator> for Validator {
-
-    async fn handle_message(
-        &mut self,
-        message: ValidationCommand,
-        ctx: &mut ActorContext<Validator>,
-    ) -> Result<ValidationResponse, ActorError> {
-        match message {
-            ValidationCommand::Create(info) => {
-                Ok(ValidationResponse::None)
-            }
-            ValidationCommand::Validate(event) => {
-                // Validate the event.
-                // If the event is valid, return the validation signature.
-                // If the event is invalid, return an error.
-                Ok(ValidationResponse::None)
-            }
-        }
-    }
-
-}
-
-/// A struct for passing validation information.
-#[derive(Clone)]
-pub struct ValidationInfo {
-    pub subject: SubjectState,
-    pub event: Signed<KoreEvent>,
-    pub gov_version: u64,
-}
-#[derive(Clone)]
-pub enum ValidationCommand {
-    Create(ValidationInfo),
-    Validate(ValidationRequest),
-    Response(ValidationResponse),
-}
-
-/// A struct representing a validation response.
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Hash,
-    BorshSerialize,
-    BorshDeserialize,
-    PartialOrd,
-)]
+#[derive(Debug, Clone)]
 pub enum ValidationResponse {
-    Signature{
+    Signature {
         validation_signature: Signature,
         gov_version_validation: u64,
     },
     None,
 }
-*/
+
+impl Response for ValidationResponse {}
+
+#[async_trait]
+impl Actor for Validation {
+    type Event = ValidationEvent;
+    type Message = ValidationCommand;
+    type Response = ValidationResponse;
+}
+
+#[async_trait]
+impl Handler<Validation> for Validation {
+    async fn handle_message(
+        &mut self,
+        msg: ValidationCommand,
+        ctx: &mut ActorContext<Validation>,
+    ) -> Result<ValidationResponse, ActorError> {
+        match msg {
+            ValidationCommand::Create(validation_info) => {
+                // Validation info a validation req,
+                // Mirar quien tiene que evaluar
+                // Si va local (realizar ask a node) child Validator Local
+                // Si va fuera child Validator Network
+                Ok(ValidationResponse::None)
+            },
+            ValidationCommand::Response(response) => {
+                // Mirar qué hijo ha respondido
+                // Eliminarlo de la lista de pendientes
+                // hay que mirar que las validaciones sean todas iguales ¿?
+                // Comprar quorum, si quorum >= respuesta al padre (request)
+                // Los Hijos Retry podran responder None si el validador no responde en X tiempo, manejar eso.
+
+                Ok(ValidationResponse::None)
+            }
+        }
+    }
+}

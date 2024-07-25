@@ -1,13 +1,11 @@
-use std::sync::{Arc, Mutex};
-
 use super::{service::HelperService, Command, Error};
 use crate::Command as NetworkCommand;
 use actor::SystemRef;
 
-use identity::identifier::{derive::KeyDerivator, key_identifier};
+use identity::identifier::derive::KeyDerivator;
 use tokio::sync::mpsc;
 use libp2p::{identity::{
-    ed25519::{self, PublicKey as PublicKeyEd25519}, secp256k1::{self, PublicKey as PublicKeysecp256k1}, Keypair, PublicKey
+    ed25519::PublicKey as PublicKeyEd25519, secp256k1::PublicKey as PublicKeysecp256k1, PublicKey
 }, PeerId};
 
 #[derive(Clone)]
@@ -35,13 +33,13 @@ impl Intermediary {
             derivator,
             network_sender,
             system
-        }.spawn_command_receiber(command_receiver)
+        }.spawn_command_receiver(command_receiver)
     }
 
-    fn spawn_command_receiber(&mut self, mut command_receiver: mpsc::Receiver<Command>) -> Self {
+    fn spawn_command_receiver(&mut self, mut command_receiver: mpsc::Receiver<Command>) -> Self {
         let clone = self.clone();
         
-        println!("spawn_command_receiber");
+        println!("spawn_command_receiver");
         tokio::spawn(async move {
             loop {
                 println!("loop!!!!!");

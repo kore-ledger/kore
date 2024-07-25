@@ -4,7 +4,7 @@
 //! # Network worker.
 //!
 
-// TODO: revisar eventos de la network. Ya no se los lanza a message receiber ahora debería manejarlos ella misma
+// TODO: revisar eventos de la network. Ya no se los lanza a message receiver ahora debería manejarlos ella misma
 use crate::{
     behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage}, helpers::Command as HelperCommand, service::NetworkService, transport::build_transport, utils::convert_addresses, Command, Config, Error, Event as NetworkEvent, NodeType
 };

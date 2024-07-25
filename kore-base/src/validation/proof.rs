@@ -57,7 +57,7 @@ impl Default for ValidationProof {
             governance_version: 0,
             subject_id: DigestIdentifier::default(),
             sn: 0,
-            schema_id: "subjet_id".to_string(),
+            schema_id: "subject_id".to_string(),
             namespace: Namespace::default(),
             prev_event_hash: DigestIdentifier::default(),
             event_hash: DigestIdentifier::default(),

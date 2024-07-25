@@ -16,7 +16,7 @@ use std::collections::HashSet;
 
 /// A struct representing a validation request.
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct ValidationRequest {
+pub struct ValidationReq {
     pub proof: ValidationProof,
     pub subject_signature: Signature,
     pub previous_proof: Option<ValidationProof>,

@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 /// A struct representing a validation response.
-/// A struct representing a validation response.
 #[derive(
     Debug,
     Clone,
@@ -26,7 +25,7 @@ use std::collections::HashSet;
     BorshDeserialize,
     PartialOrd,
 )]
-pub struct ValidationResponse {
+pub struct ValidationRes {
     pub validation_signature: Signature,
     pub gov_version_validation: u64,
 }
