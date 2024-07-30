@@ -21,6 +21,24 @@ pub enum Quorum {
     // BFT { BFT: f64 },
 }
 
+impl Quorum {
+    fn check_quorum(&self, total_members: u32, signers: u32) -> bool {
+        match self {
+            Quorum::FIXED { fixed }  => {
+                let min = std::cmp::min(fixed, &total_members);
+                signers >= *min
+            },
+            Quorum::MAJORITY => {
+                signers >= total_members / 2 + 1
+            },
+            Quorum::PERCENTAGE { percentage } => {
+                signers >= ((total_members as f64 * percentage).ceil() as u32)
+            }
+        }
+        
+    }
+}
+
 impl Serialize for Quorum {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -320,7 +338,7 @@ impl<'de> Deserialize<'de> for SchemaEnum {
                     _ => {
                         return Err(serde::de::Error::unknown_field(
                             &key,
-                            &["ID", "NAME"],
+                            &["ID"],
                         ))
                     }
                 };
@@ -409,15 +427,19 @@ pub struct Member {
 /// Governance validation (from quorum).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Validation {
-    quorum: Quorum,
+    pub quorum: Quorum,
 }
 
 /// Governance policy.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Policy {
+    /// Schema id.
     pub id: String,
+    /// Approve quorum
     pub approve: Validation,
+    /// Evaluate quorum
     pub evaluate: Validation,
+    /// Validate quorum
     pub validate: Validation,
 }
 

@@ -148,12 +148,17 @@ impl Retry for Validator {
                         retries += 1;
                     }
                 }
-                error!("Max retries with actor {} reached.", path);
-                // emitir evento de que todos los intentos fueron realizados
-                Err(ActorError::Functional(format!(
-                    "Max retries with actor {} reached.",
-                    path
-                )))
+                if self.is_finished() {
+                    // LLegó respuesta se abortan los intentos.
+                    Ok(ValidatorResponse::None)
+                } else {
+                    error!("Max retries with actor {} reached.", path);
+                    // emitir evento de que todos los intentos fueron realizados
+                    Err(ActorError::Functional(format!(
+                        "Max retries with actor {} reached.",
+                        path
+                    )))
+                }
             } else {
                 error!("Retries with actor {} failed. Unknown actor.", path);
                 Err(ActorError::Functional(format!(

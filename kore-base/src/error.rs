@@ -50,4 +50,7 @@ pub enum Error {
     /// Approval error.
     #[error("Approval error: {0}")]
     Approval(String),
+    /// Approval error.
+    #[error("InvalidQuorum error: {0}")]
+    InvalidQuorum(String)
 }

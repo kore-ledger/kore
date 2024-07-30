@@ -36,7 +36,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
-use std::{collections::HashSet, sync::atomic::AtomicU64};
+use std::{collections::HashSet, str::FromStr, sync::atomic::AtomicU64};
 
 /// Governance struct.
 ///
@@ -110,18 +110,138 @@ impl Governance {
         Err(Error::Governance("Schema not found.".to_owned()))
     }
 
+    fn members_to_key_identifier(&self) -> HashSet<KeyIdentifier> {
+        HashSet::from_iter(
+            self.model
+                .members
+                .iter()
+                .filter_map(|e| KeyIdentifier::from_str(&e.id).ok()),
+        )
+    }
+
+    fn id_by_name(&self, name: &str) -> Option<String> {
+        let member = self.model.members.iter().find(|e| &e.name == name);
+        if let Some(member) = member {
+            Some(member.id.clone())
+        } else {
+            None
+        }
+    }
+
     /// Gets the signers for the request stage.
-    pub fn get_signers(&self, stage: RequestStage) -> Vec<DigestIdentifier> {
-        let mut signers = Vec::new();
-        // Create hashset of members.
-        let members: HashSet<Member> =
-            self.model.members.iter().cloned().collect();
+    fn get_signers(
+        &self,
+        stage: RequestStage,
+        schema: &str,
+        namespace: Namespace,
+    ) -> HashSet<KeyIdentifier> {
+        let mut signers = HashSet::new();
+        // by default the owner has all the roles, even if he is not a member or is not explicitly
+
         for rol in &self.model.roles {
             // Check if the stage is for the role.
-            if stage.to_role() == &rol.role {}
+            if stage.to_role() == &rol.role {
+                // Check namespace
+                let namespace_role = Namespace::from(rol.namespace.as_str());
+                if !namespace_role.is_ancestor_of(&namespace)
+                    && namespace_role != namespace
+                    && !namespace_role.is_empty()
+                {
+                    continue;
+                }
+
+                match rol.schema.clone() {
+                    // Check rol for schema
+                    model::SchemaEnum::ALL => {
+                        // We do nothing, the role applies to all schemes.
+                    }
+                    model::SchemaEnum::ID { ID } => {
+                        if schema != &ID {
+                            continue;
+                        }
+                    }
+                    model::SchemaEnum::NOT_GOVERNANCE => {
+                        if schema == "governance" {
+                            continue;
+                        }
+                    }
+                }
+                match rol.who.clone() {
+                    Who::ALL | Who::MEMBERS => {
+                        signers = self.members_to_key_identifier();
+                        break;
+                    }
+                    Who::ID { ID } => {
+                        if let Ok(id) = KeyIdentifier::from_str(&ID) {
+                            let _ = signers.insert(id);
+                        }
+                    }
+
+                    Who::NAME { NAME } => {
+                        let id_string = self.id_by_name(&NAME);
+                        if let Some(id) = id_string {
+                            if let Ok(id) = KeyIdentifier::from_str(&id) {
+                                let _ = signers.insert(id);
+                            }
+                        }
+                    }
+                    Who::NOT_MEMBERS => {
+                        // If it is not a member, we will not have a public key.
+                    }
+                }
+            }
         }
 
         signers
+    }
+
+    fn get_quorum(
+        &self,
+        stage: RequestStage,
+        schema: &str,
+    ) -> Result<Quorum, Error> {
+        let policies = self.model.policies.iter().find(|e| e.id == schema);
+        if let Some(policies) = policies {
+            match stage {
+                RequestStage::Evaluate => {
+                    debug!("");
+                    Ok(policies.evaluate.quorum.clone())
+                }
+                RequestStage::Approve => {
+                    debug!("");
+                    Ok(policies.approve.quorum.clone())
+                }
+                RequestStage::Validate => {
+                    debug!("");
+                    Ok(policies.validate.quorum.clone())
+                }
+                _ => {
+                    error!("");
+                    Err(Error::InvalidQuorum(
+                        "No Validate quorum found for this scheme".to_owned(),
+                    ))
+                }
+            }
+        } else {
+            error!("");
+            Err(Error::InvalidQuorum(
+                "No Evaluate quorum found for this scheme".to_owned(),
+            ))
+        }
+    }
+
+    pub fn get_quorum_and_signers(
+        &self,
+        stage: RequestStage,
+        schema: &str,
+        namespace: Namespace,
+    ) -> Result<(HashSet<KeyIdentifier>, Quorum), Error> {
+        let signers = self.get_signers(stage.clone(), schema, namespace);
+        let quorum = self.get_quorum(stage, schema);
+        match quorum {
+            Ok(quorum) => Ok((signers, quorum)),
+            Err(e) => Err(e),
+        }
     }
 
     /// Check if the request is allowed.
@@ -190,11 +310,6 @@ pub enum GovernanceCommand {
     GetInitialState {
         schema_id: String,
     },
-    GetSigners {
-        stage: RequestStage,
-        schema_id: String,
-        namespace: Namespace,
-    },
     GetVersion,
 
     IsAllowed {
@@ -202,6 +317,11 @@ pub enum GovernanceCommand {
         stage: RequestStage,
         name: String,
     },
+    GetSignersAndQuorum {
+        stage: RequestStage,
+        schema_id: String,
+        namespace: Namespace,
+    }, // Devolver un quorum y los signers.
 }
 
 impl Message for GovernanceCommand {}
@@ -215,6 +335,7 @@ pub enum GovernanceResponse {
     Version(u64),
     Allow(bool),
     Error(Error),
+    SignersAndQuorum((HashSet<KeyIdentifier>, Quorum)),
     None,
 }
 
@@ -282,7 +403,23 @@ impl Handler<Governance> for Governance {
             GovernanceCommand::GetVersion => {
                 Ok(GovernanceResponse::Version(self.version()))
             }
-            _ => Ok(GovernanceResponse::None),
+            GovernanceCommand::GetSignersAndQuorum {
+                stage,
+                schema_id,
+                namespace,
+            } => {
+                match self.get_quorum_and_signers(stage, &schema_id, namespace) {
+                    Ok((signers, quorum)) => {
+                        Ok(GovernanceResponse::SignersAndQuorum((signers, quorum)))
+                    },
+                    Err(e) => {
+                        Err(ActorError::Functional(format!(
+                            "An error occurred in obtaining the quorum and signatories, {}",
+                            e
+                        )))
+                    }
+                }
+            }
         }
     }
 }

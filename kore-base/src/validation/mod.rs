@@ -10,15 +10,12 @@ pub mod response;
 pub mod validator;
 
 use crate::{
-    governance::Governance,
-    model::{
+    db::Storable, governance::Governance, model::{
         event::Event as KoreEvent,
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace,
-    },
-    subject::SubjectState,
-    Error, DIGEST_DERIVATOR,
+    }, subject::SubjectState, Error, DIGEST_DERIVATOR
 };
 use actor::{
     Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
@@ -32,6 +29,7 @@ use identity::identifier::{
 use request::ValidationReq;
 use response::ValidationRes;
 use serde::{Deserialize, Serialize};
+use store::store::PersistentActor;
 use tracing::{debug, error};
 
 use std::collections::HashSet;
@@ -44,7 +42,7 @@ pub struct ValidationInfo {
     pub gov_version: u64,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Validation {
     // Quorum
     // A quien preguntar
@@ -66,10 +64,7 @@ impl Event for ValidationEvent {}
 
 #[derive(Debug, Clone)]
 pub enum ValidationResponse {
-    Signature {
-        validation_signature: Signature,
-        gov_version_validation: u64,
-    },
+    Response(ValidationRes),
     None,
 }
 
@@ -80,6 +75,22 @@ impl Actor for Validation {
     type Event = ValidationEvent;
     type Message = ValidationCommand;
     type Response = ValidationResponse;
+
+    async fn pre_start(
+        &mut self,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        debug!("Starting validation actor with init store.");
+        self.init_store("validation", true, ctx).await
+    }
+
+    async fn post_stop(
+        &mut self,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        debug!("Stopping validation actor with stop store.");
+        self.stop_store(ctx).await
+    }
 }
 
 #[async_trait]
@@ -109,3 +120,12 @@ impl Handler<Validation> for Validation {
         }
     }
 }
+
+#[async_trait]
+impl PersistentActor for Validation {
+    fn apply(&mut self, event: &ValidationEvent) {
+        
+    }
+}
+
+impl Storable for Validation {}
