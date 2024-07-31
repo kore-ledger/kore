@@ -321,7 +321,12 @@ pub enum GovernanceCommand {
         stage: RequestStage,
         schema_id: String,
         namespace: Namespace,
-    }, // Devolver un quorum y los signers.
+    },
+    GetSigners {
+        stage: RequestStage,
+        schema_id: String,
+        namespace: Namespace,
+    },
 }
 
 impl Message for GovernanceCommand {}
@@ -331,7 +336,7 @@ impl Message for GovernanceCommand {}
 pub enum GovernanceResponse {
     Schema(Schema),
     InitialState(ValueWrapper),
-    Signers(Vec<DigestIdentifier>, Quorum),
+    Signers(HashSet<KeyIdentifier>),
     Version(u64),
     Allow(bool),
     Error(Error),
@@ -408,17 +413,20 @@ impl Handler<Governance> for Governance {
                 schema_id,
                 namespace,
             } => {
-                match self.get_quorum_and_signers(stage, &schema_id, namespace) {
-                    Ok((signers, quorum)) => {
-                        Ok(GovernanceResponse::SignersAndQuorum((signers, quorum)))
-                    },
-                    Err(e) => {
-                        Err(ActorError::Functional(format!(
-                            "An error occurred in obtaining the quorum and signatories, {}",
-                            e
-                        )))
-                    }
+                match self.get_quorum_and_signers(stage, &schema_id, namespace)
+                {
+                    Ok((signers, quorum)) => Ok(
+                        GovernanceResponse::SignersAndQuorum((signers, quorum)),
+                    ),
+                    Err(e) => Ok(GovernanceResponse::Error(e)),
                 }
+            }
+            GovernanceCommand::GetSigners {
+                stage,
+                schema_id,
+                namespace,
+            } => {
+                Ok(GovernanceResponse::Signers(self.get_signers(stage, &schema_id, namespace)))
             }
         }
     }

@@ -4,15 +4,14 @@
 //! Node module
 //!
 
+use std::fmt::format;
+
 use crate::{
-    db::{Database, Storable},
-    helpers::encrypted_pass::EncryptedPass,
-    model::{request::EventRequest, signature::Signed},
-    Api, Config, Error,
+    db::{Database, Storable}, helpers::encrypted_pass::EncryptedPass, model::{request::EventRequest, signature::{Signature, Signed}, HashId}, validation::proof::ValidationProof, Api, Config, Error
 };
 
 use identity::{
-    identifier::{DigestIdentifier, KeyIdentifier},
+    identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier},
     keys::{KeyMaterial, KeyPair},
 };
 
@@ -25,12 +24,20 @@ use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SignTypes {
+    Validation(ValidationProof)
+}
+
+
 /// Node struct.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
     /// Owner of the node.
     #[serde(skip)]
     owner: KeyPair,
+    /// Derivator for sign
+    derivator: DigestDerivator,
     /// The node's owned subjects.
     owned_subjects: Vec<String>,
     /// The node's known subjects.
@@ -43,9 +50,10 @@ pub struct Node {
 
 impl Node {
     /// Creates a new node.
-    pub fn new(id: &KeyPair) -> Result<Self, Error> {
+    pub fn new(id: &KeyPair, derivator: DigestDerivator) -> Result<Self, Error> {
         Ok(Self {
             owner: id.clone(),
+            derivator,
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             owned_governances: Vec::new(),
@@ -102,24 +110,31 @@ impl Node {
     pub fn get_known_governances(&self) -> &Vec<String> {
         &self.known_governances
     }
+
+    fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
+        Signature::new(content, &self.owner, self.derivator).map_err(|e| Error::Signature(format!("{}", e)))
+    }
 }
 
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum NodeMessasge {
+pub enum NodeMessage {
     RequestEvent(Signed<EventRequest>),
+    RequestSign(SignTypes),
     GetOwnerIdentifier,
 }
 
-impl Message for NodeMessasge {}
+impl Message for NodeMessage {}
 
 /// Node response.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeResponse {
     /// Event request.
-    RequestIdentifier(Result<DigestIdentifier, Error>),
+    RequestIdentifier(DigestIdentifier),
+    RequestSign(Signature),
     /// Owner identifier.
     OwnerIdentifier(KeyIdentifier),
+    Error(Error),
     None,
 }
 
@@ -139,7 +154,7 @@ impl Event for NodeEvent {}
 #[async_trait]
 impl Actor for Node {
     type Event = NodeEvent;
-    type Message = NodeMessasge;
+    type Message = NodeMessage;
     type Response = NodeResponse;
 
     async fn pre_start(
@@ -196,13 +211,29 @@ impl PersistentActor for Node {
 impl Handler<Node> for Node {
     async fn handle_message(
         &mut self,
-        msg: NodeMessasge,
+        msg: NodeMessage,
         _ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
-            NodeMessasge::RequestEvent(event) => Ok(NodeResponse::None),
-            NodeMessasge::GetOwnerIdentifier => {
+            NodeMessage::RequestEvent(event) => Ok(NodeResponse::None),
+            NodeMessage::GetOwnerIdentifier => {
                 Ok(NodeResponse::OwnerIdentifier(self.owner()))
+            },
+            NodeMessage::RequestSign(content) => {
+                let sign = match content {
+                    SignTypes::Validation(validation) => {
+                        self.sign(&validation)
+                    }
+                };
+
+                match sign {
+                    Ok(sign) => {
+                        Ok(NodeResponse::RequestSign(sign))
+                    }, Err(e) => {
+                        Ok(NodeResponse::Error(e))
+                    }
+                }
+                
             }
         }
     }
