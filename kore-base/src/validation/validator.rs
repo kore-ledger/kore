@@ -7,14 +7,13 @@ use crate::{
     governance::{
         Governance, GovernanceCommand, GovernanceResponse, RequestStage,
     },
-    model::signature::Signature,
-    node::{Node, NodeMessage, SignTypes},
+    model::{signature::Signature, SignTypes},
+    node::{Node, NodeMessage, NodeResponse},
     Error,
 };
 
 use super::{
-    proof::ValidationProof, request::ValidationReq, response::ValidationRes,
-    ValidationResponse,
+    proof::ValidationProof, request::{SignersRes, ValidationReq}, response::ValidationRes, Validation, ValidationCommand, ValidationResponse
 };
 
 use async_trait::async_trait;
@@ -44,7 +43,7 @@ impl Validator {
         &self,
         ctx: &mut ActorContext<Validator>,
         validation_req: ValidationReq,
-    ) -> Result<ValidatorResponse, Error> {
+    ) -> Result<Signature, Error> {
         // Obtain gov_version
         // If is a create of governance (governance does not exist until validation is complete)
         let actual_gov_version: u64 = if validation_req.proof.schema_id
@@ -114,7 +113,7 @@ impl Validator {
                 ctx,
                 &validation_req.proof,
                 validation_req.previous_proof,
-                validation_req.prev_event_validation_signatures,
+                validation_req.prev_event_validation_response,
             )
             .await?;
         // TODO: verify this, if you rotate the cryptographic material they will not match?
@@ -133,7 +132,7 @@ impl Validator {
         let response = if let Some(node_actor) = node_actor {
             // We ask a node
             let response = node_actor
-                .ask(NodeMessage::RequestSign(SignTypes::Validation(
+                .ask(NodeMessage::SignRequest(SignTypes::Validation(
                     validation_req.proof,
                 )))
                 .await;
@@ -154,10 +153,10 @@ impl Validator {
 
         // We handle the possible responses of node
         match response {
-            crate::node::NodeResponse::RequestSign(sign) => {
-                Ok(ValidatorResponse::Response(ValidationRes::Signature(sign)))
+            NodeResponse::SignRequest(sign) => {
+                Ok(sign)
             }
-            crate::node::NodeResponse::Error(error) => {
+            NodeResponse::Error(error) => {
                 Err(Error::Actor(format!(
                     "The node encountered problems when signing the proof: {}",
                     error
@@ -174,7 +173,7 @@ impl Validator {
         ctx: &mut ActorContext<Validator>,
         new_proof: &ValidationProof,
         previous_proof: Option<ValidationProof>,
-        previous_validation_signatures: HashSet<Signature>,
+        previous_validation_signatures: Vec<SignersRes>,
     ) -> Result<KeyIdentifier, Error> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
@@ -198,11 +197,20 @@ impl Validator {
             let previous_signers: Result<HashSet<KeyIdentifier>, Error> =
                 previous_validation_signatures
                     .into_iter()
-                    .map(|signature| {
-                        if signature.verify(&previous_proof).is_err() {
-                            // return Error
+                    .map(|signer_res| {
+                        match signer_res {
+                            // Signer response
+                            SignersRes::Signature(signature) => {
+
+                                if let Err(error) = signature.verify(&previous_proof) {
+                                    return Err(Error::Signature(format!("An error occurred while validating the previous proof, {:?}", error)));
+                                } else {
+                                    Ok(signature.signer)    
+                                }
+                            }
+                            // TimeOut response
+                            SignersRes::TimeOut(time_out) => Ok(time_out.who),
                         }
-                        Ok(signature.signer)
                     })
                     .collect();
             let previous_signers = previous_signers?;
@@ -287,8 +295,8 @@ impl Validator {
 
 #[derive(Debug, Clone)]
 pub enum ValidatorCommand {
-    LocalValidation(ValidationReq),
-    NetworkValidation((ValidationReq, KeyIdentifier)),
+    LocalValidation(ValidationReq, KeyIdentifier),
+    NetworkValidation(DigestIdentifier, ValidationReq, KeyIdentifier),
     NetworkResponse,
     NetworkRequest(ValidationReq),
 }
@@ -305,7 +313,6 @@ impl Event for ValidatorEvent {}
 
 #[derive(Debug, Clone)]
 pub enum ValidatorResponse {
-    Response(ValidationRes),
     None,
 }
 
@@ -326,19 +333,45 @@ impl Handler<Validator> for Validator {
         ctx: &mut ActorContext<Validator>,
     ) -> Result<ValidatorResponse, ActorError> {
         match msg {
-            ValidatorCommand::LocalValidation(validation_req) => {
-                // Validar y dar respuesta.
+            ValidatorCommand::LocalValidation(validation_req, key_identifier) => {
+                // Validate event
+                let validation = match self.validation_event(ctx,validation_req).await {
+                    Ok(validation) => ValidationCommand::Response(ValidationResponse::Response(ValidationRes::Signature(validation))),
+                    Err(e) => {
+                        // Log con el error.
+                        ValidationCommand::Response(ValidationResponse::Response(ValidationRes::Error(key_identifier)))
+                    }
+                };
+                
+                // Validation path.
+                let validation_path = ctx.path().parent();
+
+                // Validation actor.
+                let validation_actor: Option<ActorRef<Validation>> =
+                    ctx.system().get_actor(&validation_path).await;
+                
+                // Send response of validation to parent
+                if let Some(validation_actor) = validation_actor {
+                    if let Err(e) = validation_actor.tell(validation).await {
+                        return Err(e);
+                    }
+                } else {
+                    // Can not obtain parent actor
+                    return Err(ActorError::Exists(validation_path));
+                }
+
                 Ok(ValidatorResponse::None)
             }
-            ValidatorCommand::NetworkValidation((
+            ValidatorCommand::NetworkValidation(
+                request_id,
                 validation_req,
                 key_identifier,
-            )) => {
+            ) => {
                 // Lanzar evento donde lanzar los retrys
                 Ok(ValidatorResponse::None)
             }
             ValidatorCommand::NetworkResponse => {
-                // Recibir respuesta de la network, si no es un error darle la respuesta al padre y si es error no hacer nada.
+                // Recibir respuesta de la network, darle la respuesta al padre, sea un fallo o no.
                 Ok(ValidatorResponse::None)
             }
             ValidatorCommand::NetworkRequest(validation_req) => {

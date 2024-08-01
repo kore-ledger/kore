@@ -1,7 +1,7 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::proof::ValidationProof;
+use super::{proof::ValidationProof, response::{ValidationRes, ValidationTimeOut}};
 
 use crate::{
     Error, 
@@ -24,6 +24,12 @@ pub struct ValidationReq {
     // Hay que sacarlo de la base de datos,
     pub previous_proof: Option<ValidationProof>,
     // Hay que sacarlo de la base de datos,
-    pub prev_event_validation_signatures: HashSet<Signature>,
+    pub prev_event_validation_response: Vec<SignersRes>,
 }
 
+/// Accept response of Validators, can be a Signature or a TimeOut if all trys have been made
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub enum SignersRes {
+    Signature(Signature),
+    TimeOut(ValidationTimeOut),
+}

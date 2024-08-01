@@ -15,7 +15,7 @@ pub mod wrapper;
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
-use crate::Error;
+use crate::{validation::proof::ValidationProof, Error};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
@@ -23,6 +23,12 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 use std::hash::Hash;
+
+// TODO: Separar los tipos de firma, que el sujeto tenga los suyos y el nodo los suyos, solo en caso de que sean muy diferentes.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SignTypes {
+    Validation(ValidationProof)
+}
 
 /// A trait for generating a hash identifier.
 pub trait HashId: BorshSerialize {

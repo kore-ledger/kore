@@ -7,7 +7,7 @@
 use std::fmt::format;
 
 use crate::{
-    db::{Database, Storable}, helpers::encrypted_pass::EncryptedPass, model::{request::EventRequest, signature::{Signature, Signed}, HashId}, validation::proof::ValidationProof, Api, Config, Error
+    db::{Database, Storable}, helpers::encrypted_pass::EncryptedPass, model::{request::EventRequest, signature::{Signature, Signed}, HashId, SignTypes}, validation::proof::ValidationProof, Api, Config, Error
 };
 
 use identity::{
@@ -23,12 +23,6 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SignTypes {
-    Validation(ValidationProof)
-}
-
 
 /// Node struct.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -120,7 +114,7 @@ impl Node {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessage {
     RequestEvent(Signed<EventRequest>),
-    RequestSign(SignTypes),
+    SignRequest(SignTypes),
     GetOwnerIdentifier,
 }
 
@@ -131,7 +125,7 @@ impl Message for NodeMessage {}
 pub enum NodeResponse {
     /// Event request.
     RequestIdentifier(DigestIdentifier),
-    RequestSign(Signature),
+    SignRequest(Signature),
     /// Owner identifier.
     OwnerIdentifier(KeyIdentifier),
     Error(Error),
@@ -219,7 +213,7 @@ impl Handler<Node> for Node {
             NodeMessage::GetOwnerIdentifier => {
                 Ok(NodeResponse::OwnerIdentifier(self.owner()))
             },
-            NodeMessage::RequestSign(content) => {
+            NodeMessage::SignRequest(content) => {
                 let sign = match content {
                     SignTypes::Validation(validation) => {
                         self.sign(&validation)
@@ -228,7 +222,7 @@ impl Handler<Node> for Node {
 
                 match sign {
                     Ok(sign) => {
-                        Ok(NodeResponse::RequestSign(sign))
+                        Ok(NodeResponse::SignRequest(sign))
                     }, Err(e) => {
                         Ok(NodeResponse::Error(e))
                     }

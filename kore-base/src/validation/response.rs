@@ -24,9 +24,9 @@ use std::collections::HashSet;
     PartialOrd,
 )]
 pub struct ValidationTimeOut {
-    who: KeyIdentifier,
-    re_trys: u32,
-    timestamp: TimeStamp,
+    pub who: KeyIdentifier,
+    pub re_trys: u32,
+    pub timestamp: TimeStamp,
 }
 
 /// A Enum representing a validation response.
@@ -45,6 +45,6 @@ pub struct ValidationTimeOut {
 pub enum ValidationRes {
     Signature(Signature),
     TimeOut(ValidationTimeOut),
-    Error(String)
+    Error(KeyIdentifier)
 }
 

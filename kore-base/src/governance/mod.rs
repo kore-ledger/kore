@@ -136,6 +136,7 @@ impl Governance {
         namespace: Namespace,
     ) -> HashSet<KeyIdentifier> {
         let mut signers = HashSet::new();
+        // TODO: el owner no es miembro de la governanza por defecto, pero tiene todos los roles en una governanza, que no en un sujeto, donde lo añadimos?
         // by default the owner has all the roles, even if he is not a member or is not explicitly
 
         for rol in &self.model.roles {

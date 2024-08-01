@@ -7,8 +7,7 @@
 use crate::{
     db::Storable,
     model::{
-        event::Event as KoreEvent, request::EventRequest, signature::Signed,
-        Namespace, ValueWrapper,
+        event::Event as KoreEvent, request::EventRequest, signature::{Signature, Signed}, HashId, Namespace, SignTypes, ValueWrapper
     },
     Error,
 };
@@ -38,6 +37,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub struct Subject {
     /// The key pair used to sign the subject.
     keys: KeyPair,
+    /// Derivator for sign
+    derivator: DigestDerivator,
     /// The identifier of the subject.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance that drives this subject.
@@ -82,6 +83,7 @@ impl Subject {
     ///
     pub fn from_event(
         subject_keys: KeyPair,
+        derivator: DigestDerivator,
         event: &Signed<KoreEvent>,
     ) -> Result<Self, Error> {
         if let EventRequest::Create(request) =
@@ -89,6 +91,7 @@ impl Subject {
         {
             let subject = Subject {
                 keys: subject_keys,
+                derivator,
                 subject_id: event.content.subject_id.clone(),
                 governance_id: request.governance_id.clone(),
                 governance_version: event.content.gov_version,
@@ -255,12 +258,17 @@ impl Subject {
         self.sn = new_sn.into();
         Ok(())
     }
+
+    fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
+        Signature::new(content, &self.keys, self.derivator).map_err(|e| Error::Signature(format!("{}", e)))
+    }
 }
 
 impl Clone for Subject {
     fn clone(&self) -> Self {
         Subject {
             keys: self.keys.clone(),
+            derivator: self.derivator.clone(),
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
             governance_version: self.governance_version,
@@ -359,6 +367,8 @@ pub enum SubjectCommand {
     GetSubjectMetadata,
     /// Update the subject.
     UpdateSubject { event: Signed<KoreEvent> },
+    /// Sign request
+    SignRequest(SignTypes),
 }
 
 impl Message for SubjectCommand {}
@@ -370,6 +380,8 @@ pub enum SubjectResponse {
     SubjectState(SubjectState),
     /// The subject metadata.
     SubjectMetadata(SubjectMetadata),
+    SignRequest(Signature),
+    Error(Error),
     /// None.
     None,
 }
@@ -431,6 +443,22 @@ impl Handler<Subject> for Subject {
                 debug!("Emit event to update subject.");
                 ctx.event(event).await?;
                 Ok(SubjectResponse::None)
+            }
+            SubjectCommand::SignRequest(content) => {
+                let sign = match content {
+                    SignTypes::Validation(validation) => {
+                        self.sign(&validation)
+                    }
+                };
+
+                match sign {
+                    Ok(sign) => {
+                        Ok(SubjectResponse::SignRequest(sign))
+                    }, Err(e) => {
+                        Ok(SubjectResponse::Error(e))
+                    }
+                }
+                
             }
         }
     }
@@ -515,7 +543,7 @@ mod tests {
             content: event,
             signature,
         };
-        let subject = Subject::from_event(keys, &signed_event).unwrap();
+        let subject = Subject::from_event(keys, DigestDerivator::Blake3_256, &signed_event).unwrap();
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
@@ -596,7 +624,7 @@ mod tests {
             content: event,
             signature,
         };
-        let subject_a = Subject::from_event(keys, &signed_event).unwrap();
+        let subject_a = Subject::from_event(keys, DigestDerivator::Blake3_256, &signed_event).unwrap();
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

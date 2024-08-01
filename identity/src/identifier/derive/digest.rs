@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 use sha3::{Sha3_256, Sha3_512};
-use std::str::FromStr;
+use std::{default, str::FromStr};
 
 use crate::identifier::error::Error;
 
@@ -26,9 +26,11 @@ use super::Derivator;
     BorshDeserialize,
     PartialOrd,
     Ord,
+    Default
 )]
 pub enum DigestDerivator {
     Blake3_256,
+    #[default]
     Blake3_512,
     SHA2_256,
     SHA2_512,
