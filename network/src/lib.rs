@@ -14,11 +14,14 @@ mod service;
 mod transport;
 mod utils;
 mod worker;
-mod helpers;
 
+use std::fmt::Debug;
+
+pub use libp2p::{identity::{
+    ed25519::PublicKey as PublicKeyEd25519, secp256k1::PublicKey as PublicKeysecp256k1, PublicKey
+}, PeerId};
 pub use control_list::Config as ControlListConfig;
 pub use error::Error;
-pub use libp2p::PeerId;
 pub use routing::{Config as RoutingConfig, RoutingNode};
 pub use service::NetworkService;
 pub use tell::Config as TellConfig;
@@ -98,24 +101,15 @@ pub enum NodeType {
 }
 
 /// Command enumeration for the network service.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub enum Command {
     /// Send a message to the given peer.
     SendMessage {
         /// The peer to send the message to.
-        peer: String,
+        peer: PeerId,
         /// The message to send.
         message: Vec<u8>,
     },
-    /* TODO: is not being used
-    /// Bootstrap the network.
-    Bootstrap,
-        /// Start providing the given keys.
-    StartProviding {
-        /// The keys to provide.
-        keys: Vec<String>,
-    },
-    */
 }
 
 /// Event enumeration for the network service.
@@ -154,4 +148,26 @@ pub enum Event {
 
     /// Network error.
     Error(Error),
+}
+
+/// Command enumeration for the Helper service.
+#[derive(Debug, Serialize, Deserialize)]
+pub enum CommandHelper<T>
+where 
+    T: Debug + Serialize,
+{
+    SendMessage {
+        message: T
+    },
+    ReceivedMessage {
+        message: Vec<u8>
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ComunicateInfo  {
+    pub request_id: String,
+    pub to: String,
+    pub from: String,
+    pub from_actor: String,
 }

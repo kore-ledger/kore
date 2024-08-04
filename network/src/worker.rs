@@ -6,8 +6,10 @@
 
 // TODO: revisar eventos de la network. Ya no se los lanza a message receiver ahora debería manejarlos ella misma
 use crate::{
-    behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage}, helpers::Command as HelperCommand, service::NetworkService, transport::build_transport, utils::convert_addresses, Command, Config, Error, Event as NetworkEvent, NodeType
+    behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage}, CommandHelper, service::NetworkService, transport::build_transport, utils::convert_addresses, Command, Config, Error, Event as NetworkEvent, NodeType
 };
+
+use std::fmt::Debug;
 
 use identity::{identifier::derive::KeyDerivator, keys::{KeyMaterial, KeyPair}};
 
@@ -43,7 +45,10 @@ const TARGET_WORKER: &str = "KoreNetwork-Worker";
 ///
 /// The worker is responsible for handling the network events and commands.
 ///
-pub struct NetworkWorker {
+pub struct NetworkWorker<T> 
+where 
+    T: Debug + Serialize
+{
     /// Local Peer ID.
     local_peer_id: PeerId,
 
@@ -60,7 +65,7 @@ pub struct NetworkWorker {
     command_receiver: mpsc::Receiver<Command>,
 
     /// The command sender to Helper Intermediary.
-    helper_sender: Option<mpsc::Sender<HelperCommand>>,
+    helper_sender: Option<mpsc::Sender<CommandHelper<T>>>,
 
     /// The event sender.
     event_sender: mpsc::Sender<NetworkEvent>,
@@ -93,7 +98,7 @@ pub struct NetworkWorker {
     successful_dials: u64,
 }
 
-impl NetworkWorker {
+impl<T: Debug + Serialize> NetworkWorker<T> {
     /// Create a new `NetworkWorker`.
     pub fn new(
         registry: &mut Registry,
@@ -237,8 +242,9 @@ impl NetworkWorker {
 
     pub fn add_network_sender(
         mut self,
-        network_sender: mpsc::Sender<HelperCommand>,
-    ) {
+        network_sender: mpsc::Sender<CommandHelper<T>>,
+    )
+    {
         self.helper_sender = Some(network_sender);
     }
 
@@ -582,33 +588,11 @@ impl NetworkWorker {
     async fn handle_command(&mut self, command: Command) {
         match command {
             Command::SendMessage { peer, message } => {
-                if let Ok(peer) = PeerId::from_str(&peer) {
                     if let Err(error) = self.send_message(peer, message) {
                         error!(TARGET_WORKER, "Response error: {:?}", error);
                         self.send_event(NetworkEvent::Error(error)).await;
                     }
-                } else {
-                    error!(TARGET_WORKER, "Invalid peer id");
-                }
-            } /* TODO: is not being used
-            Command::Bootstrap => {
-    trace!(TARGET_WORKER, "Bootstrap to the kore network");
-    if let Err(error) = self.swarm.behaviour_mut().bootstrap() {
-        if self
-            .event_sender
-            .send(NetworkEvent::Error(error))
-            .await
-            .is_err()
-        {
-            error!(TARGET_WORKER, "Error sending bootstrap error event.");
-        }
-    }
-}
-Command::StartProviding { .. } => {
-    // TODO: Implement
-    //self.swarm.start_providing(keys);
-}
- */
+            }
         }
     }
 
@@ -1106,9 +1090,7 @@ mod tests {
         }
     }
 
-    /*
-    
-    
+    /* 
     #[tokio::test]
     #[ignore]
     async fn test_network_worker() {
@@ -1269,6 +1251,9 @@ mod tests {
     }
 */
 
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct Dummy {}
+
     // Build a relay server.
     fn build_worker(
         boot_nodes: Vec<RoutingNode>,
@@ -1276,7 +1261,7 @@ mod tests {
         node_type: NodeType,
         token: CancellationToken,
         tcp_addr: Option<String>,
-    ) -> (NetworkWorker, Receiver<NetworkEvent>) {
+    ) -> (NetworkWorker<Dummy>, Receiver<NetworkEvent>) {
         let listen_addresses = if let Some(addr) = tcp_addr {
             vec![addr]
         } else {

@@ -52,5 +52,11 @@ pub enum Error {
     Approval(String),
     /// Approval error.
     #[error("InvalidQuorum error: {0}")]
-    InvalidQuorum(String)
+    InvalidQuorum(String),
+    /// NetworkHelper error.
+    #[error("NetworkHelper error: {0}")]
+    NetworkHelper(String),
+    /// Network error.
+    #[error("NetworkHelper error: {0}")]
+    Network(String)
 }

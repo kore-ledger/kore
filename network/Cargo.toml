@@ -39,14 +39,16 @@ libp2p = { workspace = true, default_features = false, features = [
 	"plaintext",
 	"request-response",
 	"cbor",
-	"secp256k1"
+	"secp256k1",
 ] }
 linked_hash_set = { workspace = true }
 metrics = { workspace = true }
 prometheus-client = { workspace = true }
 smallvec = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-tell = { path = "../protocols/tell", default-features = false, features = ["binary"] }
+tell = { path = "../protocols/tell", default-features = false, features = [
+	"binary",
+] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "sync"] }
 tokio-util = { workspace = true }

@@ -7,12 +7,10 @@ use crate::{
     Error, 
     model::{ValueWrapper, HashId, request::EventRequest, signature::Signature},
 };
-use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashSet;
 
 /// A struct representing a validation request.
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

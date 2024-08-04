@@ -375,7 +375,7 @@ impl Handler<Validator> for Validator {
                 Ok(ValidatorResponse::None)
             }
             ValidatorCommand::NetworkRequest(validation_req) => {
-                // Validar y devolver la respuesta al helper, no a Validation.
+                // Validar y devolver la respuesta al helper, no a Validation. Nos llegó por la network la validación.
                 Ok(ValidatorResponse::None)
             }
         }
