@@ -45,7 +45,7 @@ use store::store::PersistentActor;
 use tracing::{debug, error};
 use validator::{Validator, ValidatorCommand};
 
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Duration};
 
 /// A struct for passing validation information.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -57,7 +57,7 @@ pub struct ValidationInfo {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Validation {
-    node_key: Option<KeyIdentifier>,
+    node_key: KeyIdentifier,
     // Quorum
     quorum: Quorum,
     // A quien preguntar
@@ -66,19 +66,28 @@ pub struct Validation {
     validators_response: Vec<SignersRes>,
     previous_proof: Option<ValidationProof>,
     prev_event_validation_response: Vec<SignersRes>,
+    in_validation: bool,
 }
 
 impl Validation {
-    fn set_node_key(& mut self, node_key: KeyIdentifier) {
-        self.node_key = Some(node_key);
+    fn set_node_key(&mut self, node_key: KeyIdentifier) {
+        self.node_key = node_key;
     }
 
-    fn set_quorum(& mut self, quorum: Quorum) {
+    fn set_quorum(&mut self, quorum: Quorum) {
         self.quorum = quorum;
     }
 
-    fn set_validators(& mut self, validators: HashSet<KeyIdentifier>) {
+    fn set_validators(&mut self, validators: HashSet<KeyIdentifier>) {
         self.validators = validators;
+    }
+
+    fn check_validator(&mut self, validator: KeyIdentifier) -> bool {
+        self.validators.remove(&validator)
+    }
+    
+    fn add_validator_response(&mut self, validator_res: SignersRes) {
+        self.validators_response.push(validator_res);
     }
 
     async fn create_validation_req(
@@ -235,34 +244,46 @@ impl Validation {
     async fn create_validators(
         &self,
         ctx: &mut ActorContext<Validation>,
-        request_id: DigestIdentifier,
+        request_id: &str,
         validation_req: ValidationReq,
-        signer: KeyIdentifier
-    ) -> Result<(), ActorError>{
+        signer: KeyIdentifier,
+    ) -> Result<(), ActorError> {
         // Create Validator child
-        let child = ctx.create_child(&format!("{}", signer), Validator::default()).await;
+        let child = ctx
+            .create_child(&format!("{}", signer), Validator::default())
+            .await;
         let validator_actor = match child {
             Ok(child) => child,
-            Err(e) => return Err(e)
+            Err(e) => return Err(e),
         };
 
         // Check node_key
-        if let Some(node_key) = self.node_key.clone() {
-            // We are signer
-            if signer == node_key {
-                if let Err(e) = validator_actor.tell(ValidatorCommand::LocalValidation(validation_req, signer)).await {
-                    return Err(e);
-                }
-            } 
-            // Other node is signer
-            else {
-                if let Err(e) = validator_actor.tell(ValidatorCommand::NetworkValidation(request_id, validation_req, signer)).await {
-                    return Err(e);
-                }
+        let our_key = self.node_key.clone();
+        // We are signer
+        if signer == our_key {
+            if let Err(e) = validator_actor
+                .tell(ValidatorCommand::LocalValidation {
+                    validation_req,
+                    our_key: signer,
+                })
+                .await
+            {
+                return Err(e);
             }
-        } else {
-            error!("It is impossible to get here, we have previously asked for the public key of the node and handled the errors");
-            unreachable!();
+        }
+        // Other node is signer
+        else {
+            if let Err(e) = validator_actor
+                .tell(ValidatorCommand::NetworkValidation {
+                    request_id: request_id.to_owned(),
+                    validation_req,
+                    node_key: signer,
+                    our_key,
+                })
+                .await
+            {
+                return Err(e);
+            }
         }
 
         Ok(())
@@ -271,22 +292,26 @@ impl Validation {
 
 #[derive(Debug, Clone)]
 pub enum ValidationCommand {
-    // (Request_id, validation_info)
-    Create((DigestIdentifier, ValidationInfo)),
+    Create {
+        request_id: DigestIdentifier,
+        info: ValidationInfo,
+    },
 
-    Response(ValidationResponse),
+    Response(ValidationRes),
 }
 
 impl Message for ValidationCommand {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ValidationEvent {}
+pub struct ValidationEvent {
+    request_id: DigestIdentifier,
+    info: ValidationInfo,
+}
 
 impl Event for ValidationEvent {}
 
 #[derive(Debug, Clone)]
 pub enum ValidationResponse {
-    Response(ValidationRes),
     Error(Error),
     None,
 }
@@ -304,6 +329,17 @@ impl Actor for Validation {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Starting validation actor with init store.");
+
+        let node_key = match self.get_node_key(ctx).await {
+            Ok(key) => key,
+            Err(e) => {
+                error!("Can not start Validation Actor, a problem getting keys of node: {}", e);
+                return Err(ActorError::Create);
+            }
+        };
+        // Update node_key
+        self.set_node_key(node_key.clone());
+
         self.init_store("validation", true, ctx).await
     }
 
@@ -325,32 +361,21 @@ impl Handler<Validation> for Validation {
         ctx: &mut ActorContext<Validation>,
     ) -> Result<ValidationResponse, ActorError> {
         match msg {
-            ValidationCommand::Create((request_id, validation_info)) => {
+            ValidationCommand::Create { request_id, info } => {
                 // Create Validation Request
-                let validation_req = match self
-                    .create_validation_req(ctx, validation_info.clone())
-                    .await
-                {
-                    Ok(validation_req) => validation_req,
-                    Err(e) => return Ok(ValidationResponse::Error(e)),
-                };
-
-                // Our node
-                if !self.node_key.is_some() {
-                    let node_key = match self.get_node_key(ctx).await {
-                        Ok(key) => key,
+                let validation_req =
+                    match self.create_validation_req(ctx, info.clone()).await {
+                        Ok(validation_req) => validation_req,
                         Err(e) => return Ok(ValidationResponse::Error(e)),
                     };
-                    // Update node_key
-                    self.set_node_key(node_key.clone());
-                }
+
                 // Get signers and quorum
                 let (signers, quorum) = match self
                     .get_signers_and_quorum(
                         ctx,
-                        validation_info.subject.governance_id,
-                        &validation_info.subject.schema_id,
-                        validation_info.subject.namespace,
+                        info.subject.governance_id,
+                        &info.subject.schema_id,
+                        info.subject.namespace,
                     )
                     .await
                 {
@@ -361,9 +386,18 @@ impl Handler<Validation> for Validation {
                 // Update quorum and validators
                 self.set_quorum(quorum);
                 self.set_validators(signers.clone());
+                let request_id = request_id.to_string();
 
                 for signer in signers {
-                    if let Err(error) = self.create_validators(ctx,request_id.clone() , validation_req.clone(), signer).await {
+                    if let Err(error) = self
+                        .create_validators(
+                            ctx,
+                            &request_id,
+                            validation_req.clone(),
+                            signer,
+                        )
+                        .await
+                    {
                         return Err(error);
                     }
                 }
@@ -371,15 +405,89 @@ impl Handler<Validation> for Validation {
                 Ok(ValidationResponse::None)
             }
             ValidationCommand::Response(response) => {
+                let node_key = match response {
+                    ValidationRes::Signature(signature) => signature.signer,
+                    ValidationRes::TimeOut(time_out) => time_out.who,
+                    ValidationRes::Error(error) => error.who,
+                };
+
+                // If node is in validator list
+                if self.check_validator(node_key) {
+                    
+                } else {
+                    // TODO la respuesta no es válida, nos ha llegado una validaciónde alguien que no esperabamos o ya habíamos recibido la respuesta.
+                }
+                
                 // Mirar qué hijo ha respondido
                 // Eliminarlo de la lista de pendientes
                 // hay que mirar que las validaciones sean todas iguales ¿?
                 // Comprar quorum, si quorum >= respuesta al padre (request)
-                // Los Hijos Retry podran responder None si el validador no responde en X tiempo, manejar eso.
 
                 Ok(ValidationResponse::None)
             }
         }
+    }
+    async fn on_event(
+        &mut self,
+        event: ValidationEvent,
+        ctx: &mut ActorContext<Validation>,
+    ) {
+        loop {
+            if !self.in_validation {
+                break;
+            } else {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+        let info = event.info;
+        let request_id = event.request_id;
+
+        let validation_req =
+            match self.create_validation_req(ctx, info.clone()).await {
+                Ok(validation_req) => validation_req,
+                Err(e) => {
+                    // Mensaje al padre de error return Ok(ValidationResponse::Error(e))
+                    return ;
+                },
+            };
+
+        // Get signers and quorum
+        let (signers, quorum) = match self
+            .get_signers_and_quorum(
+                ctx,
+                info.subject.governance_id,
+                &info.subject.schema_id,
+                info.subject.namespace,
+            )
+            .await
+        {
+            Ok(signers_quorum) => signers_quorum,
+            Err(e) => {
+                // Mensaje al padre de error return Ok(ValidationResponse::Error(e))
+                return ;
+            }
+        };
+
+        // Update quorum and validators
+        self.set_quorum(quorum);
+        self.set_validators(signers.clone());
+        let request_id = request_id.to_string();
+
+        for signer in signers {
+            if let Err(error) = self
+                .create_validators(
+                    ctx,
+                    &request_id,
+                    validation_req.clone(),
+                    signer,
+                )
+                .await
+            {
+                // Mensaje al padre de error return Err(error);
+                return ;
+            }
+        }
+        self.in_validation = true;
     }
 }
 

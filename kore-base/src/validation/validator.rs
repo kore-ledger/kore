@@ -1,20 +1,19 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::{collections::HashSet, fmt::format};
+use std::{collections::HashSet, fmt::format, str::FromStr, time::Duration};
 
 use crate::{
     governance::{
         Governance, GovernanceCommand, GovernanceResponse, RequestStage,
-    },
-    model::{signature::Signature, SignTypes},
-    node::{Node, NodeMessage, NodeResponse},
-    Error,
+    }, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{signature::Signature, SignTypes, TimeStamp}, node::{Node, NodeMessage, NodeResponse}, Error
 };
 
 use super::{
-    proof::ValidationProof, request::{SignersRes, ValidationReq}, response::ValidationRes, Validation, ValidationCommand, ValidationResponse
+    proof::ValidationProof, request::{SignersRes, ValidationReq}, response::{ValidationError, ValidationRes, ValidationTimeOut}, Validation, ValidationCommand, ValidationResponse
 };
+
+use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
 use identity::identifier::{
@@ -23,11 +22,11 @@ use identity::identifier::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use network::{Command, ComunicateInfo};
 use serde::{Deserialize, Serialize};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response, Retry, RetryStrategy, Strategy,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event, FixedIntervalStrategy, Handler, Message, Response, Retry, RetryStrategy, Strategy
 };
 
 use tracing::{debug, error};
@@ -35,6 +34,7 @@ use tracing::{debug, error};
 /// A struct representing a validator actor.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Validator {
+    request_id: String,
     finish: bool,
 }
 
@@ -295,18 +295,18 @@ impl Validator {
 
 #[derive(Debug, Clone)]
 pub enum ValidatorCommand {
-    LocalValidation(ValidationReq, KeyIdentifier),
-    NetworkValidation(DigestIdentifier, ValidationReq, KeyIdentifier),
-    NetworkResponse,
-    NetworkRequest(ValidationReq),
+    LocalValidation{validation_req: ValidationReq, our_key: KeyIdentifier},
+    NetworkValidation{request_id: String, validation_req: ValidationReq, node_key: KeyIdentifier, our_key: KeyIdentifier},
+    NetworkResponse{validation_res: ValidationRes, request_id: String},
+    NetworkRequest{validation_req: ValidationReq, info: ComunicateInfo},
 }
 
 impl Message for ValidatorCommand {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ValidatorEvent {
-    AllTryHaveBeenMade,
-    ReTry,
+    AllTryHaveBeenMade{node_key: KeyIdentifier},
+    ReTry(NetworkMessage),
 }
 
 impl Event for ValidatorEvent {}
@@ -333,13 +333,13 @@ impl Handler<Validator> for Validator {
         ctx: &mut ActorContext<Validator>,
     ) -> Result<ValidatorResponse, ActorError> {
         match msg {
-            ValidatorCommand::LocalValidation(validation_req, key_identifier) => {
+            ValidatorCommand::LocalValidation { validation_req, our_key } => {
                 // Validate event
-                let validation = match self.validation_event(ctx,validation_req).await {
-                    Ok(validation) => ValidationCommand::Response(ValidationResponse::Response(ValidationRes::Signature(validation))),
+                let validation = match self.validation_event(ctx, validation_req).await {
+                    Ok(validation) => ValidationCommand::Response(ValidationRes::Signature(validation)),
                     Err(e) => {
-                        // Log con el error.
-                        ValidationCommand::Response(ValidationResponse::Response(ValidationRes::Error(key_identifier)))
+                        // Log con el error. TODO
+                        ValidationCommand::Response(ValidationRes::Error(ValidationError { who: our_key, error: format!("{}", e) }))
                     }
                 };
                 
@@ -362,20 +362,81 @@ impl Handler<Validator> for Validator {
 
                 Ok(ValidatorResponse::None)
             }
-            ValidatorCommand::NetworkValidation(
-                request_id,
-                validation_req,
-                key_identifier,
-            ) => {
+            ValidatorCommand::NetworkValidation { request_id, validation_req, node_key, our_key } => {
                 // Lanzar evento donde lanzar los retrys
+                let message = NetworkMessage {
+                    info: ComunicateInfo { request_id, sender: our_key, reciver: node_key, reciver_actor: format!("/user/node/{}/validator", validation_req.subject_signature.signer) },
+                    message: ActorMessage::ValidationReq(validation_req)
+                };
+
+                if let Err(e) = ctx.event(ValidatorEvent::ReTry(message)).await {
+                    // TODO, error al crear evento, propagar hacia arriba
+                };
                 Ok(ValidatorResponse::None)
             }
-            ValidatorCommand::NetworkResponse => {
+            ValidatorCommand::NetworkResponse{validation_res, request_id} => {
+                if request_id == self.request_id {
+                // Validation path.
+                let validation_path = ctx.path().parent();
+
+                // Validation actor.
+                let validation_actor: Option<ActorRef<Validation>> =
+                ctx.system().get_actor(&validation_path).await;
+
+                if let Some(validation_actor) = validation_actor {
+                    if let Err(e) = validation_actor.tell(ValidationCommand::Response( validation_res )).await {
+                        // TODO error, no se puede enviar la response
+                       // return Err(e);
+                    }
+                } else {
+                    // TODO no se puede obtener validation! Parar.
+                    // Can not obtain parent actor
+                    // return Err(ActorError::Exists(validation_path));
+                }
                 // Recibir respuesta de la network, darle la respuesta al padre, sea un fallo o no.
+
+                self.finish = true;
+                } else {
+                    // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
+                }
+
                 Ok(ValidatorResponse::None)
             }
-            ValidatorCommand::NetworkRequest(validation_req) => {
+            ValidatorCommand::NetworkRequest{validation_req, info} => {
                 // Validar y devolver la respuesta al helper, no a Validation. Nos llegó por la network la validación.
+                // Sacar el Helper aquí
+                let new_info = ComunicateInfo{
+                    reciver: info.sender,
+                    sender: info.reciver.clone(),
+                    request_id: info.request_id,
+                    reciver_actor: format!("/user/node/{}/validation/{}", validation_req.subject_signature.signer ,info.reciver.clone())
+                };
+                let helper: Option<Intermediary> = ctx.system().get_helper("NetworkIntermediary").await;
+                let mut helper = if let Some(helper) = helper {
+                    helper
+                } else {
+                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con 
+                    // return Err(ActorError::Get("Error".to_owned()))
+                    return Err(ActorError::NotHelper)
+                };
+
+
+                let response =  match self.validation_event(ctx, validation_req.clone()).await {
+                    Ok(validation) => ValidationRes::Signature(validation),
+                    Err(e) => {
+                        // Log con el error. TODO
+                        ValidationRes::Error(ValidationError { who: validation_req.subject_signature.signer, error: format!("{}", e) })
+                        }
+                    };
+        
+
+                if let Err(e) = helper.send_command(network::CommandHelper::SendMessage { message: NetworkMessage{
+                    info: new_info,
+                    message: ActorMessage::ValidationRes(response)
+                }}).await {
+                    // error al enviar mensaje, propagar hacia arriba TODO
+                };      
+
                 Ok(ValidatorResponse::None)
             }
         }
@@ -387,12 +448,55 @@ impl Handler<Validator> for Validator {
         ctx: &mut ActorContext<Validator>,
     ) {
         match event {
-            ValidatorEvent::AllTryHaveBeenMade => {
-                // Si llega este evento y is_finished omitir (la respuesta llegó después de terminar los eventos)
-                // Si no está is_finished mandar un mensaje al padre con que No se pudo completar la validación para este actor, se supone que se da por validado.
+            ValidatorEvent::AllTryHaveBeenMade{node_key} => {
+                if !self.finish {
+                    // Validation path.
+                    let validation_path = ctx.path().parent();
+
+                    // Validation actor.
+                    let validation_actor: Option<ActorRef<Validation>> =
+                    ctx.system().get_actor(&validation_path).await;
+
+                    if let Some(validation_actor) = validation_actor {
+                        if let Err(e) = validation_actor.tell(ValidationCommand::Response(ValidationRes::TimeOut(ValidationTimeOut{
+                            re_trys: 3,
+                            timestamp: TimeStamp::now(),
+                            who: node_key
+                        }) )).await {
+                            // TODO error, no se puede enviar la response
+                           // return Err(e);
+                        }
+                    } else {
+                        // TODO no se puede obtener validation! Parar.
+                        // Can not obtain parent actor
+                        // return Err(ActorError::Exists(validation_path));
+                    }
+                }
             }
-            ValidatorEvent::ReTry => {
-                // Lanzar retrys (bloqueante)
+            ValidatorEvent::ReTry(message) => {
+                let path = ctx.path().clone() / "network";
+                // TODO analizar la estrategia.
+                let mut strategy = Strategy::FixedInterval(
+                    FixedIntervalStrategy::new(3, Duration::from_secs(1)),
+                );
+
+                if let Err(e) = self
+                .apply_retries(ctx, path, &mut strategy, message.clone())
+                .await {
+                    match e {
+                        ActorError::ReTry => {
+                            if let Err(e) = ctx.event(ValidatorEvent::AllTryHaveBeenMade{node_key: message.info.reciver}).await {
+                                // TODO, error al crear evento, propagar hacia arriba
+                            };
+                        },
+                        ActorError::Functional(e) => {
+                             // TODO, interno al hacer retry, propagar hacia arriba
+                        },
+                        _ => {
+                             // No puede llegar ningún tipo de error más
+                        }
+                    }
+                };
             }
         }
     }
@@ -443,10 +547,7 @@ impl Retry for Validator {
             } else {
                 error!("Max retries with actor {} reached.", path);
                 // emitir evento de que todos los intentos fueron realizados
-                Err(ActorError::Functional(format!(
-                    "Max retries with actor {} reached.",
-                    path
-                )))
+                Err(ActorError::ReTry)
             }
         } else {
             error!("Retries with actor {} failed. Unknown actor.", path);
@@ -461,15 +562,12 @@ impl Retry for Validator {
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct RetryValidator {}
 
-#[derive(Debug, Clone)]
-pub struct RetryValidatorCommand {}
-
-impl Message for RetryValidatorCommand {}
+impl Message for NetworkMessage {}
 
 #[async_trait]
 impl Actor for RetryValidator {
     type Event = ValidatorEvent;
-    type Message = RetryValidatorCommand;
+    type Message = NetworkMessage;
     type Response = ValidatorResponse;
 }
 
@@ -477,10 +575,21 @@ impl Actor for RetryValidator {
 impl Handler<RetryValidator> for RetryValidator {
     async fn handle_message(
         &mut self,
-        msg: RetryValidatorCommand,
+        msg: NetworkMessage,
         ctx: &mut ActorContext<RetryValidator>,
     ) -> Result<ValidatorResponse, ActorError> {
-        // Enviar mensaje a la network
+        let helper: Option<Intermediary> = ctx.system().get_helper("NetworkIntermediary").await;
+        let mut helper = if let Some(helper) = helper {
+            helper
+        } else {
+            // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con 
+            // return Err(ActorError::Get("Error".to_owned()))
+            return Err(ActorError::NotHelper)
+        };
+
+        if let Err(e) = helper.send_command(network::CommandHelper::SendMessage { message: msg}).await {
+            // error al enviar mensaje, propagar hacia arriba TODO
+        };    
         Ok(ValidatorResponse::None)
     }
 }

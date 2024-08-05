@@ -17,6 +17,7 @@ mod worker;
 
 use std::fmt::Debug;
 
+use identity::identifier::{key_identifier, KeyIdentifier};
 pub use libp2p::{identity::{
     ed25519::PublicKey as PublicKeyEd25519, secp256k1::PublicKey as PublicKeysecp256k1, PublicKey
 }, PeerId};
@@ -164,10 +165,10 @@ where
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ComunicateInfo  {
     pub request_id: String,
-    pub to: String,
-    pub from: String,
-    pub from_actor: String,
+    pub sender: KeyIdentifier,
+    pub reciver: KeyIdentifier,
+    pub reciver_actor: String,
 }
