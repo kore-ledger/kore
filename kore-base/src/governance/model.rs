@@ -22,7 +22,7 @@ pub enum Quorum {
 }
 
 impl Quorum {
-    fn check_quorum(&self, total_members: u32, signers: u32) -> bool {
+    pub fn check_quorum(&self, total_members: u32, signers: u32) -> bool {
         match self {
             Quorum::FIXED { fixed }  => {
                 let min = std::cmp::min(fixed, &total_members);

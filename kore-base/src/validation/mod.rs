@@ -18,7 +18,7 @@ use crate::{
         event::Event as KoreEvent,
         namespace,
         request::EventRequest,
-        signature::{Signature, Signed},
+        signature::{self, Signature, Signed},
         HashId, Namespace, SignTypes,
     },
     node::{Node, NodeMessage, NodeResponse},
@@ -60,12 +60,18 @@ pub struct Validation {
     node_key: KeyIdentifier,
     // Quorum
     quorum: Quorum,
-    // A quien preguntar
+    // Validators
     validators: HashSet<KeyIdentifier>,
-    // Respuestas
+    // Actual responses
     validators_response: Vec<SignersRes>,
+    // Validators quantity
+    validators_quantity: u32,
+
+    actual_proof: ValidationProof,
+
     previous_proof: Option<ValidationProof>,
     prev_event_validation_response: Vec<SignersRes>,
+
     in_validation: bool,
 }
 
@@ -85,7 +91,15 @@ impl Validation {
     fn check_validator(&mut self, validator: KeyIdentifier) -> bool {
         self.validators.remove(&validator)
     }
-    
+
+    fn set_validators_quantity(&mut self, quantity: u32) {
+        self.validators_quantity = quantity;
+    }
+
+    fn set_actual_proof(&mut self, proof: ValidationProof) {
+        self.actual_proof = proof;
+    }
+
     fn add_validator_response(&mut self, validator_res: SignersRes) {
         self.validators_response.push(validator_res);
     }
@@ -94,7 +108,7 @@ impl Validation {
         &self,
         ctx: &mut ActorContext<Validation>,
         validation_info: ValidationInfo,
-    ) -> Result<ValidationReq, Error> {
+    ) -> Result<(ValidationReq, ValidationProof), Error> {
         // Create proof from validation info
         let proof = ValidationProof::from_info(validation_info)?;
 
@@ -140,14 +154,17 @@ impl Validation {
             }
         };
 
-        Ok(ValidationReq {
+        Ok((
+            ValidationReq {
+                proof: proof.clone(),
+                subject_signature,
+                previous_proof: self.previous_proof.clone(),
+                prev_event_validation_response: self
+                    .prev_event_validation_response
+                    .clone(),
+            },
             proof,
-            subject_signature,
-            previous_proof: self.previous_proof.clone(),
-            prev_event_validation_response: self
-                .prev_event_validation_response
-                .clone(),
-        })
+        ))
     }
 
     async fn get_node_key(
@@ -362,50 +379,15 @@ impl Handler<Validation> for Validation {
     ) -> Result<ValidationResponse, ActorError> {
         match msg {
             ValidationCommand::Create { request_id, info } => {
-                // Create Validation Request
-                let validation_req =
-                    match self.create_validation_req(ctx, info.clone()).await {
-                        Ok(validation_req) => validation_req,
-                        Err(e) => return Ok(ValidationResponse::Error(e)),
-                    };
-
-                // Get signers and quorum
-                let (signers, quorum) = match self
-                    .get_signers_and_quorum(
-                        ctx,
-                        info.subject.governance_id,
-                        &info.subject.schema_id,
-                        info.subject.namespace,
-                    )
-                    .await
+                if let Err(e) =
+                    ctx.event(ValidationEvent { info, request_id }).await
                 {
-                    Ok(signers_quorum) => signers_quorum,
-                    Err(e) => return Ok(ValidationResponse::Error(e)),
-                };
-
-                // Update quorum and validators
-                self.set_quorum(quorum);
-                self.set_validators(signers.clone());
-                let request_id = request_id.to_string();
-
-                for signer in signers {
-                    if let Err(error) = self
-                        .create_validators(
-                            ctx,
-                            &request_id,
-                            validation_req.clone(),
-                            signer,
-                        )
-                        .await
-                    {
-                        return Err(error);
-                    }
+                    // TODO error al generar el evento.
                 }
-
                 Ok(ValidationResponse::None)
             }
             ValidationCommand::Response(response) => {
-                let node_key = match response {
+                let node_key = match response.clone() {
                     ValidationRes::Signature(signature) => signature.signer,
                     ValidationRes::TimeOut(time_out) => time_out.who,
                     ValidationRes::Error(error) => error.who,
@@ -413,14 +395,33 @@ impl Handler<Validation> for Validation {
 
                 // If node is in validator list
                 if self.check_validator(node_key) {
-                    
+                    // Check type of validation
+                    let validate = if let ValidationRes::Signature(signature) = response {
+                        SignersRes::Signature(signature)
+                    } else if let ValidationRes::TimeOut(time_out) = response {
+                        SignersRes::TimeOut(time_out)
+                    } else {
+                        // TODO es una response error, mostrar el error.
+                        return Ok(ValidationResponse::None);
+                    };
+                    // Add validate response
+                    self.add_validator_response(validate);
+                    if self.quorum.check_quorum(self.validators_quantity, self.validators_response.len() as u32) {
+                        // Terminar, enviar al request las validaciones y persistir el la prueba y las validaciones
+                        // El evento fue exitoso, se cumplió el quorum
+                    } else {
+                        if self.validators.is_empty() {
+                            // Terminar, enviar al request las validaciones y persistir el la prueba y las validaciones
+                            // El evento falló en la validación no se cumplió el quorum
+                        }
+                    }
+
                 } else {
-                    // TODO la respuesta no es válida, nos ha llegado una validaciónde alguien que no esperabamos o ya habíamos recibido la respuesta.
+                    // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                 }
-                
+
                 // Mirar qué hijo ha respondido
                 // Eliminarlo de la lista de pendientes
-                // hay que mirar que las validaciones sean todas iguales ¿?
                 // Comprar quorum, si quorum >= respuesta al padre (request)
 
                 Ok(ValidationResponse::None)
@@ -442,14 +443,15 @@ impl Handler<Validation> for Validation {
         let info = event.info;
         let request_id = event.request_id;
 
-        let validation_req =
+        let (validation_req, proof) =
             match self.create_validation_req(ctx, info.clone()).await {
                 Ok(validation_req) => validation_req,
                 Err(e) => {
                     // Mensaje al padre de error return Ok(ValidationResponse::Error(e))
-                    return ;
-                },
+                    return;
+                }
             };
+        self.set_actual_proof(proof);
 
         // Get signers and quorum
         let (signers, quorum) = match self
@@ -464,13 +466,14 @@ impl Handler<Validation> for Validation {
             Ok(signers_quorum) => signers_quorum,
             Err(e) => {
                 // Mensaje al padre de error return Ok(ValidationResponse::Error(e))
-                return ;
+                return;
             }
         };
 
         // Update quorum and validators
         self.set_quorum(quorum);
         self.set_validators(signers.clone());
+        self.set_validators_quantity(signers.len() as u32);
         let request_id = request_id.to_string();
 
         for signer in signers {
@@ -484,7 +487,7 @@ impl Handler<Validation> for Validation {
                 .await
             {
                 // Mensaje al padre de error return Err(error);
-                return ;
+                return;
             }
         }
         self.in_validation = true;
