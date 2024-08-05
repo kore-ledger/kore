@@ -3,12 +3,12 @@
 
 use crate::{
     approval::response::ApprovalResponse,
-    evaluation::response::EvaluationResponse, 
-    governance::RequestStage, 
+    evaluation::response::EvaluationResponse,
+    governance::RequestStage,
     model::{
         request::{EventRequest, StartRequest},
         signature::{Signature, Signed},
-    }, 
+    },
     Error,
 };
 
@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use identity::identifier::DigestIdentifier;
 use serde::{Deserialize, Serialize};
 
-/// Request state actor. 
+/// Request state actor.
 /// This actor manages the state of a request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestState {
@@ -27,7 +27,6 @@ pub struct RequestState {
 }
 
 impl RequestState {
-
     /// Creates a new `RequestState`.
     pub fn from_request(id: DigestIdentifier, request: EventRequest) -> Self {
         Self {

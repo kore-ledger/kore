@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use libp2p::{
-    swarm::{dummy, CloseConnection, ConnectionDenied, NetworkBehaviour, ToSwarm},
+    swarm::{
+        dummy, CloseConnection, ConnectionDenied, NetworkBehaviour, ToSwarm,
+    },
     Multiaddr, PeerId,
 };
 use serde::Deserialize;
@@ -64,13 +66,19 @@ impl Config {
     }
 
     /// Set Service list to consult allow list
-    pub fn with_service_allow_list(&mut self, service_allow_list: Vec<String>) -> Self {
+    pub fn with_service_allow_list(
+        &mut self,
+        service_allow_list: Vec<String>,
+    ) -> Self {
         self.service_allow_list = service_allow_list;
         self.clone()
     }
 
     /// Set Service list to consult block list
-    pub fn with_service_block_list(&mut self, service_block_list: Vec<String>) -> Self {
+    pub fn with_service_block_list(
+        &mut self,
+        service_block_list: Vec<String>,
+    ) -> Self {
         self.service_block_list = service_block_list;
         self.clone()
     }
@@ -170,8 +178,14 @@ impl Behaviour {
             loop {
                 interval.tick().await;
 
-                let ((vec_allow_peers, vec_block_peers), (successful_allow, successful_block)) =
-                    Behaviour::request_update_lists(&service_allow, &service_block).await;
+                let (
+                    (vec_allow_peers, vec_block_peers),
+                    (successful_allow, successful_block),
+                ) = Behaviour::request_update_lists(
+                    &service_allow,
+                    &service_block,
+                )
+                .await;
 
                 // If at least 1 update of the list was possible
                 if successful_allow != 0 {
@@ -309,7 +323,8 @@ impl Behaviour {
 
         // Access to state
         if let Ok(mut allow_peer) = self.allow_peers.lock() {
-            let close_peers: Vec<PeerId> = allow_peer.difference(&new_list).cloned().collect();
+            let close_peers: Vec<PeerId> =
+                allow_peer.difference(&new_list).cloned().collect();
 
             // Close connections with new blocked peers
             if let Ok(mut close_connections) = self.close_connections.lock() {
@@ -486,8 +501,12 @@ impl NetworkBehaviour for Behaviour {
     fn poll(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<libp2p::swarm::ToSwarm<Self::ToSwarm, libp2p::swarm::THandlerInEvent<Self>>>
-    {
+    ) -> std::task::Poll<
+        libp2p::swarm::ToSwarm<
+            Self::ToSwarm,
+            libp2p::swarm::THandlerInEvent<Self>,
+        >,
+    > {
         if let Ok(mut close_connections) = self.close_connections.lock() {
             if let Some(peer) = close_connections.pop_front() {
                 return Poll::Ready(ToSwarm::CloseConnection {
@@ -496,7 +515,6 @@ impl NetworkBehaviour for Behaviour {
                 });
             }
         }
-        
 
         self.waker = Some(cx.waker().clone());
         Poll::Pending
@@ -507,7 +525,10 @@ impl NetworkBehaviour for Behaviour {
 mod tests {
     use futures::StreamExt;
     use libp2p::{
-        swarm::{dial_opts::DialOpts, ConnectionError, DialError, ListenError, SwarmEvent},
+        swarm::{
+            dial_opts::DialOpts, ConnectionError, DialError, ListenError,
+            SwarmEvent,
+        },
         Swarm,
     };
     use libp2p_swarm_test::SwarmExt;
@@ -537,7 +558,10 @@ mod tests {
         }
     }
 
-    fn dial(dialer: &mut Swarm<Behaviour>, listener: &Swarm<Behaviour>) -> Result<(), DialError> {
+    fn dial(
+        dialer: &mut Swarm<Behaviour>,
+        listener: &Swarm<Behaviour>,
+    ) -> Result<(), DialError> {
         dialer.dial(
             DialOpts::peer_id(*listener.local_peer_id())
                 .addresses(listener.external_addresses().cloned().collect())
@@ -548,13 +572,17 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn cannot_dial_blocked_peer() {
-        let mut dialer = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut dialer =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut listener =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().block_peer(*listener.local_peer_id());
 
-        let DialError::Denied { cause } = dial(&mut dialer, &listener).unwrap_err() else {
+        let DialError::Denied { cause } =
+            dial(&mut dialer, &listener).unwrap_err()
+        else {
             panic!("unexpected dial error")
         };
         assert!(cause.downcast::<Blocked>().is_ok());
@@ -563,11 +591,15 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn cannot_dial_not_allowed_peer() {
-        let mut dialer = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut dialer =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut listener =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
         listener.listen().with_memory_addr_external().await;
 
-        let DialError::Denied { cause } = dial(&mut dialer, &listener).unwrap_err() else {
+        let DialError::Denied { cause } =
+            dial(&mut dialer, &listener).unwrap_err()
+        else {
             panic!("unexpected dial error")
         };
         assert!(cause.downcast::<NotAllowed>().is_ok());
@@ -576,8 +608,10 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn can_dial_allowed_not_blocked_peer() {
-        let mut dialer = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut dialer =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut listener =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
 
         listener.listen().with_memory_addr_external().await;
 
@@ -589,14 +623,18 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn cannot_dial_allowed_blocked_peer() {
-        let mut dialer = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut dialer =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut listener =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().block_peer(*listener.local_peer_id());
         dialer.behaviour_mut().allow_peer(*listener.local_peer_id());
 
-        let DialError::Denied { cause } = dial(&mut dialer, &listener).unwrap_err() else {
+        let DialError::Denied { cause } =
+            dial(&mut dialer, &listener).unwrap_err()
+        else {
             panic!("unexpected dial error")
         };
         assert!(cause.downcast::<Blocked>().is_ok());
@@ -605,8 +643,10 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn blocked_peer_cannot_dial_us() {
-        let mut dialer = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut dialer =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut listener =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().allow_peer(*listener.local_peer_id());
@@ -630,8 +670,10 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn not_allowed_peer_cannot_dial_us() {
-        let mut dialer = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut dialer =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut listener =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().allow_peer(*listener.local_peer_id());
@@ -660,7 +702,10 @@ mod tests {
                         if let Some(error) = cause {
                             match error {
                                 ConnectionError::IO(e) => {
-                                    assert_eq!(e.to_string(), "Right(Io(Kind(BrokenPipe)))");
+                                    assert_eq!(
+                                        e.to_string(),
+                                        "Right(Io(Kind(BrokenPipe)))"
+                                    );
                                     break;
                                 }
                                 _ => {
@@ -682,8 +727,10 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn connections_get_closed_upon_disallow() {
-        let mut dialer = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener = Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut dialer =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let mut listener =
+            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().allow_peer(*listener.local_peer_id());

@@ -4,12 +4,11 @@
 //! # Helper service
 //!
 
-use tokio::sync::mpsc::Sender;
-use network::CommandHelper as Command;
 use crate::Error;
+use network::CommandHelper as Command;
+use tokio::sync::mpsc::Sender;
 
 use super::NetworkMessage;
-
 
 /// The Helper service.
 #[derive(Debug, Clone)]
@@ -24,13 +23,16 @@ impl HelperService {
         Self { command_sender }
     }
 
-        /// Send command to the network worker.
-        pub async fn send_command(&mut self, command: Command<NetworkMessage>) -> Result<(), Error> {
-            self.command_sender
-                .send(command)
-                .await
-                .map_err(|e| Error::Network(e.to_string()))
-        }
+    /// Send command to the network worker.
+    pub async fn send_command(
+        &mut self,
+        command: Command<NetworkMessage>,
+    ) -> Result<(), Error> {
+        self.command_sender
+            .send(command)
+            .await
+            .map_err(|e| Error::Network(e.to_string()))
+    }
 
     /// Send a message to the Helper worker.
     pub fn sender(&self) -> Sender<Command<NetworkMessage>> {

@@ -13,8 +13,8 @@ use libp2p::{
     futures::FutureExt,
     kad::{
         store::MemoryStore, Behaviour as Kademlia, Config as KademliaConfig,
-        Event as KademliaEvent, GetClosestPeersError, GetRecordOk, QueryId, QueryResult, Quorum,
-        Record, RecordKey, K_VALUE,
+        Event as KademliaEvent, GetClosestPeersError, GetRecordOk, QueryId,
+        QueryResult, Quorum, Record, RecordKey, K_VALUE,
     },
     mdns::{self, tokio::Behaviour as MdnsTokio, Config as MdnsConfig},
     multiaddr::Protocol,
@@ -23,8 +23,8 @@ use libp2p::{
             toggle::{Toggle, ToggleConnectionHandler},
             ExternalAddrConfirmed,
         },
-        ConnectionDenied, ConnectionId, DialError, DialFailure, FromSwarm, NetworkBehaviour,
-        THandler, ToSwarm,
+        ConnectionDenied, ConnectionId, DialError, DialFailure, FromSwarm,
+        NetworkBehaviour, THandler, ToSwarm,
     },
     Multiaddr, PeerId, StreamProtocol,
 };
@@ -194,7 +194,8 @@ impl Behaviour {
 
     /// Returns true if the given peer is known.
     pub fn is_known_peer(&mut self, peer_id: &PeerId) -> bool {
-        self.public_nodes.contains_key(peer_id) || self.known_peers().contains(peer_id)
+        self.public_nodes.contains_key(peer_id)
+            || self.known_peers().contains(peer_id)
     }
     /*
         /// Sets the DHT random walk delay.
@@ -220,9 +221,9 @@ impl Behaviour {
     /// Bootstrap node.
     pub fn bootstrap(&mut self) -> Result<(), Error> {
         if let Some(kad) = self.kademlia.as_mut() {
-            let _ = kad
-                .bootstrap()
-                .map_err(|_| Error::Network("No known bootstrap nodes.".to_owned()))?;
+            let _ = kad.bootstrap().map_err(|_| {
+                Error::Network("No known bootstrap nodes.".to_owned())
+            })?;
             Ok(())
         } else {
             Err(Error::Network("Kademlia is not supported.".to_owned()))
@@ -255,7 +256,10 @@ impl Behaviour {
 
     /// Get known peer address.
     #[allow(dead_code)]
-    pub fn known_peer_addresses(&mut self, peer_id: &PeerId) -> Option<Vec<Multiaddr>> {
+    pub fn known_peer_addresses(
+        &mut self,
+        peer_id: &PeerId,
+    ) -> Option<Vec<Multiaddr>> {
         if let Some(k) = self.kademlia.as_mut() {
             for b in k.kbuckets() {
                 for e in b.iter() {
@@ -414,9 +418,9 @@ impl Behaviour {
         let ip = match addr.iter().next() {
             Some(Protocol::Ip4(ip)) => IpNetwork::from(ip),
             Some(Protocol::Ip6(ip)) => IpNetwork::from(ip),
-            Some(Protocol::Dns(_)) | Some(Protocol::Dns4(_)) | Some(Protocol::Dns6(_)) => {
-                return true
-            }
+            Some(Protocol::Dns(_))
+            | Some(Protocol::Dns4(_))
+            | Some(Protocol::Dns6(_)) => return true,
             _ => return false,
         };
         ip.is_global()
@@ -469,8 +473,9 @@ pub enum Event {
 }
 
 impl NetworkBehaviour for Behaviour {
-    type ConnectionHandler =
-        ToggleConnectionHandler<<Kademlia<MemoryStore> as NetworkBehaviour>::ConnectionHandler>;
+    type ConnectionHandler = ToggleConnectionHandler<
+        <Kademlia<MemoryStore> as NetworkBehaviour>::ConnectionHandler,
+    >;
     type ToSwarm = Event;
 
     fn handle_established_inbound_connection(
@@ -520,7 +525,9 @@ impl NetworkBehaviour for Behaviour {
             FromSwarm::DialFailure(e @ DialFailure { peer_id, error, .. }) => {
                 if let Some(peer_id) = peer_id {
                     if let DialError::Transport(errors) = error {
-                        if let Entry::Occupied(mut entry) = self.public_nodes.entry(peer_id) {
+                        if let Entry::Occupied(mut entry) =
+                            self.public_nodes.entry(peer_id)
+                        {
                             for (addr, _error) in errors {
                                 entry.get_mut().retain(|a| a != addr);
                             }
@@ -537,8 +544,11 @@ impl NetworkBehaviour for Behaviour {
                 self.kademlia
                     .on_swarm_event(FromSwarm::ExpiredListenAddr(e));
             }
-            FromSwarm::ExternalAddrConfirmed(e @ ExternalAddrConfirmed { addr }) => {
-                let new_addr = addr.clone().with(Protocol::P2p(self.local_peer_id));
+            FromSwarm::ExternalAddrConfirmed(
+                e @ ExternalAddrConfirmed { addr },
+            ) => {
+                let new_addr =
+                    addr.clone().with(Protocol::P2p(self.local_peer_id));
 
                 if is_reachable(addr) {
                     // NOTE: we might re-discover the same address multiple times
@@ -593,15 +603,22 @@ impl NetworkBehaviour for Behaviour {
         connection_id: libp2p::swarm::ConnectionId,
         event: libp2p::swarm::THandlerOutEvent<Self>,
     ) {
-        self.kademlia
-            .on_connection_handler_event(peer_id, connection_id, event);
+        self.kademlia.on_connection_handler_event(
+            peer_id,
+            connection_id,
+            event,
+        );
     }
 
     fn poll(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<libp2p::swarm::ToSwarm<Self::ToSwarm, libp2p::swarm::THandlerInEvent<Self>>>
-    {
+    ) -> std::task::Poll<
+        libp2p::swarm::ToSwarm<
+            Self::ToSwarm,
+            libp2p::swarm::THandlerInEvent<Self>,
+        >,
+    > {
         if let Some(ev) = self.pending_events.pop_front() {
             return Poll::Ready(ToSwarm::GenerateEvent(ev));
         }
@@ -611,30 +628,34 @@ impl NetworkBehaviour for Behaviour {
             if !self.pre_routing {
                 if let Some(next_random_walk) = self.next_random_walk.as_mut() {
                     while next_random_walk.poll_unpin(cx).is_ready() {
-                        let actually_started =
-                            if self.num_connections < self.discovery_only_if_under_num {
-                                let random_peer_id = PeerId::random();
-                                debug!(
-                                    target: TARGET_ROUTING,
-                                    "Kademlia => Starting random Kademlia request for {:?}",
-                                    random_peer_id,
-                                );
-                                kademlia.get_closest_peers(random_peer_id);
-                                true
-                            } else {
-                                debug!(
-                                    target: TARGET_ROUTING,
-                                    "Kademlia paused due to high number of connections ({})",
-                                    self.num_connections
-                                );
-                                false
-                            };
+                        let actually_started = if self.num_connections
+                            < self.discovery_only_if_under_num
+                        {
+                            let random_peer_id = PeerId::random();
+                            debug!(
+                                target: TARGET_ROUTING,
+                                "Kademlia => Starting random Kademlia request for {:?}",
+                                random_peer_id,
+                            );
+                            kademlia.get_closest_peers(random_peer_id);
+                            true
+                        } else {
+                            debug!(
+                                target: TARGET_ROUTING,
+                                "Kademlia paused due to high number of connections ({})",
+                                self.num_connections
+                            );
+                            false
+                        };
 
                         // Schedule the next random query with exponentially increasing delay,
                         // capped at 60 seconds.
-                        *next_random_walk = Delay::new(self.duration_to_next_kad);
-                        self.duration_to_next_kad =
-                            cmp::min(self.duration_to_next_kad * 2, Duration::from_secs(60));
+                        *next_random_walk =
+                            Delay::new(self.duration_to_next_kad);
+                        self.duration_to_next_kad = cmp::min(
+                            self.duration_to_next_kad * 2,
+                            Duration::from_secs(60),
+                        );
 
                         if actually_started {
                             let ev = Event::RandomKademliaStarted;
@@ -647,70 +668,78 @@ impl NetworkBehaviour for Behaviour {
 
         while let Poll::Ready(ev) = self.kademlia.poll(cx) {
             match ev {
-                ToSwarm::GenerateEvent(ev) => match ev {
-                    KademliaEvent::RoutingUpdated { .. } => {
-                        //let ev = Event::Discovered(peer);
-                        //return Poll::Ready(ToSwarm::GenerateEvent(ev));
-                    }
-                    KademliaEvent::UnroutablePeer { peer, .. } => {
-                        let ev = Event::UnroutablePeer(peer);
-                        return Poll::Ready(ToSwarm::GenerateEvent(ev));
-                    }
-                    KademliaEvent::RoutablePeer { peer, .. } => {
-                        let ev = Event::Discovered(peer);
-                        return Poll::Ready(ToSwarm::GenerateEvent(ev));
-                    }
-                    KademliaEvent::PendingRoutablePeer { .. }
-                    | KademliaEvent::InboundRequest { .. } => {
-                        // We are not interested in this event at the moment.
-                    }
-                    KademliaEvent::ModeChanged { .. } => {
-                        // We are not interested in this event at the moment.
-                    }
-                    KademliaEvent::OutboundQueryProgressed {
-                        result: QueryResult::GetClosestPeers(res),
-                        ..
-                    } => match res {
-                        Err(GetClosestPeersError::Timeout { key, peers }) => {
-                            debug!(
-                                target: TARGET_ROUTING,
-                                "Kademlia => Query for {:?} timed out with {} results",
-                                hex::encode(key), peers.len(),
-                            );
+                ToSwarm::GenerateEvent(ev) => {
+                    match ev {
+                        KademliaEvent::RoutingUpdated { .. } => {
+                            //let ev = Event::Discovered(peer);
+                            //return Poll::Ready(ToSwarm::GenerateEvent(ev));
                         }
-                        Ok(ok) => {
-                            trace!(
-                                target: TARGET_ROUTING,
-                                "Kademlia => Query for {:?} yielded {:?} results",
-                                hex::encode(&ok.key), ok.peers.len(),
-                            );
-                            if ok.peers.is_empty() && self.num_connections != 0 {
+                        KademliaEvent::UnroutablePeer { peer, .. } => {
+                            let ev = Event::UnroutablePeer(peer);
+                            return Poll::Ready(ToSwarm::GenerateEvent(ev));
+                        }
+                        KademliaEvent::RoutablePeer { peer, .. } => {
+                            let ev = Event::Discovered(peer);
+                            return Poll::Ready(ToSwarm::GenerateEvent(ev));
+                        }
+                        KademliaEvent::PendingRoutablePeer { .. }
+                        | KademliaEvent::InboundRequest { .. } => {
+                            // We are not interested in this event at the moment.
+                        }
+                        KademliaEvent::ModeChanged { .. } => {
+                            // We are not interested in this event at the moment.
+                        }
+                        KademliaEvent::OutboundQueryProgressed {
+                            result: QueryResult::GetClosestPeers(res),
+                            ..
+                        } => match res {
+                            Err(GetClosestPeersError::Timeout {
+                                key,
+                                peers,
+                            }) => {
                                 debug!(
                                     target: TARGET_ROUTING,
-                                    "Kademlia => Random Kademlia query has yielded empty results",
+                                    "Kademlia => Query for {:?} timed out with {} results",
+                                    hex::encode(key), peers.len(),
                                 );
                             }
-                            if let Ok(peer) = PeerId::from_bytes(&ok.key) {
-                                self.active_queries.remove(&peer);
-                                return Poll::Ready(ToSwarm::GenerateEvent(Event::ClosestPeers(
-                                    peer, ok.peers,
-                                )));
-                            } else {
-                                error!(
+                            Ok(ok) => {
+                                trace!(
                                     target: TARGET_ROUTING,
-                                    "Kademlia => Failed to parse peer id from key: {:?}",
-                                    hex::encode(&ok.key),
+                                    "Kademlia => Query for {:?} yielded {:?} results",
+                                    hex::encode(&ok.key), ok.peers.len(),
                                 );
+                                if ok.peers.is_empty()
+                                    && self.num_connections != 0
+                                {
+                                    debug!(
+                                        target: TARGET_ROUTING,
+                                        "Kademlia => Random Kademlia query has yielded empty results",
+                                    );
+                                }
+                                if let Ok(peer) = PeerId::from_bytes(&ok.key) {
+                                    self.active_queries.remove(&peer);
+                                    return Poll::Ready(
+                                        ToSwarm::GenerateEvent(
+                                            Event::ClosestPeers(peer, ok.peers),
+                                        ),
+                                    );
+                                } else {
+                                    error!(
+                                        target: TARGET_ROUTING,
+                                        "Kademlia => Failed to parse peer id from key: {:?}",
+                                        hex::encode(&ok.key),
+                                    );
+                                }
                             }
-                        }
-                    },
-                    KademliaEvent::OutboundQueryProgressed {
-                        result: QueryResult::GetRecord(res),
-                        stats,
-                        id,
-                        ..
-                    } => {
-                        let ev = match res {
+                        },
+                        KademliaEvent::OutboundQueryProgressed {
+                            result: QueryResult::GetRecord(res),
+                            stats,
+                            id,
+                            ..
+                        } => {
+                            let ev = match res {
                             Ok(GetRecordOk::FoundRecord(r)) => {
                                 debug!(
                                     target: TARGET_ROUTING,
@@ -781,50 +810,59 @@ impl NetworkBehaviour for Behaviour {
                                 )
                             }
                         };
-                        return Poll::Ready(ToSwarm::GenerateEvent(ev));
-                    }
-                    KademliaEvent::OutboundQueryProgressed {
-                        result: QueryResult::PutRecord(res),
-                        stats,
-                        ..
-                    } => {
-                        let ev = match res {
-                            Ok(ok) => Event::ValuePut(ok.key, stats.duration().unwrap_or_default()),
-                            Err(e) => {
-                                debug!(
-                                    target: "sub-libp2p",
-                                    "Libp2p => Failed to put record: {:?}",
-                                    e,
-                                );
-                                Event::ValuePutFailed(
-                                    e.into_key(),
+                            return Poll::Ready(ToSwarm::GenerateEvent(ev));
+                        }
+                        KademliaEvent::OutboundQueryProgressed {
+                            result: QueryResult::PutRecord(res),
+                            stats,
+                            ..
+                        } => {
+                            let ev = match res {
+                                Ok(ok) => Event::ValuePut(
+                                    ok.key,
                                     stats.duration().unwrap_or_default(),
-                                )
-                            }
-                        };
-                        return Poll::Ready(ToSwarm::GenerateEvent(ev));
+                                ),
+                                Err(e) => {
+                                    debug!(
+                                        target: "sub-libp2p",
+                                        "Libp2p => Failed to put record: {:?}",
+                                        e,
+                                    );
+                                    Event::ValuePutFailed(
+                                        e.into_key(),
+                                        stats.duration().unwrap_or_default(),
+                                    )
+                                }
+                            };
+                            return Poll::Ready(ToSwarm::GenerateEvent(ev));
+                        }
+                        KademliaEvent::OutboundQueryProgressed {
+                            result: QueryResult::RepublishRecord(res),
+                            ..
+                        } => match res {
+                            Ok(ok) => debug!(
+                                target: "sub-libp2p",
+                                "Libp2p => Record republished: {:?}",
+                                ok.key,
+                            ),
+                            Err(e) => debug!(
+                                target: "sub-libp2p",
+                                "Libp2p => Republishing of record {:?} failed with: {:?}",
+                                e.key(), e,
+                            ),
+                        },
+                        // We never start any other type of query.
+                        KademliaEvent::OutboundQueryProgressed {
+                            result: e,
+                            ..
+                        } => {
+                            warn!(target: "sub-libp2p", "Libp2p => Unhandled Kademlia event: {:?}", e)
+                        }
                     }
-                    KademliaEvent::OutboundQueryProgressed {
-                        result: QueryResult::RepublishRecord(res),
-                        ..
-                    } => match res {
-                        Ok(ok) => debug!(
-                            target: "sub-libp2p",
-                            "Libp2p => Record republished: {:?}",
-                            ok.key,
-                        ),
-                        Err(e) => debug!(
-                            target: "sub-libp2p",
-                            "Libp2p => Republishing of record {:?} failed with: {:?}",
-                            e.key(), e,
-                        ),
-                    },
-                    // We never start any other type of query.
-                    KademliaEvent::OutboundQueryProgressed { result: e, .. } => {
-                        warn!(target: "sub-libp2p", "Libp2p => Unhandled Kademlia event: {:?}", e)
-                    }
-                },
-                ToSwarm::Dial { opts } => return Poll::Ready(ToSwarm::Dial { opts }),
+                }
+                ToSwarm::Dial { opts } => {
+                    return Poll::Ready(ToSwarm::Dial { opts })
+                }
                 ToSwarm::NotifyHandler {
                     peer_id,
                     handler,
@@ -851,7 +889,9 @@ impl NetworkBehaviour for Behaviour {
                 ToSwarm::ExternalAddrExpired(e) => {
                     return Poll::Ready(ToSwarm::ExternalAddrExpired(e))
                 }
-                ToSwarm::ListenOn { opts } => return Poll::Ready(ToSwarm::ListenOn { opts }),
+                ToSwarm::ListenOn { opts } => {
+                    return Poll::Ready(ToSwarm::ListenOn { opts })
+                }
                 ToSwarm::NewExternalAddrCandidate(e) => {
                     return Poll::Ready(ToSwarm::NewExternalAddrCandidate(e))
                 }
@@ -867,12 +907,15 @@ impl NetworkBehaviour for Behaviour {
             match ev {
                 ToSwarm::GenerateEvent(event) => match event {
                     mdns::Event::Discovered(list) => {
-                        if self.num_connections >= self.discovery_only_if_under_num {
+                        if self.num_connections
+                            >= self.discovery_only_if_under_num
+                        {
                             continue;
                         }
 
                         for (peer_id, _) in list.iter() {
-                            self.pending_events.push_back(Event::Discovered(*peer_id));
+                            self.pending_events
+                                .push_back(Event::Discovered(*peer_id));
                         }
 
                         if let Some(ev) = self.pending_events.pop_front() {
@@ -902,7 +945,9 @@ impl NetworkBehaviour for Behaviour {
                 ToSwarm::ExternalAddrExpired(e) => {
                     return Poll::Ready(ToSwarm::ExternalAddrExpired(e))
                 }
-                ToSwarm::ListenOn { opts } => return Poll::Ready(ToSwarm::ListenOn { opts }),
+                ToSwarm::ListenOn { opts } => {
+                    return Poll::Ready(ToSwarm::ListenOn { opts })
+                }
                 ToSwarm::NewExternalAddrCandidate(e) => {
                     return Poll::Ready(ToSwarm::NewExternalAddrCandidate(e))
                 }
@@ -922,8 +967,11 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<(), libp2p::swarm::ConnectionDenied> {
-        self.kademlia
-            .handle_pending_inbound_connection(connection_id, local_addr, remote_addr)
+        self.kademlia.handle_pending_inbound_connection(
+            connection_id,
+            local_addr,
+            remote_addr,
+        )
     }
 
     fn handle_pending_outbound_connection(
@@ -951,24 +999,35 @@ impl NetworkBehaviour for Behaviour {
         }
 
         {
-            let mut list_to_filter = self.kademlia.handle_pending_outbound_connection(
-                connection_id,
-                maybe_peer,
-                addresses,
-                effective_role,
-            )?;
+            let mut list_to_filter =
+                self.kademlia.handle_pending_outbound_connection(
+                    connection_id,
+                    maybe_peer,
+                    addresses,
+                    effective_role,
+                )?;
 
-            list_to_filter.extend(self.mdns.handle_pending_outbound_connection(
-                connection_id,
-                maybe_peer,
-                addresses,
-                effective_role,
-            )?);
+            list_to_filter.extend(
+                self.mdns.handle_pending_outbound_connection(
+                    connection_id,
+                    maybe_peer,
+                    addresses,
+                    effective_role,
+                )?,
+            );
 
             if !self.allow_private_ip {
                 list_to_filter.retain(|addr| match addr.iter().next() {
-                    Some(Protocol::Ip4(addr)) if !IpNetwork::from(addr).is_global() => false,
-                    Some(Protocol::Ip6(addr)) if !IpNetwork::from(addr).is_global() => false,
+                    Some(Protocol::Ip4(addr))
+                        if !IpNetwork::from(addr).is_global() =>
+                    {
+                        false
+                    }
+                    Some(Protocol::Ip6(addr))
+                        if !IpNetwork::from(addr).is_global() =>
+                    {
+                        false
+                    }
                     _ => true,
                 });
             }
@@ -1114,7 +1173,8 @@ impl Config {
         if factor == 0 {
             self.kademlia_replication_factor = None;
         } else {
-            self.kademlia_replication_factor = Some(NonZeroUsize::new(factor).expect("Can't fail"));
+            self.kademlia_replication_factor =
+                Some(NonZeroUsize::new(factor).expect("Can't fail"));
         }
         self
     }
@@ -1241,13 +1301,17 @@ mod tests {
                             match e {
                                 SwarmEvent::Behaviour(behavior) => {
                                     match behavior {
-                                        Event::UnroutablePeer(other) | Event::Discovered(other) => {
+                                        Event::UnroutablePeer(other)
+                                        | Event::Discovered(other) => {
                                             // Call `add_self_reported_address` to simulate identify
                                             // happening.
                                             let addr = swarms
                                                 .iter()
                                                 .find_map(|(s, a)| {
-                                                    if s.behaviour().local_peer_id == other {
+                                                    if s.behaviour()
+                                                        .local_peer_id
+                                                        == other
+                                                    {
                                                         Some(a.clone())
                                                     } else {
                                                         None
@@ -1259,7 +1323,9 @@ mod tests {
                                                 .behaviour_mut()
                                                 .add_self_reported_address(
                                                     &other,
-                                                    &[StreamProtocol::new("/kore/routing/1.0.0")],
+                                                    &[StreamProtocol::new(
+                                                        "/kore/routing/1.0.0",
+                                                    )],
                                                     addr,
                                                 );
 
@@ -1313,9 +1379,11 @@ mod tests {
                 .to_peer_id()
         };
 
-        let remote_peer_id = predictable_peer_id(b"00000000000000000000000000000001");
+        let remote_peer_id =
+            predictable_peer_id(b"00000000000000000000000000000001");
         let remote_addr: Multiaddr = "/memory/1".parse().unwrap();
-        let another_peer_id = predictable_peer_id(b"00000000000000000000000000000002");
+        let another_peer_id =
+            predictable_peer_id(b"00000000000000000000000000000002");
         let another_addr: Multiaddr = "/memory/2".parse().unwrap();
 
         // Add a self-reported address with an unsupported protocol.
@@ -1342,9 +1410,10 @@ mod tests {
         let mut swarm = Swarm::new_ephemeral(|key_pair| {
             Behaviour::new(PeerId::from_public_key(&key_pair.public()), config)
         });
-        let listen_addr: Multiaddr = format!("/memory/{}", rand::random::<u64>())
-            .parse()
-            .unwrap();
+        let listen_addr: Multiaddr =
+            format!("/memory/{}", rand::random::<u64>())
+                .parse()
+                .unwrap();
         let _ = swarm.listen_on(listen_addr.clone()).unwrap();
 
         swarm.add_external_address(listen_addr.clone());

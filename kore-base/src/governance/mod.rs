@@ -426,9 +426,9 @@ impl Handler<Governance> for Governance {
                 stage,
                 schema_id,
                 namespace,
-            } => {
-                Ok(GovernanceResponse::Signers(self.get_signers(stage, &schema_id, namespace)))
-            }
+            } => Ok(GovernanceResponse::Signers(
+                self.get_signers(stage, &schema_id, namespace),
+            )),
         }
     }
 }

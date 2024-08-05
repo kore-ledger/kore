@@ -24,18 +24,15 @@ pub enum Quorum {
 impl Quorum {
     pub fn check_quorum(&self, total_members: u32, signers: u32) -> bool {
         match self {
-            Quorum::FIXED { fixed }  => {
+            Quorum::FIXED { fixed } => {
                 let min = std::cmp::min(fixed, &total_members);
                 signers >= *min
-            },
-            Quorum::MAJORITY => {
-                signers >= total_members / 2 + 1
-            },
+            }
+            Quorum::MAJORITY => signers >= total_members / 2 + 1,
             Quorum::PERCENTAGE { percentage } => {
                 signers >= ((total_members as f64 * percentage).ceil() as u32)
             }
         }
-        
     }
 }
 

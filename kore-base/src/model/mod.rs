@@ -27,7 +27,7 @@ use std::hash::Hash;
 // TODO: Separar los tipos de firma, que el sujeto tenga los suyos y el nodo los suyos, solo en caso de que sean muy diferentes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SignTypes {
-    Validation(ValidationProof)
+    Validation(ValidationProof),
 }
 
 /// A trait for generating a hash identifier.

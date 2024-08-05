@@ -17,12 +17,16 @@ mod worker;
 
 use std::fmt::Debug;
 
-use identity::identifier::{key_identifier, KeyIdentifier};
-pub use libp2p::{identity::{
-    ed25519::PublicKey as PublicKeyEd25519, secp256k1::PublicKey as PublicKeysecp256k1, PublicKey
-}, PeerId};
 pub use control_list::Config as ControlListConfig;
 pub use error::Error;
+use identity::identifier::{key_identifier, KeyIdentifier};
+pub use libp2p::{
+    identity::{
+        ed25519::PublicKey as PublicKeyEd25519,
+        secp256k1::PublicKey as PublicKeysecp256k1, PublicKey,
+    },
+    PeerId,
+};
 pub use routing::{Config as RoutingConfig, RoutingNode};
 pub use service::NetworkService;
 pub use tell::Config as TellConfig;
@@ -154,19 +158,15 @@ pub enum Event {
 /// Command enumeration for the Helper service.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CommandHelper<T>
-where 
+where
     T: Debug + Serialize,
 {
-    SendMessage {
-        message: T
-    },
-    ReceivedMessage {
-        message: Vec<u8>
-    }
+    SendMessage { message: T },
+    ReceivedMessage { message: Vec<u8> },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ComunicateInfo  {
+pub struct ComunicateInfo {
     pub request_id: String,
     pub sender: KeyIdentifier,
     pub reciver: KeyIdentifier,

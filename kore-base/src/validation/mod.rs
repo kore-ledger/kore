@@ -396,7 +396,9 @@ impl Handler<Validation> for Validation {
                 // If node is in validator list
                 if self.check_validator(node_key) {
                     // Check type of validation
-                    let validate = if let ValidationRes::Signature(signature) = response {
+                    let validate = if let ValidationRes::Signature(signature) =
+                        response
+                    {
                         SignersRes::Signature(signature)
                     } else if let ValidationRes::TimeOut(time_out) = response {
                         SignersRes::TimeOut(time_out)
@@ -406,7 +408,10 @@ impl Handler<Validation> for Validation {
                     };
                     // Add validate response
                     self.add_validator_response(validate);
-                    if self.quorum.check_quorum(self.validators_quantity, self.validators_response.len() as u32) {
+                    if self.quorum.check_quorum(
+                        self.validators_quantity,
+                        self.validators_response.len() as u32,
+                    ) {
                         // Terminar, enviar al request las validaciones y persistir el la prueba y las validaciones
                         // El evento fue exitoso, se cumplió el quorum
                     } else {
@@ -415,7 +420,6 @@ impl Handler<Validation> for Validation {
                             // El evento falló en la validación no se cumplió el quorum
                         }
                     }
-
                 } else {
                     // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                 }

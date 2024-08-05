@@ -1,14 +1,26 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{Error, model::{ValueWrapper, HashId}};
-use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
+use crate::{
+    model::{HashId, ValueWrapper},
+    Error,
+};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 /// A struct representing an evaluation response.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 pub struct EvaluationResponse {
     /// The patch to apply to the state.
     pub patch: ValueWrapper,
@@ -23,7 +35,10 @@ pub struct EvaluationResponse {
 }
 
 impl HashId for EvaluationResponse {
-    fn hash_id(&self, derivator: DigestDerivator) -> Result<DigestIdentifier, Error> {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(
             (
                 &self.eval_req_hash,

@@ -1,11 +1,8 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{
-    Error, 
-    model::HashId,
-};
-use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
+use crate::{model::HashId, Error};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -31,9 +28,14 @@ pub struct ApprovalResponse {
 }
 
 impl HashId for ApprovalResponse {
-    fn hash_id(&self, derivator: DigestDerivator) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(|_| {
-            Error::Approval("HashId for ApprovalResponse Fails".to_string())
-        })
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |_| {
+                Error::Approval("HashId for ApprovalResponse Fails".to_string())
+            },
+        )
     }
 }

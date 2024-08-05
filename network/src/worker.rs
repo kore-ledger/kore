@@ -6,17 +6,26 @@
 
 // TODO: revisar eventos de la network. Ya no se los lanza a message receiver ahora debería manejarlos ella misma
 use crate::{
-    behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage}, CommandHelper, service::NetworkService, transport::build_transport, utils::convert_addresses, Command, Config, Error, Event as NetworkEvent, NodeType
+    behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage},
+    service::NetworkService,
+    transport::build_transport,
+    utils::convert_addresses,
+    Command, CommandHelper, Config, Error, Event as NetworkEvent, NodeType,
 };
 
 use std::fmt::Debug;
 
-use identity::{identifier::derive::KeyDerivator, keys::{KeyMaterial, KeyPair}};
+use identity::{
+    identifier::derive::KeyDerivator,
+    keys::{KeyMaterial, KeyPair},
+};
 
 use libp2p::{
     core::ConnectedPoint,
     identity::{
-        ed25519::{self, PublicKey as PublicKeyEd25519}, secp256k1::{self, PublicKey as PublicKeysecp256k1}, Keypair, PublicKey
+        ed25519::{self, PublicKey as PublicKeyEd25519},
+        secp256k1::{self, PublicKey as PublicKeysecp256k1},
+        Keypair, PublicKey,
     },
     request_response::{self, OutboundRequestId, ResponseChannel},
     swarm::{self, dial_opts::DialOpts, SwarmEvent},
@@ -36,7 +45,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, trace, warn};
 
 use std::{
-    collections::{HashMap, VecDeque}, str::FromStr, sync::{Arc, Mutex}
+    collections::{HashMap, VecDeque},
+    str::FromStr,
+    sync::{Arc, Mutex},
 };
 
 const TARGET_WORKER: &str = "KoreNetwork-Worker";
@@ -45,9 +56,9 @@ const TARGET_WORKER: &str = "KoreNetwork-Worker";
 ///
 /// The worker is responsible for handling the network events and commands.
 ///
-pub struct NetworkWorker<T> 
-where 
-    T: Debug + Serialize
+pub struct NetworkWorker<T>
+where
+    T: Debug + Serialize,
 {
     /// Local Peer ID.
     local_peer_id: PeerId,
@@ -89,7 +100,8 @@ where
     request_sent: HashMap<PeerId, Vec<OutboundRequestId>>,
 
     /// Ephemeral responses.
-    ephemeral_responses: HashMap<PeerId, VecDeque<ResponseChannel<ReqResMessage>>>,
+    ephemeral_responses:
+        HashMap<PeerId, VecDeque<ResponseChannel<ReqResMessage>>>,
 
     /// Messages metric.
     messages_metric: Family<MetricLabels, Counter>,
@@ -115,19 +127,21 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
         let key = match keyderivator {
             KeyDerivator::Ed25519 => {
-                let sk = ed25519::SecretKey::try_from_bytes(keys.secret_key_bytes())
-                .expect("Invalid keypair");
-            let kp = ed25519::Keypair::from(sk);
-            Keypair::from(kp)
-            },
+                let sk =
+                    ed25519::SecretKey::try_from_bytes(keys.secret_key_bytes())
+                        .expect("Invalid keypair");
+                let kp = ed25519::Keypair::from(sk);
+                Keypair::from(kp)
+            }
             KeyDerivator::Secp256k1 => {
-                let sk = secp256k1::SecretKey::try_from_bytes(keys.secret_key_bytes())
+                let sk = secp256k1::SecretKey::try_from_bytes(
+                    keys.secret_key_bytes(),
+                )
                 .expect("Invalid keypair");
-            let kp = secp256k1::Keypair::from(sk);
-            Keypair::from(kp)
+                let kp = secp256k1::Keypair::from(sk);
+                Keypair::from(kp)
             }
         };
-
 
         // Generate the `PeerId` from the public key.
         let local_peer_id = key.public().to_peer_id();
@@ -151,7 +165,8 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         };
 
         // Create the shared external addresses.
-        let shared_external_addresses = Arc::new(Mutex::new(shared_external_addresses.clone()));
+        let shared_external_addresses =
+            Arc::new(Mutex::new(shared_external_addresses.clone()));
 
         // Create the swarm.
         let mut swarm = Swarm::new(
@@ -243,8 +258,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
     pub fn add_network_sender(
         mut self,
         network_sender: mpsc::Sender<CommandHelper<T>>,
-    )
-    {
+    ) {
         self.helper_sender = Some(network_sender);
     }
 
@@ -260,7 +274,8 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
     /// Remove boot node.
     pub fn remove_boot_node(&mut self, peer: PeerId) {
-        if let Some(pos) = self.boot_nodes.iter().position(|val| val.0 == peer) {
+        if let Some(pos) = self.boot_nodes.iter().position(|val| val.0 == peer)
+        {
             self.boot_nodes.remove(pos);
         }
     }
@@ -268,7 +283,11 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
     /// Send message to a peer.
     ///
     ///
-    fn send_message(&mut self, peer: PeerId, message: Vec<u8>) -> Result<(), Error> {
+    fn send_message(
+        &mut self,
+        peer: PeerId,
+        message: Vec<u8>,
+    ) -> Result<(), Error> {
         // Checks if the peer has a response channel.
         if let Some(responses) = self.ephemeral_responses.get_mut(&peer) {
             if let Some(response_channel) = responses.pop_front() {
@@ -290,20 +309,31 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
     /// Add pending message to peer.
     fn add_pending_outbound_message(&mut self, peer: PeerId, message: Vec<u8>) {
-        let pending_messages = self.pending_outbound_messages.entry(peer).or_default();
+        let pending_messages =
+            self.pending_outbound_messages.entry(peer).or_default();
         pending_messages.push_back(message);
     }
 
     /// Add request sent to peer.
-    fn add_request_sent(&mut self, peer: PeerId, request_id: OutboundRequestId) {
+    fn add_request_sent(
+        &mut self,
+        peer: PeerId,
+        request_id: OutboundRequestId,
+    ) {
         let requests = self.request_sent.entry(peer).or_default();
         requests.push(request_id);
     }
 
     /// Remove request sent to peer.
-    fn remove_request_sent(&mut self, peer: PeerId, request_id: OutboundRequestId) {
+    fn remove_request_sent(
+        &mut self,
+        peer: PeerId,
+        request_id: OutboundRequestId,
+    ) {
         if let Some(requests) = self.request_sent.get_mut(&peer) {
-            if let Some(pos) = requests.iter().position(|val| *val == request_id) {
+            if let Some(pos) =
+                requests.iter().position(|val| *val == request_id)
+            {
                 requests.remove(pos);
             }
         }
@@ -322,7 +352,8 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
     /// Send pending messages to peer.
     fn send_pending_outbound_messages(&mut self, peer: PeerId) {
         if self.swarm.behaviour_mut().is_known_peer(&peer) {
-            if let Some(messages) = self.pending_outbound_messages.remove(&peer) {
+            if let Some(messages) = self.pending_outbound_messages.remove(&peer)
+            {
                 for message in messages.iter() {
                     if self.node_type == NodeType::Ephemeral {
                         let id = self
@@ -331,7 +362,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             .send_request(&peer, message.clone());
                         self.add_request_sent(peer, id);
                     } else {
-                        self.swarm.behaviour_mut().send_tell(&peer, message.clone());
+                        self.swarm
+                            .behaviour_mut()
+                            .send_tell(&peer, message.clone());
                     }
                 }
             } else {
@@ -411,9 +444,15 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                 .await
                                 .is_err()
                             {
-                                error!(TARGET_WORKER, "Error sending network error event.");
+                                error!(
+                                    TARGET_WORKER,
+                                    "Error sending network error event."
+                                );
                             }
-                            error!(TARGET_WORKER, "Can't connect to kore network");
+                            error!(
+                                TARGET_WORKER,
+                                "Can't connect to kore network"
+                            );
                             self.change_state(NetworkState::Disconnected).await;
                         } else {
                             let copy_boot_nodes = self.boot_nodes.clone();
@@ -421,16 +460,24 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                 if self
                                     .swarm
                                     .dial(
-                                        DialOpts::peer_id(node.0).addresses(node.1.clone()).build(),
+                                        DialOpts::peer_id(node.0)
+                                            .addresses(node.1.clone())
+                                            .build(),
                                     )
                                     .is_err()
                                 {
-                                    error!(TARGET_WORKER, "Error dialing boot node {}", node.0);
-                                    self.swarm.behaviour_mut().remove_node(&node.0, &node.1);
-                                    if let Some(pos) = self
-                                        .boot_nodes
-                                        .iter()
-                                        .position(|val| val.clone() == (node.0, node.1.clone()))
+                                    error!(
+                                        TARGET_WORKER,
+                                        "Error dialing boot node {}", node.0
+                                    );
+                                    self.swarm
+                                        .behaviour_mut()
+                                        .remove_node(&node.0, &node.1);
+                                    if let Some(pos) =
+                                        self.boot_nodes.iter().position(|val| {
+                                            val.clone()
+                                                == (node.0, node.1.clone())
+                                        })
                                     {
                                         self.boot_nodes.remove(pos);
                                     }
@@ -451,7 +498,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             self.change_state(NetworkState::Dial).await;
                         }
                         // No more bootnodes to send dial and none was successful
-                        else if self.boot_nodes.is_empty() && self.successful_dials == 0 {
+                        else if self.boot_nodes.is_empty()
+                            && self.successful_dials == 0
+                        {
                             self.change_state(NetworkState::Disconnected).await;
                         // No more bootnodes to send dial and one or more was successful
                         } else if self.boot_nodes.is_empty() {
@@ -462,7 +511,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         break;
                     }
                     NetworkState::Disconnected => {
-                        result = Err(Error::Network("Can't connect to kore network".to_owned()));
+                        result = Err(Error::Network(
+                            "Can't connect to kore network".to_owned(),
+                        ));
                         break;
                     }
                     _ => {}
@@ -483,7 +534,10 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
     }
 
     /// Handle connection events.
-    async fn handle_connection_events(&mut self, event: SwarmEvent<BehaviourEvent>) {
+    async fn handle_connection_events(
+        &mut self,
+        event: SwarmEvent<BehaviourEvent>,
+    ) {
         info!(TARGET_WORKER, "Handle connection event: {:?}", event);
         match event {
             SwarmEvent::NewListenAddr { address, .. } => {
@@ -499,7 +553,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 error: _,
             } => {
                 error!(TARGET_WORKER, "Error dialing peer {}", peer_id);
-                if let Some(pos) = self.boot_nodes.iter().position(|val| val.0 == peer_id) {
+                if let Some(pos) =
+                    self.boot_nodes.iter().position(|val| val.0 == peer_id)
+                {
                     self.swarm
                         .behaviour_mut()
                         .remove_node(&peer_id, &self.boot_nodes[pos].1);
@@ -513,10 +569,15 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             } => {
                 info!(
                     TARGET_WORKER,
-                    "Incoming connection from {} to {}.", send_back_addr, local_addr
+                    "Incoming connection from {} to {}.",
+                    send_back_addr,
+                    local_addr
                 );
             }
-            SwarmEvent::Behaviour(BehaviourEvent::Identified { peer_id, info }) => {
+            SwarmEvent::Behaviour(BehaviourEvent::Identified {
+                peer_id,
+                info,
+            }) => {
                 info!(TARGET_WORKER, "Identified peer {}", peer_id);
                 // Add identified peer to the behaviour.
                 self.swarm
@@ -525,13 +586,19 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
                 // If the identified peer is the current dialing, send event and change the state to running.
 
-                trace!(TARGET_WORKER, "Connected to bootstrap node {}", peer_id);
+                trace!(
+                    TARGET_WORKER,
+                    "Connected to bootstrap node {}",
+                    peer_id
+                );
                 self.send_event(NetworkEvent::ConnectedToBootstrap {
                     peer: peer_id.to_string(),
                 })
                 .await;
 
-                if let Some(pos) = self.boot_nodes.iter().position(|val| val.0 == peer_id) {
+                if let Some(pos) =
+                    self.boot_nodes.iter().position(|val| val.0 == peer_id)
+                {
                     self.successful_dials += 1;
                     self.boot_nodes.remove(pos);
                 }
@@ -542,10 +609,13 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 if cause.is_some() {
                     match cause.unwrap() {
                         swarm::ConnectionError::KeepAliveTimeout => {
-                            if let Some(pos) =
-                                self.boot_nodes.iter().position(|val| val.0 == peer_id)
+                            if let Some(pos) = self
+                                .boot_nodes
+                                .iter()
+                                .position(|val| val.0 == peer_id)
                             {
-                                self.retry_boot_nodes.push(self.boot_nodes[pos].clone());
+                                self.retry_boot_nodes
+                                    .push(self.boot_nodes[pos].clone());
                                 self.boot_nodes.remove(pos);
                             }
                         }
@@ -588,10 +658,10 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
     async fn handle_command(&mut self, command: Command) {
         match command {
             Command::SendMessage { peer, message } => {
-                    if let Err(error) = self.send_message(peer, message) {
-                        error!(TARGET_WORKER, "Response error: {:?}", error);
-                        self.send_event(NetworkEvent::Error(error)).await;
-                    }
+                if let Err(error) = self.send_message(peer, message) {
+                    error!(TARGET_WORKER, "Response error: {:?}", error);
+                    self.send_event(NetworkEvent::Error(error)).await;
+                }
             }
         }
     }
@@ -612,27 +682,33 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
-            } => match endpoint {
-                ConnectedPoint::Dialer { address, .. } => {
-                    info!(
+            } => {
+                match endpoint {
+                    ConnectedPoint::Dialer { address, .. } => {
+                        info!(
                         TARGET_WORKER,
                         "Connection established to peer {} with address {}.", peer_id, address
                     );
+                    }
+                    ConnectedPoint::Listener { send_back_addr, .. } => {
+                        info!(
+                            TARGET_WORKER,
+                            "Connection established from address {}.",
+                            send_back_addr,
+                        );
+                    }
                 }
-                ConnectedPoint::Listener { send_back_addr, .. } => {
-                    info!(
-                        TARGET_WORKER,
-                        "Connection established from address {}.", send_back_addr,
-                    );
-                }
-            },
+            }
             SwarmEvent::Behaviour(BehaviourEvent::PeersFounded(key, peers)) => {
                 if peers.contains(&key) {
                     info!(TARGET_WORKER, "Peer {} found in the network", key);
                     self.send_pending_outbound_messages(key);
                 }
             }
-            SwarmEvent::Behaviour(BehaviourEvent::Identified { peer_id, info }) => {
+            SwarmEvent::Behaviour(BehaviourEvent::Identified {
+                peer_id,
+                info,
+            }) => {
                 // Send identified peer event.
                 let addresses = info
                     .listen_addrs
@@ -662,7 +738,10 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                     self.send_pending_outbound_messages(peer_id);
                 }
             }
-            SwarmEvent::Behaviour(BehaviourEvent::TellMessage { peer_id, message }) => {
+            SwarmEvent::Behaviour(BehaviourEvent::TellMessage {
+                peer_id,
+                message,
+            }) => {
                 //trace!(TARGET_WORKER, "Message received from peer {}", peer_id);
                 let result = self
                     .event_sender
@@ -677,7 +756,11 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         "Could not receive message from peer {}", peer_id
                     );
                 } else {
-                    trace!(TARGET_WORKER, "Message received from peer {}.", peer_id);
+                    trace!(
+                        TARGET_WORKER,
+                        "Message received from peer {}.",
+                        peer_id
+                    );
                     self.messages_metric
                         .get_or_create(&MetricLabels {
                             fact: Fact::Received,
@@ -686,14 +769,19 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         .inc();
                 }
             }
-            SwarmEvent::Behaviour(BehaviourEvent::ReqresMessage { peer_id, message }) => {
+            SwarmEvent::Behaviour(BehaviourEvent::ReqresMessage {
+                peer_id,
+                message,
+            }) => {
                 debug!(
                     TARGET_WORKER,
                     "Request-response message received from peer {}", peer_id
                 );
                 match message {
                     request_response::Message::Request {
-                        request, channel, ..
+                        request,
+                        channel,
+                        ..
                     } => {
                         self.add_ephemeral_response(peer_id, channel);
                         if self
@@ -707,10 +795,15 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         {
                             error!(
                                 TARGET_WORKER,
-                                "Could not receive request from peer {}", peer_id
+                                "Could not receive request from peer {}",
+                                peer_id
                             );
                         } else {
-                            trace!(TARGET_WORKER, "Request received from peer {}.", peer_id);
+                            trace!(
+                                TARGET_WORKER,
+                                "Request received from peer {}.",
+                                peer_id
+                            );
                             self.messages_metric
                                 .get_or_create(&MetricLabels {
                                     fact: Fact::Received,
@@ -723,42 +816,62 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         request_id,
                         response,
                     } => {
-                        if let Some(reqs) = self.request_sent.get_mut(&peer_id) {
-                            if let Some(pos) = reqs.iter().position(|x| *x == request_id) {
+                        if let Some(reqs) = self.request_sent.get_mut(&peer_id)
+                        {
+                            if let Some(pos) =
+                                reqs.iter().position(|x| *x == request_id)
+                            {
                                 reqs.remove(pos);
-                                debug!(TARGET_WORKER, "Message response from peer {}", peer_id);
-                                self.send_event(NetworkEvent::MessageReceived {
-                                    peer: peer_id.to_string(),
-                                    message: response.0,
-                                })
+                                debug!(
+                                    TARGET_WORKER,
+                                    "Message response from peer {}", peer_id
+                                );
+                                self.send_event(
+                                    NetworkEvent::MessageReceived {
+                                        peer: peer_id.to_string(),
+                                        message: response.0,
+                                    },
+                                )
                                 .await;
                             } else {
                                 error!(
                                     TARGET_WORKER,
-                                    "Request outbound for peer {} not found.", peer_id
-                                );
-                                self.send_event(NetworkEvent::Error(Error::Worker(format!(
                                     "Request outbound for peer {} not found.",
                                     peer_id
-                                ))))
+                                );
+                                self.send_event(NetworkEvent::Error(
+                                    Error::Worker(format!(
+                                    "Request outbound for peer {} not found.",
+                                    peer_id
+                                )),
+                                ))
                                 .await;
                             }
                         } else {
                             error!(
                                 TARGET_WORKER,
-                                "There are no pending responses for peer {}.", peer_id
-                            );
-                            self.send_event(NetworkEvent::Error(Error::Worker(format!(
                                 "There are no pending responses for peer {}.",
                                 peer_id
-                            ))))
+                            );
+                            self.send_event(NetworkEvent::Error(
+                                Error::Worker(format!(
+                                "There are no pending responses for peer {}.",
+                                peer_id
+                            )),
+                            ))
                             .await;
                         }
                     }
                 }
             }
-            SwarmEvent::Behaviour(BehaviourEvent::TellMessageSent { peer_id, .. })
-            | SwarmEvent::Behaviour(BehaviourEvent::ReqresMessageSent { peer_id, .. }) => {
+            SwarmEvent::Behaviour(BehaviourEvent::TellMessageSent {
+                peer_id,
+                ..
+            })
+            | SwarmEvent::Behaviour(BehaviourEvent::ReqresMessageSent {
+                peer_id,
+                ..
+            }) => {
                 trace!(TARGET_WORKER, "Message sent to peer {}", peer_id);
                 self.messages_metric
                     .get_or_create(&MetricLabels {
@@ -779,11 +892,20 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                     );
                 }
             }
-            SwarmEvent::Behaviour(BehaviourEvent::TellMessageProcessed { peer_id, .. }) => {
-                trace!(TARGET_WORKER, "Message processed from peer {}", peer_id);
+            SwarmEvent::Behaviour(BehaviourEvent::TellMessageProcessed {
+                peer_id,
+                ..
+            }) => {
+                trace!(
+                    TARGET_WORKER,
+                    "Message processed from peer {}",
+                    peer_id
+                );
             }
             SwarmEvent::Behaviour(BehaviourEvent::TellOutboundFailure {
-                peer_id, error, ..
+                peer_id,
+                error,
+                ..
             }) => {
                 warn!(
                     TARGET_WORKER,
@@ -812,10 +934,14 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 self.remove_request_sent(peer_id, outbound_id);
             }
             SwarmEvent::Behaviour(BehaviourEvent::TellInboundFailure {
-                peer_id, error, ..
+                peer_id,
+                error,
+                ..
             })
             | SwarmEvent::Behaviour(BehaviourEvent::ReqresInboundFailure {
-                peer_id, error, ..
+                peer_id,
+                error,
+                ..
             }) => {
                 warn!(
                     TARGET_WORKER,
@@ -835,7 +961,8 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 if self.node_type == NodeType::Addressable {
                     debug!(
                         TARGET_WORKER,
-                        "Adding external address for addressable node: {}.", address
+                        "Adding external address for addressable node: {}.",
+                        address
                     );
                     self.swarm.add_external_address(address);
                 }
@@ -1090,166 +1217,166 @@ mod tests {
         }
     }
 
-    /* 
-    #[tokio::test]
-    #[ignore]
-    async fn test_network_worker() {
-        let mut boot_nodes = vec![];
+    /*
+        #[tokio::test]
+        #[ignore]
+        async fn test_network_worker() {
+            let mut boot_nodes = vec![];
 
-        let token = CancellationToken::new();
+            let token = CancellationToken::new();
 
-        // Build a bootstrap node.
-        let boot_addr = "/ip4/127.0.0.1/tcp/54421";
-        let (mut boot, mut boot_receiver) = build_worker(
-            boot_nodes.clone(),
-            false,
-            NodeType::Bootstrap,
-            token.clone(),
-            Some(boot_addr.to_owned()),
-        );
-        let boot_node = RoutingNode {
-            peer_id: boot.local_peer_id().to_string(),
-            address: vec![boot_addr.to_owned()],
-        };
-        boot_nodes.push(boot_node);
+            // Build a bootstrap node.
+            let boot_addr = "/ip4/127.0.0.1/tcp/54421";
+            let (mut boot, mut boot_receiver) = build_worker(
+                boot_nodes.clone(),
+                false,
+                NodeType::Bootstrap,
+                token.clone(),
+                Some(boot_addr.to_owned()),
+            );
+            let boot_node = RoutingNode {
+                peer_id: boot.local_peer_id().to_string(),
+                address: vec![boot_addr.to_owned()],
+            };
+            boot_nodes.push(boot_node);
 
-        // Build a ephemeral node.
-        let ephemeral_addr = "/ip4/127.0.0.1/tcp/54422";
-        let (mut ephemeral, mut ephemeral_receiver) = build_worker(
-            boot_nodes.clone(),
-            false,
-            NodeType::Ephemeral,
-            token.clone(),
-            Some(ephemeral_addr.to_owned()),
-        );
-        let mut ephemeral_service = ephemeral.service();
-        let ephemeral_peer_id = ephemeral.local_peer_id();
+            // Build a ephemeral node.
+            let ephemeral_addr = "/ip4/127.0.0.1/tcp/54422";
+            let (mut ephemeral, mut ephemeral_receiver) = build_worker(
+                boot_nodes.clone(),
+                false,
+                NodeType::Ephemeral,
+                token.clone(),
+                Some(ephemeral_addr.to_owned()),
+            );
+            let mut ephemeral_service = ephemeral.service();
+            let ephemeral_peer_id = ephemeral.local_peer_id();
 
-        // Build a addressable node.
-        let addressable_addr = "/ip4/127.0.0.1/tcp/54423";
-        let (mut addressable, mut addresable_receiver) = build_worker(
-            boot_nodes.clone(),
-            false,
-            NodeType::Addressable,
-            token.clone(),
-            Some(addressable_addr.to_owned()),
-        );
-        let mut addressable_service = addressable.service();
-        let addressable_peer_id = addressable.local_peer_id();
+            // Build a addressable node.
+            let addressable_addr = "/ip4/127.0.0.1/tcp/54423";
+            let (mut addressable, mut addresable_receiver) = build_worker(
+                boot_nodes.clone(),
+                false,
+                NodeType::Addressable,
+                token.clone(),
+                Some(addressable_addr.to_owned()),
+            );
+            let mut addressable_service = addressable.service();
+            let addressable_peer_id = addressable.local_peer_id();
 
-        // Wait for connect boot node.
-        if boot.run_connection().await.is_err() {
-            error!(TARGET_WORKER, "Error connecting to the network");
-        }
-
-        // Spawn the boot node
-        tokio::spawn(async move {
-            boot.run_main().await;
-        });
-
-        // Wait for connect ephemeral node.
-        if ephemeral.run_connection().await.is_err() {
-            error!(TARGET_WORKER, "Error connecting to the network");
-        }
-
-        // Wait for connect addressable node.
-        if addressable.run_connection().await.is_err() {
-            error!(TARGET_WORKER, "Error connecting to the network");
-        }
-
-        // Spawn the ephemeral node
-        tokio::spawn(async move {
-            ephemeral.run_main().await;
-        });
-
-        // Spawn the addressable node
-        tokio::spawn(async move {
-            addressable.run_main().await;
-        });
-
-        let mut ephemeral_identified = false;
-        let mut addressable_identified = false;
-        let mut sent = false;
-        let mut received = false;
-        let mut response = false;
-
-        // loop to receive events
-        loop {
-            if ephemeral_identified && addressable_identified && !sent {
-                ephemeral_service
-                    .send_command(Command::SendMessage {
-                        peer: addressable_peer_id.to_bytes().to_vec(),
-                        message: b"Hello Addressable".to_vec(),
-                    })
-                    .await
-                    .unwrap();
-                sent = true;
+            // Wait for connect boot node.
+            if boot.run_connection().await.is_err() {
+                error!(TARGET_WORKER, "Error connecting to the network");
             }
-            if received && !response {
-                addressable_service
-                    .send_command(Command::SendMessage {
-                        peer: ephemeral_peer_id.to_bytes().to_vec(),
-                        message: b"Hello Ephemeral".to_vec(),
-                    })
-                    .await
-                    .unwrap();
-                response = true;
+
+            // Spawn the boot node
+            tokio::spawn(async move {
+                boot.run_main().await;
+            });
+
+            // Wait for connect ephemeral node.
+            if ephemeral.run_connection().await.is_err() {
+                error!(TARGET_WORKER, "Error connecting to the network");
             }
-            tokio::select! {
-                event = boot_receiver.recv() => {
-                    if let Some(event) = event {
-                        match event {
-                            NetworkEvent::PeerIdentified { peer, .. } => {
-                                if peer == ephemeral_peer_id.to_string() {
-                                    ephemeral_identified = true;
-                                } else if peer == addressable_peer_id.to_string() {
-                                    addressable_identified = true;
+
+            // Wait for connect addressable node.
+            if addressable.run_connection().await.is_err() {
+                error!(TARGET_WORKER, "Error connecting to the network");
+            }
+
+            // Spawn the ephemeral node
+            tokio::spawn(async move {
+                ephemeral.run_main().await;
+            });
+
+            // Spawn the addressable node
+            tokio::spawn(async move {
+                addressable.run_main().await;
+            });
+
+            let mut ephemeral_identified = false;
+            let mut addressable_identified = false;
+            let mut sent = false;
+            let mut received = false;
+            let mut response = false;
+
+            // loop to receive events
+            loop {
+                if ephemeral_identified && addressable_identified && !sent {
+                    ephemeral_service
+                        .send_command(Command::SendMessage {
+                            peer: addressable_peer_id.to_bytes().to_vec(),
+                            message: b"Hello Addressable".to_vec(),
+                        })
+                        .await
+                        .unwrap();
+                    sent = true;
+                }
+                if received && !response {
+                    addressable_service
+                        .send_command(Command::SendMessage {
+                            peer: ephemeral_peer_id.to_bytes().to_vec(),
+                            message: b"Hello Ephemeral".to_vec(),
+                        })
+                        .await
+                        .unwrap();
+                    response = true;
+                }
+                tokio::select! {
+                    event = boot_receiver.recv() => {
+                        if let Some(event) = event {
+                            match event {
+                                NetworkEvent::PeerIdentified { peer, .. } => {
+                                    if peer == ephemeral_peer_id.to_string() {
+                                        ephemeral_identified = true;
+                                    } else if peer == addressable_peer_id.to_string() {
+                                        addressable_identified = true;
+                                    }
                                 }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
-                }
-                event = ephemeral_receiver.recv() => {
-                    if let Some(event) = event {
-                        match event {
-                            NetworkEvent::MessageSent { peer } => {
-                                assert_eq!(peer, addressable_peer_id.to_string());
+                    event = ephemeral_receiver.recv() => {
+                        if let Some(event) = event {
+                            match event {
+                                NetworkEvent::MessageSent { peer } => {
+                                    assert_eq!(peer, addressable_peer_id.to_string());
+                                }
+                                NetworkEvent::MessageReceived { peer, message } => {
+                                    assert_eq!(peer, addressable_peer_id.to_string());
+                                    assert_eq!(message, b"Hello Ephemeral".to_vec());
+                                    break;
+                                }
+                              _ => {}
                             }
-                            NetworkEvent::MessageReceived { peer, message } => {
-                                assert_eq!(peer, addressable_peer_id.to_string());
-                                assert_eq!(message, b"Hello Ephemeral".to_vec());
-                                break;
-                            }
-                          _ => {}
                         }
                     }
-                }
-                event = addresable_receiver.recv() => {
-                    if let Some(event) = event {
-                        match event {
-                            NetworkEvent::MessageReceived { peer, message } => {
-                                assert_eq!(peer, ephemeral_peer_id.to_string());
-                                assert_eq!(message, b"Hello Addressable".to_vec());
-                                received = true;
+                    event = addresable_receiver.recv() => {
+                        if let Some(event) = event {
+                            match event {
+                                NetworkEvent::MessageReceived { peer, message } => {
+                                    assert_eq!(peer, ephemeral_peer_id.to_string());
+                                    assert_eq!(message, b"Hello Addressable".to_vec());
+                                    received = true;
+                                }
+                                NetworkEvent::Error(error) => {
+                                    error!(TARGET_WORKER, "Error: {:?}", error);
+                                    break;
+                                }
+                                _ => {}
                             }
-                            NetworkEvent::Error(error) => {
-                                error!(TARGET_WORKER, "Error: {:?}", error);
-                                break;
-                            }
-                            _ => {}
                         }
                     }
-                }
-                _ = token.cancelled() => {
-                    break;
+                    _ = token.cancelled() => {
+                        break;
+                    }
                 }
             }
-        }
 
-        token.cancel();
-    }
-*/
+            token.cancel();
+        }
+    */
 
     #[derive(Debug, Serialize, Deserialize)]
     pub struct Dummy {}
@@ -1267,11 +1394,25 @@ mod tests {
         } else {
             vec![]
         };
-        let config = create_config(boot_nodes, random_walk, node_type, listen_addresses, false);
+        let config = create_config(
+            boot_nodes,
+            random_walk,
+            node_type,
+            listen_addresses,
+            false,
+        );
         let keys = KeyPair::default();
         let mut registry = Registry::default();
         let (event_sender, event_receiver) = mpsc::channel(100);
-        let worker = NetworkWorker::new(&mut registry, keys, config, event_sender, KeyDerivator::Ed25519, token).unwrap();
+        let worker = NetworkWorker::new(
+            &mut registry,
+            keys,
+            config,
+            event_sender,
+            KeyDerivator::Ed25519,
+            token,
+        )
+        .unwrap();
         (worker, event_receiver)
     }
 

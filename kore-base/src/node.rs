@@ -7,11 +7,21 @@
 use std::fmt::format;
 
 use crate::{
-    db::{Database, Storable}, helpers::encrypted_pass::EncryptedPass, model::{request::EventRequest, signature::{Signature, Signed}, HashId, SignTypes}, validation::proof::ValidationProof, Api, Config, Error
+    db::{Database, Storable},
+    helpers::encrypted_pass::EncryptedPass,
+    model::{
+        request::EventRequest,
+        signature::{Signature, Signed},
+        HashId, SignTypes,
+    },
+    validation::proof::ValidationProof,
+    Api, Config, Error,
 };
 
 use identity::{
-    identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier},
+    identifier::{
+        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+    },
     keys::{KeyMaterial, KeyPair},
 };
 
@@ -44,7 +54,10 @@ pub struct Node {
 
 impl Node {
     /// Creates a new node.
-    pub fn new(id: &KeyPair, derivator: DigestDerivator) -> Result<Self, Error> {
+    pub fn new(
+        id: &KeyPair,
+        derivator: DigestDerivator,
+    ) -> Result<Self, Error> {
         Ok(Self {
             owner: id.clone(),
             derivator,
@@ -106,7 +119,8 @@ impl Node {
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
-        Signature::new(content, &self.owner, self.derivator).map_err(|e| Error::Signature(format!("{}", e)))
+        Signature::new(content, &self.owner, self.derivator)
+            .map_err(|e| Error::Signature(format!("{}", e)))
     }
 }
 
@@ -212,22 +226,16 @@ impl Handler<Node> for Node {
             NodeMessage::RequestEvent(event) => Ok(NodeResponse::None),
             NodeMessage::GetOwnerIdentifier => {
                 Ok(NodeResponse::OwnerIdentifier(self.owner()))
-            },
+            }
             NodeMessage::SignRequest(content) => {
                 let sign = match content {
-                    SignTypes::Validation(validation) => {
-                        self.sign(&validation)
-                    }
+                    SignTypes::Validation(validation) => self.sign(&validation),
                 };
 
                 match sign {
-                    Ok(sign) => {
-                        Ok(NodeResponse::SignRequest(sign))
-                    }, Err(e) => {
-                        Ok(NodeResponse::Error(e))
-                    }
+                    Ok(sign) => Ok(NodeResponse::SignRequest(sign)),
+                    Err(e) => Ok(NodeResponse::Error(e)),
                 }
-                
             }
         }
     }

@@ -2,16 +2,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    Error, 
-    model::{ValueWrapper, HashId, request::EventRequest, signature::Signed},
+    model::{request::EventRequest, signature::Signed, HashId, ValueWrapper},
+    Error,
 };
-use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 /// A struct representing an approval request.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+)]
 pub struct ApprovalRequest {
     /// The signed event request.
     pub event_request: Signed<EventRequest>,
@@ -30,9 +39,12 @@ pub struct ApprovalRequest {
 }
 
 impl HashId for ApprovalRequest {
-    fn hash_id(&self, derivator: DigestDerivator) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(|_| {
-            Error::Approval("HashId for ApprovalRequest Fails".to_string())
-        })
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |_| Error::Approval("HashId for ApprovalRequest Fails".to_string()),
+        )
     }
 }

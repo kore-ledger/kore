@@ -43,12 +43,14 @@ pub fn build_transport(
     port_reuse: bool,
 ) -> Result<KoreTransport, Error> {
     // Build the noise authentication.
-    let noise = noise::Config::new(keys)
-        .map_err(|e| Error::Transport(format!("Noise authentication {:?}", e)))?;
+    let noise = noise::Config::new(keys).map_err(|e| {
+        Error::Transport(format!("Noise authentication {:?}", e))
+    })?;
 
     // Allow TCP transport.
     // port_reuse(true) for use the same port to send / receive communication.
-    let transport = tcp::tokio::Transport::new(Config::default().port_reuse(port_reuse));
+    let transport =
+        tcp::tokio::Transport::new(Config::default().port_reuse(port_reuse));
 
     // Upgrade the transport with the noise authentication and yamux multiplexing.
     let transport = transport

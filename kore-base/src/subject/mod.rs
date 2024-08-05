@@ -7,7 +7,10 @@
 use crate::{
     db::Storable,
     model::{
-        event::Event as KoreEvent, request::EventRequest, signature::{Signature, Signed}, HashId, Namespace, SignTypes, ValueWrapper
+        event::Event as KoreEvent,
+        request::EventRequest,
+        signature::{Signature, Signed},
+        HashId, Namespace, SignTypes, ValueWrapper,
     },
     Error,
 };
@@ -260,7 +263,8 @@ impl Subject {
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
-        Signature::new(content, &self.keys, self.derivator).map_err(|e| Error::Signature(format!("{}", e)))
+        Signature::new(content, &self.keys, self.derivator)
+            .map_err(|e| Error::Signature(format!("{}", e)))
     }
 }
 
@@ -446,19 +450,13 @@ impl Handler<Subject> for Subject {
             }
             SubjectCommand::SignRequest(content) => {
                 let sign = match content {
-                    SignTypes::Validation(validation) => {
-                        self.sign(&validation)
-                    }
+                    SignTypes::Validation(validation) => self.sign(&validation),
                 };
 
                 match sign {
-                    Ok(sign) => {
-                        Ok(SubjectResponse::SignRequest(sign))
-                    }, Err(e) => {
-                        Ok(SubjectResponse::Error(e))
-                    }
+                    Ok(sign) => Ok(SubjectResponse::SignRequest(sign)),
+                    Err(e) => Ok(SubjectResponse::Error(e)),
                 }
-                
             }
         }
     }
@@ -543,7 +541,12 @@ mod tests {
             content: event,
             signature,
         };
-        let subject = Subject::from_event(keys, DigestDerivator::Blake3_256, &signed_event).unwrap();
+        let subject = Subject::from_event(
+            keys,
+            DigestDerivator::Blake3_256,
+            &signed_event,
+        )
+        .unwrap();
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
@@ -624,7 +627,12 @@ mod tests {
             content: event,
             signature,
         };
-        let subject_a = Subject::from_event(keys, DigestDerivator::Blake3_256, &signed_event).unwrap();
+        let subject_a = Subject::from_event(
+            keys,
+            DigestDerivator::Blake3_256,
+            &signed_event,
+        )
+        .unwrap();
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

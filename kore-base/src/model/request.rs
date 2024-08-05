@@ -234,7 +234,7 @@ pub mod tests {
         let signature =
             Signature::new(&content, &key_pair, DigestDerivator::SHA2_256)
                 .unwrap();
-        Signed{ content, signature}
+        Signed { content, signature }
     }
 
     // Mokcs

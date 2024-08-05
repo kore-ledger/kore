@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    model::{request::EventRequest, signature::Signature, HashId, TimeStamp, ValueWrapper}, Error
+    model::{
+        request::EventRequest, signature::Signature, HashId, TimeStamp,
+        ValueWrapper,
+    },
+    Error,
 };
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
+use identity::identifier::{
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -43,9 +49,8 @@ pub struct ValidationTimeOut {
 )]
 pub struct ValidationError {
     pub who: KeyIdentifier,
-    pub error: String
+    pub error: String,
 }
-
 
 /// A Enum representing a validation response.
 #[derive(
@@ -63,6 +68,5 @@ pub struct ValidationError {
 pub enum ValidationRes {
     Signature(Signature),
     TimeOut(ValidationTimeOut),
-    Error(ValidationError)
+    Error(ValidationError),
 }
-

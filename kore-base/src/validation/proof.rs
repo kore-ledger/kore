@@ -4,10 +4,12 @@
 use super::ValidationInfo;
 
 use crate::{
+    model::{request::EventRequest, HashId, Namespace},
     Error, DIGEST_DERIVATOR,
-    model::{Namespace, HashId, request::EventRequest},
 };
-use identity::identifier::{DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator};
+use identity::identifier::{
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -84,7 +86,6 @@ impl HashId for ValidationProof {
 }
 
 impl ValidationProof {
-
     /// Create a new validation proof from a validation command.
     pub fn from_info(info: ValidationInfo) -> Result<Self, Error> {
         debug!("Creating validation proof from info");
@@ -96,54 +97,49 @@ impl ValidationProof {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
-        let event_hash = info.event.hash_id(derivator)
-            .map_err(|_| Error::Validation("Error hashing event".to_string()))?;
+        let event_hash = info.event.hash_id(derivator).map_err(|_| {
+            Error::Validation("Error hashing event".to_string())
+        })?;
         match request {
-            EventRequest::Create(start_request) => {
-                Ok(Self {
-                    governance_id: start_request.governance_id.clone(),
-                    governance_version: info.gov_version,
-                    subject_id: info.subject.subject_id.clone(),
-                    sn: 0,
-                    schema_id: start_request.schema_id.clone(),
-                    namespace: Namespace::from(start_request.namespace.as_str()),
-                    prev_event_hash: DigestIdentifier::default(),
-                    event_hash,
-                    subject_public_key: start_request.public_key.clone(),
-                    genesis_governance_version: info.gov_version,
-                    name: start_request.name.clone(),
-                })
-            }
-            EventRequest::EOL(_) | EventRequest::Fact(_) => {
-                Ok(Self {
-                    governance_id: info.subject.governance_id.clone(),
-                    governance_version: info.gov_version,
-                    subject_id: info.subject.subject_id.clone(),
-                    sn: info.event.content.sn,
-                    schema_id: info.subject.schema_id.clone(),
-                    namespace: info.subject.namespace.clone(),
-                    prev_event_hash: info.event.content.hash_prev_event,
-                    event_hash,
-                    subject_public_key: info.subject.subject_key.clone(),
-                    genesis_governance_version: info.subject.genesis_gov_version,
-                    name: info.subject.name.clone(),
-                })
-            },
-            EventRequest::Transfer(transfer) => {
-                Ok(Self {
-                    governance_id: info.subject.governance_id.clone(),
-                    governance_version: info.gov_version,
-                    subject_id: info.subject.subject_id.clone(),
-                    sn: info.event.content.sn,
-                    schema_id: info.subject.schema_id.clone(),
-                    namespace: info.subject.namespace.clone(),
-                    prev_event_hash: info.event.content.hash_prev_event,
-                    event_hash,
-                    subject_public_key: transfer.public_key.clone(),
-                    genesis_governance_version: info.subject.genesis_gov_version,
-                    name: info.subject.name.clone(),
-                })
-            },
+            EventRequest::Create(start_request) => Ok(Self {
+                governance_id: start_request.governance_id.clone(),
+                governance_version: info.gov_version,
+                subject_id: info.subject.subject_id.clone(),
+                sn: 0,
+                schema_id: start_request.schema_id.clone(),
+                namespace: Namespace::from(start_request.namespace.as_str()),
+                prev_event_hash: DigestIdentifier::default(),
+                event_hash,
+                subject_public_key: start_request.public_key.clone(),
+                genesis_governance_version: info.gov_version,
+                name: start_request.name.clone(),
+            }),
+            EventRequest::EOL(_) | EventRequest::Fact(_) => Ok(Self {
+                governance_id: info.subject.governance_id.clone(),
+                governance_version: info.gov_version,
+                subject_id: info.subject.subject_id.clone(),
+                sn: info.event.content.sn,
+                schema_id: info.subject.schema_id.clone(),
+                namespace: info.subject.namespace.clone(),
+                prev_event_hash: info.event.content.hash_prev_event,
+                event_hash,
+                subject_public_key: info.subject.subject_key.clone(),
+                genesis_governance_version: info.subject.genesis_gov_version,
+                name: info.subject.name.clone(),
+            }),
+            EventRequest::Transfer(transfer) => Ok(Self {
+                governance_id: info.subject.governance_id.clone(),
+                governance_version: info.gov_version,
+                subject_id: info.subject.subject_id.clone(),
+                sn: info.event.content.sn,
+                schema_id: info.subject.schema_id.clone(),
+                namespace: info.subject.namespace.clone(),
+                prev_event_hash: info.event.content.hash_prev_event,
+                event_hash,
+                subject_public_key: transfer.public_key.clone(),
+                genesis_governance_version: info.subject.genesis_gov_version,
+                name: info.subject.name.clone(),
+            }),
         }
     }
 }

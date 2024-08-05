@@ -58,5 +58,5 @@ pub enum Error {
     NetworkHelper(String),
     /// Network error.
     #[error("NetworkHelper error: {0}")]
-    Network(String)
+    Network(String),
 }
