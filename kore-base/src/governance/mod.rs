@@ -59,24 +59,6 @@ pub struct Governance {
 }
 
 impl Governance {
-    /// Creates a new `Governance`.
-    pub fn new() -> Result<Self, Error> {
-        let model: GovernanceModel =
-            serde_json::from_value(init::init_state().0).map_err(|_| {
-                Error::Governance("Model not found.".to_owned())
-            })?;
-
-        Ok(Governance {
-            subject_id: DigestIdentifier::default(),
-            governance_id: DigestIdentifier::default(),
-            namespace: Namespace::default(),
-            name: "".to_owned(),
-            active: true,
-            sn: 0,
-            model,
-        })
-    }
-
     /// Gets initial state of the subject from governance
     ///
     pub fn get_initial_state(
@@ -129,7 +111,7 @@ impl Governance {
     }
 
     /// Gets the signers for the request stage.
-    fn get_signers(
+    pub fn get_signers(
         &self,
         stage: RequestStage,
         schema: &str,
@@ -299,136 +281,5 @@ impl TryFrom<SubjectState> for Governance {
             sn: subject.sn,
             model,
         })
-    }
-}
-
-/// Governance command.
-#[derive(Debug, Clone)]
-pub enum GovernanceCommand {
-    GetSchema {
-        schema_id: String,
-    },
-    GetInitialState {
-        schema_id: String,
-    },
-    GetVersion,
-
-    IsAllowed {
-        id: KeyIdentifier,
-        stage: RequestStage,
-        name: String,
-    },
-    GetSignersAndQuorum {
-        stage: RequestStage,
-        schema_id: String,
-        namespace: Namespace,
-    },
-    GetSigners {
-        stage: RequestStage,
-        schema_id: String,
-        namespace: Namespace,
-    },
-}
-
-impl Message for GovernanceCommand {}
-
-/// Governance response.
-#[derive(Debug, Clone)]
-pub enum GovernanceResponse {
-    Schema(Schema),
-    InitialState(ValueWrapper),
-    Signers(HashSet<KeyIdentifier>),
-    Version(u64),
-    Allow(bool),
-    Error(Error),
-    SignersAndQuorum((HashSet<KeyIdentifier>, Quorum)),
-    None,
-}
-
-impl Response for GovernanceResponse {}
-
-/// Governance event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum GovernanceEvent {
-    Create,
-    Update,
-    Delete { governance_id: DigestIdentifier },
-}
-
-impl Event for GovernanceEvent {}
-
-/// Actor implementation for `Governance`.
-#[async_trait]
-impl Actor for Governance {
-    type Event = GovernanceEvent;
-    type Message = GovernanceCommand;
-    type Response = GovernanceResponse;
-
-    /// Pre-start implementation for `Governance`.
-    async fn pre_start(
-        &mut self,
-        ctx: &mut actor::ActorContext<Self>,
-    ) -> Result<(), ActorError> {
-        Ok(())
-    }
-
-    async fn post_stop(
-        &mut self,
-        ctx: &mut ActorContext<Self>,
-    ) -> Result<(), ActorError> {
-        Ok(())
-    }
-}
-
-/// Handler implementation for `Governance`.
-#[async_trait]
-impl Handler<Governance> for Governance {
-    async fn handle_message(
-        &mut self,
-        msg: GovernanceCommand,
-        ctx: &mut ActorContext<Governance>,
-    ) -> Result<GovernanceResponse, ActorError> {
-        match msg {
-            GovernanceCommand::GetSchema { schema_id } => {
-                match self.get_schema(&schema_id) {
-                    Ok(schema) => Ok(GovernanceResponse::Schema(schema)),
-                    Err(e) => Ok(GovernanceResponse::Error(e)),
-                }
-            }
-            GovernanceCommand::IsAllowed { id, stage, name } => {
-                Ok(GovernanceResponse::Allow(self.is_allowed(id, &name, stage)))
-            }
-            GovernanceCommand::GetInitialState { schema_id } => {
-                match self.get_initial_state(&schema_id) {
-                    Ok(initial_state) => {
-                        Ok(GovernanceResponse::InitialState(initial_state))
-                    }
-                    Err(e) => Ok(GovernanceResponse::Error(e)),
-                }
-            }
-            GovernanceCommand::GetVersion => {
-                Ok(GovernanceResponse::Version(self.version()))
-            }
-            GovernanceCommand::GetSignersAndQuorum {
-                stage,
-                schema_id,
-                namespace,
-            } => {
-                match self.get_quorum_and_signers(stage, &schema_id, namespace)
-                {
-                    Ok((signers, quorum)) => Ok(
-                        GovernanceResponse::SignersAndQuorum((signers, quorum)),
-                    ),
-                    Err(e) => Ok(GovernanceResponse::Error(e)),
-                }
-            }
-            GovernanceCommand::GetSigners {
-                stage,
-                schema_id,
-                namespace,
-            } => Ok(GovernanceResponse::Signers(
-                self.get_signers(stage, &schema_id, namespace),
-            )),
-        }
     }
 }

@@ -12,7 +12,7 @@ use crate::{
         signature::{Signature, Signed},
         HashId, Namespace, SignTypes, ValueWrapper,
     },
-    Error,
+    Error, Governance,
 };
 
 use identity::{
@@ -373,6 +373,8 @@ pub enum SubjectCommand {
     UpdateSubject { event: Signed<KoreEvent> },
     /// Sign request
     SignRequest(SignTypes),
+    /// Get governance if subject is a governance
+    GetGovernance
 }
 
 impl Message for SubjectCommand {}
@@ -388,6 +390,7 @@ pub enum SubjectResponse {
     Error(Error),
     /// None.
     None,
+    Governance(Governance)
 }
 
 impl Response for SubjectResponse {}
@@ -457,6 +460,17 @@ impl Handler<Subject> for Subject {
                     Ok(sign) => Ok(SubjectResponse::SignRequest(sign)),
                     Err(e) => Ok(SubjectResponse::Error(e)),
                 }
+            },
+            SubjectCommand::GetGovernance => {
+                // If a governance
+                if self.governance_id.digest.is_empty() {
+                    match Governance::try_from(self.state()) {
+                        Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
+                        Err(e) => return Ok(SubjectResponse::Error(e))
+                    }
+                }
+                // If not a governance
+                Ok(SubjectResponse::Error(Error::Subject("Subject is not a governance".to_owned())))
             }
         }
     }

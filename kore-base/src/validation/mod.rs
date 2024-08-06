@@ -12,7 +12,7 @@ pub mod validator;
 use crate::{
     db::Storable,
     governance::{
-        Governance, GovernanceCommand, GovernanceResponse, Quorum, RequestStage,
+        Governance, Quorum, RequestStage,
     },
     model::{
         event::Event as KoreEvent,
@@ -193,24 +193,20 @@ impl Validation {
         let governance_path =
             ActorPath::from(format!("/user/node/{}", governance));
         // Governance actor.
-        let governance_actor: Option<ActorRef<Governance>> =
+        let governance_actor: Option<ActorRef<Subject>> =
             ctx.system().get_actor(&governance_path).await;
 
         // We obtain the actor governance
         let response = if let Some(governance_actor) = governance_actor {
             // We ask a governance
             let response = governance_actor
-                .ask(GovernanceCommand::GetSignersAndQuorum {
-                    stage: RequestStage::Validate,
-                    schema_id: schema_id.to_owned(),
-                    namespace,
-                })
+                .ask(SubjectCommand::GetGovernance)
                 .await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
                     return Err(Error::Actor(format!(
-                        "Error when asking a governance {}",
+                        "Error when asking a Subject {}",
                         e
                     )));
                 }
@@ -224,9 +220,14 @@ impl Validation {
 
         // We handle the possible responses of governance
         match response {
-            GovernanceResponse::SignersAndQuorum(response) => Ok(response),
-            GovernanceResponse::Error(error) => {
-                return Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)));
+            SubjectResponse::Governance(gov) => {
+                match gov.get_quorum_and_signers(RequestStage::Validate, schema_id, namespace) {
+                    Ok(quorum_and_signers) => Ok(quorum_and_signers),
+                    Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
+                }
+            },
+            SubjectResponse::Error(error) => {
+                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
             }
             _ => Err(Error::Actor(format!(
                 "An unexpected response has been received from node actor"
@@ -312,7 +313,6 @@ impl Event for ValidationEvent {}
 
 #[derive(Debug, Clone)]
 pub enum ValidationResponse {
-    Error(Error),
     None,
 }
 
@@ -340,7 +340,7 @@ impl Actor for Validation {
         // Update node_key
         self.node_key = node_key;
 
-        self.init_store("validation", true, ctx).await
+        self.init_store("validation", false, ctx).await
     }
 
     async fn post_stop(
