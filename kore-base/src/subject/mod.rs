@@ -5,14 +5,12 @@
 //!
 
 use crate::{
-    db::Storable,
-    model::{
+    db::Storable, model::{
         event::Event as KoreEvent,
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypes, ValueWrapper,
-    },
-    Error, Governance,
+    }, node::{NodeMessage, NodeResponse}, validation::{validator::Validator, Validation}, Error, Governance, Node
 };
 
 use identity::{
@@ -21,9 +19,9 @@ use identity::{
     },
     keys::{KeyMaterial, KeyPair},
 };
-
+use crate::governance::RequestStage;
 use actor::{
-    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event, Handler, Message, Response
 };
 
 use async_trait::async_trait;
@@ -130,6 +128,136 @@ impl Subject {
         subject.with_subject_id(subject_id);
         subject
     }
+
+    async fn get_governace_of_other_subject(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        subject: DigestIdentifier,
+    ) -> Result<Governance, Error> {
+        // Governance path
+        let governance_path = ActorPath::from(format!(
+            "/user/node/{}",
+            subject
+        ));
+
+        // Governance actor.
+        let governance_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&governance_path).await;
+
+        // We obtain the actor governance
+        let response = if let Some(governance_actor) = governance_actor {
+            // We ask a governance
+            // TODO si previous_proof.governance_version == new_proof.governance_version pedimos la governanza, sino tenemos que obtener la versión anterior de governanza
+            let response =
+                governance_actor.ask(SubjectCommand::GetGovernance).await;
+            match response {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a Subject {}",
+                        e
+                    )));
+                }
+            }
+        } else {
+            return Err(Error::Actor(format!(
+                "The governance actor was not found in the expected path /user/node/{}",
+                subject
+            )));
+        };
+
+        match response {
+            SubjectResponse::Governance(gov) => Ok(gov),
+            SubjectResponse::Error(error) => {
+                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
+            }
+            _ => {
+                return Err(Error::Actor(format!(
+                "An unexpected response has been received from node actor"
+                )))
+            }
+        }
+    }
+
+    async fn get_node_key(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+    ) -> Result<KeyIdentifier, Error> {
+        // Node path.
+        let node_path = ActorPath::from("/user/node");
+        // Node actor.
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+
+        // We obtain the actor node
+        let response = if let Some(node_actor) = node_actor {
+            // We ask a node
+            let response =
+                node_actor.ask(NodeMessage::GetOwnerIdentifier).await;
+            match response {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a node {}",
+                        e
+                    )));
+                }
+            }
+        } else {
+            return Err(Error::Actor(format!(
+                "The node actor was not found in the expected path /user/node"
+            )));
+        };
+
+        // We handle the possible responses of node
+        match response {
+            NodeResponse::OwnerIdentifier(key) => Ok(key),
+            _ => Err(Error::Actor(format!(
+                "An unexpected response has been received from node actor"
+            ))),
+        }
+    }
+
+    async fn am_i_owner(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        message: NodeMessage
+    ) -> Result<bool, Error> {
+        // Node path.
+        let node_path = ActorPath::from("/user/node");
+        // Node actor.
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+
+        // We obtain the actor node
+        let response = if let Some(node_actor) = node_actor {
+            // We ask a node
+            let response =
+                node_actor.ask(message).await;
+            match response {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a node {}",
+                        e
+                    )));
+                }
+            }
+        } else {
+            return Err(Error::Actor(format!(
+                "The node actor was not found in the expected path /user/node"
+            )));
+        };
+
+        // We handle the possible responses of node
+        match response {
+            NodeResponse::AmIOwner(owner) => Ok(owner),
+            _ => Err(Error::Actor(format!(
+                "An unexpected response has been received from node actor"
+            ))),
+        }
+    }
+
 
     /// Updates the subject with a new subject id.
     ///
@@ -420,7 +548,43 @@ impl Actor for Subject {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Starting subject actor with init store.");
-        self.init_store("subject", true, ctx).await
+        self.init_store("subject", true, ctx).await?;
+
+        // TODO refactorizar cuando hayan más protocolos.
+        // Get node key
+        let our_key = self.get_node_key(ctx).await.map_err(|e| ActorError::Create)?;
+        // If subject is a governance
+        let gov = if self.governance_id.digest.is_empty() {
+            Governance::try_from(self.state()).map_err(|e| ActorError::Create)?
+        } 
+        // If not a governance, ask other subject for governance
+        else {
+            self.get_governace_of_other_subject(ctx, self.governance_id.clone()).await.map_err(|e| ActorError::Create)?
+        };
+        
+        println!("ANTES DE ISSOME");
+       // If we are a validator
+        if gov.get_signers(RequestStage::Validate, &self.schema_id, self.namespace.clone()).get(&our_key).is_some() {
+            println!("ISSOME");
+            let owner = if self.governance_id.digest.is_empty() {
+                // Subject is a governance
+                self.am_i_owner(ctx, NodeMessage::AmIGovernanceOwner(self.subject_id.clone())).await.map_err(|e| ActorError::Create)?
+            } else {
+                // Subject is not a governance
+                self.am_i_owner(ctx, NodeMessage::AmISubjectOwner(self.subject_id.clone())).await.map_err(|e| ActorError::Create)?
+            };
+
+            if owner {
+                // If we are owner of subject
+                let actor = Validation::default();
+                ctx.create_child("validation", actor).await?;
+            } else {
+                // If we are not owner of subject
+                let actor = Validator::default();
+                ctx.create_child("validator", actor).await?;
+            }
+        };
+        Ok(())
     }
 
     async fn post_stop(
@@ -428,7 +592,9 @@ impl Actor for Subject {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Stopping subject actor with stop store.");
-        self.stop_store(ctx).await
+        self.stop_store(ctx).await.map_err(|e| {println!("Error {}",e); ActorError::Stop})?;
+        println!("Post-stop bien");
+        Ok(())
     }
 }
 
@@ -523,6 +689,8 @@ impl Storable for Subject {}
 #[cfg(test)]
 mod tests {
 
+    use std::time::Duration;
+
     use super::*;
 
     use crate::{
@@ -539,13 +707,16 @@ mod tests {
     #[tokio::test]
     async fn test_subject() {
         let system = create_system().await;
+        let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let node = Node::new(&node_keys, DigestDerivator::Blake3_256).unwrap();
+        let _ = system.create_root_actor("node", node).await.unwrap();
         let request = create_start_request_mock("issuer");
         let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let event = KoreEvent::from_create_request(
             &keys,
             &request,
             0,
-            &init_state(),
+            &init_state(&node_keys.key_identifier().to_string()),
             DigestDerivator::Blake3_256,
         )
         .unwrap();
@@ -564,10 +735,7 @@ mod tests {
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
-        let subject_actor = system
-            .create_root_actor(&actor_id, subject.clone())
-            .await
-            .unwrap();
+        let subject_actor = system.get_or_create_actor(&format!("node/{}", subject.subject_id), || subject.clone()).await.unwrap();
         let path = subject_actor.path().clone();
 
         let response = subject_actor
@@ -624,7 +792,7 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize() {
-        let value = init_state();
+        let value = init_state("");
         let request = create_start_request_mock("issuer");
         let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let event = KoreEvent::from_create_request(

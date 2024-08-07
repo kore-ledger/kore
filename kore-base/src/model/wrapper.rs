@@ -218,7 +218,7 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize() {
-        let value = crate::governance::init::init_state();
+        let value = crate::governance::init::init_state("");
         //let wrapper = ValueWrapper(value.clone());
         let bytes = bincode::serialize(&value).unwrap();
         let wrapper = bincode::deserialize::<ValueWrapper>(&bytes);

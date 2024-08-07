@@ -64,10 +64,11 @@ impl Governance {
     pub fn get_initial_state(
         &self,
         schema_id: &str,
+        owner: &str
     ) -> Result<ValueWrapper, Error> {
         if self.governance_id.digest.is_empty() {
             debug!("Meta-governance initial state.");
-            return Ok(init::init_state());
+            return Ok(init::init_state(owner));
         }
         for schema in &self.model.schemas {
             if &schema.id == schema_id {

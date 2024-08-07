@@ -14,6 +14,7 @@ use crate::{
         signature::{Signature, Signed},
         HashId, SignTypes,
     },
+    subject,
     validation::proof::ValidationProof,
     Api, Config, Error,
 };
@@ -33,6 +34,14 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SubjectsTypes {
+    KnowSubject(String),
+    OwnerSubject(String),
+    KnowGovernance(String),
+    OwnerGovernance(String)
+}
 
 /// Node struct.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -128,7 +137,10 @@ impl Node {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessage {
     RequestEvent(Signed<EventRequest>),
+    RegisterSubject(SubjectsTypes),
     SignRequest(SignTypes),
+    AmISubjectOwner(DigestIdentifier),
+    AmIGovernanceOwner(DigestIdentifier),
     GetOwnerIdentifier,
 }
 
@@ -142,6 +154,7 @@ pub enum NodeResponse {
     SignRequest(Signature),
     /// Owner identifier.
     OwnerIdentifier(KeyIdentifier),
+    AmIOwner(bool),
     Error(Error),
     None,
 }
@@ -220,7 +233,7 @@ impl Handler<Node> for Node {
     async fn handle_message(
         &mut self,
         msg: NodeMessage,
-        _ctx: &mut actor::ActorContext<Node>,
+        ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
             NodeMessage::RequestEvent(event) => Ok(NodeResponse::None),
@@ -237,9 +250,53 @@ impl Handler<Node> for Node {
                     Err(e) => Ok(NodeResponse::Error(e)),
                 }
             }
+            NodeMessage::AmISubjectOwner(subject_id) => {
+                Ok(NodeResponse::AmIOwner(
+                    self.get_owned_subjects()
+                        .iter()
+                        .find(|x| **x == subject_id.to_string())
+                        .is_some(),
+                ))
+            }
+            NodeMessage::AmIGovernanceOwner(governance_id) => {
+                Ok(NodeResponse::AmIOwner(
+                    self.get_owned_governances()
+                        .iter()
+                        .find(|x| **x == governance_id.to_string())
+                        .is_some(),
+                ))
+            }
+            NodeMessage::RegisterSubject(subject) => {
+                match subject {
+                    SubjectsTypes::KnowSubject(subj) => {
+                        ctx.event(NodeEvent::KnownSubject(subj)).await?;
+                    },
+                    SubjectsTypes::OwnerSubject(subj) => {
+                        ctx.event(NodeEvent::OwnedSubject(subj)).await?;
+                    },
+                    SubjectsTypes::KnowGovernance(gov) => {
+                        ctx.event(NodeEvent::KnownGovernance(gov)).await?;
+                    },
+                    SubjectsTypes::OwnerGovernance(gov) => {
+                        ctx.event(NodeEvent::OwnedGovernance(gov)).await?;
+                    },
+                }
+                Ok(NodeResponse::None)
+                }
+            }
+        }
+
+        async fn on_event(
+            &mut self,
+            event: NodeEvent,
+            ctx: &mut ActorContext<Node>,
+        ) {
+            if let Err(e) = self.persist(&event, ctx).await {
+                // TODO Propagar error.
+            };
         }
     }
-}
+
 
 #[async_trait]
 impl Storable for Node {}

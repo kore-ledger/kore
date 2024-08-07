@@ -225,7 +225,7 @@ pub mod tests {
         let (key_pair, key_id) = issuer_identity(issuer);
         let req = StartRequest {
             governance_id: DigestIdentifier::default(),
-            schema_id: "schema_id".to_string(),
+            schema_id: "governance".to_string(),
             namespace: "namespace".to_string(),
             name: "name".to_string(),
             public_key: key_id,

@@ -8,13 +8,14 @@ use identity::identifier::DigestIdentifier;
 
 use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
 
-use std::collections::HashSet;
+use std::{collections::HashSet, default};
 
 /// Governance quorum.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[allow(non_snake_case)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum Quorum {
+    #[default]
     MAJORITY,
     FIXED { fixed: u32 },
     PERCENTAGE { percentage: f64 },
@@ -445,8 +446,10 @@ pub struct Policy {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GovernanceModel {
     /// The version of the governance model.
+    #[serde(default)]
     pub version: u64,
     /// The set of subjects identifiers directed by this governance.
+    #[serde(default)]
     pub subjects_id: HashSet<DigestIdentifier>,
     /// The set of members.
     pub members: Vec<Member>,

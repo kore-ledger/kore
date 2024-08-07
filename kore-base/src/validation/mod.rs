@@ -55,7 +55,7 @@ pub struct ValidationInfo {
     pub gov_version: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Validation {
     node_key: KeyIdentifier,
     // Quorum

@@ -1,4 +1,7 @@
+use std::{ops::Sub, time::Duration};
+
 use crate::common::{create_start_request_mock, create_system, init_state};
+use actor::{ActorPath, ActorRef};
 use identity::{
     identifier::derive::digest::DigestDerivator,
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
@@ -24,7 +27,7 @@ async fn test_validation() {
     )
     .unwrap();
     let signature =
-        Signature::new(&event, &gov_keys, DigestDerivator::Blake3_256)
+        Signature::new(&event, &node_keys, DigestDerivator::Blake3_256)
             .unwrap();
     let signed_event = Signed {
         content: event,
@@ -36,4 +39,5 @@ async fn test_validation() {
         &signed_event,
     )
     .unwrap();
+    let subject_actor = system.get_or_create_actor(&format!("node/{}", subject.subject_id), || subject.clone()).await.unwrap();
 }
