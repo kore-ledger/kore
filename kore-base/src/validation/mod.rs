@@ -369,7 +369,7 @@ impl Handler<Validation> for Validation {
                 let (signers, quorum) = match self
                     .get_signers_and_quorum(
                         ctx,
-                        info.subject.governance_id,
+                        info.subject.subject_id.clone(),
                         &info.subject.schema_id,
                         info.subject.namespace,
                     )
