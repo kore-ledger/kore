@@ -562,10 +562,8 @@ impl Actor for Subject {
             self.get_governace_of_other_subject(ctx, self.governance_id.clone()).await.map_err(|e| ActorError::Create)?
         };
         
-        println!("ANTES DE ISSOME");
        // If we are a validator
         if gov.get_signers(RequestStage::Validate, &self.schema_id, self.namespace.clone()).get(&our_key).is_some() {
-            println!("ISSOME");
             let owner = if self.governance_id.digest.is_empty() {
                 // Subject is a governance
                 self.am_i_owner(ctx, NodeMessage::AmIGovernanceOwner(self.subject_id.clone())).await.map_err(|e| ActorError::Create)?
@@ -587,13 +585,12 @@ impl Actor for Subject {
         Ok(())
     }
 
-    async fn post_stop(
+    async fn pre_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Stopping subject actor with stop store.");
-        self.stop_store(ctx).await.map_err(|e| {println!("Error {}",e); ActorError::Stop})?;
-        println!("Post-stop bien");
+        self.stop_store(ctx).await.map_err(|_| ActorError::Stop)?;
         Ok(())
     }
 }
@@ -688,8 +685,6 @@ impl Storable for Subject {}
 
 #[cfg(test)]
 mod tests {
-
-    use std::time::Duration;
 
     use super::*;
 

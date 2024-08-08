@@ -189,7 +189,7 @@ impl Actor for Node {
         Ok(())
     }
 
-    async fn post_stop(
+    async fn pre_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {

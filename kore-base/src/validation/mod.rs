@@ -343,7 +343,7 @@ impl Actor for Validation {
         self.init_store("validation", false, ctx).await
     }
 
-    async fn post_stop(
+    async fn pre_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
@@ -443,6 +443,8 @@ impl Handler<Validation> for Validation {
     ) {
         match event {
             ValidationEvent::Create { request_id, info } => {
+                // TODO: revizar, en vez de bloquearlo aquí, lo metemos en una fifo y cuando se haga la persistencia (se comunica al request que ha terminado la validación),
+                // realizamos pop y manejamos la siguiente validación, 
                 loop {
                     if !self.in_validation {
                         break;
