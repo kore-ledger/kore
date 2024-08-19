@@ -15,6 +15,7 @@ use crate::{
     Error,
 };
 
+use model::Contract;
 pub use schema::schema;
 
 pub use model::{
@@ -262,6 +263,14 @@ impl Governance {
             }
         }
         false
+    }
+
+    pub fn get_contract(&self, schema_id: &str) -> Result<Contract, Error> {
+        if let Some(schema) = self.model.schemas.clone().into_iter().find(|schema| &schema.id == schema_id) {
+            Ok(schema.contract)
+        } else {
+            Err(Error::Governance(format!("can not find this schema {}", schema_id)))
+        }
     }
 }
 

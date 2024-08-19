@@ -3,7 +3,7 @@
 
 use crate::{
     approval::response::ApprovalResponse,
-    evaluation::response::EvaluationResponse,
+    evaluation::response::EvaluationRes,
     governance::RequestStage,
     model::{
         request::{EventRequest, StartRequest},
@@ -39,7 +39,7 @@ impl RequestState {
 
 #[derive(Clone, Debug)]
 pub enum StateCommand {
-    Evaluation(EvaluationResponse),
+    Evaluation(EvaluationRes),
     Approval(ApprovalResponse),
     Validation(Signature),
 }

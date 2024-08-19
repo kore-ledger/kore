@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
     BorshSerialize,
     BorshDeserialize,
 )]
-pub struct EvaluationResponse {
+pub struct EvaluationRes {
     /// The patch to apply to the state.
     pub patch: ValueWrapper,
     /// The hash of the evaluation request being responded to.
@@ -34,7 +34,7 @@ pub struct EvaluationResponse {
     pub appr_required: bool,
 }
 
-impl HashId for EvaluationResponse {
+impl HashId for EvaluationRes {
     fn hash_id(
         &self,
         derivator: DigestDerivator,

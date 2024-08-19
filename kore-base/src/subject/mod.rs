@@ -518,7 +518,8 @@ pub enum SubjectResponse {
     Error(Error),
     /// None.
     None,
-    Governance(Governance)
+    Governance(Governance),
+    GovernanceId(DigestIdentifier)
 }
 
 impl Response for SubjectResponse {}

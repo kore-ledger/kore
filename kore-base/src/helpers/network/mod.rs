@@ -1,3 +1,4 @@
+use actor::Message;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
@@ -17,3 +18,5 @@ pub struct NetworkMessage {
     pub info: ComunicateInfo,
     pub message: ActorMessage,
 }
+
+impl Message for NetworkMessage {}

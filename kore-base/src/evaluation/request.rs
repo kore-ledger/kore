@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
     BorshSerialize,
     BorshDeserialize,
 )]
-pub struct EvaluationRequest {
+pub struct EvaluationReq {
     /// The signed event request.
     pub event_request: Signed<EventRequest>,
     /// The context in which the evaluation is being performed.
@@ -51,7 +51,7 @@ pub struct SubjectContext {
     pub namespace: String,
 }
 
-impl HashId for EvaluationRequest {
+impl HashId for EvaluationReq {
     fn hash_id(
         &self,
         derivator: DigestDerivator,
