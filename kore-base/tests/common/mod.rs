@@ -10,14 +10,13 @@ pub async fn create_system() -> SystemRef {
 }
 
 // Create governance request mock.
-pub fn create_start_request_mock(issuer: &str) -> Signed<EventRequest> {
-    let (key_pair, key_id) = issuer_identity(issuer);
+pub fn create_start_request_mock( key_pair: KeyPair, key_identifier: KeyIdentifier) -> Signed<EventRequest> {
     let req = StartRequest {
         governance_id: DigestIdentifier::default(),
         schema_id: "governance".to_string(),
         namespace: "namespace".to_string(),
         name: "name".to_string(),
-        public_key: key_id,
+        public_key: key_identifier.clone(),
     };
     let content = EventRequest::Create(req);
     let signature =
