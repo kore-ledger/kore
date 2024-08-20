@@ -5,7 +5,7 @@
 //!
 
 pub mod init;
-mod model;
+pub mod model;
 mod schema;
 
 use crate::{

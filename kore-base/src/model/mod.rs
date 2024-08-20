@@ -11,6 +11,7 @@ pub mod namespace;
 pub mod request;
 pub mod signature;
 pub mod wrapper;
+pub mod patch;
 
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;

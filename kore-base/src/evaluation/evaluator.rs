@@ -27,7 +27,7 @@ use actor::{
 
 use tracing::{debug, error};
 
-use super::{request::EvaluationReq, response::EvaluationRes, runner::executor::Contract, EvaluationResponse};
+use super::{request::EvaluationReq, response::EvaluationRes, runner::types::Contract, EvaluationResponse};
 
 /// A struct representing a Evaluator actor.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -84,7 +84,7 @@ impl Evaluator {
     }
 
 
-    async fn execute_contract(
+    async fn evaluate(
         &self,
         ctx: &mut ActorContext<Evaluator>,
         execute_contract: &EvaluationReq,

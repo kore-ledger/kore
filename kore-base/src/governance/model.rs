@@ -8,7 +8,7 @@ use identity::identifier::DigestIdentifier;
 
 use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
 
-use std::{collections::HashSet, default};
+use std::{collections::HashSet, default, fmt};
 
 /// Governance quorum.
 #[derive(Debug, Clone, Default)]
@@ -162,6 +162,18 @@ pub enum Who {
     MEMBERS,
     ALL,
     NOT_MEMBERS,
+}
+
+impl fmt::Display for Who {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Who::ID { ID } => write!(f, "ID: {}", ID),
+            Who::NAME { NAME } => write!(f, "NAME: {}", NAME),
+            Who::MEMBERS => write!(f, "MEMBERS"),
+            Who::ALL => write!(f, "ALL"),
+            Who::NOT_MEMBERS => write!(f, "NOT_MEMBERS"),
+        }
+    }
 }
 
 impl Serialize for Who {

@@ -26,6 +26,7 @@ tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
 tracing = { workspace = true }
 network = { path = "../network" }
 rmp-serde = { workspace = true }
+wasmtime = "23.0.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }
