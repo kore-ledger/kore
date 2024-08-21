@@ -27,6 +27,7 @@ pub use model::signature::*;
 pub use model::request::*;
 pub use model::event::*;
 pub use model::ValueWrapper;
+pub use model::HashId;
 
 use actor::{ActorSystem, SystemRef};
 use db::Database;

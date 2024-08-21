@@ -30,6 +30,7 @@ rmp-serde = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 tracing-test = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [features]
 default = ["rocksdb"]

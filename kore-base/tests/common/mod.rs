@@ -1,6 +1,6 @@
 use actor::SystemRef;
 use identity::{identifier::{derive::{digest::DigestDerivator, KeyDerivator}, DigestIdentifier, KeyIdentifier}, keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair}};
-use kore_base::{system, Config, EventRequest, Signature, Signed, StartRequest, ValueWrapper};
+use kore_base::{system, Config, EventRequest, FactRequest, Signature, Signed, StartRequest, ValueWrapper};
 
 pub async fn create_system() -> SystemRef {
     let dir = tempfile::tempdir().expect("Can not create temporal directory.");
@@ -24,6 +24,15 @@ pub fn create_start_request_mock( key_pair: KeyPair, key_identifier: KeyIdentifi
     Signed { content, signature }
 }
 
+pub fn fact_request_mock(key_pair: KeyPair,subject_id: DigestIdentifier) -> Signed<EventRequest> {
+    let req = FactRequest {
+        subject_id: subject_id.clone(),
+        payload: ValueWrapper::default(),
+    };
+    let content = EventRequest::Fact(req);
+    let signature = Signature::new(&content, &key_pair, DigestDerivator::SHA2_256).unwrap();
+    Signed { content, signature }
+}
 // Mokcs
 #[allow(dead_code)]
 pub fn issuer_identity(name: &str) -> (KeyPair, KeyIdentifier) {
