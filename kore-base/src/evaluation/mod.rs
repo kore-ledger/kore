@@ -41,6 +41,7 @@ use identity::identifier::{
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
+use wasmtime::Engine;
 
 
 use std::{collections::HashSet, time::Duration};

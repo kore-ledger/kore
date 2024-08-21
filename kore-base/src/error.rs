@@ -47,6 +47,12 @@ pub enum Error {
     /// Evaluation error.
     #[error("Evaluation error: {0}")]
     Evaluation(String),
+    /// Runner error.
+    #[error("Runner error: {0}")]
+    Runner(String),
+    /// Compiler error.
+    #[error("Compiler error: {0}")]
+    Compiler(String),
     /// Approval error.
     #[error("Approval error: {0}")]
     Approval(String),
