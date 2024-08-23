@@ -265,9 +265,9 @@ impl Governance {
         false
     }
 
-    pub fn get_contract(&self, schema_id: &str) -> Result<Contract, Error> {
-        if let Some(schema) = self.model.schemas.clone().into_iter().find(|schema| &schema.id == schema_id) {
-            Ok(schema.contract)
+    pub fn get_contract(&self, schema_id: &str) -> Result<Vec<u8>, Error> {
+        if let Some(contract) = self.model.compiled_contracts.clone().into_iter().find(|contract| &contract.id == schema_id) {
+            Ok(contract.contract)
         } else {
             Err(Error::Governance(format!("can not find this schema {}", schema_id)))
         }

@@ -61,14 +61,7 @@ impl MemoryManager {
     }
 }
 
-#[derive(Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct WasmContractResult {
-    pub final_state: ValueWrapper,
-    pub approval_required: bool,
-    pub success: bool,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct ContractResult {
     pub final_state: ValueWrapper,
     pub approval_required: bool,
@@ -76,15 +69,16 @@ pub struct ContractResult {
 }
 
 impl ContractResult {
-    pub fn error() -> Self {
+    pub fn error(error: Error) -> Self {
         Self {
-            final_state: ValueWrapper(serde_json::Value::Null),
+            final_state: ValueWrapper(serde_json::Value::String(format!("{error}"))),
             approval_required: false,
             success: false,
         }
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum Contract {
     CompiledContract(Vec<u8>),
     GovContract,

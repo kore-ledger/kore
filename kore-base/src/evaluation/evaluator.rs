@@ -4,7 +4,12 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{Governance, RequestStage}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{signature::Signature, SignTypes, TimeStamp}, node::{Node, NodeMessage, NodeResponse}, subject::{SubjectCommand, SubjectResponse}, Error, EventRequest, FactRequest, Subject
+    governance::{Governance, RequestStage},
+    helpers::network::{intermediary::Intermediary, NetworkMessage},
+    model::{signature::Signature, SignTypes, TimeStamp},
+    node::{Node, NodeMessage, NodeResponse},
+    subject::{SubjectCommand, SubjectResponse},
+    Error, EventRequest, FactRequest, Subject, ValueWrapper,
 };
 
 use crate::helpers::network::ActorMessage;
@@ -27,10 +32,15 @@ use actor::{
 
 use tracing::{debug, error};
 
-use super::{request::EvaluationReq, response::EvaluationRes, runner::types::Contract, EvaluationResponse};
+use super::{
+    request::EvaluationReq,
+    response::EvaluationRes,
+    runner::{types::{Contract, ContractResult}, Runner, RunnerCommand, RunnerResponse},
+    EvaluationResponse,
+};
 
 /// A struct representing a Evaluator actor.
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug)]
 pub struct Evaluator {
     request_id: String,
     finish: bool,
@@ -43,8 +53,9 @@ impl Evaluator {
         governance_id: DigestIdentifier,
     ) -> Result<Governance, Error> {
         // Governance path
-        let governance_path = ActorPath::from(format!("/user/node/{}", governance_id));
-        
+        let governance_path =
+            ActorPath::from(format!("/user/node/{}", governance_id));
+
         // Governance actor.
         let governance_actor: Option<ActorRef<Subject>> =
             ctx.system().get_actor(&governance_path).await;
@@ -83,18 +94,49 @@ impl Evaluator {
         }
     }
 
+    async fn execute_contract(
+        &self,
+        ctx: &mut ActorContext<Evaluator>,
+        state: &ValueWrapper,
+        event: &ValueWrapper,
+        compiled_contract: Contract,
+        is_owner: bool,
+    ) -> Result<RunnerResponse, ActorError> {
+        let child = ctx.create_child("runner", Runner::default()).await;
+
+        let runner_actor = match child {
+            Ok(child) => child,
+            Err(e) => return Err(e),
+        };
+
+        let response = runner_actor.ask(RunnerCommand {
+            state: state.clone(),
+            event: event.clone(),
+            compiled_contract,
+            is_owner,
+        }).await;
+
+        match response {
+            Ok(eval) => Ok(eval),
+            Err(e) => Err(e)
+        }
+    }
 
     async fn evaluate(
         &self,
         ctx: &mut ActorContext<Evaluator>,
         execute_contract: &EvaluationReq,
-        state_data: &FactRequest,
+        event: &FactRequest,
     ) -> Result<(), Error> {
         // TODO: En el original se usa el sn y no el gov version, revizar.
 
         // Get governance id
-        let governance_id = if &execute_contract.context.schema_id == "governance" {
-            if let EventRequest::Fact(data) = &execute_contract.event_request.content {
+        let governance_id = if &execute_contract.context.schema_id
+            == "governance"
+        {
+            if let EventRequest::Fact(data) =
+                &execute_contract.event_request.content
+            {
                 data.subject_id.clone()
             } else {
                 return Err(Error::Validation("The only event that requires validation is the Fact event, another type of event arrived.".to_owned()));
@@ -118,22 +160,39 @@ impl Evaluator {
                 // Hay que hacerlo TODO
             }
             std::cmp::Ordering::Less => {
+                // Si es un sujeto de traabilidad hay que darle una vuelta.
                 // Stop validation process, we need to update governance, we are out of date.
                 // Hay que hacerlo TODO
             }
         }
 
         // Hash of context
-        let context_hash =  Self::generate_context_hash(execute_contract)?;
+        let context_hash = Self::generate_context_hash(execute_contract)?;
 
         // TODO: en el original sacaban el gov_version del contrato, pero tiene que ser la misma que la de la governanza, por qué se vuelve a ahacer ¿?
-        let contract: Contract = if execute_contract.context.schema_id == "governance" {
-            Contract::GovContract
-        } else {
-            let contract = governance.get_contract(&execute_contract.context.schema_id)?;
-            Contract::CompiledContract(contract.raw.as_bytes().to_vec())
+        let contract: Contract =
+            if execute_contract.context.schema_id == "governance" {
+                Contract::GovContract
+            } else {
+                let contract = governance
+                    .get_contract(&execute_contract.context.schema_id)?;
+                Contract::CompiledContract(contract)
+            };
+
+        // Sacar si es el owner
+        // Mirar la parte final de execute contract.
+        let response = match self.execute_contract(ctx, &execute_contract.context.state,&event.payload, contract, true).await {
+            Ok(response) => response,
+            Err(e) => {
+                // Propagar error hacia arriba.
+                todo!()
+            }
         };
 
+        
+
+        
+        // Aquí hacer la compilación si es una governanza, todo fue bien y el bool de la compilación es true.
         Ok(())
     }
 
@@ -177,7 +236,7 @@ impl Event for EvaluatorEvent {}
 #[derive(Debug, Clone)]
 pub enum EvaluatorResponse {
     Error(Error),
-    None
+    None,
 }
 
 impl Response for EvaluatorResponse {}
@@ -203,7 +262,8 @@ impl Handler<Evaluator> for Evaluator {
         &mut self,
         event: EvaluatorEvent,
         ctx: &mut ActorContext<Evaluator>,
-    ) {}
+    ) {
+    }
 }
 
 #[async_trait]
@@ -227,8 +287,7 @@ impl Retry for Evaluator {
     ) -> Result<<<Self as Retry>::Child as Actor>::Response, ActorError> {
         if let Ok(child) = self.child(ctx).await {
             let mut retries = 0;
-            while retries < retry_strategy.max_retries() && !self.finish
-            {
+            while retries < retry_strategy.max_retries() && !self.finish {
                 debug!(
                     "Retry {}/{}.",
                     retries + 1,

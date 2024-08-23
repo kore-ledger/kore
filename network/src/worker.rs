@@ -255,11 +255,11 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         })
     }
 
-    pub fn add_network_sender(
-        mut self,
-        network_sender: mpsc::Sender<CommandHelper<T>>,
+    pub fn add_helper_sender(
+        &mut self,
+        helper_sender: mpsc::Sender<CommandHelper<T>>,
     ) {
-        self.helper_sender = Some(network_sender);
+        self.helper_sender = Some(helper_sender);
     }
 
     /// Get the local peer ID.

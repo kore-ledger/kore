@@ -562,6 +562,8 @@ impl Handler<Validator> for Validator {
     }
 }
 
+
+// TODO: para a los hijos network cuando hayan hecho los intentos o se haya recibido una respuesta.
 #[async_trait]
 impl Retry for Validator {
     type Child = RetryValidator;

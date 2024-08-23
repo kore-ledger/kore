@@ -6,19 +6,21 @@ use actor::{
 use async_trait::async_trait;
 use borsh::{to_vec, BorshDeserialize};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use types::{
-    Contract, ContractResult, GovernanceData, GovernanceEvent, MemoryManager, WasmContractResult,
+    Contract, ContractResult, GovernanceData, GovernanceEvent, MemoryManager,
 };
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
 
 use crate::{
     governance::{model::SchemaEnum, Member, Policy, Role, Schema, Who},
     model::patch::apply_patch,
-    Error, Governance, ValueWrapper,
+    Error, ValueWrapper,
 };
 
 pub mod types;
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Runner {}
 
 impl Runner {
@@ -27,15 +29,18 @@ impl Runner {
         event: &ValueWrapper,
         compiled_contract: Contract,
         is_owner: bool,
-    ) -> Result<ContractResult, Error> {
+    ) -> Result<(ContractResult, Vec<String>), Error> {
+        // If it is a governance we do not need to use wastime, since the governance contract is always the same and it is known before starting the node
         let Contract::CompiledContract(contract_bytes) = compiled_contract
         else {
             return Self::execute_governance_contract(state, event).await;
         };
-        // TODO: Cambiar esto cuando la parte de compilación esté hecha, el engine no debería ir aquí
-        let engine = Engine::new(&Config::default()).unwrap();
+        let engine = Engine::new(&Config::default()).map_err(|e| {
+            Error::Runner(format!("Error creating the engine: {}", e))
+        })?;
 
         // Module represents a precompiled WebAssembly program that is ready to be instantiated and executed.
+        // This function receives the previous input from Engine::precompile_module, that is why this function can be considered safe.
         let module = unsafe {
             Module::deserialize(&engine, contract_bytes).map_err(|e| {
                 Error::Runner(format!(
@@ -80,43 +85,84 @@ impl Runner {
             .map_err(|e| {
                 Error::Runner(format!("Contract execution failed: {}", e))
             })?;
-
-            Self::get_result(&store, result_ptr)
+        
+        let result = Self::get_result(&store, result_ptr)?;
+        Ok((result, vec![]))
     }
 
     async fn execute_governance_contract(
         state: &ValueWrapper,
         event: &ValueWrapper,
-    ) -> Result<ContractResult, Error> {
-        let Ok(event) =
-            serde_json::from_value::<GovernanceEvent>(event.0.clone())
-        else {
-            return Ok(ContractResult::error());
-        };
+    ) -> Result<(ContractResult, Vec<String>), Error>{
+        let event = serde_json::from_value::<GovernanceEvent>(event.0.clone()).map_err(|e| Error::Runner(format!("Can not create governance event {}", e)))?;
+
         match &event {
             GovernanceEvent::Patch { data } => {
-                let Ok(patched_state) =
-                    apply_patch(data.0.clone(), state.0.clone())
-                else {
-                    return Ok(ContractResult::error());
-                };
+                // TODO estudiar todas las operaciones de jsonpatch, qué pasa si eliminamos un schema del cual hay sujetos?
+                // o si hacemos un copy o move. Deberíamos permitirlos?
+                let patched_state = apply_patch(data.0.clone(), state.0.clone()).map_err(|e| Error::Runner(format!("Can not apply pathc {}", e)))?;
+
                 if Self::check_governance_state(&patched_state).is_ok() {
-                    Ok(ContractResult {
+                    let compilations = Self::check_compilation(data.0.clone());
+                    // TODO QUITAR TODOS LOS unwrap()
+                    Ok((ContractResult {
                         final_state: ValueWrapper(
                             serde_json::to_value(patched_state).unwrap(),
                         ),
                         approval_required: true,
                         success: true,
-                    })
+                    }, compilations))
                 } else {
-                    Ok(ContractResult {
+                    Ok((ContractResult {
                         final_state: state.clone(),
                         approval_required: false,
                         success: false,
-                    })
+                    }, vec![]))
                 }
             }
         }
+    }
+
+    fn check_compilation(operations: Value) -> Vec<String> {
+        // TODO
+        // Se podría compara el estado actual de la gov con el nuevo generado.
+        // En caso de que sea un replace habría que ver realmente si hay algún cambio.
+        // Los contratos se puede hacer facil generando un digest con borsh porque es un string,
+        // El problema es el schema
+        let operations_array = if let Some(operations_array) = operations.as_array() {
+            operations_array
+        } else {
+            unreachable!("At this point it is impossible for operations not to be an array");
+        };
+
+        let mut compilations = vec![];
+        for val in operations_array {
+            // obtain op
+            let op = if let Some(op) = val["op"].as_str() {
+                op
+            } else {
+                unreachable!("The op field is always a str");
+            };
+
+            // Check if op is add or replace
+            match op {
+                "add" | "replace" => {},
+                _ => continue
+            }
+
+            // Check if has schema field is a schema
+            if !val["value"]["schema"].is_null() {
+                let id = if let Some(id) = val["value"]["id"].as_str() {
+                    id
+                } else {
+                    unreachable!("The id field is always a str");
+                };
+
+                // Save the id that needs to be compiled
+                compilations.push(id.to_owned());
+            }
+        }
+        compilations
     }
 
     fn check_governance_state(
@@ -351,20 +397,24 @@ impl Runner {
         pointer: u32,
     ) -> Result<ContractResult, Error> {
         let bytes = store.data().read_data(pointer as usize)?;
-        let contract_result: WasmContractResult = BorshDeserialize::try_from_slice(bytes)
-            .map_err(|e| Error::Runner(format!("Can not generate wasm contract result: {}", e)))?;
-        let result = ContractResult {
-            final_state: contract_result.final_state,
-            approval_required: contract_result.approval_required,
-            success: contract_result.success,
-        };
-        Ok(result)
+        let contract_result: ContractResult =
+            BorshDeserialize::try_from_slice(bytes).map_err(|e| {
+                Error::Runner(format!(
+                    "Can not generate wasm contract result: {}",
+                    e
+                ))
+            })?;
+
+        Ok(contract_result)
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum RunnerCommand {
-    Run,
+pub struct  RunnerCommand {
+    pub state: ValueWrapper,
+    pub event: ValueWrapper,
+    pub compiled_contract: Contract,
+    pub is_owner: bool,
 }
 
 impl Message for RunnerCommand {}
@@ -375,9 +425,9 @@ pub enum RunnerEvent {}
 impl Event for RunnerEvent {}
 
 #[derive(Debug, Clone)]
-pub enum RunnerResponse {
-    Error(Error),
-    None,
+pub struct RunnerResponse {
+    pub result: ContractResult,
+    pub compilations: Vec<String>
 }
 
 impl Response for RunnerResponse {}
@@ -394,15 +444,11 @@ impl Handler<Runner> for Runner {
     async fn handle_message(
         &mut self,
         msg: RunnerCommand,
-        ctx: &mut ActorContext<Runner>,
+        _ctx: &mut ActorContext<Runner>,
     ) -> Result<RunnerResponse, ActorError> {
-        Ok(RunnerResponse::None)
-    }
-
-    async fn on_event(
-        &mut self,
-        event: RunnerEvent,
-        ctx: &mut ActorContext<Runner>,
-    ) {
+        match Self::execute_contract(&msg.state, &msg.event, msg.compiled_contract, msg.is_owner).await {
+            Ok((result, compilations)) => Ok(RunnerResponse { result, compilations }),
+            Err(e) => Ok(RunnerResponse { result: ContractResult::error(e), compilations: vec![] })
+        }
     }
 }

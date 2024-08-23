@@ -406,6 +406,7 @@ impl Handler<Validation> for Validation {
                 Ok(ValidationResponse::None)
             }
             ValidationCommand::Response(response) => {
+                // TODO Al menos una validación tiene que ser válida, no solo errores y timeout.
                 let node_key = match response.clone() {
                     ValidationRes::Signature(signature) => signature.signer,
                     ValidationRes::TimeOut(time_out) => time_out.who,
@@ -483,7 +484,7 @@ impl PersistentActor for Validation {
         event.actual_event_validation_response.clone();
         self.previous_proof = Some(event.actual_proof.clone());
 
-        // Darle a request la conclusión de la validación y la información que necesite.
+        // Darle a request la conclusión de la validación y la información que necesite. Esto no se puede hacer en el apply TODO
         self.validators_response = vec![];
     }
 }
