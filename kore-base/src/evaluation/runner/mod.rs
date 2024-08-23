@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt::format};
 
 use actor::{
     Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
@@ -103,7 +103,7 @@ impl Runner {
                 let patched_state = apply_patch(data.0.clone(), state.0.clone()).map_err(|e| Error::Runner(format!("Can not apply pathc {}", e)))?;
 
                 if Self::check_governance_state(&patched_state).is_ok() {
-                    let compilations = Self::check_compilation(data.0.clone());
+                    let compilations = Self::check_compilation(data.0.clone())?;
                     // TODO QUITAR TODOS LOS unwrap()
                     Ok((ContractResult {
                         final_state: ValueWrapper(
@@ -123,16 +123,13 @@ impl Runner {
         }
     }
 
-    fn check_compilation(operations: Value) -> Vec<String> {
-        // TODO
-        // Se podría compara el estado actual de la gov con el nuevo generado.
-        // En caso de que sea un replace habría que ver realmente si hay algún cambio.
-        // Los contratos se puede hacer facil generando un digest con borsh porque es un string,
-        // El problema es el schema
+    fn check_compilation(operations: Value) -> Result<Vec<String>, Error> {
+        // En caso de que sea un replace habría que ver realmente si hay algún cambio, solo cambiar el orden es una operación de replace aunque no cambie nada TODO.
+        // TODO ver si tenemos que permitir más operaciones de JSON patch y como las abordamos, sobretodo el remove. TODO
         let operations_array = if let Some(operations_array) = operations.as_array() {
             operations_array
         } else {
-            unreachable!("At this point it is impossible for operations not to be an array");
+            return Err(Error::Runner("json patch operations are not an array".to_owned()));
         };
 
         let mut compilations = vec![];
@@ -141,13 +138,13 @@ impl Runner {
             let op = if let Some(op) = val["op"].as_str() {
                 op
             } else {
-                unreachable!("The op field is always a str");
+                return Err(Error::Runner("json patch operations have no “op” field".to_owned()));
             };
 
             // Check if op is add or replace
             match op {
                 "add" | "replace" => {},
-                _ => continue
+                _ => return Err(Error::Runner(format!("The only json patch operations that are allowed are add and replace, invalid operation: {}", op)))
             }
 
             // Check if has schema field is a schema
@@ -162,7 +159,7 @@ impl Runner {
                 compilations.push(id.to_owned());
             }
         }
-        compilations
+        Ok(compilations)
     }
 
     fn check_governance_state(
