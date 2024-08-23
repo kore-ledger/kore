@@ -4,7 +4,9 @@
 //! Node module
 //!
 
-use std::fmt::format;
+use std::{collections::{HashMap, HashSet}, path::Path};
+
+use async_std::fs;
 
 use crate::{
     db::{Database, Storable},
@@ -35,12 +37,15 @@ use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct CompiledContract(Vec<u8>);
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SubjectsTypes {
     KnowSubject(String),
     OwnerSubject(String),
     KnowGovernance(String),
-    OwnerGovernance(String)
+    OwnerGovernance(String),
 }
 
 /// Node struct.
@@ -59,6 +64,8 @@ pub struct Node {
     owned_governances: Vec<String>,
     /// The node's known governances.
     known_governances: Vec<String>,
+    /// Compiled contracts
+    compiled_contracts: HashMap<String, CompiledContract>
 }
 
 impl Node {
@@ -74,6 +81,7 @@ impl Node {
             known_subjects: Vec::new(),
             owned_governances: Vec::new(),
             known_governances: Vec::new(),
+            compiled_contracts: HashMap::new()
         })
     }
 
@@ -131,6 +139,59 @@ impl Node {
         Signature::new(content, &self.owner, self.derivator)
             .map_err(|e| Error::Signature(format!("{}", e)))
     }
+
+    async fn build_compilation_dir() -> Result<(), Error> {
+        if !Path::new("contracts").exists() {
+            fs::create_dir("contracts").await.map_err(|e| {
+                Error::Node(format!("Can not create contracts dir: {}", e))
+            })?;
+        }
+
+        let toml: String = Self::compilation_toml();
+        // We write cargo.toml
+        fs::write("contracts/Cargo.toml", toml).await.map_err(|e| {
+            Error::Node(format!("Can not create Cargo.toml file: {}", e))
+        })?;
+
+        if !Path::new("contracts/src/bin").exists() {
+            fs::create_dir_all("contracts/src/bin").await.map_err(|e| {
+                Error::Node(format!("Can not create src dir: {}", e))
+            })?;
+        }
+        Ok(())
+    }
+
+    fn compilation_toml() -> String {
+        r#"
+    [package]
+    name = "contract"
+    version = "0.1.0"
+    edition = "2021"
+    
+    [dependencies]
+    serde = { version = "1.0.208", features = ["derive"] }
+    serde_json = "1.0.125"
+    json-patch = "2.0.0"
+    thiserror = "1.0.63"
+    kore-contract-sdk = { git = "https://github.com/kore-ledger/kore-contract-sdk.git", branch = "main"}
+    
+    [profile.release]
+    strip = "debuginfo"
+    lto = true
+    
+    [lib]
+    crate-type = ["cdylib"]
+      "#
+        .into()
+    }
+
+    pub fn get_contract(&self, contract_path: &str) -> Result<Vec<u8>, Error> {
+        if let Some(contract) = self.compiled_contracts.get(contract_path) {
+            Ok(contract.0.clone())
+        } else {
+            Err(Error::Governance(format!("can not find this schema {}", contract_path)))
+        }
+    }
 }
 
 /// Node message.
@@ -182,11 +243,12 @@ impl Actor for Node {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
+        if let Err(e) = Self::build_compilation_dir().await {
+            // TODO manejar este error.
+        };
         // Start store
         debug!("Creating Node store");
-        self.init_store("node", false, ctx).await?;
-
-        Ok(())
+        self.init_store("node", false, ctx).await
     }
 
     async fn pre_stop(
@@ -270,33 +332,32 @@ impl Handler<Node> for Node {
                 match subject {
                     SubjectsTypes::KnowSubject(subj) => {
                         ctx.event(NodeEvent::KnownSubject(subj)).await?;
-                    },
+                    }
                     SubjectsTypes::OwnerSubject(subj) => {
                         ctx.event(NodeEvent::OwnedSubject(subj)).await?;
-                    },
+                    }
                     SubjectsTypes::KnowGovernance(gov) => {
                         ctx.event(NodeEvent::KnownGovernance(gov)).await?;
-                    },
+                    }
                     SubjectsTypes::OwnerGovernance(gov) => {
                         ctx.event(NodeEvent::OwnedGovernance(gov)).await?;
-                    },
+                    }
                 }
                 Ok(NodeResponse::None)
-                }
             }
-        }
-
-        async fn on_event(
-            &mut self,
-            event: NodeEvent,
-            ctx: &mut ActorContext<Node>,
-        ) {
-            if let Err(e) = self.persist(&event, ctx).await {
-                // TODO Propagar error.
-            };
         }
     }
 
+    async fn on_event(
+        &mut self,
+        event: NodeEvent,
+        ctx: &mut ActorContext<Node>,
+    ) {
+        if let Err(e) = self.persist(&event, ctx).await {
+            // TODO Propagar error.
+        };
+    }
+}
 
 #[async_trait]
 impl Storable for Node {}

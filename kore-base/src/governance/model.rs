@@ -471,15 +471,8 @@ pub struct GovernanceModel {
     pub schemas: Vec<Schema>,
     /// The set of policies.
     pub policies: Vec<Policy>,
-    /// Compiled contracts
-    pub compiled_contracts: Vec<CompiledContract>
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CompiledContract {
-    pub id: String,
-    pub contract: Vec<u8>
-}
 
 /// Request stage.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

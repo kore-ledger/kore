@@ -174,9 +174,9 @@ impl Evaluator {
             if execute_contract.context.schema_id == "governance" {
                 Contract::GovContract
             } else {
-                let contract = governance
-                    .get_contract(&execute_contract.context.schema_id)?;
-                Contract::CompiledContract(contract)
+                // pedir contrato al nodo. TODO
+                
+                Contract::CompiledContract(vec![])
             };
 
         // Sacar si es el owner

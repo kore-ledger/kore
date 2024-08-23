@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 /// Error type.
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
-    /// An error occurred.
-    #[error("An error occurred.")]
-    Generic,
+    /// Node error.
+    #[error("Node error: {0}")]
+    Node(String),
     /// Actor error.
     #[error("Actor error: {0}")]
     Actor(String),
