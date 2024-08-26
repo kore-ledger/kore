@@ -1,10 +1,11 @@
 name: Sonarcloud
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * *"
-
+    push:
+      branches: [ "test-validation" ]
+    pull_request:
+      branches: [ "main" ]
+      
 env:
   CARGO_TERM_COLOR: always
 
