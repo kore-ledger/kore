@@ -255,8 +255,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         })
     }
 
+    /// Add network sender.
     pub fn add_network_sender(
-        mut self,
+        &mut self,
         network_sender: mpsc::Sender<CommandHelper<T>>,
     ) {
         self.helper_sender = Some(network_sender);
@@ -743,13 +744,17 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 message,
             }) => {
                 //trace!(TARGET_WORKER, "Message received from peer {}", peer_id);
-                let result = self
-                    .event_sender
-                    .send(NetworkEvent::MessageReceived {
-                        peer: peer_id.to_string(),
+
+                let result = if let Some(helper_sender) = self.helper_sender.as_ref() {
+                    helper_sender.send(CommandHelper::ReceivedMessage {
                         message: message.message,
-                    })
-                    .await;
+                    }).await
+                } else {
+                    // TODO: No se puede comunicar con el helper, se debe cerrar
+                    todo!("");
+                };
+
+
                 if result.is_err() {
                     error!(
                         TARGET_WORKER,

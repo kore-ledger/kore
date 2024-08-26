@@ -31,6 +31,8 @@ rmp-serde = { workspace = true }
 tempfile = { workspace = true }
 tracing-test = { workspace = true }
 tracing-subscriber = { workspace = true }
+tokio-util = { workspace = true }
+prometheus-client = { workspace = true }
 
 [features]
 default = ["rocksdb"]

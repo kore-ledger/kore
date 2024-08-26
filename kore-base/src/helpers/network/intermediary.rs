@@ -44,6 +44,10 @@ impl Intermediary {
         .spawn_command_receiver(command_receiver)
     }
 
+    pub fn service(&self) -> HelperService {
+        self.service.clone()
+    }
+
     fn spawn_command_receiver(
         &mut self,
         mut command_receiver: mpsc::Receiver<Command<NetworkMessage>>,
@@ -81,7 +85,7 @@ impl Intermediary {
                 // Public key to peer_id
                 let node_peer = Intermediary::to_peer_id(
                     self.derivator,
-                    message.info.reciver.to_string().as_bytes(),
+                    message.info.reciver.public_key.as_slice(),
                 )?;
                 // Message to Vec<u8>
                 let network_message =

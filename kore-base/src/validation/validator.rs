@@ -391,7 +391,7 @@ impl Handler<Validator> for Validator {
                         reciver: node_key,
                         reciver_actor: format!(
                             "/user/node/{}/validator",
-                            validation_req.subject_signature.signer
+                            validation_req.proof.subject_id
                         ),
                     },
                     message: ActorMessage::ValidationReq(validation_req),
@@ -446,7 +446,7 @@ impl Handler<Validator> for Validator {
                     request_id: info.request_id,
                     reciver_actor: format!(
                         "/user/node/{}/validation/{}",
-                        validation_req.subject_signature.signer,
+                        validation_req.proof.subject_id,
                         info.reciver.clone()
                     ),
                 };
