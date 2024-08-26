@@ -1,30 +1,18 @@
-use std::{collections::HashSet, ops::Sub, time::Duration};
+use std::time::Duration;
 
 use crate::common::{
-    build_worker, create_start_request_mock, create_system, fact_request_mock,
-    get_peer_id,
+    create_info_gov_event, create_info_gov_genesis_event, create_network, create_system, get_peer_id, initilize_use_case
 };
-use actor::{ActorPath, ActorRef, SystemRef};
-use identity::{
-    identifier::{
-        derive::{digest::DigestDerivator, KeyDerivator},
-        DigestIdentifier,
-    },
-    keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
-};
+use actor::{ActorPath, ActorRef};
+use identity::
+    identifier::DigestIdentifier
+;
 use kore_base::{
-    init_state, intermediary::Intermediary, service::HelperService, Event,
-    Governance, HashId, Node, NodeMessage, NodeResponse, Signature, Signed,
-    Subject, SubjectCommand, SubjectResponse, SubjectState, SubjectsTypes,
+    NodeMessage, NodeResponse, SubjectCommand, SubjectResponse, SubjectsTypes,
     Validation, ValidationCommand, ValidationInfo, ValueWrapper,
 };
-use network::{
-    NetworkService, NodeType, PublicKey, PublicKeyEd25519, RoutingNode,
-};
-use serde_json::value;
-use tokio_util::sync::CancellationToken;
+use network::RoutingNode;
 use tracing_subscriber::EnvFilter;
-use tracing_test::traced_test;
 
 async fn initialize_logger() {
     let _ = tracing_subscriber::fmt()
@@ -32,110 +20,7 @@ async fn initialize_logger() {
         .try_init();
 }
 
-async fn initilize_use_case() -> (Node, KeyPair, Subject, KeyPair) {
-    let node_keys: KeyPair = KeyPair::Ed25519(Ed25519KeyPair::new());
-    let node = Node::new(&node_keys, DigestDerivator::Blake3_256).unwrap();
 
-    let request = create_start_request_mock(
-        node_keys.clone(),
-        node_keys.key_identifier().clone(),
-    );
-    let gov_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
-    let event = Event::from_create_request(
-        &gov_keys,
-        &request,
-        0,
-        &init_state(&node_keys.key_identifier().to_string()),
-        DigestDerivator::Blake3_256,
-    )
-    .unwrap();
-    let signature =
-        Signature::new(&event, &node_keys, DigestDerivator::Blake3_256)
-            .unwrap();
-    let signed_event = Signed {
-        content: event.clone(),
-        signature,
-    };
-    let subject = Subject::from_event(
-        gov_keys.clone(),
-        DigestDerivator::Blake3_256,
-        &signed_event,
-    )
-    .unwrap();
-
-    (node, node_keys, subject, gov_keys)
-}
-
-fn create_info_gov_genesis_event(
-    node_keys: KeyPair,
-    gov_keys: KeyPair,
-    subject_state: SubjectState,
-) -> ValidationInfo {
-    // Create governance genesis event
-    let request = create_start_request_mock(
-        gov_keys.clone(),
-        subject_state.subject_key.clone(),
-    );
-    let event = Event::from_create_request(
-        &gov_keys,
-        &request,
-        0,
-        &init_state(&node_keys.key_identifier().to_string()),
-        DigestDerivator::Blake3_256,
-    )
-    .unwrap();
-    let subject_signature =
-        Signature::new(&event, &gov_keys, DigestDerivator::Blake3_256).unwrap();
-    let subject_event = Signed {
-        content: event,
-        signature: subject_signature.clone(),
-    };
-    ValidationInfo {
-        subject: subject_state.clone(),
-        event: subject_event.clone(),
-        gov_version: 0,
-    }
-}
-
-fn create_info_gov_event(
-    gov_keys: KeyPair,
-    subject_id: DigestIdentifier,
-    prev_event: ValidationInfo,
-    value: ValueWrapper,
-) -> Signed<Event> {
-    let request: Signed<kore_base::EventRequest> =
-        fact_request_mock(gov_keys.clone(), subject_id.clone(), value.clone());
-
-    // Calculate event hash of first event
-    let event_hash = prev_event
-        .event
-        .hash_id(DigestDerivator::Blake3_256)
-        .unwrap();
-
-    let fact_event = Event {
-        subject_id: subject_id.clone(),
-        event_request: request.clone(),
-        sn: prev_event.event.content.sn + 1,
-        gov_version: prev_event.event.content.gov_version,
-        patch: value,
-        state_hash: event_hash.clone(),
-        eval_success: true,
-        appr_required: false,
-        approved: true,
-        hash_prev_event: event_hash,
-        evaluators: HashSet::default(),
-        approvers: HashSet::default(),
-    };
-
-    let subject_signature =
-        Signature::new(&fact_event, &gov_keys, DigestDerivator::Blake3_256)
-            .unwrap();
-
-    Signed {
-        content: fact_event,
-        signature: subject_signature,
-    }
-}
 
 #[tokio::test]
 async fn test_local_validation() {
@@ -198,6 +83,11 @@ async fn test_local_validation() {
         gov_keys.clone(),
         subject_state.clone(),
     );
+    let info = ValidationInfo {
+        subject: subject_state.clone(),
+        event: info.clone(),
+        gov_version: 0,
+    };
     // Send message to validation actor, to create a validator actor
     validation_actor
         .tell(ValidationCommand::Create {
@@ -273,36 +163,6 @@ async fn test_local_validation() {
     tokio::time::sleep(Duration::from_secs(3)).await;
 }
 
-pub async fn create_network(
-    system: SystemRef,
-    addr: String,
-    node_keys: KeyPair,
-    boot_node: Vec<RoutingNode>,
-) {
-    // Initialize boot worker
-    let (mut node1_worker, mut boot_worker_receiver) = build_worker(
-        boot_node,
-        NodeType::Bootstrap,
-        CancellationToken::new(),
-        Some(addr),
-        node_keys,
-    );
-
-    // Create worker
-    let service = Intermediary::new(
-        node1_worker.service().sender().clone(),
-        KeyDerivator::Ed25519,
-        system.clone(),
-    );
-
-    node1_worker.add_network_sender(service.service().sender());
-    system.add_helper("NetworkIntermediary", service).await;
-
-    tokio::spawn(async move {
-        let _ = node1_worker.run().await;
-    });
-}
-
 #[tokio::test]
 async fn test_network_validation() {
     initialize_logger().await;
@@ -335,6 +195,7 @@ async fn test_network_validation() {
     )
     .await;
 
+    // Create node actors
     let node_actor1 = system1
         .create_root_actor("node", node1.clone())
         .await
@@ -345,14 +206,14 @@ async fn test_network_validation() {
         .await
         .unwrap();
 
-    // Register subject in actor node
+    // Register subject in actor node with owner
     node_actor1
         .tell(NodeMessage::RegisterSubject(
             SubjectsTypes::OwnerGovernance(subject1.subject_id.to_string()),
         ))
         .await
         .unwrap();
-
+    // Register subject in actor node with know governance
     node_actor2
         .tell(NodeMessage::RegisterSubject(SubjectsTypes::KnowGovernance(
             subject1.subject_id.to_string(),
@@ -397,6 +258,11 @@ async fn test_network_validation() {
         gov_keys1.clone(),
         subject_state.clone(),
     );
+    let info = ValidationInfo {
+        subject: subject_state.clone(),
+        event: info.clone(),
+        gov_version: 0,
+    };
 
     let validation_actor: ActorRef<Validation> = system1
         .get_actor(&ActorPath::from(format!(
@@ -405,7 +271,8 @@ async fn test_network_validation() {
         )))
         .await
         .unwrap();
-
+    
+    // Create validatio request -> LocalValidation
     validation_actor
         .tell(ValidationCommand::Create {
             request_id: DigestIdentifier::default(),
@@ -461,7 +328,9 @@ async fn test_network_validation() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
+     tokio::time::sleep(Duration::from_secs(2)).await;
+    // Stop subject actor of system2 to use prestar and create validator actor
+    // TODO: al actualizar el sujeto se deben lanzar los los actores de validacion
     subject_actor2.stop().await;
     tokio::time::sleep(Duration::from_secs(2)).await;
 
@@ -492,6 +361,7 @@ async fn test_network_validation() {
     };
 
     // Envio el evento a validar
+    // TODO: Ya existe un actor de validator, por eso es probable que de error
     validation_actor
         .tell(ValidationCommand::Create {
             request_id: DigestIdentifier::default(),
@@ -500,5 +370,5 @@ async fn test_network_validation() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    tokio::time::sleep(Duration::from_secs(10)).await; 
 }

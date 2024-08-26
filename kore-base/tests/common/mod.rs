@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use actor::SystemRef;
 use identity::{
     identifier::{
@@ -7,9 +9,9 @@ use identity::{
     keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair},
 };
 use kore_base::{
-    service::HelperService, system, Config as ConfigKoreBase, EventRequest, FactRequest, KoreBaseConfig, NetworkMessage, Signature, Signed, StartRequest, ValueWrapper
+    init_state, intermediary::Intermediary, system, Event, EventRequest, FactRequest, HashId, KoreBaseConfig, NetworkMessage, Node, Signature, Signed, StartRequest, Subject, SubjectState, ValidationInfo, ValueWrapper
 };
-use network::{CommandHelper, Event as NetworkEvent, PeerId, PublicKey, PublicKeyEd25519, RoutingConfig};
+use network::{Event as NetworkEvent, PeerId, PublicKey, PublicKeyEd25519, RoutingConfig};
 use network::{Config, NetworkWorker, NodeType, RoutingNode};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
@@ -50,14 +52,10 @@ pub fn fact_request_mock(
         subject_id: subject_id.clone(),
         payload: patch,
     };
-
-    let bytes = bincode::serialize(&req).unwrap();
-    
     let content = EventRequest::Fact(req);
     let signature =
         Signature::new(&content, &key_pair, DigestDerivator::SHA2_256).unwrap();
 
-    
     Signed { content, signature }
 }
 // Mokcs
@@ -138,4 +136,134 @@ pub fn get_peer_id(keys: KeyPair) -> PeerId {
     let public_key = PublicKeyEd25519::try_from_bytes(keys.key_identifier().public_key.as_slice()).unwrap();
     let peer = PublicKey::from(public_key);
     peer.to_peer_id()
+}
+
+pub async fn create_network(
+    system: SystemRef,
+    addr: String,
+    node_keys: KeyPair,
+    boot_node: Vec<RoutingNode>,
+) {
+    // Initialize boot worker
+    let (mut node1_worker, _boot_worker_receiver) = build_worker(
+        boot_node,
+        NodeType::Bootstrap,
+        CancellationToken::new(),
+        Some(addr),
+        node_keys,
+    );
+
+    // Create worker
+    let service = Intermediary::new(
+        node1_worker.service().sender().clone(),
+        KeyDerivator::Ed25519,
+        system.clone(),
+    );
+
+    node1_worker.add_network_sender(service.service().sender());
+    system.add_helper("NetworkIntermediary", service).await;
+
+    tokio::spawn(async move {
+        let _ = node1_worker.run().await;
+    });
+}
+
+pub async fn initilize_use_case() -> (Node, KeyPair, Subject, KeyPair) {
+    let node_keys: KeyPair = KeyPair::Ed25519(Ed25519KeyPair::new());
+    let node = Node::new(&node_keys, DigestDerivator::Blake3_256).unwrap();
+
+    let request = create_start_request_mock(
+        node_keys.clone(),
+        node_keys.key_identifier().clone(),
+    );
+    let gov_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+    let event = Event::from_create_request(
+        &gov_keys,
+        &request,
+        0,
+        &init_state(&node_keys.key_identifier().to_string()),
+        DigestDerivator::Blake3_256,
+    )
+    .unwrap();
+    let signature =
+        Signature::new(&event, &node_keys, DigestDerivator::Blake3_256)
+            .unwrap();
+    let signed_event = Signed {
+        content: event.clone(),
+        signature,
+    };
+    let subject = Subject::from_event(
+        gov_keys.clone(),
+        DigestDerivator::Blake3_256,
+        &signed_event,
+    )
+    .unwrap();
+
+    (node, node_keys, subject, gov_keys)
+}
+
+pub fn create_info_gov_genesis_event(
+    node_keys: KeyPair,
+    gov_keys: KeyPair,
+    subject_state: SubjectState,
+) -> Signed<Event> {
+    // Create governance genesis event
+    let request = create_start_request_mock(
+        gov_keys.clone(),
+        subject_state.subject_key.clone(),
+    );
+    let event = Event::from_create_request(
+        &gov_keys,
+        &request,
+        0,
+        &init_state(&node_keys.key_identifier().to_string()),
+        DigestDerivator::Blake3_256,
+    )
+    .unwrap();
+    let subject_signature =
+        Signature::new(&event, &gov_keys, DigestDerivator::Blake3_256).unwrap();
+    Signed {
+        content: event,
+        signature: subject_signature.clone(),
+    }
+}
+
+pub fn create_info_gov_event(
+    gov_keys: KeyPair,
+    subject_id: DigestIdentifier,
+    prev_event: ValidationInfo,
+    value: ValueWrapper,
+) -> Signed<Event> {
+    let request: Signed<kore_base::EventRequest> =
+        fact_request_mock(gov_keys.clone(), subject_id.clone(), value.clone());
+
+    // Calculate event hash of first event
+    let event_hash = prev_event
+        .event
+        .hash_id(DigestDerivator::Blake3_256)
+        .unwrap();
+
+    let fact_event = Event {
+        subject_id: subject_id.clone(),
+        event_request: request.clone(),
+        sn: prev_event.event.content.sn + 1,
+        gov_version: prev_event.event.content.gov_version,
+        patch: value,
+        state_hash: event_hash.clone(),
+        eval_success: true,
+        appr_required: false,
+        approved: true,
+        hash_prev_event: event_hash,
+        evaluators: HashSet::default(),
+        approvers: HashSet::default(),
+    };
+
+    let subject_signature =
+        Signature::new(&fact_event, &gov_keys, DigestDerivator::Blake3_256)
+            .unwrap();
+
+    Signed {
+        content: fact_event,
+        signature: subject_signature,
+    }
 }
