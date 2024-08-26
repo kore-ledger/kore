@@ -370,9 +370,5 @@ async fn test_network_validation() {
         .await
         .unwrap();
 
-    loop {
-        
-    }
-
     tokio::time::sleep(Duration::from_secs(10)).await; 
 }
