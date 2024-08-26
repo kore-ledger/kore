@@ -1,0 +1,10 @@
+llvm: true
+output-type: lcov
+output-path: ./lcov.info
+binary-path: ./target/debug
+source-dir: ./src
+ignore-not-existing: true
+ignore:
+  - "/*"
+  - "C:/*"
+  - "../*"
