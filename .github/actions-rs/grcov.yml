@@ -1,8 +1,8 @@
 llvm: true
 output-type: lcov
 output-path: ./lcov.info
-binary-path: ./target/debug
-source-dir: ./src
+binary-path: ./kore-base/target/debug
+source-dir: ./kore-base/src
 ignore-not-existing: true
 ignore:
   - "/*"
