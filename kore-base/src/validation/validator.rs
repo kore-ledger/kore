@@ -118,7 +118,7 @@ impl Validator {
                 &validation_req.proof.schema_id,
             )
             .await?
-            .version()
+            .get_version()
         };
 
         match actual_gov_version.cmp(&validation_req.proof.governance_version) {

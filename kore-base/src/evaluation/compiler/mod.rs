@@ -10,11 +10,12 @@ use wasmtime::{Config, Engine, ExternType, Module};
 
 use crate::Error;
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Compiler {}
 
 impl Compiler {
     async fn compile_contract(
-        contract: String,
+        contract: &str,
         contract_path: &str,
     ) -> Result<(), Error> {
         // Write contract.
@@ -128,7 +129,14 @@ impl Compiler {
 
 #[derive(Debug, Clone)]
 pub enum CompilerCommand {
-    Run,
+    Compile{
+        contract: String,
+        contract_path: String
+    },
+    CompileCheck{
+        contract: String,
+        contract_path: String
+    },
 }
 
 impl Message for CompilerCommand {}
@@ -141,7 +149,8 @@ impl Event for CompilerEvent {}
 #[derive(Debug, Clone)]
 pub enum CompilerResponse {
     Error(Error),
-    None,
+    Check,
+    Compilation(Vec<u8>)
 }
 
 impl Response for CompilerResponse {}
@@ -158,15 +167,29 @@ impl Handler<Compiler> for Compiler {
     async fn handle_message(
         &mut self,
         msg: CompilerCommand,
-        ctx: &mut ActorContext<Compiler>,
+        _ctx: &mut ActorContext<Compiler>,
     ) -> Result<CompilerResponse, ActorError> {
-        Ok(CompilerResponse::None)
-    }
+        match msg {
+            CompilerCommand::Compile { contract, contract_path } => {
+                if let Err(e) = Self::compile_contract(&contract, &contract_path).await {
+                    return Ok(CompilerResponse::Error(e));
+                };
 
-    async fn on_event(
-        &mut self,
-        event: CompilerEvent,
-        ctx: &mut ActorContext<Compiler>,
-    ) {
+                match Self::check_wasm(&contract_path).await {
+                    Ok(wasm) => Ok(CompilerResponse::Compilation(wasm)),
+                    Err(e) => Ok(CompilerResponse::Error(e))
+                }
+            },
+            CompilerCommand::CompileCheck { contract, contract_path } => {
+                if let Err(e) = Self::compile_contract(&contract, &contract_path).await {
+                    return Ok(CompilerResponse::Error(e));
+                };
+
+                match Self::check_wasm(&contract_path).await {
+                    Ok(_) => Ok(CompilerResponse::Check),
+                    Err(e) => Ok(CompilerResponse::Error(e))
+                }
+            }
+        }
     }
 }

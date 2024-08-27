@@ -63,6 +63,9 @@ pub enum Error {
     #[error("NetworkHelper error: {0}")]
     NetworkHelper(String),
     /// Network error.
-    #[error("NetworkHelper error: {0}")]
+    #[error("Network error: {0}")]
     Network(String),
+    /// JSONSchema error.
+    #[error("JSONSchema error: {0}")]
+    JSONSChema(String)
 }

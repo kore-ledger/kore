@@ -18,7 +18,7 @@ use crate::{
     },
     subject,
     validation::proof::ValidationProof,
-    Api, Config, Error,
+    Api, Config, Error, DIGEST_DERIVATOR,
 };
 
 use identity::{
@@ -54,8 +54,6 @@ pub struct Node {
     /// Owner of the node.
     #[serde(skip)]
     owner: KeyPair,
-    /// Derivator for sign
-    derivator: DigestDerivator,
     /// The node's owned subjects.
     owned_subjects: Vec<String>,
     /// The node's known subjects.
@@ -72,11 +70,9 @@ impl Node {
     /// Creates a new node.
     pub fn new(
         id: &KeyPair,
-        derivator: DigestDerivator,
     ) -> Result<Self, Error> {
         Ok(Self {
             owner: id.clone(),
-            derivator,
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             owned_governances: Vec::new(),
@@ -136,7 +132,13 @@ impl Node {
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
-        Signature::new(content, &self.owner, self.derivator)
+        let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+            derivator.clone()
+        } else {
+            error!("Error getting derivator");
+            DigestDerivator::Blake3_256
+        };
+        Signature::new(content, &self.owner, derivator)
             .map_err(|e| Error::Signature(format!("{}", e)))
     }
 
@@ -203,6 +205,7 @@ pub enum NodeMessage {
     AmISubjectOwner(DigestIdentifier),
     AmIGovernanceOwner(DigestIdentifier),
     GetOwnerIdentifier,
+    CompiledContract(String)
 }
 
 impl Message for NodeMessage {}
@@ -216,6 +219,7 @@ pub enum NodeResponse {
     /// Owner identifier.
     OwnerIdentifier(KeyIdentifier),
     AmIOwner(bool),
+    Contract(Vec<u8>),
     Error(Error),
     None,
 }
@@ -344,6 +348,12 @@ impl Handler<Node> for Node {
                     }
                 }
                 Ok(NodeResponse::None)
+            },
+            NodeMessage::CompiledContract(contract_path) => {
+                match self.get_contract(&contract_path) {
+                    Ok(contract) => Ok(NodeResponse::Contract(contract)),
+                    Err(e) => Ok(NodeResponse::Error(e))
+                }
             }
         }
     }

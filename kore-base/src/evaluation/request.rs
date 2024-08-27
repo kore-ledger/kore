@@ -44,6 +44,7 @@ pub struct EvaluationReq {
     BorshDeserialize,
 )]
 pub struct SubjectContext {
+    pub subject_id: DigestIdentifier,
     pub governance_id: DigestIdentifier,
     pub schema_id: String,
     pub is_owner: bool,

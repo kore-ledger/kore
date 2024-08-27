@@ -13,7 +13,7 @@ async fn test_local_validation() {
     let system = create_system().await;
     // Node
     let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
-    let node = Node::new(&node_keys, DigestDerivator::Blake3_256).unwrap();
+    let node = Node::new(&node_keys).unwrap();
     let node_actor = system.create_root_actor("node", node).await.unwrap();
     // Governance
     let request = create_start_request_mock(node_keys.clone(), node_keys.key_identifier().clone());
@@ -35,7 +35,6 @@ async fn test_local_validation() {
     };
     let subject = Subject::from_event(
         gov_keys.clone(),
-        DigestDerivator::Blake3_256,
         &signed_event,
     )
     .unwrap();

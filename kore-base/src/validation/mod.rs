@@ -74,6 +74,13 @@ pub struct Validation {
 }
 
 impl Validation {
+    pub fn new(node_key: KeyIdentifier) -> Self {
+        Validation {
+            node_key,
+            ..Default::default()
+        }
+    }
+
     fn check_validator(&mut self, validator: KeyIdentifier) -> bool {
         self.validators.remove(&validator)
     }
@@ -298,7 +305,7 @@ impl Message for ValidationCommand {}
 pub struct ValidationEvent {
     pub actual_proof: ValidationProof,
     pub actual_event_validation_response: Vec<SignersRes>,
-    pub    validation: bool
+    pub validation: bool
 }
 
 impl Event for ValidationEvent {}
@@ -322,17 +329,6 @@ impl Actor for Validation {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Starting validation actor with init store.");
-
-        let node_key = match self.get_node_key(ctx).await {
-            Ok(key) => key,
-            Err(e) => {
-                error!("Can not start Validation Actor, a problem getting keys of node: {}", e);
-                return Err(ActorError::Create);
-            }
-        };
-        // Update node_key
-        self.node_key = node_key;
-
         self.init_store("validation", false, ctx).await
     }
 
@@ -402,8 +398,6 @@ impl Handler<Validation> for Validation {
                         return Err(error);
                     }
                 }
-
-                Ok(ValidationResponse::None)
             }
             ValidationCommand::Response(response) => {
                 // TODO Al menos una validación tiene que ser válida, no solo errores y timeout.
@@ -461,10 +455,9 @@ impl Handler<Validation> for Validation {
                 } else {
                     // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                 }
-
-                Ok(ValidationResponse::None)
             }
-        }
+        };
+        Ok(ValidationResponse::None)
     }
     async fn on_event(
         &mut self,

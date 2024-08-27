@@ -4,12 +4,12 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{Governance, RequestStage},
+    governance::{json_schema::JsonSchema, Governance, RequestStage, Schema},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{signature::Signature, SignTypes, TimeStamp},
-    node::{Node, NodeMessage, NodeResponse},
+    model::{signature::Signature, HashId, SignTypes, TimeStamp},
+    node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectCommand, SubjectResponse},
-    Error, EventRequest, FactRequest, Subject, ValueWrapper,
+    Error, EventRequest, FactRequest, Subject, ValueWrapper, DIGEST_DERIVATOR,
 };
 
 use crate::helpers::network::ActorMessage;
@@ -21,6 +21,7 @@ use identity::identifier::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use json_patch::diff;
 use network::{Command, ComunicateInfo};
 use serde::{Deserialize, Serialize};
 
@@ -30,13 +31,18 @@ use actor::{
     Strategy,
 };
 
+use serde_json::{json, Value};
 use tracing::{debug, error};
 
 use super::{
+    compiler::{Compiler, CompilerCommand, CompilerResponse},
     request::EvaluationReq,
     response::EvaluationRes,
-    runner::{types::{Contract, ContractResult}, Runner, RunnerCommand, RunnerResponse},
-    EvaluationResponse,
+    runner::{
+        types::{Contract, ContractResult, GovernanceData},
+        Runner, RunnerCommand, RunnerResponse,
+    },
+    Evaluation, EvaluationResponse,
 };
 
 /// A struct representing a Evaluator actor.
@@ -109,17 +115,62 @@ impl Evaluator {
             Err(e) => return Err(e),
         };
 
-        let response = runner_actor.ask(RunnerCommand {
-            state: state.clone(),
-            event: event.clone(),
-            compiled_contract,
-            is_owner,
-        }).await;
+        let response = runner_actor
+            .ask(RunnerCommand {
+                state: state.clone(),
+                event: event.clone(),
+                compiled_contract,
+                is_owner,
+            })
+            .await;
 
         match response {
             Ok(eval) => Ok(eval),
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
+    }
+
+    async fn compile_contracts(
+        &self,
+        ctx: &mut ActorContext<Evaluator>,
+        ids: &[String],
+        schemas: Vec<Schema>,
+        governance_id: &str,
+    ) -> Result<(), Error> {
+        let child = ctx.create_child("compiler", Compiler::default()).await;
+
+        let compiler_actor = match child {
+            Ok(child) => child,
+            Err(e) => return Err(Error::Actor(format!("{}", e))),
+        };
+        for id in ids {
+            let schema = if let Some(schema) =
+                schemas.iter().find(|x| x.id.clone() == id.clone())
+            {
+                schema
+            } else {
+                return Err(Error::Evaluation("There is a contract that requires compilation but its scheme could not be found".to_owned()));
+            };
+
+            let response = compiler_actor
+                .ask(CompilerCommand::CompileCheck {
+                    contract: schema.contract.raw.clone(),
+                    contract_path: format!("{}_{}", governance_id, id),
+                })
+                .await;
+
+            let compilation = match response {
+                Ok(compilation) => compilation,
+                Err(e) => return Err(Error::Actor(format!("{}", e))),
+            };
+
+            match compilation {
+                CompilerResponse::Check => {},
+                CompilerResponse::Error(e) => return Err(e),
+                _ => return Err(Error::Actor(format!("An unexpected response has been received from compiler actor")))
+            }
+        }
+        Ok(())
     }
 
     async fn evaluate(
@@ -127,28 +178,22 @@ impl Evaluator {
         ctx: &mut ActorContext<Evaluator>,
         execute_contract: &EvaluationReq,
         event: &FactRequest,
-    ) -> Result<(), Error> {
+    ) -> Result<ContractResult, Error> {
         // TODO: En el original se usa el sn y no el gov version, revizar.
 
+        let is_governance = execute_contract.context.schema_id == "governance";
+
         // Get governance id
-        let governance_id = if &execute_contract.context.schema_id
-            == "governance"
-        {
-            if let EventRequest::Fact(data) =
-                &execute_contract.event_request.content
-            {
-                data.subject_id.clone()
-            } else {
-                return Err(Error::Validation("The only event that requires validation is the Fact event, another type of event arrived.".to_owned()));
-            }
+        let governance_id = if is_governance {
+            execute_contract.context.subject_id.clone()
         } else {
             execute_contract.context.governance_id.clone()
         };
 
         // Get governance
-        let governance = self.get_gov(ctx, governance_id).await?;
+        let governance = self.get_gov(ctx, governance_id.clone()).await?;
         // Get governance version
-        let governance_version = governance.version();
+        let governance_version = governance.get_version();
 
         match governance_version.cmp(&execute_contract.gov_version) {
             std::cmp::Ordering::Equal => {
@@ -166,34 +211,93 @@ impl Evaluator {
             }
         }
 
-        // Hash of context
-        let context_hash = Self::generate_context_hash(execute_contract)?;
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+        let node_actor = if let Some(node_actor) = node_actor {
+            node_actor
+        } else {
+            return Err(Error::Actor(format!(
+                "The node actor was not found in the expected path {}",
+                node_path
+            )));
+        };
 
-        // TODO: en el original sacaban el gov_version del contrato, pero tiene que ser la misma que la de la governanza, por qué se vuelve a ahacer ¿?
-        let contract: Contract =
-            if execute_contract.context.schema_id == "governance" {
-                Contract::GovContract
-            } else {
-                // pedir contrato al nodo. TODO
-                
-                Contract::CompiledContract(vec![])
+        // TODO: en el original sacaban el gov_version del contrato, pero tiene que ser la misma que la de la governanza, por qué se vuelve a hacer ¿?
+        let contract: Contract = if is_governance {
+            Contract::GovContract
+        } else {
+            let response = match node_actor
+                .ask(NodeMessage::CompiledContract(format!(
+                    "{}_{}",
+                    governance_id, execute_contract.context.schema_id
+                )))
+                .await
+            {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a Subject {}",
+                        e
+                    )));
+                }
             };
 
-        // Sacar si es el owner
-        // Mirar la parte final de execute contract.
-        let response = match self.execute_contract(ctx, &execute_contract.context.state,&event.payload, contract, true).await {
-            Ok(response) => response,
-            Err(e) => {
-                // Propagar error hacia arriba.
-                todo!()
+            match response {
+                NodeResponse::Contract(compiled_contract) => {
+                    Contract::CompiledContract(compiled_contract)
+                }
+                // TODO, si no encuentra el contrato se podría volver a compilar
+                NodeResponse::Error(e) => {
+                    return Err(Error::Actor(format!(
+                        "The compiled contract could not be found: {}",
+                        e
+                    )))
+                }
+                _ => {
+                    return Err(Error::Actor(format!(
+                    "An unexpected response has been received from node actor"
+                )))
+                }
             }
         };
 
-        
+        // Mirar la parte final de execute contract.
+        let response = self
+            .execute_contract(
+                ctx,
+                &execute_contract.context.state,
+                &event.payload,
+                contract,
+                execute_contract.context.is_owner,
+            )
+            .await
+            .map_err(|e| Error::Actor(format!("{}", e)))?;
 
-        
-        // Aquí hacer la compilación si es una governanza, todo fue bien y el bool de la compilación es true.
-        Ok(())
+        if response.result.success
+            && is_governance
+            && !response.compilations.is_empty()
+        {
+            let governance_data = serde_json::from_value::<GovernanceData>(
+                response.result.final_state.0.clone(),
+            )
+            .map_err(|e| {
+                Error::Validation(format!(
+                    "Can not create governance data {}",
+                    e
+                ))
+            })?;
+
+            self.compile_contracts(
+                ctx,
+                &response.compilations,
+                governance_data.schemas,
+                &governance_id.to_string(),
+            )
+            .await?;
+        }
+
+        Ok(response.result)
     }
 
     fn generate_context_hash(
@@ -201,6 +305,16 @@ impl Evaluator {
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::generate_with_blake3(execute_contract)
             .map_err(|e| Error::Digest(format!("{}", e)))
+    }
+
+    fn generate_json_patch(
+        prev_state: &Value,
+        new_state: &Value,
+    ) -> Result<Value, Error> {
+        let patch = diff(prev_state, new_state);
+        serde_json::to_value(patch).map_err(|e| {
+            Error::Validation(format!("Can not generate json patch {}", e))
+        })
     }
 }
 
@@ -255,6 +369,155 @@ impl Handler<Evaluator> for Evaluator {
         msg: EvaluatorCommand,
         ctx: &mut ActorContext<Evaluator>,
     ) -> Result<EvaluatorResponse, ActorError> {
+        match msg {
+            EvaluatorCommand::LocalEvaluation {
+                evaluation_req,
+                our_key,
+            } => {
+                let EventRequest::Fact(state_data) =
+                    &evaluation_req.event_request.content
+                else {
+                    // Manejar, solo se evaluan los eventos de tipo fact TODO
+                    todo!()
+                };
+
+                let evaluation =
+                    match self.evaluate(ctx, &evaluation_req, state_data).await
+                    {
+                        Ok(evaluation) => evaluation,
+                        Err(e) => {
+                            // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
+                            todo!()
+                        }
+                    };
+
+                let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+                    derivator.clone()
+                } else {
+                    error!("Error getting derivator");
+                    DigestDerivator::Blake3_256
+                };
+
+                // Hash of context
+                let context_hash =
+                    match Self::generate_context_hash(&evaluation_req) {
+                        Ok(context_hash) => context_hash,
+                        Err(e) => {
+                            // Manejar
+                            todo!()
+                        }
+                    };
+
+                let state_hash =
+                    match evaluation_req.context.state.hash_id(derivator) {
+                        Ok(state_hash) => state_hash,
+                        Err(e) => todo!(),
+                    };
+
+                let response = if evaluation.success {
+                    // Sacar esquema actual
+                    let governance_data =
+                        match serde_json::from_value::<GovernanceData>(
+                            evaluation_req.context.state.0.clone(),
+                        )
+                        .map_err(|e| {
+                            Error::Validation(format!(
+                                "Can not create governance data {}",
+                                e
+                            ))
+                        }) {
+                            Ok(gov_data) => gov_data,
+                            Err(e) => todo!(),
+                        };
+
+                    let schema = if let Some(schema) =
+                        governance_data.schemas.iter().find(|x| {
+                            x.id.clone() == evaluation_req.context.schema_id
+                        }) {
+                        schema
+                    } else {
+                        todo!()
+                    };
+
+                    let json_schema = match JsonSchema::compile(&schema.schema)
+                    {
+                        Ok(json_schema) => json_schema,
+                        Err(e) => todo!(),
+                    };
+
+                    let value = match serde_json::to_value(
+                        evaluation.final_state.clone(),
+                    ) {
+                        Ok(value) => value,
+                        Err(e) => todo!(),
+                    };
+                    if json_schema.validate(&value) {
+                        let state_hash =
+                            match evaluation.final_state.hash_id(derivator) {
+                                Ok(state_hash) => state_hash,
+                                Err(e) => todo!(),
+                            };
+
+                        let patch = match Self::generate_json_patch(
+                            &evaluation_req.context.state.0,
+                            &evaluation.final_state.0,
+                        ) {
+                            Ok(patch) => patch,
+                            Err(e) => todo!(),
+                        };
+
+                        EvaluationRes {
+                            patch: ValueWrapper(patch),
+                            state_hash,
+                            eval_req_hash: context_hash,
+                            eval_success: evaluation.success,
+                            appr_required: evaluation.approval_required,
+                        }
+                    } else {
+                        EvaluationRes {
+                            patch: ValueWrapper(serde_json::Value::String(
+                                "[]".to_owned(),
+                            )),
+                            eval_req_hash: context_hash,
+                            state_hash,
+                            eval_success: false,
+                            appr_required: false,
+                        }
+                    }
+                } else {
+                    EvaluationRes {
+                        patch: ValueWrapper(serde_json::Value::String(
+                            "[]".to_owned(),
+                        )),
+                        eval_req_hash: context_hash,
+                        state_hash,
+                        eval_success: false,
+                        appr_required: false,
+                    }
+                };
+
+                // Validation path.
+                let evaluation_path = ctx.path().parent();
+
+                let evaluation_actor: Option<ActorRef<Evaluation>> =
+                    ctx.system().get_actor(&evaluation_path).await;
+            }
+            EvaluatorCommand::NetworkEvaluation {
+                request_id,
+                evaluation_req,
+                node_key,
+                our_key,
+            } => todo!(),
+            EvaluatorCommand::NetworkResponse {
+                evaluation_res,
+                request_id,
+            } => todo!(),
+            EvaluatorCommand::NetworkRequest {
+                evaluation_req,
+                info,
+            } => todo!(),
+        }
+
         Ok(EvaluatorResponse::None)
     }
 

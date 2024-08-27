@@ -5,6 +5,7 @@
 //!
 
 pub mod init;
+pub mod json_schema;
 pub mod model;
 mod schema;
 
@@ -251,7 +252,7 @@ impl Governance {
     }
 
     /// Governance version.
-    pub fn version(&self) -> u64 {
+    pub fn get_version(&self) -> u64 {
         self.model.version
     }
 

@@ -141,10 +141,21 @@ impl Runner {
                 return Err(Error::Runner("json patch operations have no “op” field".to_owned()));
             };
 
-            // Check if op is add or replace
+            // Check if op is add or replace, or remove for roles and members
             match op {
                 "add" | "replace" => {},
-                _ => return Err(Error::Runner(format!("The only json patch operations that are allowed are add and replace, invalid operation: {}", op)))
+                "remove" => {
+                    // Obtain path
+                    let path = if let Some(path) = val["path"].as_str() {
+                        path
+                    } else {
+                        return Err(Error::Runner("The path field is not a str".to_owned()))
+                    };  
+                    if !path.contains("roles") && !path.contains("members") {
+                        return Err(Error::Runner(format!("Remove operation in JSON parch is only allowed for members and roles, invalid operation {} for {}", op, path)))   
+                    }
+                },
+                _ => return Err(Error::Runner(format!("The only json patch operations that are allowed are add, replace and remove (only for members and roles), invalid operation: {}", op)))
             }
 
             // Check if has schema field is a schema
@@ -152,7 +163,7 @@ impl Runner {
                 let id = if let Some(id) = val["value"]["id"].as_str() {
                     id
                 } else {
-                    unreachable!("The id field is always a str");
+                    return Err(Error::Runner("The id field is not a str".to_owned()))
                 };
 
                 // Save the id that needs to be compiled
@@ -424,7 +435,7 @@ impl Event for RunnerEvent {}
 #[derive(Debug, Clone)]
 pub struct RunnerResponse {
     pub result: ContractResult,
-    pub compilations: Vec<String>
+    pub compilations: Vec<String>,
 }
 
 impl Response for RunnerResponse {}
