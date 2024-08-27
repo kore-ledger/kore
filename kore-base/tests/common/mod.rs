@@ -38,9 +38,7 @@ pub fn create_start_request_mock(
         public_key: key_identifier.clone(),
     };
     let content = EventRequest::Create(req);
-    let signature =
-        Signature::new(&content, &key_pair, DigestDerivator::SHA2_256).unwrap();
-    Signed { content, signature }
+    signed(content, key_pair)
 }
 
 pub fn fact_request_mock(
@@ -53,10 +51,7 @@ pub fn fact_request_mock(
         payload: patch,
     };
     let content = EventRequest::Fact(req);
-    let signature =
-        Signature::new(&content, &key_pair, DigestDerivator::SHA2_256).unwrap();
-
-    Signed { content, signature }
+    signed(content, key_pair)
 }
 // Mokcs
 #[allow(dead_code)]
@@ -185,13 +180,8 @@ pub async fn initilize_use_case() -> (Node, KeyPair, Subject, KeyPair) {
         DigestDerivator::Blake3_256,
     )
     .unwrap();
-    let signature =
-        Signature::new(&event, &node_keys, DigestDerivator::Blake3_256)
-            .unwrap();
-    let signed_event = Signed {
-        content: event.clone(),
-        signature,
-    };
+
+    let signed_event = signed(event, node_keys.clone());
     let subject = Subject::from_event(
         gov_keys.clone(),
         DigestDerivator::Blake3_256,
@@ -220,11 +210,14 @@ pub fn create_info_gov_genesis_event(
         DigestDerivator::Blake3_256,
     )
     .unwrap();
-    let subject_signature =
-        Signature::new(&event, &gov_keys, DigestDerivator::Blake3_256).unwrap();
+    signed(event, gov_keys)
+}
+
+pub fn signed<T : borsh::de::BorshDeserialize + Clone + HashId>(event: T, keys:KeyPair) -> Signed<T> {
+    let signature = Signature::new(&event, &keys, DigestDerivator::Blake3_256).unwrap();
     Signed {
         content: event,
-        signature: subject_signature.clone(),
+        signature,
     }
 }
 
@@ -258,12 +251,5 @@ pub fn create_info_gov_event(
         approvers: HashSet::default(),
     };
 
-    let subject_signature =
-        Signature::new(&fact_event, &gov_keys, DigestDerivator::Blake3_256)
-            .unwrap();
-
-    Signed {
-        content: fact_event,
-        signature: subject_signature,
-    }
+    signed(fact_event, gov_keys)
 }
