@@ -15,11 +15,7 @@ use crate::{
         Governance, Quorum, RequestStage,
     },
     model::{
-        event::Event as KoreEvent,
-        namespace,
-        request::EventRequest,
-        signature::{self, Signature, Signed},
-        HashId, Namespace, SignTypes,
+        event::Event as KoreEvent, namespace, request::EventRequest, signature::{self, Signature, Signed}, HashId, Namespace, SignTypesNode, SignTypesSubject 
     },
     node::{Node, NodeMessage, NodeResponse},
     subject::{Subject, SubjectCommand, SubjectResponse, SubjectState},
@@ -104,7 +100,7 @@ impl Validation {
         let response = if let Some(subject_actor) = subject_actor {
             // We ask a subject
             let response = subject_actor
-                .ask(SubjectCommand::SignRequest(SignTypes::Validation(
+                .ask(SubjectCommand::SignRequest(SignTypesSubject::Validation(
                     proof.clone(),
                 )))
                 .await;
@@ -146,45 +142,6 @@ impl Validation {
             },
             proof,
         ))
-    }
-
-    async fn get_node_key(
-        &self,
-        ctx: &mut ActorContext<Validation>,
-    ) -> Result<KeyIdentifier, Error> {
-        // Node path.
-        let node_path = ActorPath::from("/user/node");
-        // Node actor.
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        // We obtain the actor node
-        let response = if let Some(node_actor) = node_actor {
-            // We ask a node
-            let response =
-                node_actor.ask(NodeMessage::GetOwnerIdentifier).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a node {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The node actor was not found in the expected path /user/node"
-            )));
-        };
-
-        // We handle the possible responses of node
-        match response {
-            NodeResponse::OwnerIdentifier(key) => Ok(key),
-            _ => Err(Error::Actor(format!(
-                "An unexpected response has been received from node actor"
-            ))),
-        }
     }
 
     async fn get_signers_and_quorum(
@@ -244,12 +201,12 @@ impl Validation {
         &self,
         ctx: &mut ActorContext<Validation>,
         request_id: &str,
-        validation_req: ValidationReq,
+        validation_req: Signed<ValidationReq>,
         signer: KeyIdentifier,
     ) -> Result<(), ActorError> {
         // Create Validator child
         let child = ctx
-            .create_child(&format!("{}", signer), Validator::default())
+            .create_child(&format!("{}", signer), Validator::new(request_id.to_owned(), signer.clone()))
             .await;
         let validator_actor = match child {
             Ok(child) => child,
@@ -262,7 +219,7 @@ impl Validation {
         if signer == our_key {
             if let Err(e) = validator_actor
                 .tell(ValidatorCommand::LocalValidation {
-                    validation_req,
+                    validation_req: validation_req.content,
                     our_key: signer,
                 })
                 .await
@@ -384,14 +341,35 @@ impl Handler<Validation> for Validation {
                 self.validators_quantity = signers.len() as u32;
                 let request_id = request_id.to_string();
 
+                let node_path = ActorPath::from("/user/node");
+                let node_actor: Option<ActorRef<Node>> =  ctx.system().get_actor(&node_path).await;
+
+                // We obtain the validator
+                let node_response = if let Some(node_actor) = node_actor {
+                    match node_actor.ask(NodeMessage::SignRequest(SignTypesNode::ValidationReq(validation_req.clone()))).await {
+                        Ok(response) => response,
+                        Err(e) => todo!()
+                    }
+                } else {
+                    todo!()
+                };
+
+                let signature = match node_response {
+                    NodeResponse::SignRequest(signature) => signature,
+                    NodeResponse::Error(_) => todo!(),
+                    _ => todo!()
+                };
+
+                let signed_validation_req: Signed<ValidationReq> = Signed { content: validation_req, signature };
+
                 for signer in signers {
                     if let Err(error) = self
-                        .create_validators(
-                            ctx,
-                            &request_id,
-                            validation_req.clone(),
-                            signer,
-                        )
+                    .create_validators(
+                        ctx,
+                        &request_id,
+                        signed_validation_req.clone(),
+                        signer,
+                    )
                         .await
                     {
                         // Mensaje al padre de error return Err(error);

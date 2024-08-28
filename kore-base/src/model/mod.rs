@@ -16,7 +16,7 @@ pub mod patch;
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
-use crate::{validation::proof::ValidationProof, Error};
+use crate::{validation::{proof::ValidationProof, request::ValidationReq, response::ValidationRes}, Error};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
@@ -27,7 +27,14 @@ use std::hash::Hash;
 
 // TODO: Separar los tipos de firma, que el sujeto tenga los suyos y el nodo los suyos, solo en caso de que sean muy diferentes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SignTypes {
+pub enum SignTypesNode {
+    Validation(ValidationProof),
+    ValidationReq(ValidationReq),
+    ValidationRes(ValidationRes)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SignTypesSubject {
     Validation(ValidationProof),
 }
 

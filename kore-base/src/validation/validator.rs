@@ -4,12 +4,7 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{Governance, RequestStage},
-    helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{signature::Signature, SignTypes, TimeStamp},
-    node::{Node, NodeMessage, NodeResponse},
-    subject::{SubjectCommand, SubjectResponse},
-    Error, Subject,
+    governance::{Governance, RequestStage}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{signature::Signature, SignTypesNode, TimeStamp}, node::{self, Node, NodeMessage, NodeResponse}, subject::{SubjectCommand, SubjectResponse}, Error, Signed, Subject
 };
 
 use super::{
@@ -43,10 +38,18 @@ use tracing::{debug, error};
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Validator {
     request_id: String,
+    node: KeyIdentifier,
     finish: bool,
 }
 
 impl Validator {
+    pub fn new(
+        request_id: String,
+        node: KeyIdentifier,
+        ) -> Self {
+        Validator { request_id, node, ..Default::default() }
+    }
+
     async fn get_gov(
         &self,
         ctx: &mut ActorContext<Validator>,
@@ -168,7 +171,7 @@ impl Validator {
         let response = if let Some(node_actor) = node_actor {
             // We ask a node
             let response = node_actor
-                .ask(NodeMessage::SignRequest(SignTypes::Validation(
+                .ask(NodeMessage::SignRequest(SignTypesNode::Validation(
                     validation_req.proof,
                 )))
                 .await;
@@ -291,16 +294,16 @@ pub enum ValidatorCommand {
     },
     NetworkValidation {
         request_id: String,
-        validation_req: ValidationReq,
+        validation_req: Signed<ValidationReq>,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
     NetworkResponse {
-        validation_res: ValidationRes,
+        validation_res: Signed<ValidationRes>,
         request_id: String,
     },
     NetworkRequest {
-        validation_req: ValidationReq,
+        validation_req: Signed<ValidationReq>,
         info: ComunicateInfo,
     },
 }
@@ -391,7 +394,7 @@ impl Handler<Validator> for Validator {
                         reciver: node_key,
                         reciver_actor: format!(
                             "/user/node/{}/validator",
-                            validation_req.subject_signature.signer
+                            validation_req.content.proof.subject_id
                         ),
                     },
                     message: ActorMessage::ValidationReq(validation_req),
@@ -408,6 +411,16 @@ impl Handler<Validator> for Validator {
                 request_id,
             } => {
                 if request_id == self.request_id {
+                    if self.node != validation_res.signature.signer {
+                        // Nos llegó a una validación de un nodo incorrecto!
+                        todo!()
+                    }
+
+                    if let Err(e) = validation_res.verify() {
+                        // Hay error criptográfico en la respuesta
+                        todo!()
+                    }
+
                     // Validation path.
                     let validation_path = ctx.path().parent();
 
@@ -417,7 +430,7 @@ impl Handler<Validator> for Validator {
 
                     if let Some(validation_actor) = validation_actor {
                         if let Err(e) = validation_actor
-                            .tell(ValidationCommand::Response(validation_res))
+                            .tell(ValidationCommand::Response(validation_res.content))
                             .await
                         {
                             // TODO error, no se puede enviar la response. Parar
@@ -438,18 +451,40 @@ impl Handler<Validator> for Validator {
                 validation_req,
                 info,
             } => {
+
+                // Aquí hay que comprobar que el owner del subject es el que envía la req.
+                let subject_path = ActorPath::from(format!("/user/node/{}", validation_req.content.proof.subject_id.clone()));
+                let subject_actor: Option<ActorRef<Subject>> =  ctx.system().get_actor(&subject_path).await;
+
+                // We obtain the validator
+                let response = if let Some(subject_actor) = subject_actor {
+                    match subject_actor.ask(SubjectCommand::GetOwner).await {
+                        Ok(response) => response,
+                        Err(e) => todo!()
+                    }
+                } else {
+                    todo!()
+                };
+
+                let subject_owner = match response {
+                    SubjectResponse::Owner(owner) => owner,
+                    _ => todo!()
+                };
+                
+                if subject_owner != validation_req.signature.signer {
+                    // Error nos llegó una validation req de un nodo el cual no es el dueño
+                    todo!()
+                }
+
+                if let Err(e) = validation_req.verify() {
+                    // Hay errores criptográficos
+                    todo!()
+                }
+
+                // Llegados a este punto se ha verificado que la req es del owner del sujeto y está todo correcto.
+
                 // Validar y devolver la respuesta al helper, no a Validation. Nos llegó por la network la validación.
                 // Sacar el Helper aquí
-                let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver.clone(),
-                    request_id: info.request_id,
-                    reciver_actor: format!(
-                        "/user/node/{}/validation/{}",
-                        validation_req.subject_signature.signer,
-                        info.reciver.clone()
-                    ),
-                };
                 let helper: Option<Intermediary> =
                     ctx.system().get_helper("NetworkIntermediary").await;
                 let mut helper = if let Some(helper) = helper {
@@ -461,24 +496,57 @@ impl Handler<Validator> for Validator {
                 };
 
                 let response = match self
-                    .validation_event(ctx, validation_req.clone())
+                    .validation_event(ctx, validation_req.content.clone())
                     .await
                 {
                     Ok(validation) => ValidationRes::Signature(validation),
                     Err(e) => {
                         // Log con el error. TODO
                         ValidationRes::Error(ValidationError {
-                            who: validation_req.subject_signature.signer,
+                            who: validation_req.content.subject_signature.signer,
                             error: format!("{}", e),
                         })
                     }
                 };
 
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver.clone(),
+                    request_id: info.request_id,
+                    reciver_actor: format!(
+                        "/user/node/{}/validation/{}",
+                        validation_req.content.proof.subject_id,
+                        info.reciver.clone()
+                    ),
+                };
+
+                // Aquí tiene que firmar el nodo la respuesta.
+                let node_path = ActorPath::from("/user/node");
+                let node_actor: Option<ActorRef<Node>> =  ctx.system().get_actor(&node_path).await;
+
+                // We obtain the validator
+                let node_response = if let Some(node_actor) = node_actor {
+                    match node_actor.ask(NodeMessage::SignRequest(SignTypesNode::ValidationRes(response.clone()))).await {
+                        Ok(response) => response,
+                        Err(e) => todo!()
+                    }
+                } else {
+                    todo!()
+                };
+
+                let signature = match node_response {
+                    NodeResponse::SignRequest(signature) => signature,
+                    NodeResponse::Error(_) => todo!(),
+                    _ => todo!()
+                };
+
+                let signed_response: Signed<ValidationRes> = Signed { content: response, signature };
+
                 if let Err(e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
-                            message: ActorMessage::ValidationRes(response),
+                            message: ActorMessage::ValidationRes(signed_response),
                         },
                     })
                     .await

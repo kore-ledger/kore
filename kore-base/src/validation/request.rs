@@ -14,6 +14,7 @@ use crate::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
 
 /// A struct representing a validation request.
@@ -38,4 +39,19 @@ pub struct ValidationReq {
 pub enum SignersRes {
     Signature(Signature),
     TimeOut(ValidationTimeOut),
+}
+
+impl HashId for ValidationReq {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self,derivator).map_err(
+            |_| {
+                Error::Evaluation(
+                    "HashId for ValidationReq fails".to_string(),
+                )
+            },
+        )
+    }
 }

@@ -2,15 +2,15 @@ use actor::Message;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use crate::validation::{request::ValidationReq, response::ValidationRes};
+use crate::{validation::{request::ValidationReq, response::ValidationRes}, Signed};
 
 pub mod intermediary;
 pub mod service;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ActorMessage {
-    ValidationReq(ValidationReq),
-    ValidationRes(ValidationRes),
+    ValidationReq(Signed<ValidationReq>),
+    ValidationRes(Signed<ValidationRes>),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

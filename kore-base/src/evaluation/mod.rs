@@ -19,7 +19,7 @@ use crate::{
         namespace,
         request::EventRequest,
         signature::{self, Signature, Signed},
-        HashId, Namespace, SignTypes,
+        HashId, Namespace,
     },
     node::{Node, NodeMessage, NodeResponse},
     subject::{

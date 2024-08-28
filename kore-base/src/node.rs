@@ -14,7 +14,7 @@ use crate::{
     model::{
         request::EventRequest,
         signature::{Signature, Signed},
-        HashId, SignTypes,
+        HashId, SignTypesNode,
     },
     subject,
     validation::proof::ValidationProof,
@@ -201,7 +201,7 @@ impl Node {
 pub enum NodeMessage {
     RequestEvent(Signed<EventRequest>),
     RegisterSubject(SubjectsTypes),
-    SignRequest(SignTypes),
+    SignRequest(SignTypesNode),
     AmISubjectOwner(DigestIdentifier),
     AmIGovernanceOwner(DigestIdentifier),
     GetOwnerIdentifier,
@@ -308,7 +308,9 @@ impl Handler<Node> for Node {
             }
             NodeMessage::SignRequest(content) => {
                 let sign = match content {
-                    SignTypes::Validation(validation) => self.sign(&validation),
+                    SignTypesNode::Validation(validation) => self.sign(&validation),
+                    SignTypesNode::ValidationReq(validation_req) => self.sign(&validation_req),
+                    SignTypesNode::ValidationRes(validation_res) => self.sign(&validation_res),
                 };
 
                 match sign {

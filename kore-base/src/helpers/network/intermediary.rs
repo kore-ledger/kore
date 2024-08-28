@@ -6,7 +6,7 @@ use crate::{
 use super::ActorMessage;
 use super::{service::HelperService, NetworkMessage};
 use actor::{ActorPath, ActorRef, SystemRef};
-use identity::identifier::derive::KeyDerivator;
+use identity::identifier::{derive::KeyDerivator, key_identifier, KeyIdentifier};
 use network::Command as NetworkCommand;
 use network::CommandHelper as Command;
 use network::{PeerId, PublicKey, PublicKeyEd25519, PublicKeysecp256k1};
@@ -72,6 +72,9 @@ impl Intermediary {
         self.clone()
     }
 
+    // TODO: hay que ver los errores, si se espera un actor que no se encuentra no hay que tumbar el nodo
+    // podríamos recibir el ataque de otro nodo a un actor que no existe y no tendríamos por qué fallar
+    // Habría que ver si tendríamos que responder si quiera.
     async fn handle_command(
         &self,
         command: Command<NetworkMessage>,

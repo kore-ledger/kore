@@ -70,3 +70,18 @@ pub enum ValidationRes {
     TimeOut(ValidationTimeOut),
     Error(ValidationError),
 }
+
+impl HashId for ValidationRes {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self,derivator).map_err(
+            |_| {
+                Error::Evaluation(
+                    "HashId for ValidationReq fails".to_string(),
+                )
+            },
+        )
+    }
+}

@@ -10,7 +10,7 @@ use crate::{
         event::Event as KoreEvent,
         request::EventRequest,
         signature::{Signature, Signed},
-        HashId, Namespace, SignTypes, ValueWrapper,
+        HashId, Namespace, SignTypesSubject, ValueWrapper,
     },
     node::{NodeMessage, NodeResponse},
     validation::{validator::Validator, Validation},
@@ -498,9 +498,10 @@ pub enum SubjectCommand {
     /// Update the subject.
     UpdateSubject { event: Signed<KoreEvent> },
     /// Sign request
-    SignRequest(SignTypes),
+    SignRequest(SignTypesSubject),
     /// Get governance if subject is a governance
     GetGovernance,
+    GetOwner,
 }
 
 impl Message for SubjectCommand {}
@@ -518,6 +519,7 @@ pub enum SubjectResponse {
     None,
     Governance(Governance),
     GovernanceId(DigestIdentifier),
+    Owner(KeyIdentifier)
 }
 
 impl Response for SubjectResponse {}
@@ -597,7 +599,7 @@ impl Actor for Subject {
 
             if owner {
                 // If we are owner of subject
-                let actor = Validation::default();
+                let actor = Validation::new(our_key);
                 ctx.create_child("validation", actor).await?;
             } else {
                 // If we are not owner of subject
@@ -626,6 +628,9 @@ impl Handler<Subject> for Subject {
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
+            SubjectCommand::GetOwner => {
+                Ok(SubjectResponse::Owner(self.owner.clone()))
+            },
             SubjectCommand::GetSubjectState => {
                 Ok(SubjectResponse::SubjectState(self.state()))
             }
@@ -639,7 +644,7 @@ impl Handler<Subject> for Subject {
             }
             SubjectCommand::SignRequest(content) => {
                 let sign = match content {
-                    SignTypes::Validation(validation) => self.sign(&validation),
+                    SignTypesSubject::Validation(validation) => self.sign(&validation),
                 };
 
                 match sign {

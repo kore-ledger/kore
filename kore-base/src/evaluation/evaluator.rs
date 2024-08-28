@@ -6,7 +6,7 @@ use std::{collections::HashSet, time::Duration};
 use crate::{
     governance::{json_schema::JsonSchema, Governance, RequestStage, Schema},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{signature::Signature, HashId, SignTypes, TimeStamp},
+    model::{signature::Signature, HashId, TimeStamp},
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectCommand, SubjectResponse},
     Error, EventRequest, FactRequest, Subject, ValueWrapper, DIGEST_DERIVATOR,
@@ -316,6 +316,100 @@ impl Evaluator {
             Error::Validation(format!("Can not generate json patch {}", e))
         })
     }
+
+    fn build_response(
+        evaluation: ContractResult,
+        evaluation_req: EvaluationReq,
+    ) -> Result<EvaluationRes, Error> {
+        let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+            derivator.clone()
+        } else {
+            error!("Error getting derivator");
+            DigestDerivator::Blake3_256
+        };
+        // Hash of context
+        let context_hash = match Self::generate_context_hash(&evaluation_req) {
+            Ok(context_hash) => context_hash,
+            Err(e) => {
+                // Manejar
+                todo!()
+            }
+        };
+
+        if evaluation.success {
+            // Sacar esquema actual
+            let governance_data =
+                match serde_json::from_value::<GovernanceData>(
+                    evaluation_req.context.state.0.clone(),
+                )
+                .map_err(|e| {
+                    Error::Validation(format!(
+                        "Can not create governance data {}",
+                        e
+                    ))
+                }) {
+                    Ok(gov_data) => gov_data,
+                    Err(e) => todo!(),
+                };
+
+            let schema = if let Some(schema) = governance_data
+                .schemas
+                .iter()
+                .find(|x| x.id.clone() == evaluation_req.context.schema_id)
+            {
+                schema
+            } else {
+                todo!()
+            };
+
+            // TODO las compilaciones se deben guardar en memoria, en la governanza, en un Option
+            let json_schema = match JsonSchema::compile(&schema.schema) {
+                Ok(json_schema) => json_schema,
+                Err(e) => todo!(),
+            };
+
+            let value =
+                match serde_json::to_value(evaluation.final_state.clone()) {
+                    Ok(value) => value,
+                    Err(e) => todo!(),
+                };
+            if json_schema.validate(&value) {
+                let state_hash = match evaluation.final_state.hash_id(derivator)
+                {
+                    Ok(state_hash) => state_hash,
+                    Err(e) => todo!(),
+                };
+
+                let patch = match Self::generate_json_patch(
+                    &evaluation_req.context.state.0,
+                    &evaluation.final_state.0,
+                ) {
+                    Ok(patch) => patch,
+                    Err(e) => todo!(),
+                };
+
+                return Ok(EvaluationRes {
+                    patch: ValueWrapper(patch),
+                    state_hash,
+                    eval_req_hash: context_hash,
+                    eval_success: evaluation.success,
+                    appr_required: evaluation.approval_required,
+                });
+            }
+        }
+        let state_hash = match evaluation_req.context.state.hash_id(derivator) {
+            Ok(state_hash) => state_hash,
+            Err(e) => todo!(),
+        };
+
+        return Ok(EvaluationRes {
+            patch: ValueWrapper(serde_json::Value::String("[]".to_owned())),
+            eval_req_hash: context_hash,
+            state_hash,
+            eval_success: false,
+            appr_required: false,
+        });
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -414,85 +508,10 @@ impl Handler<Evaluator> for Evaluator {
                         Err(e) => todo!(),
                     };
 
-                let response = if evaluation.success {
-                    // Sacar esquema actual
-                    let governance_data =
-                        match serde_json::from_value::<GovernanceData>(
-                            evaluation_req.context.state.0.clone(),
-                        )
-                        .map_err(|e| {
-                            Error::Validation(format!(
-                                "Can not create governance data {}",
-                                e
-                            ))
-                        }) {
-                            Ok(gov_data) => gov_data,
-                            Err(e) => todo!(),
-                        };
-
-                    let schema = if let Some(schema) =
-                        governance_data.schemas.iter().find(|x| {
-                            x.id.clone() == evaluation_req.context.schema_id
-                        }) {
-                        schema
-                    } else {
+                let response = match Self::build_response(evaluation, evaluation_req) {
+                    Ok(response) => response,
+                    Err(e) => {
                         todo!()
-                    };
-
-                    let json_schema = match JsonSchema::compile(&schema.schema)
-                    {
-                        Ok(json_schema) => json_schema,
-                        Err(e) => todo!(),
-                    };
-
-                    let value = match serde_json::to_value(
-                        evaluation.final_state.clone(),
-                    ) {
-                        Ok(value) => value,
-                        Err(e) => todo!(),
-                    };
-                    if json_schema.validate(&value) {
-                        let state_hash =
-                            match evaluation.final_state.hash_id(derivator) {
-                                Ok(state_hash) => state_hash,
-                                Err(e) => todo!(),
-                            };
-
-                        let patch = match Self::generate_json_patch(
-                            &evaluation_req.context.state.0,
-                            &evaluation.final_state.0,
-                        ) {
-                            Ok(patch) => patch,
-                            Err(e) => todo!(),
-                        };
-
-                        EvaluationRes {
-                            patch: ValueWrapper(patch),
-                            state_hash,
-                            eval_req_hash: context_hash,
-                            eval_success: evaluation.success,
-                            appr_required: evaluation.approval_required,
-                        }
-                    } else {
-                        EvaluationRes {
-                            patch: ValueWrapper(serde_json::Value::String(
-                                "[]".to_owned(),
-                            )),
-                            eval_req_hash: context_hash,
-                            state_hash,
-                            eval_success: false,
-                            appr_required: false,
-                        }
-                    }
-                } else {
-                    EvaluationRes {
-                        patch: ValueWrapper(serde_json::Value::String(
-                            "[]".to_owned(),
-                        )),
-                        eval_req_hash: context_hash,
-                        state_hash,
-                        eval_success: false,
-                        appr_required: false,
                     }
                 };
 
