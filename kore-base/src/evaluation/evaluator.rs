@@ -300,13 +300,6 @@ impl Evaluator {
         Ok(response.result)
     }
 
-    fn generate_context_hash(
-        execute_contract: &EvaluationReq,
-    ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::generate_with_blake3(execute_contract)
-            .map_err(|e| Error::Digest(format!("{}", e)))
-    }
-
     fn generate_json_patch(
         prev_state: &Value,
         new_state: &Value,
@@ -326,14 +319,6 @@ impl Evaluator {
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
-        };
-        // Hash of context
-        let context_hash = match Self::generate_context_hash(&evaluation_req) {
-            Ok(context_hash) => context_hash,
-            Err(e) => {
-                // Manejar
-                todo!()
-            }
         };
 
         if evaluation.success {
@@ -391,7 +376,6 @@ impl Evaluator {
                 return Ok(EvaluationRes {
                     patch: ValueWrapper(patch),
                     state_hash,
-                    eval_req_hash: context_hash,
                     eval_success: evaluation.success,
                     appr_required: evaluation.approval_required,
                 });
@@ -404,7 +388,6 @@ impl Evaluator {
 
         return Ok(EvaluationRes {
             patch: ValueWrapper(serde_json::Value::String("[]".to_owned())),
-            eval_req_hash: context_hash,
             state_hash,
             eval_success: false,
             appr_required: false,
@@ -491,16 +474,6 @@ impl Handler<Evaluator> for Evaluator {
                     error!("Error getting derivator");
                     DigestDerivator::Blake3_256
                 };
-
-                // Hash of context
-                let context_hash =
-                    match Self::generate_context_hash(&evaluation_req) {
-                        Ok(context_hash) => context_hash,
-                        Err(e) => {
-                            // Manejar
-                            todo!()
-                        }
-                    };
 
                 let state_hash =
                     match evaluation_req.context.state.hash_id(derivator) {
