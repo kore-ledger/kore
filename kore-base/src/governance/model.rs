@@ -11,7 +11,7 @@ use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
 use std::{collections::HashSet, default, fmt};
 
 /// Governance quorum.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum Quorum {
@@ -34,120 +34,6 @@ impl Quorum {
                 signers >= ((total_members as f64 * percentage).ceil() as u32)
             }
         }
-    }
-}
-
-impl Serialize for Quorum {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Quorum::MAJORITY => serializer.serialize_str("MAJORITY"),
-            Quorum::FIXED { fixed } => {
-                let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("FIXED", fixed)?;
-                map.end()
-            }
-            Quorum::PERCENTAGE { percentage } => {
-                let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry("PERCENTAGE", percentage)?;
-                map.end()
-            } // Quorum::BFT { BFT } => {
-              //     let mut map = serializer.serialize_map(Some(1))?;
-              //     map.serialize_entry("BFT", BFT)?;
-              //     map.end()
-              // }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Quorum {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct QuorumEnumVisitor;
-        impl<'de> Visitor<'de> for QuorumEnumVisitor {
-            type Value = Quorum;
-            fn expecting(
-                &self,
-                formatter: &mut std::fmt::Formatter,
-            ) -> std::fmt::Result {
-                formatter.write_str("Quorum")
-            }
-            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::MapAccess<'de>,
-            {
-                // Solo deberían tener una entrada
-                let Some(key) = map.next_key::<String>()? else {
-                    return Err(serde::de::Error::missing_field(
-                        "FIXED or PERCENTAGE",
-                    ));
-                };
-                let result = match key.as_str() {
-                    "FIXED" => {
-                        let fixed: u32 = map.next_value()?;
-                        Quorum::FIXED { fixed }
-                    }
-                    // "BFT" => {
-                    //     let bft: f64 = map.next_value()?;
-                    //     Quorum::BFT { BFT: bft }
-                    // }
-                    "PERCENTAGE" => {
-                        let percentage: f64 = map.next_value()?;
-                        Quorum::PERCENTAGE { percentage }
-                    }
-                    _ => {
-                        return Err(serde::de::Error::unknown_field(
-                            &key,
-                            &["FIXED", "PERCENTAGE"],
-                        ))
-                    }
-                };
-                let None = map.next_key::<String>()? else {
-                    return Err(serde::de::Error::custom(
-                        "Input data is not valid. The data contains unkown entries",
-                    ));
-                };
-                Ok(result)
-            }
-            fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                self.visit_str(&v)
-            }
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                match v {
-                    "MAJORITY" => Ok(Self::Value::MAJORITY),
-                    other => Err(serde::de::Error::unknown_variant(
-                        other,
-                        &["MAJORITY"],
-                    )),
-                }
-            }
-            fn visit_borrowed_str<E>(
-                self,
-                v: &'de str,
-            ) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                match v {
-                    "MAJORITY" => Ok(Self::Value::MAJORITY),
-                    other => Err(serde::de::Error::unknown_variant(
-                        other,
-                        &["MAJORITY"],
-                    )),
-                }
-            }
-        }
-        deserializer.deserialize_any(QuorumEnumVisitor {})
     }
 }
 

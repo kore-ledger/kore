@@ -24,8 +24,6 @@ use serde::{Deserialize, Serialize};
 pub struct EvaluationRes {
     /// The patch to apply to the state.
     pub patch: ValueWrapper,
-    /// The hash of the evaluation request being responded to.
-    pub eval_req_hash: DigestIdentifier,
     /// The hash of the state after applying the patch.
     pub state_hash: DigestIdentifier,
     /// Whether the evaluation was successful and the result was validated against the schema.
@@ -40,12 +38,9 @@ impl HashId for EvaluationRes {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(
-            (
-                &self.eval_req_hash,
-                &self.state_hash,
-                self.eval_success,
-                self.appr_required,
-            ),
+            
+                self
+            ,
             derivator,
         )
         .map_err(|_| {

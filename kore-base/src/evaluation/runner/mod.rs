@@ -1,7 +1,7 @@
 use std::{collections::HashSet, fmt::format};
 
 use actor::{
-    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler, Message, Response
 };
 use async_trait::async_trait;
 use borsh::{to_vec, BorshDeserialize};
@@ -451,6 +451,7 @@ impl Actor for Runner {
 impl Handler<Runner> for Runner {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: RunnerCommand,
         _ctx: &mut ActorContext<Runner>,
     ) -> Result<RunnerResponse, ActorError> {

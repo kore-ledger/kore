@@ -1,7 +1,6 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #![recursion_limit = "256"]
-
 mod api;
 mod approval;
 pub mod config;
@@ -17,7 +16,7 @@ mod subject;
 mod validation;
 
 pub use api::Api;
-pub use config::{Config, DbConfig};
+pub use config::{Config as KoreBaseConfig, DbConfig};
 pub use error::Error;
 pub use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
 pub use validation::{Validation, ValidationCommand, ValidationResponse, ValidationInfo};
@@ -26,8 +25,11 @@ pub use subject::{Subject, SubjectCommand, SubjectResponse, SubjectState};
 pub use model::signature::*;
 pub use model::request::*;
 pub use model::event::*;
+pub use model::event::Event;
 pub use model::ValueWrapper;
-
+pub use model::HashId;
+pub use helpers::network::*;
+pub use network::*;
 use actor::{ActorSystem, SystemRef};
 use db::Database;
 use helpers::encrypted_pass::EncryptedPass;
@@ -45,7 +47,7 @@ lazy_static! {
 }
 
 pub async fn system(
-    config: Config,
+    config: KoreBaseConfig,
     password: &str,
 ) -> Result<SystemRef, Error> {
     // Update statics.
@@ -101,7 +103,7 @@ pub mod tests {
         let dir =
             tempfile::tempdir().expect("Can not create temporal directory.");
         let path = dir.path().to_str().unwrap().to_owned();
-        let config = Config::new(&path);
+        let config = KoreBaseConfig::new(&path);
         system(config, "password").await.unwrap()
     }
 }

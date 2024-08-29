@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    FixedIntervalStrategy, Handler, Message, Response, Retry, RetryStrategy,
+    FixedIntervalStrategy, Handler, Message, Response, RetryStrategy,
     Strategy,
 };
 
@@ -300,13 +300,6 @@ impl Evaluator {
         Ok(response.result)
     }
 
-    fn generate_context_hash(
-        execute_contract: &EvaluationReq,
-    ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::generate_with_blake3(execute_contract)
-            .map_err(|e| Error::Digest(format!("{}", e)))
-    }
-
     fn generate_json_patch(
         prev_state: &Value,
         new_state: &Value,
@@ -326,14 +319,6 @@ impl Evaluator {
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
-        };
-        // Hash of context
-        let context_hash = match Self::generate_context_hash(&evaluation_req) {
-            Ok(context_hash) => context_hash,
-            Err(e) => {
-                // Manejar
-                todo!()
-            }
         };
 
         if evaluation.success {
@@ -391,7 +376,6 @@ impl Evaluator {
                 return Ok(EvaluationRes {
                     patch: ValueWrapper(patch),
                     state_hash,
-                    eval_req_hash: context_hash,
                     eval_success: evaluation.success,
                     appr_required: evaluation.approval_required,
                 });
@@ -404,7 +388,6 @@ impl Evaluator {
 
         return Ok(EvaluationRes {
             patch: ValueWrapper(serde_json::Value::String("[]".to_owned())),
-            eval_req_hash: context_hash,
             state_hash,
             eval_success: false,
             appr_required: false,
@@ -460,6 +443,7 @@ impl Actor for Evaluator {
 impl Handler<Evaluator> for Evaluator {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: EvaluatorCommand,
         ctx: &mut ActorContext<Evaluator>,
     ) -> Result<EvaluatorResponse, ActorError> {
@@ -491,16 +475,6 @@ impl Handler<Evaluator> for Evaluator {
                     error!("Error getting derivator");
                     DigestDerivator::Blake3_256
                 };
-
-                // Hash of context
-                let context_hash =
-                    match Self::generate_context_hash(&evaluation_req) {
-                        Ok(context_hash) => context_hash,
-                        Err(e) => {
-                            // Manejar
-                            todo!()
-                        }
-                    };
 
                 let state_hash =
                     match evaluation_req.context.state.hash_id(derivator) {
@@ -547,63 +521,6 @@ impl Handler<Evaluator> for Evaluator {
     ) {
     }
 }
-
-#[async_trait]
-impl Retry for Evaluator {
-    type Child = RetryEvaluator;
-
-    async fn child(
-        &self,
-        ctx: &mut ActorContext<Evaluator>,
-    ) -> Result<ActorRef<RetryEvaluator>, ActorError> {
-        ctx.create_child("network", RetryEvaluator {}).await
-    }
-
-    /// Retry message.
-    async fn apply_retries(
-        &self,
-        ctx: &mut ActorContext<Self>,
-        path: ActorPath,
-        retry_strategy: &mut Strategy,
-        message: <<Self as Retry>::Child as Actor>::Message,
-    ) -> Result<<<Self as Retry>::Child as Actor>::Response, ActorError> {
-        if let Ok(child) = self.child(ctx).await {
-            let mut retries = 0;
-            while retries < retry_strategy.max_retries() && !self.finish {
-                debug!(
-                    "Retry {}/{}.",
-                    retries + 1,
-                    retry_strategy.max_retries()
-                );
-                if let Err(e) = child.tell(message.clone()).await {
-                    error!("");
-                    // Manejar error del tell.
-                } else {
-                    if let Some(duration) = retry_strategy.next_backoff() {
-                        debug!("Backoff for {:?}", &duration);
-                        tokio::time::sleep(duration).await;
-                    }
-                    retries += 1;
-                }
-            }
-            if self.finish {
-                // LLegó respuesta se abortan los intentos.
-                Ok(EvaluatorResponse::None)
-            } else {
-                error!("Max retries with actor {} reached.", path);
-                // emitir evento de que todos los intentos fueron realizados
-                Err(ActorError::ReTry)
-            }
-        } else {
-            error!("Retries with actor {} failed. Unknown actor.", path);
-            Err(ActorError::Functional(format!(
-                "Retries with actor {} failed. Unknown actor.",
-                path
-            )))
-        }
-    }
-}
-
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct RetryEvaluator {}
 
@@ -618,6 +535,7 @@ impl Actor for RetryEvaluator {
 impl Handler<RetryEvaluator> for RetryEvaluator {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: NetworkMessage,
         ctx: &mut ActorContext<RetryEvaluator>,
     ) -> Result<EvaluatorResponse, ActorError> {
