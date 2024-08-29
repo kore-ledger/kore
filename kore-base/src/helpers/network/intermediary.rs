@@ -44,6 +44,11 @@ impl Intermediary {
         .spawn_command_receiver(command_receiver)
     }
 
+    pub fn service(&self) -> HelperService {
+        self.service.clone()
+    }
+
+
     fn spawn_command_receiver(
         &mut self,
         mut command_receiver: mpsc::Receiver<Command<NetworkMessage>>,
