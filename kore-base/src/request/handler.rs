@@ -199,6 +199,7 @@ impl Handler<RequestHandler> for RequestHandler {
     /// Handles the `EventRequest` message.
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: RequestHandlerCommand,
         ctx: &mut ActorContext<RequestHandler>,
     ) -> Result<RequestResponse, ActorError> {

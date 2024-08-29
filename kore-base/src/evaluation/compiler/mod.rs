@@ -1,7 +1,7 @@
 use std::{collections::HashSet, process::Command};
 
 use actor::{
-    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler, Message, Response
 };
 use async_std::fs;
 use async_trait::async_trait;
@@ -166,6 +166,7 @@ impl Actor for Compiler {
 impl Handler<Compiler> for Compiler {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: CompilerCommand,
         _ctx: &mut ActorContext<Compiler>,
     ) -> Result<CompilerResponse, ActorError> {

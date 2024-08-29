@@ -27,9 +27,7 @@ use network::{Command, ComunicateInfo};
 use serde::{Deserialize, Serialize};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    FixedIntervalStrategy, Handler, Message, Response, Retry, RetryStrategy,
-    Strategy,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event, FixedIntervalStrategy, Handler, Message, Response, RetryActor, RetryMessage, RetryStrategy, Strategy
 };
 
 use tracing::{debug, error};
@@ -39,7 +37,6 @@ use tracing::{debug, error};
 pub struct Validator {
     request_id: String,
     node: KeyIdentifier,
-    finish: bool,
 }
 
 impl Validator {
@@ -336,6 +333,7 @@ impl Actor for Validator {
 impl Handler<Validator> for Validator {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: ValidatorCommand,
         ctx: &mut ActorContext<Validator>,
     ) -> Result<ValidatorResponse, ActorError> {
@@ -400,10 +398,26 @@ impl Handler<Validator> for Validator {
                     message: ActorMessage::ValidationReq(validation_req),
                 };
 
-                if let Err(e) = ctx.event(ValidatorEvent::ReTry(message)).await
-                {
-                    // TODO, error al crear evento, propagar hacia arriba
-                };
+                let target = RetryValidator::default();
+
+                let strategy = Strategy::FixedInterval(FixedIntervalStrategy::new(
+                    3,
+                    Duration::from_secs(1),
+                ));
+
+                let retry_actor = RetryActor::new(
+                    target,
+                    message,
+                    strategy,
+                );
+
+                let retry = ctx
+                .create_child::<RetryActor<RetryValidator>>("retry", retry_actor)
+                .await
+                .unwrap();
+
+                retry.tell(RetryMessage::Retry).await.unwrap();
+                
                 Ok(ValidatorResponse::None)
             }
             ValidatorCommand::NetworkResponse {
@@ -440,7 +454,8 @@ impl Handler<Validator> for Validator {
                         // Can not obtain parent actor
                     }
 
-                    self.finish = true;
+                    let retry = ctx.get_child::<RetryActor<RetryValidator>>("retry").await.unwrap();
+                    retry.tell(RetryMessage::End).await.unwrap();
                 } else {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
                 }
@@ -559,16 +574,14 @@ impl Handler<Validator> for Validator {
         }
     }
 
-    async fn on_event(
+    async fn on_child_error(
         &mut self,
-        event: ValidatorEvent,
+        error: ActorError,
         ctx: &mut ActorContext<Validator>,
     ) {
-        match event {
-            ValidatorEvent::AllTryHaveBeenMade { node_key } => {
-                if !self.finish {
-                    // Validation path.
-                    let validation_path = ctx.path().parent();
+        if let ActorError::Functional(error) = error {
+            if &error == "Max retries reached." {
+                let validation_path = ctx.path().parent();
 
                     // Validation actor.
                     let validation_actor: Option<ActorRef<Validation>> =
@@ -580,7 +593,7 @@ impl Handler<Validator> for Validator {
                                 ValidationRes::TimeOut(ValidationTimeOut {
                                     re_trys: 3,
                                     timestamp: TimeStamp::now(),
-                                    who: node_key,
+                                    who: self.node.clone(),
                                 }),
                             ))
                             .await
@@ -593,97 +606,9 @@ impl Handler<Validator> for Validator {
                         // Can not obtain parent actor
                         // return Err(ActorError::Exists(validation_path));
                     }
-                }
+                    let retry = ctx.get_child::<RetryActor<RetryValidator>>("retry").await.unwrap();
+                    retry.tell(RetryMessage::End).await.unwrap();
             }
-            ValidatorEvent::ReTry(message) => {
-                let path = ctx.path().clone() / "network";
-                // TODO analizar la estrategia.
-                let mut strategy = Strategy::FixedInterval(
-                    FixedIntervalStrategy::new(3, Duration::from_secs(1)),
-                );
-
-                if let Err(e) = self
-                    .apply_retries(ctx, path, &mut strategy, message.clone())
-                    .await
-                {
-                    match e {
-                        ActorError::ReTry => {
-                            if let Err(e) = ctx
-                                .event(ValidatorEvent::AllTryHaveBeenMade {
-                                    node_key: message.info.reciver,
-                                })
-                                .await
-                            {
-                                // TODO, error al crear evento, propagar hacia arriba
-                            };
-                        }
-                        ActorError::Functional(e) => {
-                            // TODO, interno al hacer retry, propagar hacia arriba
-                        }
-                        _ => {
-                            // No puede llegar ningún tipo de error más
-                        }
-                    }
-                };
-            }
-        }
-    }
-}
-
-
-// TODO: para a los hijos network cuando hayan hecho los intentos o se haya recibido una respuesta.
-#[async_trait]
-impl Retry for Validator {
-    type Child = RetryValidator;
-
-    async fn child(
-        &self,
-        ctx: &mut ActorContext<Validator>,
-    ) -> Result<ActorRef<RetryValidator>, ActorError> {
-        ctx.create_child("network", RetryValidator {}).await
-    }
-
-    /// Retry message.
-    async fn apply_retries(
-        &self,
-        ctx: &mut ActorContext<Self>,
-        path: ActorPath,
-        retry_strategy: &mut Strategy,
-        message: <<Self as Retry>::Child as Actor>::Message,
-    ) -> Result<<<Self as Retry>::Child as Actor>::Response, ActorError> {
-        if let Ok(child) = self.child(ctx).await {
-            let mut retries = 0;
-            while retries < retry_strategy.max_retries() && !self.finish {
-                debug!(
-                    "Retry {}/{}.",
-                    retries + 1,
-                    retry_strategy.max_retries()
-                );
-                if let Err(e) = child.tell(message.clone()).await {
-                    error!("");
-                    // Manejar error del tell.
-                } else {
-                    if let Some(duration) = retry_strategy.next_backoff() {
-                        debug!("Backoff for {:?}", &duration);
-                        tokio::time::sleep(duration).await;
-                    }
-                    retries += 1;
-                }
-            }
-            if self.finish {
-                // LLegó respuesta se abortan los intentos.
-                Ok(ValidatorResponse::None)
-            } else {
-                error!("Max retries with actor {} reached.", path);
-                // emitir evento de que todos los intentos fueron realizados
-                Err(ActorError::ReTry)
-            }
-        } else {
-            error!("Retries with actor {} failed. Unknown actor.", path);
-            Err(ActorError::Functional(format!(
-                "Retries with actor {} failed. Unknown actor.",
-                path
-            )))
         }
     }
 }
@@ -693,18 +618,19 @@ pub struct RetryValidator {}
 
 #[async_trait]
 impl Actor for RetryValidator {
-    type Event = ValidatorEvent;
+    type Event = ();
     type Message = NetworkMessage;
-    type Response = ValidatorResponse;
+    type Response = ();
 }
 
 #[async_trait]
 impl Handler<RetryValidator> for RetryValidator {
     async fn handle_message(
         &mut self,
+        _sender: ActorPath,
         msg: NetworkMessage,
         ctx: &mut ActorContext<RetryValidator>,
-    ) -> Result<ValidatorResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         let helper: Option<Intermediary> =
             ctx.system().get_helper("NetworkIntermediary").await;
         let mut helper = if let Some(helper) = helper {
@@ -721,6 +647,6 @@ impl Handler<RetryValidator> for RetryValidator {
         {
             // error al enviar mensaje, propagar hacia arriba TODO
         };
-        Ok(ValidatorResponse::None)
+        Ok(())
     }
 }

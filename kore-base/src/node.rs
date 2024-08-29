@@ -29,8 +29,7 @@ use identity::{
 };
 
 use actor::{
-    Actor, ActorContext, ActorSystem, Error as ActorError, Event, Handler,
-    Message, Response, SystemRef,
+    Actor, ActorContext, ActorPath, ActorSystem, Error as ActorError, Event, Handler, Message, Response, SystemRef
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -298,6 +297,7 @@ impl PersistentActor for Node {
 impl Handler<Node> for Node {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: NodeMessage,
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {

@@ -624,6 +624,7 @@ impl Actor for Subject {
 impl Handler<Subject> for Subject {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: SubjectCommand,
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
