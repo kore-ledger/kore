@@ -19,7 +19,7 @@ use crate::{
         namespace,
         request::EventRequest,
         signature::{self, Signature, Signed},
-        HashId, Namespace,
+        HashId, Namespace, SignTypesNode,
     },
     node::{Node, NodeMessage, NodeResponse},
     subject::{
@@ -188,7 +188,7 @@ impl Evaluation {
         &self,
         ctx: &mut ActorContext<Evaluation>,
         request_id: &str,
-        evaluation_req: EvaluationReq,
+        evaluation_req: Signed<EvaluationReq>,
         signer: KeyIdentifier,
     ) -> Result<(), ActorError> {
         // Create Evaluator child
@@ -206,7 +206,7 @@ impl Evaluation {
         if signer == our_key {
             if let Err(e) = evaluator_actor
                 .tell(EvaluatorCommand::LocalEvaluation {
-                    evaluation_req,
+                    evaluation_req: evaluation_req.content,
                     our_key: signer,
                 })
                 .await
@@ -315,12 +315,33 @@ impl Handler<Evaluation> for Evaluation {
                 self.evaluators_quantity = signers.len() as u32;
                 let request_id = request_id.to_string();
 
+                let node_path = ActorPath::from("/user/node");
+                let node_actor: Option<ActorRef<Node>> =  ctx.system().get_actor(&node_path).await;
+
+                // We obtain the validator
+                let node_response = if let Some(node_actor) = node_actor {
+                    match node_actor.ask(NodeMessage::SignRequest(SignTypesNode::EvaluationReq(eval_req.clone()))).await {
+                        Ok(response) => response,
+                        Err(e) => todo!()
+                    }
+                } else {
+                    todo!()
+                };
+
+                let signature = match node_response {
+                    NodeResponse::SignRequest(signature) => signature,
+                    NodeResponse::Error(_) => todo!(),
+                    _ => todo!()
+                };
+
+                let signed_evaluation_req: Signed<EvaluationReq> = Signed { content: eval_req, signature };
+
                 for signer in signers {
                     if let Err(error) = self
                         .create_evaluators(
                             ctx,
                             &request_id,
-                            eval_req.clone(),
+                            signed_evaluation_req.clone(),
                             signer,
                         )
                         .await
@@ -330,7 +351,9 @@ impl Handler<Evaluation> for Evaluation {
                     }
                 }
             },
-            EvaluationCommand::Response(eval_res) => todo!(),
+            EvaluationCommand::Response(eval_res) => {
+                todo!()
+            },
         }
 
         Ok(EvaluationResponse::None)

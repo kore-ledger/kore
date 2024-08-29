@@ -6,10 +6,11 @@ use std::{collections::HashSet, time::Duration};
 use crate::{
     governance::{json_schema::JsonSchema, Governance, RequestStage, Schema},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{signature::Signature, HashId, TimeStamp},
+    model::{network::RetryNetwork, signature::Signature, HashId, SignTypesNode, TimeStamp},
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectCommand, SubjectResponse},
-    Error, EventRequest, FactRequest, Subject, ValueWrapper, DIGEST_DERIVATOR,
+    Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper,
+    DIGEST_DERIVATOR,
 };
 
 use crate::helpers::network::ActorMessage;
@@ -26,9 +27,7 @@ use network::{Command, ComunicateInfo};
 use serde::{Deserialize, Serialize};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    FixedIntervalStrategy, Handler, Message, Response, RetryStrategy,
-    Strategy,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event, FixedIntervalStrategy, Handler, Message, Response, RetryActor, RetryMessage, RetryStrategy, Strategy
 };
 
 use serde_json::{json, Value};
@@ -42,17 +41,21 @@ use super::{
         types::{Contract, ContractResult, GovernanceData},
         Runner, RunnerCommand, RunnerResponse,
     },
-    Evaluation, EvaluationResponse,
+    Evaluation, EvaluationCommand, EvaluationResponse,
 };
 
 /// A struct representing a Evaluator actor.
 #[derive(Default, Clone, Debug)]
 pub struct Evaluator {
     request_id: String,
-    finish: bool,
+    node: KeyIdentifier,
 }
 
 impl Evaluator {
+    pub fn new(request_id: String, node: KeyIdentifier) -> Self {
+        Evaluator { request_id, node }
+    }
+
     async fn get_gov(
         &self,
         ctx: &mut ActorContext<Evaluator>,
@@ -201,12 +204,12 @@ impl Evaluator {
             }
             std::cmp::Ordering::Greater => {
                 // It is impossible to have a greater version of governance than the owner of the governance himself.
-                // The only possibility is that it is an old validation request.
+                // The only possibility is that it is an old evaluation request.
                 // Hay que hacerlo TODO
             }
             std::cmp::Ordering::Less => {
                 // Si es un sujeto de traabilidad hay que darle una vuelta.
-                // Stop validation process, we need to update governance, we are out of date.
+                // Stop evaluation process, we need to update governance, we are out of date.
                 // Hay que hacerlo TODO
             }
         }
@@ -282,7 +285,7 @@ impl Evaluator {
                 response.result.final_state.0.clone(),
             )
             .map_err(|e| {
-                Error::Validation(format!(
+                Error::Evaluation(format!(
                     "Can not create governance data {}",
                     e
                 ))
@@ -306,7 +309,7 @@ impl Evaluator {
     ) -> Result<Value, Error> {
         let patch = diff(prev_state, new_state);
         serde_json::to_value(patch).map_err(|e| {
-            Error::Validation(format!("Can not generate json patch {}", e))
+            Error::Evaluation(format!("Can not generate json patch {}", e))
         })
     }
 
@@ -328,7 +331,7 @@ impl Evaluator {
                     evaluation_req.context.state.0.clone(),
                 )
                 .map_err(|e| {
-                    Error::Validation(format!(
+                    Error::Evaluation(format!(
                         "Can not create governance data {}",
                         e
                     ))
@@ -403,16 +406,16 @@ pub enum EvaluatorCommand {
     },
     NetworkEvaluation {
         request_id: String,
-        evaluation_req: EvaluationReq,
+        evaluation_req: Signed<EvaluationReq>,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
     NetworkResponse {
-        evaluation_res: EvaluationRes,
+        evaluation_res: Signed<EvaluationRes>,
         request_id: String,
     },
     NetworkRequest {
-        evaluation_req: EvaluationReq,
+        evaluation_req: Signed<EvaluationReq>,
         info: ComunicateInfo,
     },
 }
@@ -426,7 +429,6 @@ impl Event for EvaluatorEvent {}
 
 #[derive(Debug, Clone)]
 pub enum EvaluatorResponse {
-    Error(Error),
     None,
 }
 
@@ -469,46 +471,257 @@ impl Handler<Evaluator> for Evaluator {
                         }
                     };
 
-                let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-                    derivator.clone()
-                } else {
-                    error!("Error getting derivator");
-                    DigestDerivator::Blake3_256
-                };
-
-                let state_hash =
-                    match evaluation_req.context.state.hash_id(derivator) {
-                        Ok(state_hash) => state_hash,
-                        Err(e) => todo!(),
+                let evaluation =
+                    match Self::build_response(evaluation, evaluation_req) {
+                        Ok(evaluation) => evaluation,
+                        Err(e) => {
+                            todo!()
+                        }
                     };
 
-                let response = match Self::build_response(evaluation, evaluation_req) {
-                    Ok(response) => response,
-                    Err(e) => {
-                        todo!()
-                    }
-                };
-
-                // Validation path.
+                // Evaluatiob path.
                 let evaluation_path = ctx.path().parent();
 
                 let evaluation_actor: Option<ActorRef<Evaluation>> =
                     ctx.system().get_actor(&evaluation_path).await;
+
+                // Send response of evaluation to parent
+                if let Some(evaluation_actor) = evaluation_actor {
+                    if let Err(e) = evaluation_actor
+                        .tell(EvaluationCommand::Response(evaluation))
+                        .await
+                    {
+                        return Err(e);
+                    }
+                } else {
+                    // Can not obtain parent actor
+                    return Err(ActorError::Exists(evaluation_path));
+                }
+
+                ctx.stop().await;
             }
             EvaluatorCommand::NetworkEvaluation {
                 request_id,
                 evaluation_req,
                 node_key,
                 our_key,
-            } => todo!(),
+            } => {
+                // Lanzar evento donde lanzar los retrys
+                let message = NetworkMessage {
+                    info: ComunicateInfo {
+                        request_id,
+                        sender: our_key,
+                        reciver: node_key,
+                        reciver_actor: format!(
+                            "/user/node/{}/evaluator",
+                            evaluation_req.content.context.subject_id
+                        ),
+                    },
+                    message: ActorMessage::EvaluationReq(evaluation_req),
+                };
+
+                let target = RetryNetwork::default();
+
+                // TODO, la evaluación, si hay compilación podría tardar más
+                let strategy = Strategy::FixedInterval(FixedIntervalStrategy::new(
+                    3,
+                    Duration::from_secs(5),
+                ));
+
+                let retry_actor = RetryActor::new(
+                    target,
+                    message,
+                    strategy,
+                );
+
+                let retry = if let Ok(retry) = ctx
+                .create_child::<RetryActor<RetryNetwork>>("retry", retry_actor)
+                .await {
+                    retry
+                } else {
+
+                    todo!()
+                };
+
+                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    todo!()
+                };
+            }
             EvaluatorCommand::NetworkResponse {
                 evaluation_res,
                 request_id,
-            } => todo!(),
+            } => {
+                if request_id == self.request_id {
+                    if self.node != evaluation_res.signature.signer {
+                        // Nos llegó a una validación de un nodo incorrecto!
+                        todo!()
+                    }
+
+                    if let Err(e) = evaluation_res.verify() {
+                        // Hay error criptográfico en la respuesta
+                        todo!()
+                    }
+
+                    // Evaluation path.
+                    let evaluation_path = ctx.path().parent();
+
+                    // Evaluation actor.
+                    let evaluation_actor: Option<ActorRef<Evaluation>> =
+                        ctx.system().get_actor(&evaluation_path).await;
+
+                    if let Some(evaluation_actor) = evaluation_actor {
+                        if let Err(e) = evaluation_actor
+                            .tell(EvaluationCommand::Response(evaluation_res.content))
+                            .await
+                        {
+                            // TODO error, no se puede enviar la response. Parar
+                        }
+                    } else {
+                        // TODO no se puede obtener evaluation! Parar.
+                        // Can not obtain parent actor
+                    }
+
+                    let retry = if let Some(retry) = ctx.get_child::<RetryActor<RetryNetwork>>("retry").await {
+                        retry
+                    } else {
+                        todo!()
+                    };
+                    if let Err(e) = retry.tell(RetryMessage::End).await {
+                        todo!()
+                    };
+                    ctx.stop().await;
+                } else {
+                    // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
+                }
+            },
             EvaluatorCommand::NetworkRequest {
                 evaluation_req,
                 info,
-            } => todo!(),
+            } => {
+                // Aquí hay que comprobar que el owner del subject es el que envía la req.
+                let subject_path = ActorPath::from(format!(
+                    "/user/node/{}",
+                    evaluation_req.content.context.subject_id.clone()
+                ));
+                let subject_actor: Option<ActorRef<Subject>> =
+                    ctx.system().get_actor(&subject_path).await;
+
+                // We obtain the validator
+                let response = if let Some(subject_actor) = subject_actor {
+                    match subject_actor.ask(SubjectCommand::GetOwner).await {
+                        Ok(response) => response,
+                        Err(e) => todo!(),
+                    }
+                } else {
+                    todo!()
+                };
+
+                let subject_owner = match response {
+                    SubjectResponse::Owner(owner) => owner,
+                    _ => todo!(),
+                };
+
+                if subject_owner != evaluation_req.signature.signer {
+                    // Error nos llegó una evaluation req de un nodo el cual no es el dueño
+                    todo!()
+                }
+
+                if let Err(e) = evaluation_req.verify() {
+                    // Hay errores criptográficos
+                    todo!()
+                }
+
+                let helper: Option<Intermediary> =
+                    ctx.system().get_helper("NetworkIntermediary").await;
+                let mut helper = if let Some(helper) = helper {
+                    helper
+                } else {
+                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
+                    // return Err(ActorError::Get("Error".to_owned()))
+                    return Err(ActorError::NotHelper);
+                };
+
+                let EventRequest::Fact(state_data) =
+                    &evaluation_req.content.event_request.content
+                else {
+                    // Manejar, solo se evaluan los eventos de tipo fact TODO
+                    todo!()
+                };
+
+                let evaluation = match self
+                    .evaluate(ctx, &evaluation_req.content, state_data)
+                    .await
+                {
+                    Ok(evaluation) => evaluation,
+                    Err(e) => {
+                        // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
+                        todo!()
+                    }
+                };
+
+                let evaluation = match Self::build_response(
+                    evaluation,
+                    evaluation_req.content.clone(),
+                ) {
+                    Ok(evaluation) => evaluation,
+                    Err(e) => {
+                        todo!()
+                    }
+                };
+
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver.clone(),
+                    request_id: info.request_id,
+                    reciver_actor: format!(
+                        "/user/node/{}/evaluation/{}",
+                        evaluation_req.content.context.subject_id,
+                        info.reciver.clone()
+                    ),
+                };
+
+                let node_path = ActorPath::from("/user/node");
+                let node_actor: Option<ActorRef<Node>> =
+                    ctx.system().get_actor(&node_path).await;
+
+                let node_response = if let Some(node_actor) = node_actor {
+                    match node_actor
+                        .ask(NodeMessage::SignRequest(
+                            SignTypesNode::EvaluationRes(evaluation.clone()),
+                        ))
+                        .await
+                    {
+                        Ok(response) => response,
+                        Err(e) => todo!(),
+                    }
+                } else {
+                    todo!()
+                };
+
+                let signature = match node_response {
+                    NodeResponse::SignRequest(signature) => signature,
+                    NodeResponse::Error(_) => todo!(),
+                    _ => todo!(),
+                };
+
+                let signed_response: Signed<EvaluationRes> = Signed {
+                    content: evaluation,
+                    signature,
+                };
+                if let Err(e) = helper
+                    .send_command(network::CommandHelper::SendMessage {
+                        message: NetworkMessage {
+                            info: new_info,
+                            message: ActorMessage::EvaluationRes(
+                                signed_response,
+                            ),
+                        },
+                    })
+                    .await
+                {
+                    // error al enviar mensaje, propagar hacia arriba TODO
+                };
+            }
         }
 
         Ok(EvaluatorResponse::None)
@@ -519,42 +732,5 @@ impl Handler<Evaluator> for Evaluator {
         event: EvaluatorEvent,
         ctx: &mut ActorContext<Evaluator>,
     ) {
-    }
-}
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct RetryEvaluator {}
-
-#[async_trait]
-impl Actor for RetryEvaluator {
-    type Event = EvaluatorEvent;
-    type Message = NetworkMessage;
-    type Response = EvaluatorResponse;
-}
-
-#[async_trait]
-impl Handler<RetryEvaluator> for RetryEvaluator {
-    async fn handle_message(
-        &mut self,
-        sender: ActorPath,
-        msg: NetworkMessage,
-        ctx: &mut ActorContext<RetryEvaluator>,
-    ) -> Result<EvaluatorResponse, ActorError> {
-        let helper: Option<Intermediary> =
-            ctx.system().get_helper("NetworkIntermediary").await;
-        let mut helper = if let Some(helper) = helper {
-            helper
-        } else {
-            // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-            // return Err(ActorError::Get("Error".to_owned()))
-            return Err(ActorError::NotHelper);
-        };
-
-        if let Err(e) = helper
-            .send_command(network::CommandHelper::SendMessage { message: msg })
-            .await
-        {
-            // error al enviar mensaje, propagar hacia arriba TODO
-        };
-        Ok(EvaluatorResponse::None)
     }
 }

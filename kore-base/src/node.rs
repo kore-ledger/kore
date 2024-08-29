@@ -9,16 +9,11 @@ use std::{collections::{HashMap, HashSet}, path::Path};
 use async_std::fs;
 
 use crate::{
-    db::{Database, Storable},
-    helpers::encrypted_pass::EncryptedPass,
-    model::{
+    db::{Database, Storable}, evaluation, helpers::encrypted_pass::EncryptedPass, model::{
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    },
-    subject,
-    validation::proof::ValidationProof,
-    Api, Config, Error, DIGEST_DERIVATOR,
+    }, subject, validation::proof::ValidationProof, Api, Config, Error, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -311,6 +306,8 @@ impl Handler<Node> for Node {
                     SignTypesNode::Validation(validation) => self.sign(&validation),
                     SignTypesNode::ValidationReq(validation_req) => self.sign(&validation_req),
                     SignTypesNode::ValidationRes(validation_res) => self.sign(&validation_res),
+                    SignTypesNode::EvaluationReq(evaluation_req) => self.sign(&evaluation_req),
+                    SignTypesNode::EvaluationRes(evaluation_res) => self.sign(&evaluation_res)
                 };
 
                 match sign {
