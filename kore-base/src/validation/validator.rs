@@ -402,7 +402,7 @@ impl Handler<Validator> for Validator {
 
                 let strategy = Strategy::FixedInterval(FixedIntervalStrategy::new(
                     3,
-                    Duration::from_secs(3),
+                    Duration::from_secs(2),
                 ));
 
                 let retry_actor = RetryActor::new(
@@ -424,7 +424,6 @@ impl Handler<Validator> for Validator {
                 validation_res,
                 request_id,
             } => {
-                println!("RESPONSE : {:?}", validation_res);
                 if request_id == self.request_id {
                     if self.node != validation_res.signature.signer {
                         // Nos llegó a una validación de un nodo incorrecto!
@@ -607,8 +606,6 @@ impl Handler<Validator> for Validator {
                         // Can not obtain parent actor
                         // return Err(ActorError::Exists(validation_path));
                     }
-                    let retry = ctx.get_child::<RetryActor<RetryValidator>>("retry").await.unwrap();
-                    retry.tell(RetryMessage::End).await.unwrap();
             }
         }
     }
