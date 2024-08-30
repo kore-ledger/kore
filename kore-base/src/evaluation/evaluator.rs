@@ -4,13 +4,10 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{json_schema::JsonSchema, Governance, RequestStage, Schema},
-    helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{network::RetryNetwork, signature::Signature, HashId, SignTypesNode, TimeStamp},
-    node::{self, Node, NodeMessage, NodeResponse},
-    subject::{SubjectCommand, SubjectResponse},
-    Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper,
-    DIGEST_DERIVATOR,
+    evaluation::response::Response as EvalRes, governance::{json_schema::JsonSchema, Governance, RequestStage, Schema}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
+        network::RetryNetwork, signature::Signature, HashId, SignTypesNode,
+        TimeStamp,
+    }, node::{self, Node, NodeMessage, NodeResponse}, subject::{SubjectCommand, SubjectResponse}, Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, DIGEST_DERIVATOR
 };
 
 use crate::helpers::network::ActorMessage;
@@ -27,7 +24,9 @@ use network::{Command, ComunicateInfo};
 use serde::{Deserialize, Serialize};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event, FixedIntervalStrategy, Handler, Message, Response, RetryActor, RetryMessage, RetryStrategy, Strategy
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
+    FixedIntervalStrategy, Handler, Message, Response, RetryActor,
+    RetryMessage, RetryStrategy, Strategy,
 };
 
 use serde_json::{json, Value};
@@ -277,12 +276,17 @@ impl Evaluator {
             .await
             .map_err(|e| Error::Actor(format!("{}", e)))?;
 
-        if response.result.success
+        let (result, compilations) = match response {
+            RunnerResponse::Response { result, compilations } => (result, compilations),
+            RunnerResponse::Error(e) => return Err(e),
+        };
+
+        if result.success
             && is_governance
-            && !response.compilations.is_empty()
+            && !compilations.is_empty()
         {
             let governance_data = serde_json::from_value::<GovernanceData>(
-                response.result.final_state.0.clone(),
+                result.final_state.0.clone(),
             )
             .map_err(|e| {
                 Error::Evaluation(format!(
@@ -293,14 +297,14 @@ impl Evaluator {
 
             self.compile_contracts(
                 ctx,
-                &response.compilations,
+                &compilations,
                 governance_data.schemas,
                 &governance_id.to_string(),
             )
             .await?;
         }
 
-        Ok(response.result)
+        Ok(result)
     }
 
     fn generate_json_patch(
@@ -316,7 +320,7 @@ impl Evaluator {
     fn build_response(
         evaluation: ContractResult,
         evaluation_req: EvaluationReq,
-    ) -> Result<EvaluationRes, Error> {
+    ) -> EvaluationRes {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             derivator.clone()
         } else {
@@ -376,7 +380,7 @@ impl Evaluator {
                     Err(e) => todo!(),
                 };
 
-                return Ok(EvaluationRes {
+                return EvaluationRes::Response(EvalRes {
                     patch: ValueWrapper(patch),
                     state_hash,
                     eval_success: evaluation.success,
@@ -384,17 +388,8 @@ impl Evaluator {
                 });
             }
         }
-        let state_hash = match evaluation_req.context.state.hash_id(derivator) {
-            Ok(state_hash) => state_hash,
-            Err(e) => todo!(),
-        };
-
-        return Ok(EvaluationRes {
-            patch: ValueWrapper(serde_json::Value::String("[]".to_owned())),
-            state_hash,
-            eval_success: false,
-            appr_required: false,
-        });
+        // Retornar error.
+        todo!()
     }
 }
 
@@ -464,20 +459,13 @@ impl Handler<Evaluator> for Evaluator {
                 let evaluation =
                     match self.evaluate(ctx, &evaluation_req, state_data).await
                     {
-                        Ok(evaluation) => evaluation,
+                        Ok(evaluation) => Self::build_response(evaluation, evaluation_req),
                         Err(e) => {
                             // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
                             todo!()
                         }
                     };
 
-                let evaluation =
-                    match Self::build_response(evaluation, evaluation_req) {
-                        Ok(evaluation) => evaluation,
-                        Err(e) => {
-                            todo!()
-                        }
-                    };
 
                 // Evaluatiob path.
                 let evaluation_path = ctx.path().parent();
@@ -488,7 +476,10 @@ impl Handler<Evaluator> for Evaluator {
                 // Send response of evaluation to parent
                 if let Some(evaluation_actor) = evaluation_actor {
                     if let Err(e) = evaluation_actor
-                        .tell(EvaluationCommand::Response(evaluation))
+                        .tell(EvaluationCommand::Response {
+                            evaluation_res: evaluation,
+                            sender: our_key,
+                        })
                         .await
                     {
                         return Err(e);
@@ -523,23 +514,21 @@ impl Handler<Evaluator> for Evaluator {
                 let target = RetryNetwork::default();
 
                 // TODO, la evaluación, si hay compilación podría tardar más
-                let strategy = Strategy::FixedInterval(FixedIntervalStrategy::new(
-                    3,
-                    Duration::from_secs(5),
-                ));
-
-                let retry_actor = RetryActor::new(
-                    target,
-                    message,
-                    strategy,
+                let strategy = Strategy::FixedInterval(
+                    FixedIntervalStrategy::new(3, Duration::from_secs(5)),
                 );
 
+                let retry_actor = RetryActor::new(target, message, strategy);
+
                 let retry = if let Ok(retry) = ctx
-                .create_child::<RetryActor<RetryNetwork>>("retry", retry_actor)
-                .await {
+                    .create_child::<RetryActor<RetryNetwork>>(
+                        "retry",
+                        retry_actor,
+                    )
+                    .await
+                {
                     retry
                 } else {
-
                     todo!()
                 };
 
@@ -571,7 +560,10 @@ impl Handler<Evaluator> for Evaluator {
 
                     if let Some(evaluation_actor) = evaluation_actor {
                         if let Err(e) = evaluation_actor
-                            .tell(EvaluationCommand::Response(evaluation_res.content))
+                            .tell(EvaluationCommand::Response {
+                                evaluation_res: evaluation_res.content,
+                                sender: self.node.clone(),
+                            })
                             .await
                         {
                             // TODO error, no se puede enviar la response. Parar
@@ -581,7 +573,9 @@ impl Handler<Evaluator> for Evaluator {
                         // Can not obtain parent actor
                     }
 
-                    let retry = if let Some(retry) = ctx.get_child::<RetryActor<RetryNetwork>>("retry").await {
+                    let retry = if let Some(retry) =
+                        ctx.get_child::<RetryActor<RetryNetwork>>("retry").await
+                    {
                         retry
                     } else {
                         todo!()
@@ -593,7 +587,7 @@ impl Handler<Evaluator> for Evaluator {
                 } else {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
                 }
-            },
+            }
             EvaluatorCommand::NetworkRequest {
                 evaluation_req,
                 info,
@@ -606,7 +600,7 @@ impl Handler<Evaluator> for Evaluator {
                 let subject_actor: Option<ActorRef<Subject>> =
                     ctx.system().get_actor(&subject_path).await;
 
-                // We obtain the validator
+                // We obtain the evaluator
                 let response = if let Some(subject_actor) = subject_actor {
                     match subject_actor.ask(SubjectCommand::GetOwner).await {
                         Ok(response) => response,
@@ -652,19 +646,9 @@ impl Handler<Evaluator> for Evaluator {
                     .evaluate(ctx, &evaluation_req.content, state_data)
                     .await
                 {
-                    Ok(evaluation) => evaluation,
+                    Ok(evaluation) => Self::build_response(evaluation, evaluation_req.content.clone()),
                     Err(e) => {
                         // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
-                        todo!()
-                    }
-                };
-
-                let evaluation = match Self::build_response(
-                    evaluation,
-                    evaluation_req.content.clone(),
-                ) {
-                    Ok(evaluation) => evaluation,
-                    Err(e) => {
                         todo!()
                     }
                 };
@@ -727,10 +711,38 @@ impl Handler<Evaluator> for Evaluator {
         Ok(EvaluatorResponse::None)
     }
 
-    async fn on_event(
+    async fn on_child_error(
         &mut self,
-        event: EvaluatorEvent,
+        error: ActorError,
         ctx: &mut ActorContext<Evaluator>,
     ) {
+        if let ActorError::Functional(error) = error {
+            if &error == "Max retries reached." {
+                let evaluation_path = ctx.path().parent();
+
+                // Evaluation actor.
+                let evaluation_actor: Option<ActorRef<Evaluation>> =
+                    ctx.system().get_actor(&evaluation_path).await;
+
+                if let Some(evaluation_actor) = evaluation_actor {
+                    
+                    if let Err(e) = evaluation_actor
+                        .tell(EvaluationCommand::Response {
+                            evaluation_res: EvaluationRes::Error(error),
+                            sender: self.node.clone(),
+                        })
+                        .await
+                    {
+                        // TODO error, no se puede enviar la response
+                        // return Err(e);
+                    }
+                     
+                } else {
+                    // TODO no se puede obtener evaluation! Parar.
+                    // Can not obtain parent actor
+                    // return Err(ActorError::Exists(evaluation_path));
+                }
+            }
+        }
     }
 }

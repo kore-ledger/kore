@@ -12,20 +12,15 @@ pub mod response;
 mod runner;
 
 use crate::{
-    db::Storable,
-    governance::{Governance, Quorum, RequestStage},
-    model::{
+    db::Storable, governance::{Governance, Quorum, RequestStage}, model::{
         event::Event as KoreEvent,
         namespace,
         request::EventRequest,
         signature::{self, Signature, Signed},
         HashId, Namespace, SignTypesNode,
-    },
-    node::{Node, NodeMessage, NodeResponse},
-    subject::{
+    }, node::{Node, NodeMessage, NodeResponse}, subject::{
         Subject, SubjectCommand, SubjectMetadata, SubjectResponse, SubjectState,
-    },
-    Error, DIGEST_DERIVATOR,
+    }, Error, ValueWrapper, DIGEST_DERIVATOR
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
@@ -40,7 +35,7 @@ use identity::identifier::{
     KeyIdentifier,
 };
 use request::{EvaluationReq, SubjectContext};
-use response::EvaluationRes;
+use response::{EvaluationRes, Response as EvalRes};
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
@@ -56,9 +51,11 @@ pub struct Evaluation {
     // Evaluators
     evaluators: HashSet<KeyIdentifier>,
     // Actual responses
-    evaluators_response: Vec<EvaluationRes>,
+    evaluators_response: Vec<EvalRes>,
     // Evaluators quantity
     evaluators_quantity: u32,
+
+    state: ValueWrapper
 }
 
 impl Evaluation {
@@ -231,6 +228,35 @@ impl Evaluation {
 
         Ok(())
     }
+
+    fn check_responses(&self) -> bool {
+        let set: HashSet<EvalRes> = HashSet::from_iter(
+            self.evaluators_response.iter().map(|x| x.clone())
+        );
+
+        set.len() == 1
+    }
+
+    fn fail_evaluation(&self) -> EvalRes {
+        let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+            derivator.clone()
+        } else {
+            error!("Error getting derivator");
+            DigestDerivator::Blake3_256
+        };
+
+        let state_hash = match self.state.hash_id(derivator) {
+            Ok(state_hash) => state_hash,
+            Err(e) => todo!(),
+        };
+
+        EvalRes {
+            patch: ValueWrapper(serde_json::Value::String("[]".to_owned())),
+            state_hash,
+            eval_success: false,
+            appr_required: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -240,7 +266,10 @@ pub enum EvaluationCommand {
         request: Signed<EventRequest>,
     },
 
-    Response(EvaluationRes),
+    Response{
+        evaluation_res: EvaluationRes,
+        sender: KeyIdentifier,
+    },
 }
 
 impl Message for EvaluationCommand {}
@@ -310,6 +339,8 @@ impl Handler<Evaluation> for Evaluation {
 
                 let eval_req = self.create_evaluation_req(request, metadata, gov_version);
 
+                self.evaluators_response = vec![];
+                self.state = eval_req.context.state.clone();
                 self.quorum = quorum;
                 self.evaluators = signers.clone();
                 self.evaluators_quantity = signers.len() as u32;
@@ -318,7 +349,7 @@ impl Handler<Evaluation> for Evaluation {
                 let node_path = ActorPath::from("/user/node");
                 let node_actor: Option<ActorRef<Node>> =  ctx.system().get_actor(&node_path).await;
 
-                // We obtain the validator
+                // We obtain the evaluator
                 let node_response = if let Some(node_actor) = node_actor {
                     match node_actor.ask(NodeMessage::SignRequest(SignTypesNode::EvaluationReq(eval_req.clone()))).await {
                         Ok(response) => response,
@@ -351,17 +382,53 @@ impl Handler<Evaluation> for Evaluation {
                     }
                 }
             },
-            EvaluationCommand::Response(eval_res) => {
-                todo!()
+            EvaluationCommand::Response { evaluation_res, sender } => {
+                // TODO Al menos una validación tiene que ser válida, no solo errores y timeout.
+
+                // If node is in evaluator list
+                if self.check_evaluator(sender) {
+                    // Check type of validation
+                    match evaluation_res {
+                        EvaluationRes::Response(response) => self.evaluators_response.push(response),
+                        EvaluationRes::Error(error) => {
+                            // Mostrar el error TODO
+                        },
+                    };
+
+                    // Add validate response
+                    // self.evaluators_response.push(validate);
+                    if self.quorum.check_quorum(
+                        self.evaluators_quantity,
+                        self.evaluators_response.len() as u32,
+                    ) {
+                        if self.check_responses() {
+                            let _ = self.evaluators_response[0];
+                        } else {
+                            let _ = self.fail_evaluation();
+                        }
+                        // Chequear que todas las respuestas que hemos recibido son las mismas TODO.
+                    } else {
+                        if self.evaluators.is_empty() {
+                            let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+                                derivator.clone()
+                            } else {
+                                error!("Error getting derivator");
+                                DigestDerivator::Blake3_256
+                            };
+
+                            let state_hash = match self.state.hash_id(derivator) {
+                                Ok(state_hash) => state_hash,
+                                Err(e) => todo!(),
+                            };
+                            let _ = self.fail_evaluation();
+                        }
+                    }
+                } else {
+                    // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
+                }
             },
         }
 
         Ok(EvaluationResponse::None)
-    }
-    async fn on_event(
-        &mut self,
-        event: EvaluationEvent,
-        ctx: &mut ActorContext<Evaluation>,
-    ) {
     }
 }

@@ -18,7 +18,7 @@ use core::str;
 use std::io::{Read, Write};
 
 /// Wrapper of serde_json::Value implementing serialization and deserialization with Borsh.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct ValueWrapper(pub Value);
 
 impl ValueWrapper {

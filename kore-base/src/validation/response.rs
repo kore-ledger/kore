@@ -35,22 +35,6 @@ pub struct ValidationTimeOut {
     pub timestamp: TimeStamp,
 }
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Hash,
-    BorshSerialize,
-    BorshDeserialize,
-    PartialOrd,
-)]
-pub struct ValidationError {
-    pub who: KeyIdentifier,
-    pub error: String,
-}
 
 /// A Enum representing a validation response.
 #[derive(
@@ -68,7 +52,7 @@ pub struct ValidationError {
 pub enum ValidationRes {
     Signature(Signature),
     TimeOut(ValidationTimeOut),
-    Error(ValidationError),
+    Error(String),
 }
 
 impl HashId for ValidationRes {

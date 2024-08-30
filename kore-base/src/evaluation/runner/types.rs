@@ -68,16 +68,6 @@ pub struct ContractResult {
     pub success: bool,
 }
 
-impl ContractResult {
-    pub fn error(error: Error) -> Self {
-        Self {
-            final_state: ValueWrapper(serde_json::Value::String(format!("{error}"))),
-            approval_required: false,
-            success: false,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum Contract {
     CompiledContract(Vec<u8>),

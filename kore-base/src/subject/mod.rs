@@ -6,6 +6,7 @@
 
 use crate::{
     db::Storable,
+    evaluation::{evaluator::Evaluator, Evaluation},
     model::{
         event::Event as KoreEvent,
         request::EventRequest,
@@ -345,7 +346,7 @@ impl Subject {
             schema_id: self.schema_id.clone(),
             namespace: self.namespace.clone(),
             properties: self.properties.clone(),
-            sn: self.sn.clone()
+            sn: self.sn.clone(),
         }
     }
 
@@ -394,6 +395,86 @@ impl Subject {
 
         Signature::new(content, &self.keys, derivator)
             .map_err(|e| Error::Signature(format!("{}", e)))
+    }
+
+    async fn build_childs(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+    ) -> Result<(), ActorError> {
+        // Get node key
+        let our_key = self
+            .get_node_key(ctx)
+            .await
+            .map_err(|e| ActorError::Create)?;
+
+        // If subject is a governance
+        let gov = if self.governance_id.digest.is_empty() {
+            Governance::try_from(self.state())
+                .map_err(|e| ActorError::Create)?
+        }
+        // If not a governance, ask other subject for governance
+        else {
+            self.get_governace_of_other_subject(ctx, self.governance_id.clone())
+                .await
+                .map_err(|e| ActorError::Create)?
+        };
+
+        let owner = if self.governance_id.digest.is_empty() {
+            // Subject is a governance
+            self.am_i_owner(
+                ctx,
+                NodeMessage::AmIGovernanceOwner(self.subject_id.clone()),
+            )
+            .await
+            .map_err(|e| ActorError::Create)?
+        } else {
+            // Subject is not a governance
+            self.am_i_owner(
+                ctx,
+                NodeMessage::AmISubjectOwner(self.subject_id.clone()),
+            )
+            .await
+            .map_err(|e| ActorError::Create)?
+        };
+
+        // If we are owner of subject
+        if owner {
+            let validation = Validation::new(our_key.clone());
+            ctx.create_child("validation", validation).await?;
+
+            let evaluation = Evaluation::new(our_key);
+            ctx.create_child("evaluation", evaluation).await?;
+        } else {
+            if self.build_executors(RequestStage::Validate, our_key.clone(), &gov) {
+                // If we are a validator
+                let actor = Validator::default();
+                ctx.create_child("validator", actor).await?;
+            }
+                        
+            if self.build_executors(RequestStage::Evaluate, our_key, &gov) {
+                // If we are a evaluator
+                let actor = Evaluator::default();
+                ctx.create_child("evaluator", actor).await?;
+            }
+        }
+        Ok(())
+    }
+
+    fn build_executors(
+        &self,
+        stage: RequestStage,
+        our_key: KeyIdentifier,
+        gov: &Governance,
+    ) -> bool {
+        if gov
+            .get_signers(stage, &self.schema_id, self.namespace.clone())
+            .get(&our_key)
+            .is_some()
+        {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -496,7 +577,9 @@ pub enum SubjectCommand {
     /// Get the subject metadata.
     GetSubjectMetadata,
     /// Update the subject.
-    UpdateSubject { event: Signed<KoreEvent> },
+    UpdateSubject {
+        event: Signed<KoreEvent>,
+    },
     /// Sign request
     SignRequest(SignTypesSubject),
     /// Get governance if subject is a governance
@@ -519,7 +602,7 @@ pub enum SubjectResponse {
     None,
     Governance(Governance),
     GovernanceId(DigestIdentifier),
-    Owner(KeyIdentifier)
+    Owner(KeyIdentifier),
 }
 
 impl Response for SubjectResponse {}
@@ -551,62 +634,7 @@ impl Actor for Subject {
         debug!("Starting subject actor with init store.");
         self.init_store("subject", true, ctx).await?;
 
-        // TODO refactorizar cuando hayan más protocolos.
-        // Get node key
-        let our_key = self
-            .get_node_key(ctx)
-            .await
-            .map_err(|e| ActorError::Create)?;
-        // If subject is a governance
-        let gov = if self.governance_id.digest.is_empty() {
-            Governance::try_from(self.state())
-                .map_err(|e| ActorError::Create)?
-        }
-        // If not a governance, ask other subject for governance
-        else {
-            self.get_governace_of_other_subject(ctx, self.governance_id.clone())
-                .await
-                .map_err(|e| ActorError::Create)?
-        };
-
-        // If we are a validator
-        if gov
-            .get_signers(
-                RequestStage::Validate,
-                &self.schema_id,
-                self.namespace.clone(),
-            )
-            .get(&our_key)
-            .is_some()
-        {
-            let owner = if self.governance_id.digest.is_empty() {
-                // Subject is a governance
-                self.am_i_owner(
-                    ctx,
-                    NodeMessage::AmIGovernanceOwner(self.subject_id.clone()),
-                )
-                .await
-                .map_err(|e| ActorError::Create)?
-            } else {
-                // Subject is not a governance
-                self.am_i_owner(
-                    ctx,
-                    NodeMessage::AmISubjectOwner(self.subject_id.clone()),
-                )
-                .await
-                .map_err(|e| ActorError::Create)?
-            };
-
-            if owner {
-                // If we are owner of subject
-                let actor = Validation::new(our_key);
-                ctx.create_child("validation", actor).await?;
-            } else {
-                // If we are not owner of subject
-                let actor = Validator::default();
-                ctx.create_child("validator", actor).await?;
-            }
-        };
+        self.build_childs(ctx).await?;
         Ok(())
     }
 
@@ -631,7 +659,7 @@ impl Handler<Subject> for Subject {
         match msg {
             SubjectCommand::GetOwner => {
                 Ok(SubjectResponse::Owner(self.owner.clone()))
-            },
+            }
             SubjectCommand::GetSubjectState => {
                 Ok(SubjectResponse::SubjectState(self.state()))
             }
@@ -645,7 +673,9 @@ impl Handler<Subject> for Subject {
             }
             SubjectCommand::SignRequest(content) => {
                 let sign = match content {
-                    SignTypesSubject::Validation(validation) => self.sign(&validation),
+                    SignTypesSubject::Validation(validation) => {
+                        self.sign(&validation)
+                    }
                 };
 
                 match sign {
