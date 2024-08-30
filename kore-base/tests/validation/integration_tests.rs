@@ -39,5 +39,10 @@ async fn test_validation() {
         &signed_event,
     )
     .unwrap();
-    let subject_actor = system.get_or_create_actor(&format!("node/{}", subject.subject_id), || subject.clone()).await.unwrap();
+    let subject_actor = system
+        .get_or_create_actor(&format!("node/{}", subject.subject_id), || {
+            subject.clone()
+        })
+        .await
+        .unwrap();
 }

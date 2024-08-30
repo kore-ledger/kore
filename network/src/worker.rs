@@ -13,7 +13,7 @@ use crate::{
     Command, CommandHelper, Config, Error, Event as NetworkEvent, NodeType,
 };
 
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Duration};
 
 use identity::{
     identifier::derive::KeyDerivator,
@@ -22,13 +22,9 @@ use identity::{
 
 use libp2p::{
     core::ConnectedPoint,
-    identity::{
-        ed25519::{self, PublicKey as PublicKeyEd25519},
-        secp256k1::{self, PublicKey as PublicKeysecp256k1},
-        Keypair, PublicKey,
-    },
+    identity::{ed25519, secp256k1, Keypair},
     request_response::{self, OutboundRequestId, ResponseChannel},
-    swarm::{self, dial_opts::DialOpts, SwarmEvent},
+    swarm::{self, dial_opts::DialOpts, DialError, SwarmEvent},
     Multiaddr, PeerId, Swarm,
 };
 
@@ -44,11 +40,7 @@ use tokio_util::sync::CancellationToken;
 
 use tracing::{debug, error, info, trace, warn};
 
-use std::{
-    collections::{HashMap, VecDeque},
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
+use std::collections::{HashMap, VecDeque};
 
 const TARGET_WORKER: &str = "KoreNetwork-Worker";
 
@@ -158,26 +150,13 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         // Build transport.
         let transport = build_transport(registry, &key, config.port_reuse)?;
 
-        let shared_external_addresses = if external_addresses.is_empty() {
-            external_addresses.clone()
-        } else {
-            addresses.clone()
-        };
-
-        // Create the shared external addresses.
-        let shared_external_addresses =
-            Arc::new(Mutex::new(shared_external_addresses.clone()));
-
         // Create the swarm.
         let mut swarm = Swarm::new(
             transport,
-            Behaviour::new(
-                &key.public(),
-                config.clone(),
-                shared_external_addresses.clone(),
-            ),
+            Behaviour::new(&key.public(), config.clone()),
             local_peer_id,
-            swarm::Config::with_tokio_executor(),
+            swarm::Config::with_tokio_executor()
+                .with_idle_connection_timeout(Duration::from_secs(10)),
         );
 
         // Add confirmed external addresses.
@@ -255,6 +234,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         })
     }
 
+    /// Add network sender.
     pub fn add_network_sender(
         mut self,
         network_sender: mpsc::Sender<CommandHelper<T>>,
@@ -967,9 +947,29 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                     self.swarm.add_external_address(address);
                 }
             }
-            SwarmEvent::OutgoingConnectionError { .. } => {
-                // TODO.
-            }
+            SwarmEvent::OutgoingConnectionError { error, .. } => match error {
+                DialError::Transport(errors) => {
+                    for (address, error) in errors {
+                        error!(
+                            TARGET_WORKER,
+                            "Error dialing peer {:?} with errror {:?}",
+                            address,
+                            error
+                        );
+                    }
+                    self.send_event(NetworkEvent::Error(Error::Transport(
+                        "Transport error when dialing".to_owned(),
+                    )))
+                    .await;
+                }
+                _ => {
+                    error!(TARGET_WORKER, "Error dialing peer: {:?}", error);
+                    self.send_event(NetworkEvent::Error(Error::Network(
+                        format!("Error dialing peer: {:?}", error),
+                    )))
+                    .await;
+                }
+            },
             _ => {}
         }
     }
@@ -1084,7 +1084,7 @@ mod tests {
 
         // Build a fake bootstrap node.
         let fake_boot_peer = PeerId::random();
-        let fake_boot_addr = "/ip4/127.0.0.1/tcp/54999";
+        let fake_boot_addr = "/ip4/127.0.0.1/tcp/55999";
         let fake_node = RoutingNode {
             peer_id: fake_boot_peer.to_string(),
             address: vec![fake_boot_addr.to_owned()],
@@ -1092,7 +1092,7 @@ mod tests {
         boot_nodes.push(fake_node);
 
         // Build a node.
-        let node_addr = "/ip4/127.0.0.1/tcp/54422";
+        let node_addr = "/ip4/127.0.0.1/tcp/55422";
         let (mut node, mut node_receiver) = build_worker(
             boot_nodes.clone(),
             false,
@@ -1141,7 +1141,7 @@ mod tests {
         let token = CancellationToken::new();
 
         // Build a bootstrap node.
-        let boot_addr = "/ip4/127.0.0.1/tcp/54421";
+        let boot_addr = "/ip4/127.0.0.1/tcp/56421";
         let (mut boot, mut boot_receiver) = build_worker(
             boot_nodes.clone(),
             false,
@@ -1158,7 +1158,7 @@ mod tests {
         println!("Boot peer id: {}", boot_peer_id);
 
         // Build a node.
-        let node_addr = "/ip4/127.0.0.1/tcp/54422";
+        let node_addr = "/ip4/127.0.0.1/tcp/56422";
         let (mut node, mut node_receiver) = build_worker(
             boot_nodes,
             false,

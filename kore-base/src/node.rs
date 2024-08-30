@@ -40,7 +40,7 @@ pub enum SubjectsTypes {
     KnowSubject(String),
     OwnerSubject(String),
     KnowGovernance(String),
-    OwnerGovernance(String)
+    OwnerGovernance(String),
 }
 
 /// Node struct.
@@ -270,33 +270,32 @@ impl Handler<Node> for Node {
                 match subject {
                     SubjectsTypes::KnowSubject(subj) => {
                         ctx.event(NodeEvent::KnownSubject(subj)).await?;
-                    },
+                    }
                     SubjectsTypes::OwnerSubject(subj) => {
                         ctx.event(NodeEvent::OwnedSubject(subj)).await?;
-                    },
+                    }
                     SubjectsTypes::KnowGovernance(gov) => {
                         ctx.event(NodeEvent::KnownGovernance(gov)).await?;
-                    },
+                    }
                     SubjectsTypes::OwnerGovernance(gov) => {
                         ctx.event(NodeEvent::OwnedGovernance(gov)).await?;
-                    },
+                    }
                 }
                 Ok(NodeResponse::None)
-                }
             }
-        }
-
-        async fn on_event(
-            &mut self,
-            event: NodeEvent,
-            ctx: &mut ActorContext<Node>,
-        ) {
-            if let Err(e) = self.persist(&event, ctx).await {
-                // TODO Propagar error.
-            };
         }
     }
 
+    async fn on_event(
+        &mut self,
+        event: NodeEvent,
+        ctx: &mut ActorContext<Node>,
+    ) {
+        if let Err(e) = self.persist(&event, ctx).await {
+            // TODO Propagar error.
+        };
+    }
+}
 
 #[async_trait]
 impl Storable for Node {}

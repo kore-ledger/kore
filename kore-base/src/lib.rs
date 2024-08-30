@@ -19,13 +19,13 @@ mod validation;
 pub use api::Api;
 pub use config::{Config, DbConfig};
 pub use error::Error;
-pub use node::Node;
 pub use governance::Governance;
-pub use subject::Subject;
-pub use model::signature::*;
-pub use model::request::*;
 pub use model::event::*;
+pub use model::request::*;
+pub use model::signature::*;
 pub use model::ValueWrapper;
+pub use node::Node;
+pub use subject::Subject;
 
 use actor::{ActorSystem, SystemRef};
 use db::Database;

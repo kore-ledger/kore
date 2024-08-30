@@ -11,9 +11,7 @@ pub mod validator;
 
 use crate::{
     db::Storable,
-    governance::{
-        Governance, Quorum, RequestStage,
-    },
+    governance::{Governance, Quorum, RequestStage},
     model::{
         event::Event as KoreEvent,
         namespace,
@@ -199,9 +197,8 @@ impl Validation {
         // We obtain the actor governance
         let response = if let Some(governance_actor) = governance_actor {
             // We ask a governance
-            let response = governance_actor
-                .ask(SubjectCommand::GetGovernance)
-                .await;
+            let response =
+                governance_actor.ask(SubjectCommand::GetGovernance).await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -225,7 +222,7 @@ impl Validation {
                     Ok(quorum_and_signers) => Ok(quorum_and_signers),
                     Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
                 }
-            },
+            }
             SubjectResponse::Error(error) => {
                 return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
             }
@@ -397,33 +394,37 @@ impl Handler<Validation> for Validation {
                         self.validators_response.len() as u32,
                     ) {
                         // The quorum was met, we persisted, and we applied the status
-                        if let Err(e) = self.persist(
-                            &ValidationEvent::UpdateLastEvenData {
-                                actual_proof: self.actual_proof.clone(),
-                                actual_event_validation_response: self
-                                    .validators_response
-                                    .clone(),
-                                validation: true,
-                            },
-                            ctx,
-                        )
-                        .await {
-                            // TODO error al persistir, propagar hacia arriba
-                        };
-                    } else {
-                        if self.validators.is_empty() {
-                            // we have received all the responses and the quorum has not been met
-                            if let Err(e) = self.persist(
+                        if let Err(e) = self
+                            .persist(
                                 &ValidationEvent::UpdateLastEvenData {
                                     actual_proof: self.actual_proof.clone(),
                                     actual_event_validation_response: self
                                         .validators_response
                                         .clone(),
-                                    validation: false,
+                                    validation: true,
                                 },
                                 ctx,
                             )
-                            .await {
+                            .await
+                        {
+                            // TODO error al persistir, propagar hacia arriba
+                        };
+                    } else {
+                        if self.validators.is_empty() {
+                            // we have received all the responses and the quorum has not been met
+                            if let Err(e) = self
+                                .persist(
+                                    &ValidationEvent::UpdateLastEvenData {
+                                        actual_proof: self.actual_proof.clone(),
+                                        actual_event_validation_response: self
+                                            .validators_response
+                                            .clone(),
+                                        validation: false,
+                                    },
+                                    ctx,
+                                )
+                                .await
+                            {
                                 // TODO error al persistir, propagar hacia arriba
                             };
                         }
