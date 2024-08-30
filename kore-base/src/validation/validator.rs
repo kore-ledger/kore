@@ -263,9 +263,11 @@ impl Validator {
             };
 
             let actual_signers = match response {
-                SubjectResponse::Governance(gov) => gov.get_signers(RequestStage::Validate,
-                     &new_proof.schema_id,
-                     new_proof.namespace.clone()),
+                SubjectResponse::Governance(gov) => gov.get_signers(
+                    RequestStage::Validate,
+                    &new_proof.schema_id,
+                    new_proof.namespace.clone(),
+                ),
                 SubjectResponse::Error(error) => {
                     return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
                 }
@@ -275,7 +277,6 @@ impl Validator {
                     )))
                 }
             };
-
 
             // If the governance version is the same, we ask the governance for the current validators, to check that they are all part of it.
             if previous_proof.governance_version == new_proof.governance_version
@@ -596,8 +597,7 @@ impl Retry for Validator {
     ) -> Result<<<Self as Retry>::Child as Actor>::Response, ActorError> {
         if let Ok(child) = self.child(ctx).await {
             let mut retries = 0;
-            while retries < retry_strategy.max_retries() && !self.finish
-            {
+            while retries < retry_strategy.max_retries() && !self.finish {
                 debug!(
                     "Retry {}/{}.",
                     retries + 1,

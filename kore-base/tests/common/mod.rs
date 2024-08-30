@@ -1,6 +1,14 @@
 use actor::SystemRef;
-use identity::{identifier::{derive::{digest::DigestDerivator, KeyDerivator}, DigestIdentifier, KeyIdentifier}, keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair}};
-use kore_base::{system, Config, EventRequest, Signature, Signed, StartRequest, ValueWrapper};
+use identity::{
+    identifier::{
+        derive::{digest::DigestDerivator, KeyDerivator},
+        DigestIdentifier, KeyIdentifier,
+    },
+    keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair},
+};
+use kore_base::{
+    system, Config, EventRequest, Signature, Signed, StartRequest, ValueWrapper,
+};
 
 pub async fn create_system() -> SystemRef {
     let dir = tempfile::tempdir().expect("Can not create temporal directory.");

@@ -5,14 +5,14 @@
 //!
 
 use crate::{
-    control_list, node,
+    control_list,
     routing::{self, DhtValue},
     utils::is_memory,
     Config, Error, NodeType,
 };
 
 use libp2p::{
-    identify::Info as IdentifyInfo,
+    identify::{self, Info as IdentifyInfo},
     identity::PublicKey,
     request_response::{
         self, Config as ReqResConfig, InboundRequestId, OutboundRequestId,
@@ -27,12 +27,7 @@ use tell::{
 };
 
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashSet,
-    iter,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{iter, time::Duration};
 use tracing::{debug, info};
 
 /// The network composed behaviour.
@@ -51,17 +46,13 @@ pub struct Behaviour {
     /// The `routing` behaviour.
     routing: routing::Behaviour,
 
-    /// The `node` behaviour.
-    node: node::Behaviour,
+    /// The `identify` behaviour.
+    identify: identify::Behaviour,
 }
 
 impl Behaviour {
     /// Create a new `Behaviour`.
-    pub fn new(
-        public_key: &PublicKey,
-        config: Config,
-        external_addresses: Arc<Mutex<HashSet<Multiaddr>>>,
-    ) -> Self {
+    pub fn new(public_key: &PublicKey, config: Config) -> Self {
         let protocol_tell = iter::once((
             StreamProtocol::new("/kore/tell/1.0.0"),
             TellProtocol::InboundOutbound,
@@ -87,10 +78,12 @@ impl Behaviour {
                 PeerId::from_public_key(public_key),
                 config_routing,
             ),
-            node: node::Behaviour::new(
-                &config.user_agent,
-                public_key,
-                external_addresses,
+            identify: identify::Behaviour::new(
+                identify::Config::new(
+                    "/kore/1.0.0".to_owned(),
+                    public_key.clone(),
+                )
+                .with_agent_version(config.user_agent),
             ),
             tell: binary::Behaviour::new(protocol_tell, config.tell),
             req_res: request_response::cbor::Behaviour::new(
@@ -200,6 +193,9 @@ pub enum Event {
         /// Information about the peer.
         info: Box<IdentifyInfo>,
     },
+
+    /// Identify error.
+    IdentifyError(PeerId),
 
     /// Tell message recieved from a peer.
     TellMessage {
@@ -311,13 +307,19 @@ impl From<routing::Event> for Event {
     }
 }
 
-impl From<node::Event> for Event {
-    fn from(event: node::Event) -> Self {
+impl From<identify::Event> for Event {
+    fn from(event: identify::Event) -> Self {
         match event {
-            node::Event::Identified { peer_id, info } => Event::Identified {
-                peer_id,
-                info: Box::new(info),
-            },
+            identify::Event::Received { peer_id, info, .. } => {
+                Event::Identified {
+                    peer_id,
+                    info: Box::new(info),
+                }
+            }
+            identify::Event::Error { peer_id, .. } => {
+                Event::IdentifyError(peer_id)
+            }
+            _ => Event::Dummy,
         }
     }
 }
@@ -424,7 +426,6 @@ mod tests {
     use request_response::Message;
     use serial_test::serial;
 
-    use std::sync::Arc;
     use std::vec;
 
     #[tokio::test]
@@ -439,7 +440,7 @@ mod tests {
         let mut node_a = build_node(config);
         node_a.behaviour_mut().finish_prerouting_state();
         let node_a_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/50001".parse().unwrap();
+            "/ip4/127.0.0.1/tcp/53001".parse().unwrap();
         let _ = node_a.listen_on(node_a_addr.clone());
         //node_a.add_external_address(node_a_addr.clone());
 
@@ -449,7 +450,7 @@ mod tests {
         let mut node_b = build_node(config);
         node_b.behaviour_mut().finish_prerouting_state();
         let node_b_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/50002".parse().unwrap();
+            "/ip4/127.0.0.1/tcp/53002".parse().unwrap();
         let _ = node_b.listen_on(node_b_addr.clone());
         node_b.add_external_address(node_b_addr.clone());
         let node_b_peer_id = *node_b.local_peer_id();
@@ -558,7 +559,7 @@ mod tests {
             create_config(boot_nodes.clone(), false, NodeType::Addressable);
         let mut node_a = build_node(config);
         let node_a_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/50001".parse().unwrap();
+            "/ip4/127.0.0.1/tcp/52001".parse().unwrap();
         let _ = node_a.listen_on(node_a_addr.clone());
         node_a.add_external_address(node_a_addr.clone());
         node_a.behaviour_mut().finish_prerouting_state();
@@ -568,7 +569,7 @@ mod tests {
             create_config(boot_nodes.clone(), true, NodeType::Addressable);
         let mut node_b = build_node(config);
         let node_b_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/50002".parse().unwrap();
+            "/ip4/127.0.0.1/tcp/52002".parse().unwrap();
         let _ = node_b.listen_on(node_b_addr.clone());
         node_b.add_external_address(node_b_addr.clone());
         node_b.behaviour_mut().finish_prerouting_state();
@@ -659,7 +660,7 @@ mod tests {
         let mut boot_node = build_node(config);
         boot_node.behaviour_mut().finish_prerouting_state();
         let boot_node_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/50001".parse().unwrap();
+            "/ip4/127.0.0.1/tcp/51001".parse().unwrap();
         let _ = boot_node.listen_on(boot_node_addr.clone());
         boot_node.add_external_address(boot_node_addr.clone());
 
@@ -669,7 +670,7 @@ mod tests {
         let mut node_a = build_node(config);
         node_a.behaviour_mut().finish_prerouting_state();
         let node_a_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/50002".parse().unwrap();
+            "/ip4/127.0.0.1/tcp/51002".parse().unwrap();
         let _ = node_a.listen_on(node_a_addr.clone());
         node_a.add_external_address(node_a_addr.clone());
 
@@ -679,7 +680,7 @@ mod tests {
         let mut node_b = build_node(config);
         node_b.behaviour_mut().finish_prerouting_state();
         let node_b_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/50003".parse().unwrap();
+            "/ip4/127.0.0.1/tcp/51003".parse().unwrap();
         let _ = node_b.listen_on(node_b_addr.clone());
         node_b.add_external_address(node_b_addr.clone());
         let node_b_peer_id = *node_b.local_peer_id();
@@ -812,17 +813,13 @@ mod tests {
             .multiplex(yamux::Config::default())
             .boxed();
 
-        let behaviour = Behaviour::new(
-            &local_key.public(),
-            config,
-            Arc::new(Mutex::new(HashSet::new())),
-        );
+        let behaviour = Behaviour::new(&local_key.public(), config);
         Swarm::new(
             transport,
             behaviour,
             local_peer_id,
             swarm::Config::with_tokio_executor().with_idle_connection_timeout(
-                std::time::Duration::from_secs(10),
+                std::time::Duration::from_secs(1),
             ),
         )
     }

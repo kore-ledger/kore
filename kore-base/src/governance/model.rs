@@ -17,8 +17,12 @@ use std::{collections::HashSet, default};
 pub enum Quorum {
     #[default]
     MAJORITY,
-    FIXED { fixed: u32 },
-    PERCENTAGE { percentage: f64 },
+    FIXED {
+        fixed: u32,
+    },
+    PERCENTAGE {
+        percentage: f64,
+    },
     // BFT { BFT: f64 },
 }
 

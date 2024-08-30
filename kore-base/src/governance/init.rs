@@ -7,7 +7,7 @@
 use crate::model::ValueWrapper;
 
 pub fn init_state(owner_key: &str) -> ValueWrapper {
-  println!("OWNER KEY {}", owner_key);
+    println!("OWNER KEY {}", owner_key);
     ValueWrapper(serde_json::json!({
         "members": [
           {

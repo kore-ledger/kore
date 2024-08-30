@@ -482,6 +482,7 @@ impl NetworkBehaviour for Behaviour {
         peer: PeerId,
         _: &libp2p::Multiaddr,
         _: libp2p::core::Endpoint,
+        _: libp2p::core::transport::PortUse,
     ) -> Result<libp2p::swarm::THandler<Self>, ConnectionDenied> {
         self.check_lists(&peer)?;
 
