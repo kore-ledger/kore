@@ -6,15 +6,16 @@
 
 use crate::{
     db::Storable,
+    evaluation::{evaluator::Evaluator, Evaluation},
     model::{
         event::Event as KoreEvent,
         request::EventRequest,
         signature::{Signature, Signed},
-        HashId, Namespace, SignTypes, ValueWrapper,
+        HashId, Namespace, SignTypesSubject, ValueWrapper,
     },
     node::{NodeMessage, NodeResponse},
     validation::{validator::Validator, Validation},
-    Error, Governance, Node,
+    Error, Governance, Node, DIGEST_DERIVATOR,
 };
 
 use crate::governance::RequestStage;
@@ -43,19 +44,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub struct Subject {
     /// The key pair used to sign the subject.
     keys: KeyPair,
-    /// Derivator for sign
-    derivator: DigestDerivator,
     /// The identifier of the subject.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance that drives this subject.
     pub governance_id: DigestIdentifier,
-    /// The governance version.
-    pub governance_version: u64,
     /// The version of the governance contract that created the subject.
     pub genesis_gov_version: u64,
     /// The namespace of the subject.
     pub namespace: Namespace,
-    /// The name of the subject.
+    /// The name of the subject. TODO: hace falta?
     pub name: String,
     /// The identifier of the schema used to validate the subject.
     pub schema_id: String,
@@ -66,7 +63,7 @@ pub struct Subject {
     /// Indicates whether the subject is active or not.
     pub active: bool,
     /// The current sequence number of the subject.
-    pub sn: AtomicU64,
+    pub sn: u64,
     /// The current status of the subject.
     pub properties: ValueWrapper,
 }
@@ -89,7 +86,6 @@ impl Subject {
     ///
     pub fn from_event(
         subject_keys: KeyPair,
-        derivator: DigestDerivator,
         event: &Signed<KoreEvent>,
     ) -> Result<Self, Error> {
         if let EventRequest::Create(request) =
@@ -97,10 +93,8 @@ impl Subject {
         {
             let subject = Subject {
                 keys: subject_keys,
-                derivator,
                 subject_id: event.content.subject_id.clone(),
                 governance_id: request.governance_id.clone(),
-                governance_version: event.content.gov_version,
                 genesis_gov_version: event.content.gov_version,
                 namespace: Namespace::from(request.namespace.as_str()),
                 name: request.name.clone(),
@@ -108,7 +102,7 @@ impl Subject {
                 owner: event.content.event_request.signature.signer.clone(),
                 creator: event.content.event_request.signature.signer.clone(),
                 active: true,
-                sn: AtomicU64::new(0),
+                sn: 0,
                 properties: event.content.patch.clone(),
             };
             Ok(subject)
@@ -327,7 +321,6 @@ impl Subject {
             ),
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
-            governance_version: self.governance_version,
             genesis_gov_version: self.genesis_gov_version,
             namespace: self.namespace.clone(),
             name: self.name.clone(),
@@ -335,7 +328,7 @@ impl Subject {
             owner: self.owner.clone(),
             creator: self.creator.clone(),
             active: self.active,
-            sn: self.sn.load(Ordering::Relaxed),
+            sn: self.sn,
             properties: self.properties.clone(),
         }
     }
@@ -346,13 +339,14 @@ impl Subject {
     ///
     /// The subject metadata.
     ///
-    pub fn metadata(&self) -> SubjectMetadata {
+    fn metadata(&self) -> SubjectMetadata {
         SubjectMetadata {
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
-            governance_version: self.governance_version,
             schema_id: self.schema_id.clone(),
             namespace: self.namespace.clone(),
+            properties: self.properties.clone(),
+            sn: self.sn.clone(),
         }
     }
 
@@ -392,8 +386,95 @@ impl Subject {
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
-        Signature::new(content, &self.keys, self.derivator)
+        let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+            derivator.clone()
+        } else {
+            error!("Error getting derivator");
+            DigestDerivator::Blake3_256
+        };
+
+        Signature::new(content, &self.keys, derivator)
             .map_err(|e| Error::Signature(format!("{}", e)))
+    }
+
+    async fn build_childs(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+    ) -> Result<(), ActorError> {
+        // Get node key
+        let our_key = self
+            .get_node_key(ctx)
+            .await
+            .map_err(|e| ActorError::Create)?;
+
+        // If subject is a governance
+        let gov = if self.governance_id.digest.is_empty() {
+            Governance::try_from(self.state())
+                .map_err(|e| ActorError::Create)?
+        }
+        // If not a governance, ask other subject for governance
+        else {
+            self.get_governace_of_other_subject(ctx, self.governance_id.clone())
+                .await
+                .map_err(|e| ActorError::Create)?
+        };
+
+        let owner = if self.governance_id.digest.is_empty() {
+            // Subject is a governance
+            self.am_i_owner(
+                ctx,
+                NodeMessage::AmIGovernanceOwner(self.subject_id.clone()),
+            )
+            .await
+            .map_err(|e| ActorError::Create)?
+        } else {
+            // Subject is not a governance
+            self.am_i_owner(
+                ctx,
+                NodeMessage::AmISubjectOwner(self.subject_id.clone()),
+            )
+            .await
+            .map_err(|e| ActorError::Create)?
+        };
+
+        // If we are owner of subject
+        if owner {
+            let validation = Validation::new(our_key.clone());
+            ctx.create_child("validation", validation).await?;
+
+            let evaluation = Evaluation::new(our_key);
+            ctx.create_child("evaluation", evaluation).await?;
+        } else {
+            if self.build_executors(RequestStage::Validate, our_key.clone(), &gov) {
+                // If we are a validator
+                let actor = Validator::default();
+                ctx.create_child("validator", actor).await?;
+            }
+                        
+            if self.build_executors(RequestStage::Evaluate, our_key, &gov) {
+                // If we are a evaluator
+                let actor = Evaluator::default();
+                ctx.create_child("evaluator", actor).await?;
+            }
+        }
+        Ok(())
+    }
+
+    fn build_executors(
+        &self,
+        stage: RequestStage,
+        our_key: KeyIdentifier,
+        gov: &Governance,
+    ) -> bool {
+        if gov
+            .get_signers(stage, &self.schema_id, self.namespace.clone())
+            .get(&our_key)
+            .is_some()
+        {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -401,10 +482,8 @@ impl Clone for Subject {
     fn clone(&self) -> Self {
         Subject {
             keys: self.keys.clone(),
-            derivator: self.derivator.clone(),
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
-            governance_version: self.governance_version,
             genesis_gov_version: self.genesis_gov_version,
             namespace: self.namespace.clone(),
             name: self.name.clone(),
@@ -412,7 +491,7 @@ impl Clone for Subject {
             owner: self.owner.clone(),
             creator: self.creator.clone(),
             active: self.active,
-            sn: AtomicU64::new(self.sn.load(Ordering::Relaxed)),
+            sn: self.sn,
             properties: self.properties.clone(),
         }
     }
@@ -429,8 +508,6 @@ pub struct SubjectState {
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance that drives this subject.
     pub governance_id: DigestIdentifier,
-    /// The governance version.
-    pub governance_version: u64,
     /// The version of the governance contract that created the subject.
     pub genesis_gov_version: u64,
     /// The namespace of the subject.
@@ -460,12 +537,14 @@ pub struct SubjectMetadata {
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance contract.
     pub governance_id: DigestIdentifier,
-    /// The version of the governance contract.
-    pub governance_version: u64,
     /// The identifier of the schema used to validate the event.
     pub schema_id: String,
     /// The namespace of the subject.
     pub namespace: Namespace,
+    /// The current sequence number of the subject.
+    pub sn: u64,
+    /// The current status of the subject.
+    pub properties: ValueWrapper,
 }
 
 impl From<Subject> for SubjectState {
@@ -477,7 +556,6 @@ impl From<Subject> for SubjectState {
             ),
             subject_id: subject.subject_id,
             governance_id: subject.governance_id,
-            governance_version: subject.governance_version,
             genesis_gov_version: subject.genesis_gov_version,
             namespace: subject.namespace,
             name: subject.name,
@@ -485,7 +563,7 @@ impl From<Subject> for SubjectState {
             owner: subject.owner,
             creator: subject.creator,
             active: subject.active,
-            sn: subject.sn.load(Ordering::Relaxed),
+            sn: subject.sn,
             properties: subject.properties,
         }
     }
@@ -499,11 +577,14 @@ pub enum SubjectCommand {
     /// Get the subject metadata.
     GetSubjectMetadata,
     /// Update the subject.
-    UpdateSubject { event: Signed<KoreEvent> },
+    UpdateSubject {
+        event: Signed<KoreEvent>,
+    },
     /// Sign request
-    SignRequest(SignTypes),
+    SignRequest(SignTypesSubject),
     /// Get governance if subject is a governance
     GetGovernance,
+    GetOwner,
 }
 
 impl Message for SubjectCommand {}
@@ -520,6 +601,8 @@ pub enum SubjectResponse {
     /// None.
     None,
     Governance(Governance),
+    GovernanceId(DigestIdentifier),
+    Owner(KeyIdentifier),
 }
 
 impl Response for SubjectResponse {}
@@ -551,77 +634,16 @@ impl Actor for Subject {
         debug!("Starting subject actor with init store.");
         self.init_store("subject", true, ctx).await?;
 
-        // TODO refactorizar cuando hayan más protocolos.
-        // Get node key
-        let our_key = self
-            .get_node_key(ctx)
-            .await
-            .map_err(|e| ActorError::Create)?;
-        // If subject is a governance
-        let gov = if self.governance_id.digest.is_empty() {
-            Governance::try_from(self.state())
-                .map_err(|e| ActorError::Create)?
-        }
-        // If not a governance, ask other subject for governance
-        else {
-            self.get_governace_of_other_subject(ctx, self.governance_id.clone())
-                .await
-                .map_err(|e| ActorError::Create)?
-        };
-
-        println!("ANTES DE ISSOME");
-        // If we are a validator
-        if gov
-            .get_signers(
-                RequestStage::Validate,
-                &self.schema_id,
-                self.namespace.clone(),
-            )
-            .get(&our_key)
-            .is_some()
-        {
-            println!("ISSOME");
-            let owner = if self.governance_id.digest.is_empty() {
-                // Subject is a governance
-                self.am_i_owner(
-                    ctx,
-                    NodeMessage::AmIGovernanceOwner(self.subject_id.clone()),
-                )
-                .await
-                .map_err(|e| ActorError::Create)?
-            } else {
-                // Subject is not a governance
-                self.am_i_owner(
-                    ctx,
-                    NodeMessage::AmISubjectOwner(self.subject_id.clone()),
-                )
-                .await
-                .map_err(|e| ActorError::Create)?
-            };
-
-            if owner {
-                // If we are owner of subject
-                let actor = Validation::default();
-                ctx.create_child("validation", actor).await?;
-            } else {
-                // If we are not owner of subject
-                let actor = Validator::default();
-                ctx.create_child("validator", actor).await?;
-            }
-        };
+        self.build_childs(ctx).await?;
         Ok(())
     }
 
-    async fn post_stop(
+    async fn pre_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Stopping subject actor with stop store.");
-        self.stop_store(ctx).await.map_err(|e| {
-            println!("Error {}", e);
-            ActorError::Stop
-        })?;
-        println!("Post-stop bien");
+        self.stop_store(ctx).await.map_err(|_| ActorError::Stop)?;
         Ok(())
     }
 }
@@ -630,10 +652,14 @@ impl Actor for Subject {
 impl Handler<Subject> for Subject {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: SubjectCommand,
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
+            SubjectCommand::GetOwner => {
+                Ok(SubjectResponse::Owner(self.owner.clone()))
+            }
             SubjectCommand::GetSubjectState => {
                 Ok(SubjectResponse::SubjectState(self.state()))
             }
@@ -647,7 +673,9 @@ impl Handler<Subject> for Subject {
             }
             SubjectCommand::SignRequest(content) => {
                 let sign = match content {
-                    SignTypes::Validation(validation) => self.sign(&validation),
+                    SignTypesSubject::Validation(validation) => {
+                        self.sign(&validation)
+                    }
                 };
 
                 match sign {
@@ -719,8 +747,6 @@ impl Storable for Subject {}
 #[cfg(test)]
 mod tests {
 
-    use std::time::Duration;
-
     use super::*;
 
     use crate::{
@@ -738,7 +764,7 @@ mod tests {
     async fn test_subject() {
         let system = create_system().await;
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let node = Node::new(&node_keys, DigestDerivator::Blake3_256).unwrap();
+        let node = Node::new(&node_keys).unwrap();
         let _ = system.create_root_actor("node", node).await.unwrap();
         let request = create_start_request_mock("issuer");
         let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
@@ -756,12 +782,7 @@ mod tests {
             content: event,
             signature,
         };
-        let subject = Subject::from_event(
-            keys,
-            DigestDerivator::Blake3_256,
-            &signed_event,
-        )
-        .unwrap();
+        let subject = Subject::from_event(keys, &signed_event).unwrap();
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
@@ -845,12 +866,7 @@ mod tests {
             content: event,
             signature,
         };
-        let subject_a = Subject::from_event(
-            keys,
-            DigestDerivator::Blake3_256,
-            &signed_event,
-        )
-        .unwrap();
+        let subject_a = Subject::from_event(keys, &signed_event).unwrap();
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

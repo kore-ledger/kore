@@ -128,7 +128,6 @@ impl Hash for UniqueSignature {
     Hash,
 )]
 pub struct Signed<T: BorshSerialize + BorshDeserialize + Clone + HashId> {
-    #[serde(flatten)]
     /// The data that is signed
     pub content: T,
     /// The signature accompanying the data

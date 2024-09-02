@@ -21,11 +21,25 @@ use serde::{Deserialize, Serialize};
     BorshSerialize,
     BorshDeserialize,
 )]
-pub struct EvaluationResponse {
+pub enum EvaluationRes {
+    Error(String),
+    Response(Response),
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+    Hash
+)]
+pub struct Response {
     /// The patch to apply to the state.
     pub patch: ValueWrapper,
-    /// The hash of the evaluation request being responded to.
-    pub eval_req_hash: DigestIdentifier,
     /// The hash of the state after applying the patch.
     pub state_hash: DigestIdentifier,
     /// Whether the evaluation was successful and the result was validated against the schema.
@@ -34,18 +48,15 @@ pub struct EvaluationResponse {
     pub appr_required: bool,
 }
 
-impl HashId for EvaluationResponse {
+impl HashId for EvaluationRes {
     fn hash_id(
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(
-            (
-                &self.eval_req_hash,
-                &self.state_hash,
-                self.eval_success,
-                self.appr_required,
-            ),
+            
+                self
+            ,
             derivator,
         )
         .map_err(|_| {

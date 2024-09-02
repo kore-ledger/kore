@@ -7,7 +7,6 @@
 use crate::model::ValueWrapper;
 
 pub fn init_state(owner_key: &str) -> ValueWrapper {
-    println!("OWNER KEY {}", owner_key);
     ValueWrapper(serde_json::json!({
         "members": [
           {
@@ -27,9 +26,7 @@ pub fn init_state(owner_key: &str) -> ValueWrapper {
           {
             "namespace": "",
             "role": "EVALUATOR",
-            "schema": {
-              "ID": "governance"
-            },
+            "schema": "ALL",
             "who": {
               "NAME": "Owner"
             }
@@ -37,9 +34,7 @@ pub fn init_state(owner_key: &str) -> ValueWrapper {
           {
             "namespace": "",
             "role": "APPROVER",
-            "schema": {
-              "ID": "governance"
-            },
+            "schema": "ALL",
             "who": {
               "NAME": "Owner"
             }
@@ -47,9 +42,7 @@ pub fn init_state(owner_key: &str) -> ValueWrapper {
           {
             "namespace": "",
             "role": "VALIDATOR",
-            "schema": {
-              "ID": "governance"
-            },
+            "schema": "ALL",
             "who": {
               "NAME": "Owner"
             }

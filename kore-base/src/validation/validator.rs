@@ -1,21 +1,23 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::{collections::HashSet, fmt::format, str::FromStr, time::Duration};
+use std::{collections::HashSet, time::Duration};
 
 use crate::{
     governance::{Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{signature::Signature, SignTypes, TimeStamp},
-    node::{Node, NodeMessage, NodeResponse},
+    model::{
+        network::RetryNetwork, signature::Signature, SignTypesNode, TimeStamp,
+    },
+    node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectCommand, SubjectResponse},
-    Error, Subject,
+    Error, Signed, Subject,
 };
 
 use super::{
     proof::ValidationProof,
     request::{SignersRes, ValidationReq},
-    response::{ValidationError, ValidationRes, ValidationTimeOut},
+    response::{ValidationRes, ValidationTimeOut},
     Validation, ValidationCommand, ValidationResponse,
 };
 
@@ -33,8 +35,8 @@ use serde::{Deserialize, Serialize};
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    FixedIntervalStrategy, Handler, Message, Response, Retry, RetryStrategy,
-    Strategy,
+    FixedIntervalStrategy, Handler, Message, Response, RetryActor,
+    RetryMessage, RetryStrategy, Strategy,
 };
 
 use tracing::{debug, error};
@@ -43,17 +45,72 @@ use tracing::{debug, error};
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Validator {
     request_id: String,
-    finish: bool,
+    node: KeyIdentifier,
 }
 
 impl Validator {
-    async fn validation_event(
+    pub fn new(request_id: String, node: KeyIdentifier) -> Self {
+        Validator { request_id, node }
+    }
+
+    async fn get_gov(
+        &self,
+        ctx: &mut ActorContext<Validator>,
+        subject_id: DigestIdentifier,
+        governance_id: DigestIdentifier,
+        schema_id: &str,
+    ) -> Result<Governance, Error> {
+        // Governance path
+        let governance_path = if schema_id == "governance" {
+            ActorPath::from(format!("/user/node/{}", subject_id))
+        } else {
+            ActorPath::from(format!("/user/node/{}", governance_id))
+        };
+        // Governance actor.
+        let governance_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&governance_path).await;
+
+        // We obtain the actor governance
+        let response = if let Some(governance_actor) = governance_actor {
+            // We ask a governance
+            let response =
+                governance_actor.ask(SubjectCommand::GetGovernance).await;
+            match response {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a Subject {}",
+                        e
+                    )));
+                }
+            }
+        } else {
+            return Err(Error::Actor(format!(
+                "The governance actor was not found in the expected path {}",
+                governance_path
+            )));
+        };
+
+        match response {
+            SubjectResponse::Governance(gov) => Ok(gov),
+            SubjectResponse::Error(error) => {
+                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
+            }
+            _ => {
+                return Err(Error::Actor(format!(
+                    "An unexpected response has been received from node actor"
+                )))
+            }
+        }
+    }
+
+    // TODO si es un nuevo validador va a necesitar la prueba anterior y las firmas.
+    async fn validation(
         &self,
         ctx: &mut ActorContext<Validator>,
         validation_req: ValidationReq,
     ) -> Result<Signature, Error> {
         // Obtain gov_version
-        // If is a create of governance (governance does not exist until validation is complete)
         let actual_gov_version: u64 = if validation_req.proof.schema_id
             == "governance"
             && validation_req.proof.sn == 0
@@ -61,48 +118,16 @@ impl Validator {
             0
         // ask the government for its version
         } else {
-            // Governance path
-            let governance_path = ActorPath::from(format!(
-                "/user/node/{}",
-                validation_req.proof.governance_id
-            ));
-            // Governance actor.
-            let governance_actor: Option<ActorRef<Subject>> =
-                ctx.system().get_actor(&governance_path).await;
-
-            // We obtain the actor governance
-            let response = if let Some(governance_actor) = governance_actor {
-                // We ask a governance
-                let response =
-                    governance_actor.ask(SubjectCommand::GetGovernance).await;
-                match response {
-                    Ok(response) => response,
-                    Err(e) => {
-                        return Err(Error::Actor(format!(
-                            "Error when asking a Subject {}",
-                            e
-                        )));
-                    }
-                }
-            } else {
-                return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path /user/node/{}",
-                validation_req.proof.governance_id
-            )));
-            };
-
-            match response {
-                SubjectResponse::Governance(gov) => gov.version(),
-                SubjectResponse::Error(error) => {
-                    return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
-                }
-                _ => {
-                    return Err(Error::Actor(format!(
-                    "An unexpected response has been received from node actor"
-                )))
-                }
-            }
+            self.get_gov(
+                ctx,
+                validation_req.proof.subject_id.clone(),
+                validation_req.proof.governance_id.clone(),
+                &validation_req.proof.schema_id,
+            )
+            .await?
+            .get_version()
         };
+
         match actual_gov_version.cmp(&validation_req.proof.governance_version) {
             std::cmp::Ordering::Equal => {
                 // If it is the same it means that we have the latest version of governance, we are up to date.
@@ -150,7 +175,7 @@ impl Validator {
         let response = if let Some(node_actor) = node_actor {
             // We ask a node
             let response = node_actor
-                .ask(NodeMessage::SignRequest(SignTypes::Validation(
+                .ask(NodeMessage::SignRequest(SignTypesNode::Validation(
                     validation_req.proof,
                 )))
                 .await;
@@ -206,6 +231,7 @@ impl Validator {
                 error!("");
                 return Err(Error::Validation(format!("There are fields that do not match in the comparison of the previous validation proof and the new proof.")));
             }
+
             // Validate the previous proof
             // If all validations are correct, we get the public keys of the validators
             let previous_signers: Result<HashSet<KeyIdentifier>, Error> =
@@ -230,53 +256,20 @@ impl Validator {
             let previous_signers = previous_signers?;
 
             // TODO previamente se obtiene la governanza, ver si podemos refactorizar para no tener que volver a pedirla
-            // Governance path
-            let governance_path = ActorPath::from(format!(
-                "/user/node/{}",
-                new_proof.governance_id
-            ));
-
-            // Governance actor.
-            let governance_actor: Option<ActorRef<Subject>> =
-                ctx.system().get_actor(&governance_path).await;
-
-            // We obtain the actor governance
-            let response = if let Some(governance_actor) = governance_actor {
-                // We ask a governance
-                // TODO si previous_proof.governance_version == new_proof.governance_version pedimos la governanza, sino tenemos que obtener la versión anterior de governanza
-                let response =
-                    governance_actor.ask(SubjectCommand::GetGovernance).await;
-                match response {
-                    Ok(response) => response,
-                    Err(e) => {
-                        return Err(Error::Actor(format!(
-                            "Error when asking a Subject {}",
-                            e
-                        )));
-                    }
-                }
-            } else {
-                return Err(Error::Actor(format!(
-                    "The governance actor was not found in the expected path /user/node/{}",
-                    new_proof.governance_id
-                )));
-            };
-
-            let actual_signers = match response {
-                SubjectResponse::Governance(gov) => gov.get_signers(
+            // Get validation signers
+            let actual_signers = self
+                .get_gov(
+                    ctx,
+                    new_proof.subject_id.clone(),
+                    new_proof.governance_id.clone(),
+                    &new_proof.schema_id,
+                )
+                .await?
+                .get_signers(
                     RequestStage::Validate,
                     &new_proof.schema_id,
                     new_proof.namespace.clone(),
-                ),
-                SubjectResponse::Error(error) => {
-                    return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
-                }
-                _ => {
-                    return Err(Error::Actor(format!(
-                    "An unexpected response has been received from node actor"
-                    )))
-                }
-            };
+                );
 
             // If the governance version is the same, we ask the governance for the current validators, to check that they are all part of it.
             if previous_proof.governance_version == new_proof.governance_version
@@ -305,16 +298,16 @@ pub enum ValidatorCommand {
     },
     NetworkValidation {
         request_id: String,
-        validation_req: ValidationReq,
+        validation_req: Signed<ValidationReq>,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
     NetworkResponse {
-        validation_res: ValidationRes,
+        validation_res: Signed<ValidationRes>,
         request_id: String,
     },
     NetworkRequest {
-        validation_req: ValidationReq,
+        validation_req: Signed<ValidationReq>,
         info: ComunicateInfo,
     },
 }
@@ -322,10 +315,7 @@ pub enum ValidatorCommand {
 impl Message for ValidatorCommand {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ValidatorEvent {
-    AllTryHaveBeenMade { node_key: KeyIdentifier },
-    ReTry(NetworkMessage),
-}
+pub enum ValidatorEvent {}
 
 impl Event for ValidatorEvent {}
 
@@ -347,6 +337,7 @@ impl Actor for Validator {
 impl Handler<Validator> for Validator {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: ValidatorCommand,
         ctx: &mut ActorContext<Validator>,
     ) -> Result<ValidatorResponse, ActorError> {
@@ -356,21 +347,24 @@ impl Handler<Validator> for Validator {
                 our_key,
             } => {
                 // Validate event
-                let validation =
-                    match self.validation_event(ctx, validation_req).await {
-                        Ok(validation) => ValidationCommand::Response(
-                            ValidationRes::Signature(validation),
-                        ),
-                        Err(e) => {
-                            // Log con el error. TODO
-                            ValidationCommand::Response(ValidationRes::Error(
-                                ValidationError {
-                                    who: our_key,
-                                    error: format!("{}", e),
-                                },
-                            ))
+                let validation = match self
+                    .validation(ctx, validation_req)
+                    .await
+                {
+                    Ok(validation) => ValidationCommand::Response {
+                        validation_res: ValidationRes::Signature(validation),
+                        sender: our_key,
+                    },
+                    Err(e) => {
+                        // Log con el error. TODO
+                        ValidationCommand::Response {
+                            validation_res: ValidationRes::Error(
+                                format!("{}", e),
+                            ),
+                            sender: our_key,
                         }
-                    };
+                    }
+                };
 
                 // Validation path.
                 let validation_path = ctx.path().parent();
@@ -389,7 +383,7 @@ impl Handler<Validator> for Validator {
                     return Err(ActorError::Exists(validation_path));
                 }
 
-                Ok(ValidatorResponse::None)
+                ctx.stop().await;
             }
             ValidatorCommand::NetworkValidation {
                 request_id,
@@ -405,23 +399,52 @@ impl Handler<Validator> for Validator {
                         reciver: node_key,
                         reciver_actor: format!(
                             "/user/node/{}/validator",
-                            validation_req.subject_signature.signer
+                            validation_req.content.proof.subject_id
                         ),
                     },
                     message: ActorMessage::ValidationReq(validation_req),
                 };
 
-                if let Err(e) = ctx.event(ValidatorEvent::ReTry(message)).await
+                let target = RetryNetwork::default();
+
+                let strategy = Strategy::FixedInterval(
+                    FixedIntervalStrategy::new(3, Duration::from_secs(2)),
+                );
+
+                let retry_actor = RetryActor::new(target, message, strategy);
+
+                let retry = if let Ok(retry) = ctx
+                    .create_child::<RetryActor<RetryNetwork>>(
+                        "retry",
+                        retry_actor,
+                    )
+                    .await
                 {
-                    // TODO, error al crear evento, propagar hacia arriba
+                    retry
+                } else {
+                    todo!()
                 };
-                Ok(ValidatorResponse::None)
+
+                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    todo!()
+                };
             }
             ValidatorCommand::NetworkResponse {
                 validation_res,
                 request_id,
             } => {
+                println!("Response");
                 if request_id == self.request_id {
+                    if self.node != validation_res.signature.signer {
+                        // Nos llegó a una validación de un nodo incorrecto!
+                        todo!()
+                    }
+
+                    if let Err(e) = validation_res.verify() {
+                        // Hay error criptográfico en la respuesta
+                        todo!()
+                    }
+
                     // Validation path.
                     let validation_path = ctx.path().parent();
 
@@ -431,7 +454,10 @@ impl Handler<Validator> for Validator {
 
                     if let Some(validation_actor) = validation_actor {
                         if let Err(e) = validation_actor
-                            .tell(ValidationCommand::Response(validation_res))
+                            .tell(ValidationCommand::Response {
+                                validation_res: validation_res.content,
+                                sender: self.node.clone(),
+                            })
                             .await
                         {
                             // TODO error, no se puede enviar la response. Parar
@@ -441,29 +467,62 @@ impl Handler<Validator> for Validator {
                         // Can not obtain parent actor
                     }
 
-                    self.finish = true;
+                    let retry = if let Some(retry) =
+                        ctx.get_child::<RetryActor<RetryNetwork>>("retry").await
+                    {
+                        retry
+                    } else {
+                        todo!()
+                    };
+                    if let Err(e) = retry.tell(RetryMessage::End).await {
+                        todo!()
+                    };
+                    ctx.stop().await;
                 } else {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
                 }
-
-                Ok(ValidatorResponse::None)
             }
             ValidatorCommand::NetworkRequest {
                 validation_req,
                 info,
             } => {
+                // Aquí hay que comprobar que el owner del subject es el que envía la req.
+                let subject_path = ActorPath::from(format!(
+                    "/user/node/{}",
+                    validation_req.content.proof.subject_id.clone()
+                ));
+                let subject_actor: Option<ActorRef<Subject>> =
+                    ctx.system().get_actor(&subject_path).await;
+
+                // We obtain the validator
+                let response = if let Some(subject_actor) = subject_actor {
+                    match subject_actor.ask(SubjectCommand::GetOwner).await {
+                        Ok(response) => response,
+                        Err(e) => todo!(),
+                    }
+                } else {
+                    todo!()
+                };
+
+                let subject_owner = match response {
+                    SubjectResponse::Owner(owner) => owner,
+                    _ => todo!(),
+                };
+
+                if subject_owner != validation_req.signature.signer {
+                    // Error nos llegó una validation req de un nodo el cual no es el dueño
+                    todo!()
+                }
+
+                if let Err(e) = validation_req.verify() {
+                    // Hay errores criptográficos
+                    todo!()
+                }
+
+                // Llegados a este punto se ha verificado que la req es del owner del sujeto y está todo correcto.
+
                 // Validar y devolver la respuesta al helper, no a Validation. Nos llegó por la network la validación.
                 // Sacar el Helper aquí
-                let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver.clone(),
-                    request_id: info.request_id,
-                    reciver_actor: format!(
-                        "/user/node/{}/validation/{}",
-                        validation_req.subject_signature.signer,
-                        info.reciver.clone()
-                    ),
-                };
                 let helper: Option<Intermediary> =
                     ctx.system().get_helper("NetworkIntermediary").await;
                 let mut helper = if let Some(helper) = helper {
@@ -474,199 +533,113 @@ impl Handler<Validator> for Validator {
                     return Err(ActorError::NotHelper);
                 };
 
-                let response = match self
-                    .validation_event(ctx, validation_req.clone())
+                let validation = match self
+                    .validation(ctx, validation_req.content.clone())
                     .await
                 {
                     Ok(validation) => ValidationRes::Signature(validation),
                     Err(e) => {
                         // Log con el error. TODO
-                        ValidationRes::Error(ValidationError {
-                            who: validation_req.subject_signature.signer,
-                            error: format!("{}", e),
-                        })
+                        ValidationRes::Error(format!("{}", e))
                     }
+                };
+
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver.clone(),
+                    request_id: info.request_id,
+                    reciver_actor: format!(
+                        "/user/node/{}/validation/{}",
+                        validation_req.content.proof.subject_id,
+                        info.reciver.clone()
+                    ),
+                };
+
+                // Aquí tiene que firmar el nodo la respuesta.
+                let node_path = ActorPath::from("/user/node");
+                let node_actor: Option<ActorRef<Node>> =
+                    ctx.system().get_actor(&node_path).await;
+
+                // We obtain the validator
+                let node_response = if let Some(node_actor) = node_actor {
+                    match node_actor
+                        .ask(NodeMessage::SignRequest(
+                            SignTypesNode::ValidationRes(validation.clone()),
+                        ))
+                        .await
+                    {
+                        Ok(response) => response,
+                        Err(e) => todo!(),
+                    }
+                } else {
+                    todo!()
+                };
+
+                let signature = match node_response {
+                    NodeResponse::SignRequest(signature) => signature,
+                    NodeResponse::Error(_) => todo!(),
+                    _ => todo!(),
+                };
+
+                let signed_response: Signed<ValidationRes> = Signed {
+                    content: validation,
+                    signature,
                 };
 
                 if let Err(e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
-                            message: ActorMessage::ValidationRes(response),
+                            message: ActorMessage::ValidationRes(
+                                signed_response,
+                            ),
                         },
                     })
                     .await
                 {
                     // error al enviar mensaje, propagar hacia arriba TODO
                 };
-
-                Ok(ValidatorResponse::None)
             }
         }
+        Ok(ValidatorResponse::None)
     }
 
-    async fn on_event(
+    async fn on_child_error(
         &mut self,
-        event: ValidatorEvent,
+        error: ActorError,
         ctx: &mut ActorContext<Validator>,
     ) {
-        match event {
-            ValidatorEvent::AllTryHaveBeenMade { node_key } => {
-                if !self.finish {
-                    // Validation path.
-                    let validation_path = ctx.path().parent();
+        if let ActorError::Functional(error) = error {
+            if &error == "Max retries reached." {
+                let validation_path = ctx.path().parent();
 
-                    // Validation actor.
-                    let validation_actor: Option<ActorRef<Validation>> =
-                        ctx.system().get_actor(&validation_path).await;
+                // Validation actor.
+                let validation_actor: Option<ActorRef<Validation>> =
+                    ctx.system().get_actor(&validation_path).await;
 
-                    if let Some(validation_actor) = validation_actor {
-                        if let Err(e) = validation_actor
-                            .tell(ValidationCommand::Response(
-                                ValidationRes::TimeOut(ValidationTimeOut {
+                if let Some(validation_actor) = validation_actor {
+                    if let Err(e) = validation_actor
+                        .tell(ValidationCommand::Response {
+                            validation_res: ValidationRes::TimeOut(
+                                ValidationTimeOut {
                                     re_trys: 3,
                                     timestamp: TimeStamp::now(),
-                                    who: node_key,
-                                }),
-                            ))
-                            .await
-                        {
-                            // TODO error, no se puede enviar la response
-                            // return Err(e);
-                        }
-                    } else {
-                        // TODO no se puede obtener validation! Parar.
-                        // Can not obtain parent actor
-                        // return Err(ActorError::Exists(validation_path));
+                                    who: self.node.clone(),
+                                },
+                            ),
+                            sender: self.node.clone(),
+                        })
+                        .await
+                    {
+                        // TODO error, no se puede enviar la response
+                        // return Err(e);
                     }
-                }
-            }
-            ValidatorEvent::ReTry(message) => {
-                let path = ctx.path().clone() / "network";
-                // TODO analizar la estrategia.
-                let mut strategy = Strategy::FixedInterval(
-                    FixedIntervalStrategy::new(3, Duration::from_secs(1)),
-                );
-
-                if let Err(e) = self
-                    .apply_retries(ctx, path, &mut strategy, message.clone())
-                    .await
-                {
-                    match e {
-                        ActorError::ReTry => {
-                            if let Err(e) = ctx
-                                .event(ValidatorEvent::AllTryHaveBeenMade {
-                                    node_key: message.info.reciver,
-                                })
-                                .await
-                            {
-                                // TODO, error al crear evento, propagar hacia arriba
-                            };
-                        }
-                        ActorError::Functional(e) => {
-                            // TODO, interno al hacer retry, propagar hacia arriba
-                        }
-                        _ => {
-                            // No puede llegar ningún tipo de error más
-                        }
-                    }
-                };
-            }
-        }
-    }
-}
-
-#[async_trait]
-impl Retry for Validator {
-    type Child = RetryValidator;
-
-    async fn child(
-        &self,
-        ctx: &mut ActorContext<Validator>,
-    ) -> Result<ActorRef<RetryValidator>, ActorError> {
-        ctx.create_child("network", RetryValidator {}).await
-    }
-
-    /// Retry message.
-    async fn apply_retries(
-        &self,
-        ctx: &mut ActorContext<Self>,
-        path: ActorPath,
-        retry_strategy: &mut Strategy,
-        message: <<Self as Retry>::Child as Actor>::Message,
-    ) -> Result<<<Self as Retry>::Child as Actor>::Response, ActorError> {
-        if let Ok(child) = self.child(ctx).await {
-            let mut retries = 0;
-            while retries < retry_strategy.max_retries() && !self.finish {
-                debug!(
-                    "Retry {}/{}.",
-                    retries + 1,
-                    retry_strategy.max_retries()
-                );
-                if let Err(e) = child.tell(message.clone()).await {
-                    error!("");
-                    // Manejar error del tell.
                 } else {
-                    if let Some(duration) = retry_strategy.next_backoff() {
-                        debug!("Backoff for {:?}", &duration);
-                        tokio::time::sleep(duration).await;
-                    }
-                    retries += 1;
+                    // TODO no se puede obtener validation! Parar.
+                    // Can not obtain parent actor
+                    // return Err(ActorError::Exists(validation_path));
                 }
             }
-            if self.finish {
-                // LLegó respuesta se abortan los intentos.
-                Ok(ValidatorResponse::None)
-            } else {
-                error!("Max retries with actor {} reached.", path);
-                // emitir evento de que todos los intentos fueron realizados
-                Err(ActorError::ReTry)
-            }
-        } else {
-            error!("Retries with actor {} failed. Unknown actor.", path);
-            Err(ActorError::Functional(format!(
-                "Retries with actor {} failed. Unknown actor.",
-                path
-            )))
         }
-    }
-}
-
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct RetryValidator {}
-
-impl Message for NetworkMessage {}
-
-#[async_trait]
-impl Actor for RetryValidator {
-    type Event = ValidatorEvent;
-    type Message = NetworkMessage;
-    type Response = ValidatorResponse;
-}
-
-#[async_trait]
-impl Handler<RetryValidator> for RetryValidator {
-    async fn handle_message(
-        &mut self,
-        msg: NetworkMessage,
-        ctx: &mut ActorContext<RetryValidator>,
-    ) -> Result<ValidatorResponse, ActorError> {
-        let helper: Option<Intermediary> =
-            ctx.system().get_helper("NetworkIntermediary").await;
-        let mut helper = if let Some(helper) = helper {
-            helper
-        } else {
-            // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-            // return Err(ActorError::Get("Error".to_owned()))
-            return Err(ActorError::NotHelper);
-        };
-
-        if let Err(e) = helper
-            .send_command(network::CommandHelper::SendMessage { message: msg })
-            .await
-        {
-            // error al enviar mensaje, propagar hacia arriba TODO
-        };
-        Ok(ValidatorResponse::None)
     }
 }

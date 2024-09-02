@@ -1,12 +1,11 @@
 use crate::{
-    validation::validator::{Validator, ValidatorCommand},
-    Error,
+    evaluation::evaluator::{Evaluator, EvaluatorCommand}, validation::validator::{Validator, ValidatorCommand}, Error
 };
 
 use super::ActorMessage;
 use super::{service::HelperService, NetworkMessage};
 use actor::{ActorPath, ActorRef, SystemRef};
-use identity::identifier::derive::KeyDerivator;
+use identity::identifier::{derive::KeyDerivator, key_identifier, KeyIdentifier};
 use network::Command as NetworkCommand;
 use network::CommandHelper as Command;
 use network::{PeerId, PublicKey, PublicKeyEd25519, PublicKeysecp256k1};
@@ -44,6 +43,11 @@ impl Intermediary {
         .spawn_command_receiver(command_receiver)
     }
 
+    pub fn service(&self) -> HelperService {
+        self.service.clone()
+    }
+
+
     fn spawn_command_receiver(
         &mut self,
         mut command_receiver: mpsc::Receiver<Command<NetworkMessage>>,
@@ -72,6 +76,9 @@ impl Intermediary {
         self.clone()
     }
 
+    // TODO: hay que ver los errores, si se espera un actor que no se encuentra no hay que tumbar el nodo
+    // podríamos recibir el ataque de otro nodo a un actor que no existe y no tendríamos por qué fallar
+    // Habría que ver si tendríamos que responder si quiera.
     async fn handle_command(
         &self,
         command: Command<NetworkMessage>,
@@ -81,7 +88,7 @@ impl Intermediary {
                 // Public key to peer_id
                 let node_peer = Intermediary::to_peer_id(
                     self.derivator,
-                    message.info.reciver.to_string().as_bytes(),
+                    message.info.reciver.public_key.as_slice(),
                 )?;
                 // Message to Vec<u8>
                 let network_message =
@@ -148,6 +155,35 @@ impl Intermediary {
                         )));
                         };
                     }
+                    ActorMessage::EvaluationReq(evaluation_req) => {
+                            // Evaluator path.
+                        let evaluator_path =
+                              ActorPath::from(message.info.reciver_actor.clone());
+                          // Evaluator actor.
+                          let evaluator_actor: Option<ActorRef<Evaluator>> =
+                              self.system.get_actor(&evaluator_path).await;
+  
+                          // We obtain the validator
+                          if let Some(evaluator_actor) = evaluator_actor {
+                              if let Err(error) = evaluator_actor
+                                  .tell(EvaluatorCommand::NetworkRequest {
+                                    evaluation_req,
+                                      info: message.info,
+                                  })
+                                  .await
+                              {
+                                  return Err(Error::Actor(format!(
+                                  "Can not send a message to Validator Actor(Req): {}",
+                                  error
+                              )));
+                              };
+                          } else {
+                              return Err(Error::Actor(format!(
+                              "The node actor was not found in the expected path {}",
+                              evaluator_path
+                          )));
+                          };
+                    }
                     ActorMessage::ValidationRes(validation_res) => {
                         // Validator path.
                         let validator_path =
@@ -166,7 +202,7 @@ impl Intermediary {
                                 .await
                             {
                                 return Err(Error::Actor(format!(
-                                    "Can not send a message to Validator Actor(Req): {}",
+                                    "Can not send a message to Validator Actor(Res): {}",
                                     error
                                 )));
                             };
@@ -174,6 +210,35 @@ impl Intermediary {
                             return Err(Error::Actor(format!(
                                 "The node actor was not found in the expected path {}",
                                 validator_path
+                            )));
+                        };
+                    }
+                    ActorMessage::EvaluationRes(evaluation_res) => {
+                        // Validator path.
+                        let evaluator_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+                        // Validator actor.
+                        let evaluator_actor: Option<ActorRef<Evaluator>> =
+                            self.system.get_actor(&evaluator_path).await;
+
+                        // We obtain the validator
+                        if let Some(evaluator_actor) = evaluator_actor {
+                            if let Err(error) = evaluator_actor
+                                .tell(EvaluatorCommand::NetworkResponse {
+                                    evaluation_res,
+                                    request_id: message.info.request_id,
+                                })
+                                .await
+                            {
+                                return Err(Error::Actor(format!(
+                                    "Can not send a message to Evaluator Actor(Res): {}",
+                                    error
+                                )));
+                            };
+                        } else {
+                            return Err(Error::Actor(format!(
+                                "The node actor was not found in the expected path {}",
+                                evaluator_path
                             )));
                         };
                     }

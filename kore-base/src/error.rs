@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 /// Error type.
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
-    /// An error occurred.
-    #[error("An error occurred.")]
-    Generic,
+    /// Node error.
+    #[error("Node error: {0}")]
+    Node(String),
     /// Actor error.
     #[error("Actor error: {0}")]
     Actor(String),
@@ -47,6 +47,12 @@ pub enum Error {
     /// Evaluation error.
     #[error("Evaluation error: {0}")]
     Evaluation(String),
+    /// Runner error.
+    #[error("Runner error: {0}")]
+    Runner(String),
+    /// Compiler error.
+    #[error("Compiler error: {0}")]
+    Compiler(String),
     /// Approval error.
     #[error("Approval error: {0}")]
     Approval(String),
@@ -57,6 +63,9 @@ pub enum Error {
     #[error("NetworkHelper error: {0}")]
     NetworkHelper(String),
     /// Network error.
-    #[error("NetworkHelper error: {0}")]
+    #[error("Network error: {0}")]
     Network(String),
+    /// JSONSchema error.
+    #[error("JSONSchema error: {0}")]
+    JSONSChema(String)
 }

@@ -4,19 +4,16 @@
 //! Node module
 //!
 
-use std::fmt::format;
+use std::{collections::{HashMap, HashSet}, path::Path};
+
+use async_std::fs;
 
 use crate::{
-    db::{Database, Storable},
-    helpers::encrypted_pass::EncryptedPass,
-    model::{
+    db::{Database, Storable}, evaluation, helpers::encrypted_pass::EncryptedPass, model::{
         request::EventRequest,
         signature::{Signature, Signed},
-        HashId, SignTypes,
-    },
-    subject,
-    validation::proof::ValidationProof,
-    Api, Config, Error,
+        HashId, SignTypesNode,
+    }, subject, validation::proof::ValidationProof, Api, Config, Error, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -27,13 +24,15 @@ use identity::{
 };
 
 use actor::{
-    Actor, ActorContext, ActorSystem, Error as ActorError, Event, Handler,
-    Message, Response, SystemRef,
+    Actor, ActorContext, ActorPath, ActorSystem, Error as ActorError, Event, Handler, Message, Response, SystemRef
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct CompiledContract(Vec<u8>);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SubjectsTypes {
@@ -49,8 +48,6 @@ pub struct Node {
     /// Owner of the node.
     #[serde(skip)]
     owner: KeyPair,
-    /// Derivator for sign
-    derivator: DigestDerivator,
     /// The node's owned subjects.
     owned_subjects: Vec<String>,
     /// The node's known subjects.
@@ -59,21 +56,22 @@ pub struct Node {
     owned_governances: Vec<String>,
     /// The node's known governances.
     known_governances: Vec<String>,
+    /// Compiled contracts
+    compiled_contracts: HashMap<String, CompiledContract>
 }
 
 impl Node {
     /// Creates a new node.
     pub fn new(
         id: &KeyPair,
-        derivator: DigestDerivator,
     ) -> Result<Self, Error> {
         Ok(Self {
             owner: id.clone(),
-            derivator,
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             owned_governances: Vec::new(),
             known_governances: Vec::new(),
+            compiled_contracts: HashMap::new()
         })
     }
 
@@ -128,8 +126,67 @@ impl Node {
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
-        Signature::new(content, &self.owner, self.derivator)
+        let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+            derivator.clone()
+        } else {
+            error!("Error getting derivator");
+            DigestDerivator::Blake3_256
+        };
+        Signature::new(content, &self.owner, derivator)
             .map_err(|e| Error::Signature(format!("{}", e)))
+    }
+
+    async fn build_compilation_dir() -> Result<(), Error> {
+        if !Path::new("contracts").exists() {
+            fs::create_dir("contracts").await.map_err(|e| {
+                Error::Node(format!("Can not create contracts dir: {}", e))
+            })?;
+        }
+
+        let toml: String = Self::compilation_toml();
+        // We write cargo.toml
+        fs::write("contracts/Cargo.toml", toml).await.map_err(|e| {
+            Error::Node(format!("Can not create Cargo.toml file: {}", e))
+        })?;
+
+        if !Path::new("contracts/src/bin").exists() {
+            fs::create_dir_all("contracts/src/bin").await.map_err(|e| {
+                Error::Node(format!("Can not create src dir: {}", e))
+            })?;
+        }
+        Ok(())
+    }
+
+    fn compilation_toml() -> String {
+        r#"
+    [package]
+    name = "contract"
+    version = "0.1.0"
+    edition = "2021"
+    
+    [dependencies]
+    serde = { version = "1.0.208", features = ["derive"] }
+    serde_json = "1.0.125"
+    json-patch = "2.0.0"
+    thiserror = "1.0.63"
+    kore-contract-sdk = { git = "https://github.com/kore-ledger/kore-contract-sdk.git", branch = "main"}
+    
+    [profile.release]
+    strip = "debuginfo"
+    lto = true
+    
+    [lib]
+    crate-type = ["cdylib"]
+      "#
+        .into()
+    }
+
+    pub fn get_contract(&self, contract_path: &str) -> Result<Vec<u8>, Error> {
+        if let Some(contract) = self.compiled_contracts.get(contract_path) {
+            Ok(contract.0.clone())
+        } else {
+            Err(Error::Governance(format!("can not find this schema {}", contract_path)))
+        }
     }
 }
 
@@ -138,10 +195,11 @@ impl Node {
 pub enum NodeMessage {
     RequestEvent(Signed<EventRequest>),
     RegisterSubject(SubjectsTypes),
-    SignRequest(SignTypes),
+    SignRequest(SignTypesNode),
     AmISubjectOwner(DigestIdentifier),
     AmIGovernanceOwner(DigestIdentifier),
     GetOwnerIdentifier,
+    CompiledContract(String)
 }
 
 impl Message for NodeMessage {}
@@ -155,6 +213,7 @@ pub enum NodeResponse {
     /// Owner identifier.
     OwnerIdentifier(KeyIdentifier),
     AmIOwner(bool),
+    Contract(Vec<u8>),
     Error(Error),
     None,
 }
@@ -182,14 +241,15 @@ impl Actor for Node {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
+        if let Err(e) = Self::build_compilation_dir().await {
+            // TODO manejar este error.
+        };
         // Start store
         debug!("Creating Node store");
-        self.init_store("node", false, ctx).await?;
-
-        Ok(())
+        self.init_store("node", false, ctx).await
     }
 
-    async fn post_stop(
+    async fn pre_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
@@ -232,6 +292,7 @@ impl PersistentActor for Node {
 impl Handler<Node> for Node {
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: NodeMessage,
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
@@ -242,7 +303,11 @@ impl Handler<Node> for Node {
             }
             NodeMessage::SignRequest(content) => {
                 let sign = match content {
-                    SignTypes::Validation(validation) => self.sign(&validation),
+                    SignTypesNode::Validation(validation) => self.sign(&validation),
+                    SignTypesNode::ValidationReq(validation_req) => self.sign(&validation_req),
+                    SignTypesNode::ValidationRes(validation_res) => self.sign(&validation_res),
+                    SignTypesNode::EvaluationReq(evaluation_req) => self.sign(&evaluation_req),
+                    SignTypesNode::EvaluationRes(evaluation_res) => self.sign(&evaluation_res)
                 };
 
                 match sign {
@@ -282,6 +347,12 @@ impl Handler<Node> for Node {
                     }
                 }
                 Ok(NodeResponse::None)
+            },
+            NodeMessage::CompiledContract(contract_path) => {
+                match self.get_contract(&contract_path) {
+                    Ok(contract) => Ok(NodeResponse::Contract(contract)),
+                    Err(e) => Ok(NodeResponse::Error(e))
+                }
             }
         }
     }

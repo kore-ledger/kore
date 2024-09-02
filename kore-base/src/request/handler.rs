@@ -183,7 +183,7 @@ impl Actor for RequestHandler {
     }
 
     /// Post-stop implementation for `RequestHandler`.
-    async fn post_stop(
+    async fn pre_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
@@ -199,6 +199,7 @@ impl Handler<RequestHandler> for RequestHandler {
     /// Handles the `EventRequest` message.
     async fn handle_message(
         &mut self,
+        sender: ActorPath,
         msg: RequestHandlerCommand,
         ctx: &mut ActorContext<RequestHandler>,
     ) -> Result<RequestResponse, ActorError> {

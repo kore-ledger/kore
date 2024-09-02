@@ -5,7 +5,8 @@
 //!
 
 pub mod init;
-mod model;
+pub mod json_schema;
+pub mod model;
 mod schema;
 
 use crate::{
@@ -15,6 +16,7 @@ use crate::{
     Error,
 };
 
+use model::Contract;
 pub use schema::schema;
 
 pub use model::{
@@ -250,7 +252,7 @@ impl Governance {
     }
 
     /// Governance version.
-    pub fn version(&self) -> u64 {
+    pub fn get_version(&self) -> u64 {
         self.model.version
     }
 
