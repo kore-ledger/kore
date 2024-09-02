@@ -156,7 +156,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             Behaviour::new(&key.public(), config.clone()),
             local_peer_id,
             swarm::Config::with_tokio_executor()
-                .with_idle_connection_timeout(Duration::from_secs(10)),
+                .with_idle_connection_timeout(Duration::from_secs(3)),
         );
 
         // Add confirmed external addresses.

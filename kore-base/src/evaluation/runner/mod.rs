@@ -188,6 +188,7 @@ impl Runner {
     ) -> Result<(HashSet<String>, HashSet<String>), Error> {
         let mut name_set = HashSet::new();
         let mut id_set = HashSet::new();
+        let mut owner_name = false;
 
         for member in members {
             if !name_set.insert(member.name.clone()) {
@@ -195,13 +196,21 @@ impl Runner {
                     "There are duplicate names in members".to_owned(),
                 ));
             }
+            if member.name == "Owner" {
+                owner_name = true;
+            }
             if !id_set.insert(member.id.clone()) {
                 return Err(Error::Runner(
                     "There are duplicate id in members".to_owned(),
                 ));
             }
         }
-        // TODO: Checkear que el nodo es miembro, no se ha eliminado.
+
+        if !owner_name {
+            return Err(Error::Runner(
+                "The owner of the governance must be a member of the governance".to_owned(),
+            ));
+        }
 
         Ok((id_set, name_set))
     }
@@ -274,11 +283,23 @@ impl Runner {
         name_set: HashSet<String>,
     ) -> Result<(), Error> {
         policies.insert("governance".into());
-        // TODO Checkear que el owner del nodo sigue tiniendo los roles básicos que se han especificado en la meta gov.
+        let mut owner_eval = false;
+        let mut owner_appr = false;
+        let mut owner_val = false;
+        let mut owner_witness = false;
+        let mut members_witness = false;
+
         for role in roles {
             if let SchemaEnum::ID { ID } = &role.schema {
                 if !policies.contains(ID) {
                     return Err(Error::Runner(format!("The role {} of member {} belongs to an invalid schema.", role.role, role.who)));
+                }
+                if ID == "governance" {
+                    if let Who::MEMBERS = role.who {
+                        if role.role == "WITNESS" && role.namespace.is_empty() {
+                            members_witness = true;
+                        }
+                    }
                 }
             }
             match &role.who {
@@ -297,10 +318,27 @@ impl Runner {
                             NAME
                         )));
                     }
+                    if NAME == "Owner" && role.namespace.is_empty() {
+                        if let SchemaEnum::ALL = role.schema {
+                            if role.role == "WITNESS" {
+                                owner_witness = true;
+                            } else if role.role == "VALIDATOR" {
+                                owner_val = true;
+                            } else if role.role == "APPROVER" {
+                                owner_appr = true;
+                            } else if role.role == "EVALUATOR" {
+                                owner_eval = true;
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }
         }
+        if !owner_eval || !owner_appr || !owner_val || !owner_witness || !members_witness {
+            return Err(Error::Runner("Basic metagovernance roles have been modified".to_owned()));
+        }
+
         Ok(())
     }
 
