@@ -33,7 +33,7 @@ use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use json_patch::{patch, Patch};
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{debug, error};
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -502,6 +502,7 @@ pub enum SubjectCommand {
     /// Get governance if subject is a governance
     GetGovernance,
     GetOwner,
+    LastEvent
 }
 
 impl Message for SubjectCommand {}
@@ -519,7 +520,8 @@ pub enum SubjectResponse {
     None,
     Governance(Governance),
     GovernanceId(DigestIdentifier),
-    Owner(KeyIdentifier)
+    Owner(KeyIdentifier),
+    LastEvent(Signed<KoreEvent>)
 }
 
 impl Response for SubjectResponse {}
@@ -665,6 +667,31 @@ impl Handler<Subject> for Subject {
                 Ok(SubjectResponse::Error(Error::Subject(
                     "Subject is not a governance".to_owned(),
                 )))
+            }
+            SubjectCommand::LastEvent => {
+                let store = match ctx.get_child::<Store<Self>>("store").await {
+                    Some(store) => store,
+                    None => {
+                        return Err(ActorError::Store(
+                            "Can't get store actor".to_string(),
+                        ))
+                    }
+                };
+                let response = store
+                .ask(StoreCommand::LastEvent)
+                .await
+                .map_err(|e| ActorError::Store(e.to_string()))?;
+
+                match response {
+                    StoreResponse::LastEvent(event) => {
+                        let event  = event.unwrap();
+                        Ok(SubjectResponse::LastEvent(event))
+                    }
+                    _ => Ok(SubjectResponse::Error(Error::Actor(
+                        "Unexpected response from store".to_string(),
+                    ))),
+                }
+                
             }
         }
     }

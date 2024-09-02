@@ -1,14 +1,47 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{model::HashId, Error, Signed};
+use crate::{model::{HashId, TimeStamp}, Error, Signature, Signed};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 use super::request::ApprovalRequest;
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    BorshSerialize,
+    BorshDeserialize,
+    PartialOrd,
+)]
+pub struct ApprovalError {
+    pub who: KeyIdentifier,
+    pub error: String,
+}
 
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    BorshSerialize,
+    BorshDeserialize,
+    PartialOrd,
+)]
+pub struct ApprovalTimeOut {
+    pub who: KeyIdentifier,
+    pub re_trys: u32,
+    pub timestamp: TimeStamp,
+}
 /// A struct representing an approval response.
 #[derive(
     Debug,
@@ -22,11 +55,9 @@ use super::request::ApprovalRequest;
     PartialEq,
     Hash,
 )]
-pub struct ApprovalResponse {
-    /// The hash of the approval request being responded to.
-    pub appr_req_hash: DigestIdentifier,
-    /// Whether the approval request was approved or not.
-    pub approved: bool,
+pub enum ApprovalResponse {
+    Signature(Signature),
+    Error(ApprovalError)
 }
 
 impl HashId for ApprovalResponse {

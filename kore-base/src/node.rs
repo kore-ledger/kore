@@ -311,6 +311,7 @@ impl Handler<Node> for Node {
                     SignTypesNode::Validation(validation) => self.sign(&validation),
                     SignTypesNode::ValidationReq(validation_req) => self.sign(&validation_req),
                     SignTypesNode::ValidationRes(validation_res) => self.sign(&validation_res),
+                    SignTypesNode::ApprovalReq(approval_req) => self.sign(&approval_req),
                 };
 
                 match sign {

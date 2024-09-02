@@ -1,13 +1,16 @@
-use identity::identifier::{derive::digest::DigestDerivator, Derivable, DigestIdentifier};
+use actor::{Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler, Message, Response};
+use async_trait::async_trait;
+use identity::identifier::{derive::digest::DigestDerivator, Derivable, DigestIdentifier, KeyIdentifier};
+use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use crate::{Error, EventRequest, Signature, Signed};
+use crate::{Error, EventRequest, NetworkMessage, Signature, Signed};
 
 use super::request::ApprovalRequest;
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Validator {
+pub struct Approver {
     request_id: String,
-    finish: bool,
+    node: KeyIdentifier,
 }
 
 fn subject_id_by_request(
@@ -34,7 +37,13 @@ fn subject_id_by_request(
     Ok(subject_id)
 }
 
-impl Validator {
+impl Approver {
+    pub fn new(
+        request_id: String,
+        node: KeyIdentifier,
+        ) -> Self {
+        Approver { request_id, node, ..Default::default() }
+    }
     async fn approval_event(&self, approval_request: Signed<ApprovalRequest>) -> Result<(), Error> {
         // Genero un id para la request
         let id = match DigestIdentifier::generate_with_blake3(&approval_request.content).map_err(
@@ -54,3 +63,88 @@ impl Validator {
         Ok(())
     }
 }
+
+
+#[derive(Debug, Clone)]
+pub enum ApproverCommand {
+    LocalApprover {
+        approval_req: ApprovalRequest,
+        our_key: KeyIdentifier,
+    },
+    NetworkApprover {
+        request_id: String,
+        approval_req: Signed<ApprovalRequest>,
+        node_key: KeyIdentifier,
+        our_key: KeyIdentifier,
+    },
+    NetworkResponse {
+        approval_res: Signed<ApprovalRequest>,
+        request_id: String,
+    },
+    NetworkRequest {
+        approval_req: Signed<ApprovalRequest>,
+        info: ComunicateInfo,
+    },
+}
+
+impl Message for ApproverCommand {}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ApproverEvent {
+    AllTryHaveBeenMade { node_key: KeyIdentifier },
+    ReTry(NetworkMessage),
+}
+
+impl Event for ApproverEvent {}
+
+#[derive(Debug, Clone)]
+pub enum ApproverResponse {
+    None,
+}
+
+impl Response for ApproverResponse {}
+
+#[async_trait]
+impl Actor for Approver {
+    type Event =ApproverEvent;
+    type Message = ApproverCommand;
+    type Response = ApproverResponse;
+}
+
+
+#[async_trait]
+impl Handler<Approver> for Approver {
+    async fn handle_message(
+        &mut self,
+        sender: ActorPath,
+        msg: ApproverCommand,
+        ctx: &mut ActorContext<Approver>,
+    ) -> Result<ApproverResponse, ActorError> {
+        match msg {
+            ApproverCommand::LocalApprover { approval_req, our_key } => {
+                !unimplemented!()
+            }
+            ApproverCommand::NetworkApprover {
+                request_id,
+                approval_req,
+                node_key,
+                our_key,
+            } => {
+                !unimplemented!()
+            }
+            ApproverCommand::NetworkResponse {
+                approval_res,
+                request_id,
+            } => {
+                !unimplemented!()
+            }
+            ApproverCommand::NetworkRequest {
+                approval_req,
+                info,
+            } => {
+                !unimplemented!()
+            }
+            
+        }
+    }}
+    

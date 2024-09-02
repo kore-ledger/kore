@@ -16,7 +16,7 @@ pub mod patch;
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
-use crate::{validation::{proof::ValidationProof, request::ValidationReq, response::ValidationRes}, Error};
+use crate::{approval::{request::ApprovalRequest, Approval}, validation::{proof::ValidationProof, request::ValidationReq, response::ValidationRes}, Error};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
@@ -30,7 +30,8 @@ use std::hash::Hash;
 pub enum SignTypesNode {
     Validation(ValidationProof),
     ValidationReq(ValidationReq),
-    ValidationRes(ValidationRes)
+    ValidationRes(ValidationRes),
+    ApprovalReq(ApprovalRequest),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
