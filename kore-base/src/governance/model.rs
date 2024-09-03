@@ -8,7 +8,7 @@ use identity::identifier::DigestIdentifier;
 
 use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
 
-use std::{collections::HashSet, default, fmt};
+use std::{collections::HashSet, default, fmt::{self, write}};
 
 /// Governance quorum.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -50,7 +50,6 @@ pub enum Who {
     ID { ID: String },
     NAME { NAME: String },
     MEMBERS,
-    ALL,
     NOT_MEMBERS,
 }
 
@@ -60,7 +59,6 @@ impl fmt::Display for Who {
             Who::ID { ID } => write!(f, "ID: {}", ID),
             Who::NAME { NAME } => write!(f, "NAME: {}", NAME),
             Who::MEMBERS => write!(f, "MEMBERS"),
-            Who::ALL => write!(f, "ALL"),
             Who::NOT_MEMBERS => write!(f, "NOT_MEMBERS"),
         }
     }
@@ -83,7 +81,6 @@ impl Serialize for Who {
                 map.end()
             }
             Who::MEMBERS => serializer.serialize_str("MEMBERS"),
-            Who::ALL => serializer.serialize_str("ALL"),
             Who::NOT_MEMBERS => serializer.serialize_str("NOT_MEMBERS"),
         }
     }
@@ -147,11 +144,10 @@ impl<'de> Deserialize<'de> for Who {
             {
                 match v {
                     "MEMBERS" => Ok(Who::MEMBERS),
-                    "ALL" => Ok(Who::ALL),
                     "NOT_MEMBERS" => Ok(Who::NOT_MEMBERS),
                     other => Err(serde::de::Error::unknown_variant(
                         other,
-                        &["MEMBERS", "ALL", "NOT_MEMBERS"],
+                        &["MEMBERS", "NOT_MEMBERS"],
                     )),
                 }
             }
@@ -165,11 +161,10 @@ impl<'de> Deserialize<'de> for Who {
             {
                 match v {
                     "MEMBERS" => Ok(Who::MEMBERS),
-                    "ALL" => Ok(Who::ALL),
                     "NOT_MEMBERS" => Ok(Who::NOT_MEMBERS),
                     other => Err(serde::de::Error::unknown_variant(
                         other,
-                        &["MEMBERS", "ALL", "NOT_MEMBERS"],
+                        &["MEMBERS", "NOT_MEMBERS"],
                     )),
                 }
             }
@@ -305,8 +300,31 @@ pub struct Schema {
 pub struct Role {
     pub who: Who,
     pub namespace: String,
-    pub role: String,
+    pub role: Roles,
     pub schema: SchemaEnum,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub enum Roles {
+    APPROVER,
+    EVALUATOR,
+    VALIDATOR,
+    WITNESS,
+    CREATOR,
+    ISSUER,
+}
+
+impl fmt::Display for Roles {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Roles::APPROVER => write!(f, "Approver"),
+            Roles::EVALUATOR => write!(f, "Evaluator"),
+            Roles::VALIDATOR => write!(f, "Validator"),
+            Roles::WITNESS => write!(f, "Witness"),
+            Roles::CREATOR => write!(f, "Creator"),
+            Roles::ISSUER => write!(f, "Issuer"),
+        }
+    }
 }
 
 /// Governance contract.
@@ -388,14 +406,14 @@ impl RequestStage {
         }
     }
 
-    pub fn to_role(&self) -> &str {
+    pub fn to_role(&self) -> Roles {
         match self {
-            RequestStage::Approve => "APPROVER",
-            RequestStage::Evaluate => "EVALUATOR",
-            RequestStage::Validate => "VALIDATOR",
-            RequestStage::Witness => "WITNESS",
-            RequestStage::Create => "CREATOR",
-            RequestStage::Invoke => "ISSUER",
+            RequestStage::Approve => Roles::APPROVER,
+            RequestStage::Evaluate => Roles::EVALUATOR,
+            RequestStage::Validate => Roles::VALIDATOR,
+            RequestStage::Witness => Roles::WITNESS,
+            RequestStage::Create => Roles::CREATOR,
+            RequestStage::Invoke => Roles::ISSUER,
         }
     }
 }

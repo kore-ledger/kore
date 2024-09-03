@@ -1,11 +1,15 @@
 use crate::{
-    evaluation::evaluator::{Evaluator, EvaluatorCommand}, validation::validator::{Validator, ValidatorCommand}, Error
+    evaluation::{evaluator::{Evaluator, EvaluatorCommand}, schema::{EvaluationSchema, EvaluationSchemaCommand}},
+    validation::{schema::{ValidationSchema, ValidationSchemaCommand}, validator::{Validator, ValidatorCommand}},
+    Error,
 };
 
 use super::ActorMessage;
 use super::{service::HelperService, NetworkMessage};
 use actor::{ActorPath, ActorRef, SystemRef};
-use identity::identifier::{derive::KeyDerivator, key_identifier, KeyIdentifier};
+use identity::identifier::{
+    derive::KeyDerivator, key_identifier, KeyIdentifier,
+};
 use network::Command as NetworkCommand;
 use network::CommandHelper as Command;
 use network::{PeerId, PublicKey, PublicKeyEd25519, PublicKeysecp256k1};
@@ -46,7 +50,6 @@ impl Intermediary {
     pub fn service(&self) -> HelperService {
         self.service.clone()
     }
-
 
     fn spawn_command_receiver(
         &mut self,
@@ -131,58 +134,113 @@ impl Intermediary {
                         let validator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
                         // Validator actor.
-                        let validator_actor: Option<ActorRef<Validator>> =
-                            self.system.get_actor(&validator_path).await;
+                        if message.info.schema == "governance" {
+                            let validator_actor: Option<ActorRef<Validator>> =
+                                self.system.get_actor(&validator_path).await;
 
-                        // We obtain the validator
-                        if let Some(validator_actor) = validator_actor {
-                            if let Err(error) = validator_actor
-                                .tell(ValidatorCommand::NetworkRequest {
-                                    validation_req,
-                                    info: message.info,
-                                })
-                                .await
-                            {
-                                return Err(Error::Actor(format!(
+                            // We obtain the validator
+                            if let Some(validator_actor) = validator_actor {
+                                if let Err(error) = validator_actor
+                                    .tell(ValidatorCommand::NetworkRequest {
+                                        validation_req,
+                                        info: message.info,
+                                    })
+                                    .await
+                                {
+                                    return Err(Error::Actor(format!(
                                 "Can not send a message to Validator Actor(Req): {}",
                                 error
                             )));
-                            };
-                        } else {
-                            return Err(Error::Actor(format!(
+                                };
+                            } else {
+                                return Err(Error::Actor(format!(
                             "The node actor was not found in the expected path {}",
                             validator_path
                         )));
-                        };
+                            };
+                        } else {
+                            let validator_actor: Option<ActorRef<ValidationSchema>> =
+                                self.system.get_actor(&validator_path).await;
+
+                            // We obtain the validator
+                            if let Some(validator_actor) = validator_actor {
+                                if let Err(error) = validator_actor
+                                    .tell(ValidationSchemaCommand::NetworkRequest {
+                                        validation_req,
+                                        info: message.info,
+                                    })
+                                    .await
+                                {
+                                    return Err(Error::Actor(format!(
+                                "Can not send a message to Validator Actor(Req): {}",
+                                error
+                            )));
+                                };
+                            } else {
+                                return Err(Error::Actor(format!(
+                            "The node actor was not found in the expected path {}",
+                            validator_path
+                        )));
+                            };
+                        }
                     }
                     ActorMessage::EvaluationReq(evaluation_req) => {
-                            // Evaluator path.
+                        // Evaluator path.
                         let evaluator_path =
-                              ActorPath::from(message.info.reciver_actor.clone());
-                          // Evaluator actor.
-                          let evaluator_actor: Option<ActorRef<Evaluator>> =
-                              self.system.get_actor(&evaluator_path).await;
-  
-                          // We obtain the validator
-                          if let Some(evaluator_actor) = evaluator_actor {
-                              if let Err(error) = evaluator_actor
-                                  .tell(EvaluatorCommand::NetworkRequest {
-                                    evaluation_req,
-                                      info: message.info,
-                                  })
-                                  .await
-                              {
-                                  return Err(Error::Actor(format!(
-                                  "Can not send a message to Validator Actor(Req): {}",
-                                  error
-                              )));
-                              };
-                          } else {
-                              return Err(Error::Actor(format!(
-                              "The node actor was not found in the expected path {}",
-                              evaluator_path
+                            ActorPath::from(message.info.reciver_actor.clone());
+                        
+                        if message.info.schema == "governance" {
+                                                    // Evaluator actor.
+                        let evaluator_actor: Option<ActorRef<Evaluator>> =
+                        self.system.get_actor(&evaluator_path).await;
+
+                    // We obtain the validator
+                    if let Some(evaluator_actor) = evaluator_actor {
+                        if let Err(error) = evaluator_actor
+                            .tell(EvaluatorCommand::NetworkRequest {
+                                evaluation_req,
+                                info: message.info,
+                            })
+                            .await
+                        {
+                            return Err(Error::Actor(format!(
+                              "Can not send a message to Validator Actor(Req): {}",
+                              error
                           )));
-                          };
+                        };
+                    } else {
+                        return Err(Error::Actor(format!(
+                          "The node actor was not found in the expected path {}",
+                          evaluator_path
+                      )));
+                    };
+                        } else {
+                                                    // Evaluator actor.
+                        let evaluator_actor: Option<ActorRef<EvaluationSchema>> =
+                        self.system.get_actor(&evaluator_path).await;
+
+                    // We obtain the validator
+                    if let Some(evaluator_actor) = evaluator_actor {
+                        if let Err(error) = evaluator_actor
+                            .tell(EvaluationSchemaCommand::NetworkRequest {
+                                evaluation_req,
+                                info: message.info,
+                            })
+                            .await
+                        {
+                            return Err(Error::Actor(format!(
+                              "Can not send a message to Validator Actor(Req): {}",
+                              error
+                          )));
+                        };
+                    } else {
+                        return Err(Error::Actor(format!(
+                          "The node actor was not found in the expected path {}",
+                          evaluator_path
+                      )));
+                    };
+                        }
+
                     }
                     ActorMessage::ValidationRes(validation_res) => {
                         // Validator path.

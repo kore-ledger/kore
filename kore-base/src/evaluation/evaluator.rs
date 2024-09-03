@@ -402,6 +402,7 @@ pub enum EvaluatorCommand {
     NetworkEvaluation {
         request_id: String,
         evaluation_req: Signed<EvaluationReq>,
+        schema: String,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
@@ -417,23 +418,11 @@ pub enum EvaluatorCommand {
 
 impl Message for EvaluatorCommand {}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EvaluatorEvent {}
-
-impl Event for EvaluatorEvent {}
-
-#[derive(Debug, Clone)]
-pub enum EvaluatorResponse {
-    None,
-}
-
-impl Response for EvaluatorResponse {}
-
 #[async_trait]
 impl Actor for Evaluator {
-    type Event = EvaluatorEvent;
+    type Event = ();
     type Message = EvaluatorCommand;
-    type Response = EvaluatorResponse;
+    type Response = ();
 }
 
 #[async_trait]
@@ -443,7 +432,7 @@ impl Handler<Evaluator> for Evaluator {
         sender: ActorPath,
         msg: EvaluatorCommand,
         ctx: &mut ActorContext<Evaluator>,
-    ) -> Result<EvaluatorResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             EvaluatorCommand::LocalEvaluation {
                 evaluation_req,
@@ -494,19 +483,31 @@ impl Handler<Evaluator> for Evaluator {
             EvaluatorCommand::NetworkEvaluation {
                 request_id,
                 evaluation_req,
+                schema,
                 node_key,
                 our_key,
             } => {
+                let reciver_actor = if schema == "governance" {
+                    format!(
+                        "/user/node/{}/evaluator",
+                        evaluation_req.content.context.subject_id
+                    )
+                } else {
+                    format!(
+                        "/user/node/{}/{}_evaluation",
+                        evaluation_req.content.context.governance_id,
+                        schema
+                    )
+                };
+
                 // Lanzar evento donde lanzar los retrys
                 let message = NetworkMessage {
                     info: ComunicateInfo {
                         request_id,
                         sender: our_key,
                         reciver: node_key,
-                        reciver_actor: format!(
-                            "/user/node/{}/evaluator",
-                            evaluation_req.content.context.subject_id
-                        ),
+                        reciver_actor,
+                        schema
                     },
                     message: ActorMessage::EvaluationReq(evaluation_req),
                 };
@@ -592,6 +593,7 @@ impl Handler<Evaluator> for Evaluator {
                 evaluation_req,
                 info,
             } => {
+                if info.schema == "governance" {
                 // Aquí hay que comprobar que el owner del subject es el que envía la req.
                 let subject_path = ActorPath::from(format!(
                     "/user/node/{}",
@@ -623,6 +625,7 @@ impl Handler<Evaluator> for Evaluator {
                 if let Err(e) = evaluation_req.verify() {
                     // Hay errores criptográficos
                     todo!()
+                }
                 }
 
                 let helper: Option<Intermediary> =
@@ -662,6 +665,7 @@ impl Handler<Evaluator> for Evaluator {
                         evaluation_req.content.context.subject_id,
                         info.reciver.clone()
                     ),
+                    schema: info.schema.clone()
                 };
 
                 let node_path = ActorPath::from("/user/node");
@@ -705,10 +709,15 @@ impl Handler<Evaluator> for Evaluator {
                 {
                     // error al enviar mensaje, propagar hacia arriba TODO
                 };
+
+
+                if info.schema != "governance" {
+                    ctx.stop().await;
+                }
             }
         }
 
-        Ok(EvaluatorResponse::None)
+        Ok(())
     }
 
     async fn on_child_error(
