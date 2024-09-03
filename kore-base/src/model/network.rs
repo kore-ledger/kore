@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{intermediary::Intermediary, NetworkMessage};
 
-
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct RetryNetwork {}
 

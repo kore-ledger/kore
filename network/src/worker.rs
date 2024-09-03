@@ -156,7 +156,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             Behaviour::new(&key.public(), config.clone()),
             local_peer_id,
             swarm::Config::with_tokio_executor()
-                .with_idle_connection_timeout(Duration::from_secs(10)),
+                .with_idle_connection_timeout(Duration::from_secs(3)),
         );
 
         // Add confirmed external addresses.
@@ -722,14 +722,17 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 message,
             }) => {
                 //trace!(TARGET_WORKER, "Message received from peer {}", peer_id);
-                let result = if let Some(helper_sender) = self.helper_sender.as_ref() {
-                    helper_sender.send(CommandHelper::ReceivedMessage {
-                        message: message.message,
-                    }).await
-                } else {
-                    // TODO: No se puede comunicar con el helper, se debe cerrar
-                    todo!("");
-                };
+                let result =
+                    if let Some(helper_sender) = self.helper_sender.as_ref() {
+                        helper_sender
+                            .send(CommandHelper::ReceivedMessage {
+                                message: message.message,
+                            })
+                            .await
+                    } else {
+                        // TODO: No se puede comunicar con el helper, se debe cerrar
+                        todo!("");
+                    };
                 if result.is_err() {
                     error!(
                         TARGET_WORKER,

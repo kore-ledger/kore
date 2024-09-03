@@ -18,8 +18,9 @@ pub fn apply_patch<State: for<'a> Deserialize<'a> + Serialize>(
     patch_arg: Value,
     mut state: Value,
 ) -> Result<State, PatchErrors> {
-    let patch_data: Patch =
-        serde_json::from_value(patch_arg).map_err(|_| PatchErrors::JsonIsNotPatch)?;
-    patch(&mut state, &patch_data).map_err(|e| PatchErrors::PatchGenerationError(e.to_string()))?;
+    let patch_data: Patch = serde_json::from_value(patch_arg)
+        .map_err(|_| PatchErrors::JsonIsNotPatch)?;
+    patch(&mut state, &patch_data)
+        .map_err(|e| PatchErrors::PatchGenerationError(e.to_string()))?;
     serde_json::from_value(state).map_err(|_| PatchErrors::PatchToJsonFailed)
 }

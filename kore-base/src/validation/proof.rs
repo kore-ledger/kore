@@ -92,7 +92,7 @@ impl ValidationProof {
         let request = &info.event.content.event_request.content;
 
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-            derivator.clone()
+            *derivator
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256

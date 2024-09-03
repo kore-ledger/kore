@@ -8,16 +8,20 @@
 
 pub mod event;
 pub mod namespace;
+pub mod network;
+pub mod patch;
 pub mod request;
 pub mod signature;
 pub mod wrapper;
-pub mod patch;
-pub mod network;
 
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
-use crate::{approval::{request::ApprovalRequest, response::ApprovalResponse}, evaluation::{request::EvaluationReq, response::EvaluationRes}, validation::{proof::ValidationProof, request::ValidationReq, response::ValidationRes}, Error};
+use crate::{
+    approval::{request::ApprovalRequest, response::ApprovalResponse}, evaluation::{request::EvaluationReq, response::EvaluationRes}, validation::{
+        proof::ValidationProof, request::ValidationReq, response::ValidationRes,
+    }, Error
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};

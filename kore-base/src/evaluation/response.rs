@@ -35,7 +35,7 @@ pub enum EvaluationRes {
     PartialEq,
     BorshSerialize,
     BorshDeserialize,
-    Hash
+    Hash,
 )]
 pub struct Response {
     /// The patch to apply to the state.
@@ -53,14 +53,12 @@ impl HashId for EvaluationRes {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(
-            
-                self
-            ,
-            derivator,
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |_| {
+                Error::Evaluation(
+                    "HashId for EvaluationResponse fails".to_string(),
+                )
+            },
         )
-        .map_err(|_| {
-            Error::Evaluation("HashId for EvaluationResponse fails".to_string())
-        })
     }
 }

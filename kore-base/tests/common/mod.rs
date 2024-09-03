@@ -9,10 +9,14 @@ use identity::{
     keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair},
 };
 use kore_base::{
-    init_state, intermediary::Intermediary, system, Event, EventRequest, FactRequest, HashId, KoreBaseConfig, NetworkMessage, Node, Signature, Signed, StartRequest, Subject, SubjectState, ValidationInfo, ValueWrapper
+    init_state, intermediary::Intermediary, system, Event, EventRequest,
+    FactRequest, HashId, KoreBaseConfig, NetworkMessage, Node, Signature,
+    Signed, StartRequest, Subject, SubjectState, ValidationInfo, ValueWrapper,
 };
-use network::{Event as NetworkEvent, PeerId, PublicKey, PublicKeyEd25519, RoutingConfig};
 use network::{Config, NetworkWorker, NodeType, RoutingNode};
+use network::{
+    Event as NetworkEvent, PeerId, PublicKey, PublicKeyEd25519, RoutingConfig,
+};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{self, Receiver};
@@ -80,12 +84,7 @@ pub fn build_worker(
     } else {
         vec![]
     };
-    let config = create_config(
-        boot_nodes,
-        node_type,
-        listen_addresses,
-        false,
-    );
+    let config = create_config(boot_nodes, node_type, listen_addresses, false);
     let mut registry = Registry::default();
     let (event_sender, event_receiver) = mpsc::channel(100);
     let worker = NetworkWorker::new(
@@ -126,9 +125,11 @@ pub fn create_config(
     }
 }
 
-
 pub fn get_peer_id(keys: KeyPair) -> PeerId {
-    let public_key = PublicKeyEd25519::try_from_bytes(keys.key_identifier().public_key.as_slice()).unwrap();
+    let public_key = PublicKeyEd25519::try_from_bytes(
+        keys.key_identifier().public_key.as_slice(),
+    )
+    .unwrap();
     let peer = PublicKey::from(public_key);
     peer.to_peer_id()
 }
@@ -182,11 +183,7 @@ pub async fn initilize_use_case() -> (Node, KeyPair, Subject, KeyPair) {
     .unwrap();
 
     let signed_event = signed(event, node_keys.clone());
-    let subject = Subject::from_event(
-        gov_keys.clone(),
-        &signed_event,
-    )
-    .unwrap();
+    let subject = Subject::from_event(gov_keys.clone(), &signed_event).unwrap();
 
     (node, node_keys, subject, gov_keys)
 }
@@ -212,8 +209,12 @@ pub fn create_info_gov_genesis_event(
     signed(event, gov_keys)
 }
 
-pub fn signed<T : borsh::de::BorshDeserialize + Clone + HashId>(event: T, keys:KeyPair) -> Signed<T> {
-    let signature = Signature::new(&event, &keys, DigestDerivator::Blake3_256).unwrap();
+pub fn signed<T: borsh::de::BorshDeserialize + Clone + HashId>(
+    event: T,
+    keys: KeyPair,
+) -> Signed<T> {
+    let signature =
+        Signature::new(&event, &keys, DigestDerivator::Blake3_256).unwrap();
     Signed {
         content: event,
         signature,

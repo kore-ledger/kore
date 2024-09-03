@@ -4,10 +4,17 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    evaluation::response::Response as EvalRes, governance::{json_schema::JsonSchema, Governance, RequestStage, Schema}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
+    evaluation::response::Response as EvalRes,
+    governance::{json_schema::JsonSchema, Governance, RequestStage, Schema},
+    helpers::network::{intermediary::Intermediary, NetworkMessage},
+    model::{
         network::RetryNetwork, signature::Signature, HashId, SignTypesNode,
         TimeStamp,
-    }, node::{self, Node, NodeMessage, NodeResponse}, subject::{SubjectCommand, SubjectResponse}, Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, DIGEST_DERIVATOR
+    },
+    node::{self, Node, NodeMessage, NodeResponse},
+    subject::{SubjectCommand, SubjectResponse},
+    Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper,
+    DIGEST_DERIVATOR,
 };
 
 use crate::helpers::network::ActorMessage;
@@ -91,14 +98,14 @@ impl Evaluator {
 
         match response {
             SubjectResponse::Governance(gov) => Ok(gov),
-            SubjectResponse::Error(error) => {
-                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
-            }
-            _ => {
-                return Err(Error::Actor(format!(
-                    "An unexpected response has been received from node actor"
-                )))
-            }
+            SubjectResponse::Error(error) => Err(Error::Actor(format!(
+                "The subject encountered problems when getting governance: {}",
+                error
+            ))),
+            _ => Err(Error::Actor(
+                "An unexpected response has been received from node actor"
+                    .to_owned(),
+            )),
         }
     }
 
@@ -169,7 +176,7 @@ impl Evaluator {
             match compilation {
                 CompilerResponse::Check => {},
                 CompilerResponse::Error(e) => return Err(e),
-                _ => return Err(Error::Actor(format!("An unexpected response has been received from compiler actor")))
+                _ => return Err(Error::Actor("An unexpected response has been received from compiler actor".to_owned()))
             }
         }
         Ok(())
@@ -256,11 +263,10 @@ impl Evaluator {
                         e
                     )))
                 }
-                _ => {
-                    return Err(Error::Actor(format!(
+                _ => return Err(Error::Actor(
                     "An unexpected response has been received from node actor"
-                )))
-                }
+                        .to_owned(),
+                )),
             }
         };
 
@@ -277,14 +283,14 @@ impl Evaluator {
             .map_err(|e| Error::Actor(format!("{}", e)))?;
 
         let (result, compilations) = match response {
-            RunnerResponse::Response { result, compilations } => (result, compilations),
+            RunnerResponse::Response {
+                result,
+                compilations,
+            } => (result, compilations),
             RunnerResponse::Error(e) => return Err(e),
         };
 
-        if result.success
-            && is_governance
-            && !compilations.is_empty()
-        {
+        if result.success && is_governance && !compilations.is_empty() {
             let governance_data = serde_json::from_value::<GovernanceData>(
                 result.final_state.0.clone(),
             )
@@ -322,7 +328,7 @@ impl Evaluator {
         evaluation_req: EvaluationReq,
     ) -> EvaluationRes {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-            derivator.clone()
+            *derivator
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
@@ -402,6 +408,7 @@ pub enum EvaluatorCommand {
     NetworkEvaluation {
         request_id: String,
         evaluation_req: Signed<EvaluationReq>,
+        schema: String,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
@@ -417,23 +424,11 @@ pub enum EvaluatorCommand {
 
 impl Message for EvaluatorCommand {}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum EvaluatorEvent {}
-
-impl Event for EvaluatorEvent {}
-
-#[derive(Debug, Clone)]
-pub enum EvaluatorResponse {
-    None,
-}
-
-impl Response for EvaluatorResponse {}
-
 #[async_trait]
 impl Actor for Evaluator {
-    type Event = EvaluatorEvent;
+    type Event = ();
     type Message = EvaluatorCommand;
-    type Response = EvaluatorResponse;
+    type Response = ();
 }
 
 #[async_trait]
@@ -443,7 +438,7 @@ impl Handler<Evaluator> for Evaluator {
         sender: ActorPath,
         msg: EvaluatorCommand,
         ctx: &mut ActorContext<Evaluator>,
-    ) -> Result<EvaluatorResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             EvaluatorCommand::LocalEvaluation {
                 evaluation_req,
@@ -459,13 +454,14 @@ impl Handler<Evaluator> for Evaluator {
                 let evaluation =
                     match self.evaluate(ctx, &evaluation_req, state_data).await
                     {
-                        Ok(evaluation) => Self::build_response(evaluation, evaluation_req),
+                        Ok(evaluation) => {
+                            Self::build_response(evaluation, evaluation_req)
+                        }
                         Err(e) => {
                             // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
                             todo!()
                         }
                     };
-
 
                 // Evaluatiob path.
                 let evaluation_path = ctx.path().parent();
@@ -475,15 +471,12 @@ impl Handler<Evaluator> for Evaluator {
 
                 // Send response of evaluation to parent
                 if let Some(evaluation_actor) = evaluation_actor {
-                    if let Err(e) = evaluation_actor
+                    evaluation_actor
                         .tell(EvaluationCommand::Response {
                             evaluation_res: evaluation,
                             sender: our_key,
                         })
-                        .await
-                    {
-                        return Err(e);
-                    }
+                        .await?
                 } else {
                     // Can not obtain parent actor
                     return Err(ActorError::Exists(evaluation_path));
@@ -494,19 +487,30 @@ impl Handler<Evaluator> for Evaluator {
             EvaluatorCommand::NetworkEvaluation {
                 request_id,
                 evaluation_req,
+                schema,
                 node_key,
                 our_key,
             } => {
+                let reciver_actor = if schema == "governance" {
+                    format!(
+                        "/user/node/{}/evaluator",
+                        evaluation_req.content.context.subject_id
+                    )
+                } else {
+                    format!(
+                        "/user/node/{}/{}_evaluation",
+                        evaluation_req.content.context.governance_id, schema
+                    )
+                };
+
                 // Lanzar evento donde lanzar los retrys
                 let message = NetworkMessage {
                     info: ComunicateInfo {
                         request_id,
                         sender: our_key,
                         reciver: node_key,
-                        reciver_actor: format!(
-                            "/user/node/{}/evaluator",
-                            evaluation_req.content.context.subject_id
-                        ),
+                        reciver_actor,
+                        schema,
                     },
                     message: ActorMessage::EvaluationReq(evaluation_req),
                 };
@@ -592,37 +596,40 @@ impl Handler<Evaluator> for Evaluator {
                 evaluation_req,
                 info,
             } => {
-                // Aquí hay que comprobar que el owner del subject es el que envía la req.
-                let subject_path = ActorPath::from(format!(
-                    "/user/node/{}",
-                    evaluation_req.content.context.subject_id.clone()
-                ));
-                let subject_actor: Option<ActorRef<Subject>> =
-                    ctx.system().get_actor(&subject_path).await;
+                if info.schema == "governance" {
+                    // Aquí hay que comprobar que el owner del subject es el que envía la req.
+                    let subject_path = ActorPath::from(format!(
+                        "/user/node/{}",
+                        evaluation_req.content.context.subject_id.clone()
+                    ));
+                    let subject_actor: Option<ActorRef<Subject>> =
+                        ctx.system().get_actor(&subject_path).await;
 
-                // We obtain the evaluator
-                let response = if let Some(subject_actor) = subject_actor {
-                    match subject_actor.ask(SubjectCommand::GetOwner).await {
-                        Ok(response) => response,
-                        Err(e) => todo!(),
+                    // We obtain the evaluator
+                    let response = if let Some(subject_actor) = subject_actor {
+                        match subject_actor.ask(SubjectCommand::GetOwner).await
+                        {
+                            Ok(response) => response,
+                            Err(e) => todo!(),
+                        }
+                    } else {
+                        todo!()
+                    };
+
+                    let subject_owner = match response {
+                        SubjectResponse::Owner(owner) => owner,
+                        _ => todo!(),
+                    };
+
+                    if subject_owner != evaluation_req.signature.signer {
+                        // Error nos llegó una evaluation req de un nodo el cual no es el dueño
+                        todo!()
                     }
-                } else {
-                    todo!()
-                };
 
-                let subject_owner = match response {
-                    SubjectResponse::Owner(owner) => owner,
-                    _ => todo!(),
-                };
-
-                if subject_owner != evaluation_req.signature.signer {
-                    // Error nos llegó una evaluation req de un nodo el cual no es el dueño
-                    todo!()
-                }
-
-                if let Err(e) = evaluation_req.verify() {
-                    // Hay errores criptográficos
-                    todo!()
+                    if let Err(e) = evaluation_req.verify() {
+                        // Hay errores criptográficos
+                        todo!()
+                    }
                 }
 
                 let helper: Option<Intermediary> =
@@ -646,7 +653,10 @@ impl Handler<Evaluator> for Evaluator {
                     .evaluate(ctx, &evaluation_req.content, state_data)
                     .await
                 {
-                    Ok(evaluation) => Self::build_response(evaluation, evaluation_req.content.clone()),
+                    Ok(evaluation) => Self::build_response(
+                        evaluation,
+                        evaluation_req.content.clone(),
+                    ),
                     Err(e) => {
                         // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
                         todo!()
@@ -662,6 +672,7 @@ impl Handler<Evaluator> for Evaluator {
                         evaluation_req.content.context.subject_id,
                         info.reciver.clone()
                     ),
+                    schema: info.schema.clone(),
                 };
 
                 let node_path = ActorPath::from("/user/node");
@@ -705,10 +716,14 @@ impl Handler<Evaluator> for Evaluator {
                 {
                     // error al enviar mensaje, propagar hacia arriba TODO
                 };
+
+                if info.schema != "governance" {
+                    ctx.stop().await;
+                }
             }
         }
 
-        Ok(EvaluatorResponse::None)
+        Ok(())
     }
 
     async fn on_child_error(
@@ -725,7 +740,6 @@ impl Handler<Evaluator> for Evaluator {
                     ctx.system().get_actor(&evaluation_path).await;
 
                 if let Some(evaluation_actor) = evaluation_actor {
-                    
                     if let Err(e) = evaluation_actor
                         .tell(EvaluationCommand::Response {
                             evaluation_res: EvaluationRes::Error(error),
@@ -736,7 +750,6 @@ impl Handler<Evaluator> for Evaluator {
                         // TODO error, no se puede enviar la response
                         // return Err(e);
                     }
-                     
                 } else {
                     // TODO no se puede obtener evaluation! Parar.
                     // Can not obtain parent actor

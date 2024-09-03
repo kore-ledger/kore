@@ -32,11 +32,10 @@ impl Api {
         &self,
         event: Signed<EventRequest>,
     ) -> Result<RequestResponse, Error> {
-        Ok(self
-            .request
+        self.request
             .ask(RequestHandlerCommand::StartRequest(event))
             .await
-            .map_err(|e| Error::Actor(e.to_string()))?)
+            .map_err(|e| Error::Actor(e.to_string()))
     }
 
     /// Own request.

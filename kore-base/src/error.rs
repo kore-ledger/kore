@@ -67,5 +67,5 @@ pub enum Error {
     Network(String),
     /// JSONSchema error.
     #[error("JSONSchema error: {0}")]
-    JSONSChema(String)
+    JSONSChema(String),
 }

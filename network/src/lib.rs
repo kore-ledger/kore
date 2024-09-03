@@ -175,4 +175,6 @@ pub struct ComunicateInfo {
     pub reciver: KeyIdentifier,
     /// The receiver actor.
     pub reciver_actor: String,
+    /// schema of subject
+    pub schema: String,
 }

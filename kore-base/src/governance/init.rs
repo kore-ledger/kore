@@ -6,6 +6,8 @@
 
 use crate::model::ValueWrapper;
 
+// TODO: el rol de ISSUER es el único que no tiene que ser testigo de la governanza
+
 pub fn init_state(owner_key: &str) -> ValueWrapper {
     ValueWrapper(serde_json::json!({
         "members": [
@@ -46,7 +48,15 @@ pub fn init_state(owner_key: &str) -> ValueWrapper {
             "who": {
               "NAME": "Owner"
             }
-          }
+          },
+          {
+            "namespace": "",
+            "role": "WITNESS",
+            "schema": "ALL",
+            "who": {
+              "NAME": "Owner"
+            }
+          },
         ],
         "schemas": [],
         "policies": [
