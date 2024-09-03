@@ -92,21 +92,21 @@ pub enum ApprovalState {
 }
 
 /// A struct representing an approval entity.
-#[derive(Default, Debug, Clone, Serialize, Deserialize, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct ApprovalEntity {
     /// The identifier of the approval entity.
     pub id: DigestIdentifier,
     /// The signed approval request.
     pub request: Signed<ApprovalRequest>,
     /// The signed approval response, if one has been received.
-    pub response: Option<Signed<ApprovalResponse>>,
+    // pub response: Option<Signed<ApprovalResponse>>,
     /// The state of the approval entity.
     pub state: ApprovalState,
     // The sender of the approval request.
     // pub sender: KeyIdentifier,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize,PartialEq)]
 pub enum VotationType {
     #[default]
     Normal,

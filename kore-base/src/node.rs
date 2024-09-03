@@ -309,6 +309,7 @@ impl Handler<Node> for Node {
                     SignTypesNode::EvaluationReq(evaluation_req) => self.sign(&evaluation_req),
                     SignTypesNode::EvaluationRes(evaluation_res) => self.sign(&evaluation_res),
                     SignTypesNode::ApprovalReq(approval_req) => self.sign(&approval_req),
+                    SignTypesNode::ApprovalRes(approval_res) => self.sign(&approval_res),
                 };
 
                 match sign {

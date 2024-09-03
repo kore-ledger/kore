@@ -52,8 +52,6 @@ pub struct Approval {
     approvers_response: Vec<(Signature, bool)>,
     // approvers quantity
     approvers_quantity: u32,
-    // Pending event
-    pending_event: Option<ApprovalEntity>,
 }
 
 impl Approval {
@@ -64,6 +62,7 @@ impl Approval {
         }
     }
 
+    // generate the approval request
     async fn create_approval_req(
         &mut self,
         request_id: DigestIdentifier,
@@ -71,12 +70,14 @@ impl Approval {
         req_evaluation: EvaluationReq,
         res_evaluation: EvalRes,
     ) -> Result<ApprovalRequest, Error> {
+        // Get the derivator of the node
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             derivator.clone()
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
+        // Obtain the last event of subject actor
         let subject_path = ctx.path().parent();
         let subject_actor: Option<ActorRef<Subject>> =
             ctx.system().get_actor(&subject_path).await;
@@ -94,7 +95,7 @@ impl Approval {
             Ok(SubjectResponse::LastEvent(event)) => event,
             _ => todo!(),
         };
-
+        // Hash of the previous event to add to the approval request
         let hash_prev_event = match DigestIdentifier::from_serializable_borsh(
             prev_event, derivator,
         ) {
@@ -197,7 +198,7 @@ impl Approval {
         if signer == our_key {
             if let Err(e) = validator_actor
                 .tell(ApproverCommand::LocalApprover {
-                    approval_req: approval_req.content,
+                    approval_req: approval_req,
                     our_key: signer,
                 })
                 .await

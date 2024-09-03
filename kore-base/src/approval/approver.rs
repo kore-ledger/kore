@@ -1,3 +1,5 @@
+use std::f64::consts::E;
+
 use crate::{
     model::SignTypesNode, Error, EventRequest, Governance, NetworkMessage,
     Node, NodeMessage, NodeResponse, Signature, Signed, Subject,
@@ -17,16 +19,18 @@ use tracing::error;
 
 use super::{
     request::ApprovalRequest,
-    response::{ApprovalEntity, ApprovalResponse, ApprovalState, VotationType},
-    ApprovalRes,
+    response::{
+        ApprovalEntity, ApprovalError, ApprovalResponse, ApprovalState,
+        VotationType,
+    },
+    Approval, ApprovalCommand, ApprovalRes,
 };
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Approver {
-    request_id: String,
     node: KeyIdentifier,
     pass_votation: VotationType,
-    request: ApprovalEntity
+    request: Option<ApprovalEntity>,
 }
 
 fn subject_id_by_request(
@@ -62,7 +66,6 @@ fn subject_id_by_request(
 impl Approver {
     pub fn new(request_id: String, node: KeyIdentifier) -> Self {
         Approver {
-            request_id,
             node,
             ..Default::default()
         }
@@ -116,7 +119,7 @@ impl Approver {
     }
 
     async fn approval(
-        &self,
+        &mut self,
         ctx: &mut ActorContext<Approver>,
         approval_request: Signed<ApprovalRequest>,
     ) -> Result<(), Error> {
@@ -159,7 +162,7 @@ impl Approver {
                 // Hay que hacerlo TODO
             }
         }
-
+        // identificador de la nueva request | forma de preguntar desde la api
         let id: DigestIdentifier =
             match DigestIdentifier::generate_with_blake3(&approval_request)
                 .map_err(|_| Error::Approval("Error generating id".to_string()))
@@ -167,27 +170,12 @@ impl Approver {
                 Ok(id) => id,
                 Err(error) => return Err(error),
             };
-
-        let approval_entity = ApprovalEntity {
+        // actualizamos el estado del actor y ponemos en pendiente
+        self.request = Some(ApprovalEntity {
             id: id.clone(),
             request: approval_request,
-            response: None,
             state: ApprovalState::Pending,
-        };
-        self.request = approval_entity;
-
-        match self.pass_votation {
-            VotationType::AlwaysAccept => {
-                // Aprobar directamente
-                // ApproverEvent::EmitVote { value: true }
-            }
-            VotationType::Normal => {
-                // No hacer nada y esperar por evento de aprobación
-            }
-        }
-
-        // Necesito preguntar a mi padre si tengo la request para lanzar error??¿¿ - N
-        // obtengo el estado del padre  para ver si tengo algo pendiente
+        });
         Ok(())
     }
     // Nunca se va a poder emitir un voto para una request que no existe
@@ -204,21 +192,24 @@ impl Approver {
             ctx.system().get_actor(&node_path).await;
 
         // We obtain the actor node
+        let request_content = if let Some(request) = self.request.as_ref() {
+            request.request.clone().content
+        } else {
+            return Err(Error::Actor("Request content is missing".into()));
+        };
+
         let response = if let Some(node_actor) = node_actor {
             // We ask a node
             let response = node_actor
-                .ask(NodeMessage::SignRequest(SignTypesNode::ApprovalRes(
-                    ApprovalResponse {
-                        appr_req_hash: request_id.clone(),
-                        approved: acceptance,
-                    },
+                .ask(NodeMessage::SignRequest(SignTypesNode::ApprovalReq(
+                    request_content,
                 )))
                 .await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
                     return Err(Error::Actor(format!(
-                        "Error when asking a node {}",
+                        "Error when asking a node: {}",
                         e
                     )));
                 }
@@ -247,7 +238,7 @@ impl Approver {
 #[derive(Debug, Clone)]
 pub enum ApproverCommand {
     LocalApprover {
-        approval_req: ApprovalRequest,
+        approval_req: Signed<ApprovalRequest>,
         our_key: KeyIdentifier,
     },
     NetworkApprover {
@@ -303,7 +294,63 @@ impl Handler<Approver> for Approver {
             ApproverCommand::LocalApprover {
                 approval_req,
                 our_key,
-            } => !unimplemented!(),
+            } => {
+                // generamos el estado
+                if let Err(e) = self.approval(ctx, approval_req).await {
+                    todo!()
+                } else if self.pass_votation == VotationType::AlwaysAccept {
+                    // si se ha generado correctamente y aprobamos por defecto
+                    let approval = match self
+                        .generate_vote(
+                            ctx,
+                            &self.request.as_ref().unwrap().id,
+                            true,
+                        )
+                        .await
+                    {
+                        Ok(validation) => ApprovalCommand::Response {
+                            approval_res: ApprovalResponse::Signature(
+                                validation, true,
+                            ),
+                            sender: our_key.clone(),
+                        },
+                        Err(e) => {
+                            // Log con el error. TODO
+                            ApprovalCommand::Response {
+                                approval_res: ApprovalResponse::Error(
+                                    ApprovalError {
+                                        who: our_key.clone(),
+                                        error: format!(
+                                            "Error generating vote: {}",
+                                            e
+                                        ),
+                                    },
+                                ),
+                                sender: our_key,
+                            }
+                        }
+                    };
+                    // Approval Path
+                    let approval_path = ctx.path().parent();
+                    // Approval actor.
+                    let approval_actor: Option<ActorRef<Approval>> =
+                        ctx.system().get_actor(&approval_path).await;
+                    // Send response of validation to parent
+                    if let Some(approval_actor) = approval_actor {
+                        if let Err(e) = approval_actor.tell(approval).await {
+                            return Err(e);
+                        }
+                    } else {
+                        // Can not obtain parent actor
+                        return Err(ActorError::Exists(approval_path));
+                    }
+
+                    ctx.stop().await;
+                } else {
+                    todo!()
+                }
+                todo!()
+            }
             ApproverCommand::NetworkApprover {
                 request_id,
                 approval_req,
