@@ -276,7 +276,6 @@ impl Runner {
         Ok(())
     }
 
-    // TODO los not_members solo pueden ser ISSUERS, ningún rol más.
     fn check_roles(
         roles: &[Role],
         mut policies: HashSet<String>,
@@ -291,6 +290,12 @@ impl Runner {
         let mut members_witness = false;
 
         for role in roles {
+            if let Who::NOT_MEMBERS = role.who {
+                if role.role != Roles::ISSUER {
+                    return Err(Error::Runner(format!("The user NOT_MEMBERS only can be assigned to ISSUER rol")));
+                }
+            };
+
             if let SchemaEnum::ID { ID } = &role.schema {
                 if !policies.contains(ID) {
                     return Err(Error::Runner(format!("The role {} of member {} belongs to an invalid schema.", role.role, role.who)));
