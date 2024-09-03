@@ -4,14 +4,9 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{Governance, RequestStage},
-    helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{
+    governance::{Governance, RequestStage}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
         network::RetryNetwork, signature::Signature, SignTypesNode, TimeStamp,
-    },
-    node::{self, Node, NodeMessage, NodeResponse},
-    subject::{SubjectCommand, SubjectResponse},
-    Error, Signed, Subject,
+    }, node::{self, Node, NodeMessage, NodeResponse}, subject::{SubjectCommand, SubjectResponse}, Error, Signed, Subject
 };
 
 use super::{
@@ -266,7 +261,7 @@ impl Validator {
                 )
                 .await?
                 .get_signers(
-                    RequestStage::Validate,
+                    RequestStage::Validate.to_role(),
                     &new_proof.schema_id,
                     new_proof.namespace.clone(),
                 );
@@ -299,6 +294,7 @@ pub enum ValidatorCommand {
     NetworkValidation {
         request_id: String,
         validation_req: Signed<ValidationReq>,
+        schema: String,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
@@ -314,23 +310,12 @@ pub enum ValidatorCommand {
 
 impl Message for ValidatorCommand {}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ValidatorEvent {}
-
-impl Event for ValidatorEvent {}
-
-#[derive(Debug, Clone)]
-pub enum ValidatorResponse {
-    None,
-}
-
-impl Response for ValidatorResponse {}
 
 #[async_trait]
 impl Actor for Validator {
-    type Event = ValidatorEvent;
+    type Event = ();
     type Message = ValidatorCommand;
-    type Response = ValidatorResponse;
+    type Response = ();
 }
 
 #[async_trait]
@@ -340,7 +325,7 @@ impl Handler<Validator> for Validator {
         sender: ActorPath,
         msg: ValidatorCommand,
         ctx: &mut ActorContext<Validator>,
-    ) -> Result<ValidatorResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             ValidatorCommand::LocalValidation {
                 validation_req,
@@ -388,19 +373,31 @@ impl Handler<Validator> for Validator {
             ValidatorCommand::NetworkValidation {
                 request_id,
                 validation_req,
+                schema,
                 node_key,
                 our_key,
             } => {
+                let reciver_actor = if schema == "governance" {
+                    format!(
+                        "/user/node/{}/validator",
+                        validation_req.content.proof.subject_id
+                    )
+                } else {
+                    format!(
+                        "/user/node/{}/{}_validation",
+                        validation_req.content.proof.governance_id,
+                        schema
+                    )
+                };
+
                 // Lanzar evento donde lanzar los retrys
                 let message = NetworkMessage {
                     info: ComunicateInfo {
                         request_id,
                         sender: our_key,
                         reciver: node_key,
-                        reciver_actor: format!(
-                            "/user/node/{}/validator",
-                            validation_req.content.proof.subject_id
-                        ),
+                        reciver_actor,
+                        schema,
                     },
                     message: ActorMessage::ValidationReq(validation_req),
                 };
@@ -433,7 +430,6 @@ impl Handler<Validator> for Validator {
                 validation_res,
                 request_id,
             } => {
-                println!("Response");
                 if request_id == self.request_id {
                     if self.node != validation_res.signature.signer {
                         // Nos llegó a una validación de un nodo incorrecto!
@@ -486,6 +482,7 @@ impl Handler<Validator> for Validator {
                 validation_req,
                 info,
             } => {
+                if info.schema == "governance" {
                 // Aquí hay que comprobar que el owner del subject es el que envía la req.
                 let subject_path = ActorPath::from(format!(
                     "/user/node/{}",
@@ -517,6 +514,7 @@ impl Handler<Validator> for Validator {
                 if let Err(e) = validation_req.verify() {
                     // Hay errores criptográficos
                     todo!()
+                }
                 }
 
                 // Llegados a este punto se ha verificado que la req es del owner del sujeto y está todo correcto.
@@ -553,6 +551,7 @@ impl Handler<Validator> for Validator {
                         validation_req.content.proof.subject_id,
                         info.reciver.clone()
                     ),
+                    schema: info.schema.clone(),
                 };
 
                 // Aquí tiene que firmar el nodo la respuesta.
@@ -599,9 +598,13 @@ impl Handler<Validator> for Validator {
                 {
                     // error al enviar mensaje, propagar hacia arriba TODO
                 };
+
+                if info.schema != "governance" {
+                    ctx.stop().await;
+                }
             }
         }
-        Ok(ValidatorResponse::None)
+        Ok(())
     }
 
     async fn on_child_error(

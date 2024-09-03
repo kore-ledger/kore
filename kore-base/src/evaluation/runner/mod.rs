@@ -13,7 +13,7 @@ use types::{
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
 
 use crate::{
-    governance::{model::SchemaEnum, Member, Policy, Role, Schema, Who},
+    governance::{model::{Roles, SchemaEnum}, Member, Policy, Role, Schema, Who},
     model::patch::apply_patch,
     Error, ValueWrapper,
 };
@@ -276,6 +276,7 @@ impl Runner {
         Ok(())
     }
 
+    // TODO los not_members solo pueden ser ISSUERS, ningún rol más.
     fn check_roles(
         roles: &[Role],
         mut policies: HashSet<String>,
@@ -296,7 +297,7 @@ impl Runner {
                 }
                 if ID == "governance" {
                     if let Who::MEMBERS = role.who {
-                        if role.role == "WITNESS" && role.namespace.is_empty() {
+                        if role.role == Roles::WITNESS && role.namespace.is_empty() {
                             members_witness = true;
                         }
                     }
@@ -320,15 +321,13 @@ impl Runner {
                     }
                     if NAME == "Owner" && role.namespace.is_empty() {
                         if let SchemaEnum::ALL = role.schema {
-                            if role.role == "WITNESS" {
-                                owner_witness = true;
-                            } else if role.role == "VALIDATOR" {
-                                owner_val = true;
-                            } else if role.role == "APPROVER" {
-                                owner_appr = true;
-                            } else if role.role == "EVALUATOR" {
-                                owner_eval = true;
-                            }
+                            match role.role {
+                                Roles::APPROVER => owner_appr = true,
+                                Roles::EVALUATOR => owner_eval = true,
+                                Roles::VALIDATOR => owner_val = true,
+                                Roles::WITNESS => owner_witness = true,
+                                _ => {}
+                            };
                         }
                     }
                 }

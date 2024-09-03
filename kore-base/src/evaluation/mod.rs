@@ -9,6 +9,7 @@ mod compiler;
 pub mod evaluator;
 pub mod request;
 pub mod response;
+pub mod schema;
 mod runner;
 
 use crate::{
@@ -186,6 +187,7 @@ impl Evaluation {
         ctx: &mut ActorContext<Evaluation>,
         request_id: &str,
         evaluation_req: Signed<EvaluationReq>,
+        schema: &str,
         signer: KeyIdentifier,
     ) -> Result<(), ActorError> {
         // Create Evaluator child
@@ -219,6 +221,7 @@ impl Evaluation {
                     evaluation_req,
                     node_key: signer,
                     our_key,
+                    schema: schema.to_owned()
                 })
                 .await
             {
@@ -337,7 +340,7 @@ impl Handler<Evaluation> for Evaluation {
                     }
                 };
 
-                let eval_req = self.create_evaluation_req(request, metadata, gov_version);
+                let eval_req = self.create_evaluation_req(request, metadata.clone(), gov_version);
 
                 self.evaluators_response = vec![];
                 self.state = eval_req.context.state.clone();
@@ -373,6 +376,7 @@ impl Handler<Evaluation> for Evaluation {
                             ctx,
                             &request_id,
                             signed_evaluation_req.clone(),
+                            &metadata.schema_id,
                             signer,
                         )
                         .await

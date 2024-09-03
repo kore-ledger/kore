@@ -8,6 +8,7 @@ pub mod proof;
 pub mod request;
 pub mod response;
 pub mod validator;
+pub mod schema;
 
 use crate::{
     db::Storable,
@@ -203,6 +204,7 @@ impl Validation {
         ctx: &mut ActorContext<Validation>,
         request_id: &str,
         validation_req: Signed<ValidationReq>,
+        schema: &str,
         signer: KeyIdentifier,
     ) -> Result<(), ActorError> {
         // Create Validator child
@@ -239,6 +241,7 @@ impl Validation {
                     validation_req,
                     node_key: signer,
                     our_key,
+                    schema: schema.to_owned()
                 })
                 .await
             {
@@ -388,6 +391,7 @@ impl Handler<Validation> for Validation {
                             ctx,
                             &request_id,
                             signed_validation_req.clone(),
+                            &info.subject.schema_id,
                             signer,
                         )
                         .await
