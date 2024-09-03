@@ -1,6 +1,8 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::default;
+
 use crate::{model::{HashId, TimeStamp}, Error, Signature, Signed};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
 
@@ -56,7 +58,8 @@ pub struct ApprovalTimeOut {
     Hash,
 )]
 pub enum ApprovalResponse {
-    Signature(Signature),
+    Signature(Signature,bool),
+    TimeOut(ApprovalTimeOut),
     Error(ApprovalError)
 }
 
@@ -75,9 +78,10 @@ impl HashId for ApprovalResponse {
 
 
 /// An enum representing the state of an approval entity.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum ApprovalState {
     /// The approval entity is pending a response.
+    #[default]
     Pending,
     /// Request for approval which is in responded status and accepted
     RespondedAccepted,
@@ -88,7 +92,7 @@ pub enum ApprovalState {
 }
 
 /// A struct representing an approval entity.
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub struct ApprovalEntity {
     /// The identifier of the approval entity.
     pub id: DigestIdentifier,
@@ -98,6 +102,22 @@ pub struct ApprovalEntity {
     pub response: Option<Signed<ApprovalResponse>>,
     /// The state of the approval entity.
     pub state: ApprovalState,
-    /// The sender of the approval request.
-    pub sender: KeyIdentifier,
+    // The sender of the approval request.
+    // pub sender: KeyIdentifier,
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub enum VotationType {
+    #[default]
+    Normal,
+    AlwaysAccept,
+}
+
+impl From<u8> for VotationType {
+    fn from(passvotation: u8) -> Self {
+        match passvotation {
+            1 => Self::AlwaysAccept,
+            _ => Self::Normal,
+        }
+    }
 }

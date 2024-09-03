@@ -21,7 +21,23 @@ use serde::{Deserialize, Serialize};
     BorshSerialize,
     BorshDeserialize,
 )]
-pub struct EvaluationRes {
+pub enum EvaluationRes {
+    Error(String),
+    Response(Response),
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+    Hash
+)]
+pub struct Response {
     /// The patch to apply to the state.
     pub patch: ValueWrapper,
     /// The hash of the state after applying the patch.

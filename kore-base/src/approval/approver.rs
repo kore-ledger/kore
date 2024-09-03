@@ -1,16 +1,32 @@
-use actor::{Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler, Message, Response};
+use crate::{
+    model::SignTypesNode, Error, EventRequest, Governance, NetworkMessage,
+    Node, NodeMessage, NodeResponse, Signature, Signed, Subject,
+    SubjectCommand, SubjectResponse, DIGEST_DERIVATOR,
+};
+use actor::{
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
+    Handler, Message, Response,
+};
 use async_trait::async_trait;
-use identity::identifier::{derive::digest::DigestDerivator, Derivable, DigestIdentifier, KeyIdentifier};
+use identity::identifier::{
+    derive::digest::DigestDerivator, Derivable, DigestIdentifier, KeyIdentifier,
+};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use crate::{Error, EventRequest, NetworkMessage, Signature, Signed};
+use tracing::error;
 
-use super::request::ApprovalRequest;
+use super::{
+    request::ApprovalRequest,
+    response::{ApprovalEntity, ApprovalResponse, ApprovalState, VotationType},
+    ApprovalRes,
+};
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Approver {
     request_id: String,
     node: KeyIdentifier,
+    pass_votation: VotationType,
+    request: ApprovalEntity
 }
 
 fn subject_id_by_request(
@@ -20,50 +36,213 @@ fn subject_id_by_request(
 ) -> Result<DigestIdentifier, Error> {
     let subject_id = match request {
         EventRequest::Fact(ref fact_request) => fact_request.subject_id.clone(),
-        EventRequest::Create(ref create_request) => DigestIdentifier::from_serializable_borsh(
-            (
-                &create_request.namespace,
-                &create_request.schema_id,
-                &create_request.public_key.to_str(),
-                &create_request.governance_id.to_str(),
-                gov_version,
+        EventRequest::Create(ref create_request) => {
+            DigestIdentifier::from_serializable_borsh(
+                (
+                    &create_request.namespace,
+                    &create_request.schema_id,
+                    &create_request.public_key.to_str(),
+                    &create_request.governance_id.to_str(),
+                    gov_version,
+                    derivator,
+                ),
                 derivator,
-            ),
-            derivator,
-        )
-        .map_err(|_| Error::Approval("()".to_string()))?,
-        _ => return Err(Error::Approval("Only events of type Create and Fact are allowed.".to_string())),
+            )
+            .map_err(|_| Error::Approval("()".to_string()))?
+        }
+        _ => {
+            return Err(Error::Approval(
+                "Only events of type Create and Fact are allowed.".to_string(),
+            ))
+        }
     };
     Ok(subject_id)
 }
 
 impl Approver {
-    pub fn new(
-        request_id: String,
-        node: KeyIdentifier,
-        ) -> Self {
-        Approver { request_id, node, ..Default::default() }
+    pub fn new(request_id: String, node: KeyIdentifier) -> Self {
+        Approver {
+            request_id,
+            node,
+            ..Default::default()
+        }
     }
-    async fn approval_event(&self, approval_request: Signed<ApprovalRequest>) -> Result<(), Error> {
-        // Genero un id para la request
-        let id = match DigestIdentifier::generate_with_blake3(&approval_request.content).map_err(
-            |_| Error::Approval("".to_string()),
-        ) {
-            Ok(id) => id,
-            Err(e) => return Err(e),
+    // Refactorizar el get_gov se usa en todos los procesos
+    async fn get_gov(
+        &self,
+        ctx: &mut ActorContext<Approver>,
+        governance_id: DigestIdentifier,
+    ) -> Result<Governance, Error> {
+        // Governance path
+        let governance_path =
+            ActorPath::from(format!("/user/node/{}", governance_id));
+
+        // Governance actor.
+        let governance_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&governance_path).await;
+
+        // We obtain the actor governance
+        let response = if let Some(governance_actor) = governance_actor {
+            // We ask a governance
+            let response =
+                governance_actor.ask(SubjectCommand::GetGovernance).await;
+            match response {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a Subject {}",
+                        e
+                    )));
+                }
+            }
+        } else {
+            return Err(Error::Actor(format!(
+                "The governance actor was not found in the expected path {}",
+                governance_path
+            )));
         };
-        // Necesito preguntar a mi padre si tengo la request para lanzar error??¿¿
 
+        match response {
+            SubjectResponse::Governance(gov) => Ok(gov),
+            SubjectResponse::Error(error) => {
+                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
+            }
+            _ => {
+                return Err(Error::Actor(format!(
+                    "An unexpected response has been received from node actor"
+                )))
+            }
+        }
+    }
+
+    async fn approval(
+        &self,
+        ctx: &mut ActorContext<Approver>,
+        approval_request: Signed<ApprovalRequest>,
+    ) -> Result<(), Error> {
+        let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+            derivator.clone()
+        } else {
+            error!("Error getting derivator");
+            DigestDerivator::Blake3_256
+        };
         // Obtengo el subject id de la request(FACT, CREATE(la genero))
+        //let subject_id = subject_id_by_request(&approval_request.event_request.content,&approval_request.gov_version, derivator)?;
 
-        let subject_id = subject_id_by_request(&approval_request.content.event_request.content,&approval_request.content.gov_version, DigestDerivator::Blake3_256)?;
+        let schema_id = match approval_request.content.event_request.content {
+            EventRequest::Create(ref create_request) => {
+                create_request.schema_id.as_str()
+            }
+            _ => "",
+        };
 
+        // Verifico si esoty actualizado
+        let gov_id = approval_request.content.gov_id.clone();
+        let governance = self.get_gov(ctx, gov_id).await?;
+
+        match approval_request
+            .content
+            .gov_version
+            .cmp(&governance.get_version())
+        {
+            std::cmp::Ordering::Equal => {
+                // If it is the same it means that we have the latest version of governance, we are up to date.
+            }
+            std::cmp::Ordering::Greater => {
+                // It is impossible to have a greater version of governance than the owner of the governance himself.
+                // The only possibility is that it is an old approval request.
+                // Hay que hacerlo TODO
+            }
+            std::cmp::Ordering::Less => {
+                // Si es un sujeto de traabilidad hay que darle una vuelta.
+                // Stop evaluation process, we need to update governance, we are out of date.
+                // Hay que hacerlo TODO
+            }
+        }
+
+        let id: DigestIdentifier =
+            match DigestIdentifier::generate_with_blake3(&approval_request)
+                .map_err(|_| Error::Approval("Error generating id".to_string()))
+            {
+                Ok(id) => id,
+                Err(error) => return Err(error),
+            };
+
+        let approval_entity = ApprovalEntity {
+            id: id.clone(),
+            request: approval_request,
+            response: None,
+            state: ApprovalState::Pending,
+        };
+        self.request = approval_entity;
+
+        match self.pass_votation {
+            VotationType::AlwaysAccept => {
+                // Aprobar directamente
+                // ApproverEvent::EmitVote { value: true }
+            }
+            VotationType::Normal => {
+                // No hacer nada y esperar por evento de aprobación
+            }
+        }
+
+        // Necesito preguntar a mi padre si tengo la request para lanzar error??¿¿ - N
         // obtengo el estado del padre  para ver si tengo algo pendiente
-
         Ok(())
     }
-}
+    // Nunca se va a poder emitir un voto para una request que no existe
+    async fn generate_vote(
+        &self,
+        ctx: &mut ActorContext<Approver>,
+        request_id: &DigestIdentifier,
+        acceptance: bool,
+    ) -> Result<Signature, Error> {
+        // Node path.
+        let node_path = ActorPath::from("/user/node");
+        // Node actor.
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
 
+        // We obtain the actor node
+        let response = if let Some(node_actor) = node_actor {
+            // We ask a node
+            let response = node_actor
+                .ask(NodeMessage::SignRequest(SignTypesNode::ApprovalRes(
+                    ApprovalResponse {
+                        appr_req_hash: request_id.clone(),
+                        approved: acceptance,
+                    },
+                )))
+                .await;
+            match response {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a node {}",
+                        e
+                    )));
+                }
+            }
+        } else {
+            return Err(Error::Actor(format!(
+                "The node actor was not found in the expected path /user/node"
+            )));
+        };
+
+        // We handle the possible responses of node
+        let response = match response {
+            NodeResponse::SignRequest(sign) => Ok(sign),
+            NodeResponse::Error(error) => Err(Error::Actor(format!(
+                "The node encountered problems when signing the proof: {}",
+                error
+            ))),
+            _ => Err(Error::Actor(format!(
+                "An unexpected response has been received from node actor"
+            ))),
+        };
+        response
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum ApproverCommand {
@@ -93,6 +272,7 @@ impl Message for ApproverCommand {}
 pub enum ApproverEvent {
     AllTryHaveBeenMade { node_key: KeyIdentifier },
     ReTry(NetworkMessage),
+    EmitVote { value: bool },
 }
 
 impl Event for ApproverEvent {}
@@ -106,11 +286,10 @@ impl Response for ApproverResponse {}
 
 #[async_trait]
 impl Actor for Approver {
-    type Event =ApproverEvent;
+    type Event = ApproverEvent;
     type Message = ApproverCommand;
     type Response = ApproverResponse;
 }
-
 
 #[async_trait]
 impl Handler<Approver> for Approver {
@@ -121,30 +300,23 @@ impl Handler<Approver> for Approver {
         ctx: &mut ActorContext<Approver>,
     ) -> Result<ApproverResponse, ActorError> {
         match msg {
-            ApproverCommand::LocalApprover { approval_req, our_key } => {
-                !unimplemented!()
-            }
+            ApproverCommand::LocalApprover {
+                approval_req,
+                our_key,
+            } => !unimplemented!(),
             ApproverCommand::NetworkApprover {
                 request_id,
                 approval_req,
                 node_key,
                 our_key,
-            } => {
-                !unimplemented!()
-            }
+            } => !unimplemented!(),
             ApproverCommand::NetworkResponse {
                 approval_res,
                 request_id,
-            } => {
+            } => !unimplemented!(),
+            ApproverCommand::NetworkRequest { approval_req, info } => {
                 !unimplemented!()
             }
-            ApproverCommand::NetworkRequest {
-                approval_req,
-                info,
-            } => {
-                !unimplemented!()
-            }
-            
         }
-    }}
-    
+    }
+}

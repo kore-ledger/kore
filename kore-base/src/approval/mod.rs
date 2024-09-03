@@ -18,12 +18,14 @@ use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
 
+use crate::evaluation::response::EvaluationRes;
 use crate::governance::RequestStage;
 use crate::model::{namespace, Namespace, SignTypesNode};
+use crate::validation::response::ValidationRes;
 use crate::{
     db::Storable,
     evaluation::{
-        self, request::EvaluationReq, response::EvaluationRes,
+        self, request::EvaluationReq, response::Response as EvalRes,
         EvaluationResponse,
     },
     governance::{model::Validation, Quorum},
@@ -44,20 +46,16 @@ pub struct Approval {
     node_key: KeyIdentifier,
     // Quorum
     quorum: Quorum,
-    // Approvals
-    approvals: HashSet<KeyIdentifier>,
+    // approvers
+    approvers: HashSet<KeyIdentifier>,
     // Actual responses
-    approvals_response: Vec<Signature>,
-    // Approvals quantity
-    approvals_quantity: u32,
+    approvers_response: Vec<(Signature, bool)>,
+    // approvers quantity
+    approvers_quantity: u32,
     // Pending event
     pending_event: Option<ApprovalEntity>,
 }
-/*
-La aprobación afecta a los eventos de FACT
-Puede aplicar a las governanzas y a los sujetos(cambio contract)
-¿Que hago con el governance_id de una governanza?
-*/
+
 impl Approval {
     pub fn new(node_key: KeyIdentifier) -> Self {
         Approval {
@@ -65,17 +63,13 @@ impl Approval {
             ..Default::default()
         }
     }
-    /// Delete pending approval
-    fn check_validator(&mut self, approval: KeyIdentifier) -> bool {
-        self.approvals.remove(&approval)
-    }
 
     async fn create_approval_req(
         &mut self,
         request_id: DigestIdentifier,
         ctx: &mut ActorContext<Approval>,
         req_evaluation: EvaluationReq,
-        res_evaluation: EvaluationRes,
+        res_evaluation: EvalRes,
     ) -> Result<ApprovalRequest, Error> {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             derivator.clone()
@@ -228,6 +222,9 @@ impl Approval {
 
         Ok(())
     }
+    fn check_approval(&mut self, approver: KeyIdentifier) -> bool {
+        self.approvers.remove(&approver)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -235,17 +232,22 @@ pub enum ApprovalCommand {
     Create {
         request_id: DigestIdentifier,
         info: EvaluationReq,
-        response: EvaluationRes,
+        response: EvalRes,
     },
 
-    Response(Signed<ApprovalResponse>),
+    Response {
+        approval_res: ApprovalResponse,
+        sender: KeyIdentifier,
+    },
 }
 
 impl Message for ApprovalCommand {}
 
+
+// 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApprovalEvent {
-    pub actual_event_approval_response: Vec<Signature>,
+    pub actual_event_approval_response: Vec<(Signature, bool)>,
     pub approval: bool,
 }
 
@@ -327,8 +329,8 @@ impl Handler<Approval> for Approval {
                 };
                 // Update quorum and validators
                 self.quorum = quorum;
-                self.approvals = signers.clone();
-                self.approvals_quantity = signers.len() as u32;
+                self.approvers = signers.clone();
+                self.approvers_quantity = signers.len() as u32;
                 let request_id = request_id.to_string();
 
                 let node_path = ActorPath::from("/user/node");
@@ -376,12 +378,40 @@ impl Handler<Approval> for Approval {
                     }
                 }
             }
-            ApprovalCommand::Response(response) => {
-                let node_key = match response.clone() {
-                    ApprovalResponse::Signature(signature) => signature.signer,
-                    ValidationRes::TimeOut(time_out) => time_out.who,
-                    ApprovalResponse::Error(error) => error.who,
-                };
+            ApprovalCommand::Response{approval_res, sender} => {
+                if self.check_approval(sender) {
+                    let node_key = match approval_res {
+                        ApprovalResponse::Signature(signature, acceptance) => {
+                            self.approvers_response.push((signature.clone(), acceptance));
+                            signature.signer
+                        }
+                        ApprovalResponse::TimeOut(time_out) => time_out.who,
+                        ApprovalResponse::Error(error) => error.who,
+                    };
+                }
+                // si hemos llegado al quorum y hay suficientes aprobaciones aprobamos...
+                if self.quorum.check_quorum(
+                    self.approvers_quantity,
+                    self.approvers_response.len() as u32,
+                ) {
+                    // Ahora necesito contabilizar sin han aprobado la mayoría para aprobar o no
+                    let approval = self.quorum.check_quorum(
+                        self.approvers_quantity,
+                        self.approvers_response.iter().filter(|(_, approved)| *approved).count() as u32,
+                    );
+                    // The quorum was met, we persisted, and we applied the status
+                    if let Err(e) = ctx
+                        .event(ApprovalEvent {
+                            actual_event_approval_response: self
+                                .approvers_response
+                                .clone(),
+                            approval
+                        })
+                        .await
+                    {
+                        // TODO error al persistir, propagar hacia arriba
+                    };
+                }
             }
         }
         Ok(ApprovalRes::None)
@@ -391,7 +421,7 @@ impl Handler<Approval> for Approval {
 #[async_trait]
 impl PersistentActor for Approval {
     fn apply(&mut self, event: &ApprovalEvent) {
-        self.approvals_response = event.actual_event_approval_response.clone();
+        self.approvers_response = event.actual_event_approval_response.clone();
     }
 }
 

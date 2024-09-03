@@ -616,6 +616,7 @@ where
         peer: PeerId,
         addr: &Multiaddr,
         _: libp2p::core::Endpoint,
+        _: libp2p::core::transport::PortUse,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied>
     {
         let mut handler = TellHandler::new(

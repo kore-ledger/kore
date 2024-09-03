@@ -113,11 +113,8 @@ impl Runner {
                         success: true,
                     }, compilations))
                 } else {
-                    Ok((ContractResult {
-                        final_state: state.clone(),
-                        approval_required: false,
-                        success: false,
-                    }, vec![]))
+                    
+                    todo!()
                 }
             }
         }
@@ -125,7 +122,7 @@ impl Runner {
 
     fn check_compilation(operations: Value) -> Result<Vec<String>, Error> {
         // En caso de que sea un replace habría que ver realmente si hay algún cambio, solo cambiar el orden es una operación de replace aunque no cambie nada TODO.
-        // TODO ver si tenemos que permitir más operaciones de JSON patch y como las abordamos, sobretodo el remove. TODO
+        // TODO ver si tenemos que permitir más operaciones de JSON patch y como las abordamos, sobretodo el remove
         let operations_array = if let Some(operations_array) = operations.as_array() {
             operations_array
         } else {
@@ -412,8 +409,12 @@ impl Runner {
                     e
                 ))
             })?;
-
-        Ok(contract_result)
+        
+        if contract_result.success {
+            Ok(contract_result)
+        } else {
+            todo!()
+        }
     }
 }
 
@@ -433,9 +434,12 @@ pub enum RunnerEvent {}
 impl Event for RunnerEvent {}
 
 #[derive(Debug, Clone)]
-pub struct RunnerResponse {
-    pub result: ContractResult,
-    pub compilations: Vec<String>,
+pub enum RunnerResponse {
+    Response {
+        result: ContractResult,
+        compilations: Vec<String>,
+    },
+    Error(Error)
 }
 
 impl Response for RunnerResponse {}
@@ -456,8 +460,8 @@ impl Handler<Runner> for Runner {
         _ctx: &mut ActorContext<Runner>,
     ) -> Result<RunnerResponse, ActorError> {
         match Self::execute_contract(&msg.state, &msg.event, msg.compiled_contract, msg.is_owner).await {
-            Ok((result, compilations)) => Ok(RunnerResponse { result, compilations }),
-            Err(e) => Ok(RunnerResponse { result: ContractResult::error(e), compilations: vec![] })
+            Ok((result, compilations)) => Ok(RunnerResponse::Response { result, compilations }),
+            Err(e) => Ok(RunnerResponse::Error(e))
         }
     }
 }

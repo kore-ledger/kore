@@ -105,55 +105,40 @@ impl Behaviour {
             enable_mdns,
             kademlia_disjoint_query_paths,
             kademlia_replication_factor,
-            protocol_names,
             pre_routing,
         } = config;
 
         // Convert boot nodes to `PeerId` and `Multiaddr`.
         let boot_nodes = convert_boot_nodes(boot_nodes);
 
-        let kademlia = if !protocol_names.is_empty() {
-            let mut kad_config = KademliaConfig::default();
+        let mut kad_config =
+            KademliaConfig::new(StreamProtocol::new("/kore/routing/1.0.0"));
 
-            // Set the supported protocols.
-            //kad_config.set_protocol_names(crate::REQUIRED_PROTOCOLS.to_vec());
-            kad_config.set_protocol_names(
-                protocol_names
-                    .into_iter()
-                    .map(|p| StreamProtocol::new(p.leak()))
-                    .collect(),
-            );
+        kad_config.disjoint_query_paths(kademlia_disjoint_query_paths);
 
-            kad_config.disjoint_query_paths(kademlia_disjoint_query_paths);
+        if let Some(replication_factor) = kademlia_replication_factor {
+            kad_config.set_replication_factor(replication_factor);
+        }
+        // By default Kademlia attempts to insert all peers into its routing table once a
+        // dialing attempt succeeds. In order to control which peer is added, disable the
+        // auto-insertion and instead add peers manually.
+        kad_config.set_kbucket_inserts(libp2p::kad::BucketInserts::Manual);
 
-            if let Some(replication_factor) = kademlia_replication_factor {
-                kad_config.set_replication_factor(replication_factor);
+        let store = MemoryStore::new(peer_id);
+        let mut kad = Kademlia::with_config(peer_id, store, kad_config);
+
+        // Add boot nodes to the Kademlia routing table.
+        for (peer_id, addrs) in &boot_nodes {
+            for addr in addrs {
+                kad.add_address(peer_id, addr.clone());
             }
-            // By default Kademlia attempts to insert all peers into its routing table once a
-            // dialing attempt succeeds. In order to control which peer is added, disable the
-            // auto-insertion and instead add peers manually.
-            kad_config.set_kbucket_inserts(libp2p::kad::BucketInserts::Manual);
-
-            let store = MemoryStore::new(peer_id);
-            let mut kad = Kademlia::with_config(peer_id, store, kad_config);
-
-            // Add boot nodes to the Kademlia routing table.
-            for (peer_id, addrs) in &boot_nodes {
-                for addr in addrs {
-                    kad.add_address(peer_id, addr.clone());
-                }
-            }
-
-            Some(kad)
-        } else {
-            None
-        };
+        }
 
         Self {
             local_peer_id: peer_id,
             boot_nodes,
             public_nodes: HashMap::new(),
-            kademlia: Toggle::from(kademlia),
+            kademlia: Toggle::from(Some(kad)),
             mdns: if enable_mdns {
                 match MdnsTokio::new(MdnsConfig::default(), peer_id) {
                     Ok(mdns) => Toggle::from(Some(mdns)),
@@ -499,12 +484,14 @@ impl NetworkBehaviour for Behaviour {
         peer: PeerId,
         addr: &Multiaddr,
         role_override: Endpoint,
+        port_use: libp2p::core::transport::PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         self.kademlia.handle_established_outbound_connection(
             connection_id,
             peer,
             addr,
             role_override,
+            port_use,
         )
     }
 
@@ -719,9 +706,14 @@ impl NetworkBehaviour for Behaviour {
                                 }
                                 if let Ok(peer) = PeerId::from_bytes(&ok.key) {
                                     self.active_queries.remove(&peer);
+                                    let peers = ok
+                                        .peers
+                                        .iter()
+                                        .map(|p| p.peer_id)
+                                        .collect();
                                     return Poll::Ready(
                                         ToSwarm::GenerateEvent(
-                                            Event::ClosestPeers(peer, ok.peers),
+                                            Event::ClosestPeers(peer, peers),
                                         ),
                                     );
                                 } else {
@@ -1070,18 +1062,11 @@ pub struct Config {
 
     /// The replication factor determines to how many closest peers a record is replicated.
     kademlia_replication_factor: Option<NonZeroUsize>,
-
-    /// Protocols to be supported by the local node.
-    protocol_names: Vec<String>,
 }
 
 impl Config {
     /// Creates a new configuration for the discovery behaviour.
     pub fn new(boot_nodes: Vec<RoutingNode>) -> Self {
-        let protocol_names = vec![
-            "/kore/routing/1.0.0".to_owned(),
-            "/ipfs/ping/1.0.0".to_owned(),
-        ];
         Self {
             boot_nodes,
             dht_random_walk: true,
@@ -1091,7 +1076,6 @@ impl Config {
             enable_mdns: true,
             kademlia_disjoint_query_paths: true,
             kademlia_replication_factor: None,
-            protocol_names,
             pre_routing: true,
         }
     }
@@ -1179,23 +1163,6 @@ impl Config {
         self
     }
 
-    /// Get protocol names
-    pub fn get_protocol_names(&self) -> Vec<String> {
-        self.protocol_names.clone()
-    }
-
-    /// Sets all protocols, used for config.
-    pub fn set_all_protocols(mut self, protocols: Vec<String>) -> Self {
-        self.protocol_names = protocols;
-        self
-    }
-
-    /// Sets protocol to be supported by the local node.
-    pub fn set_protocol(mut self, protocol: &str) -> Self {
-        self.protocol_names.push(protocol.to_owned());
-        self
-    }
-
     /// Returns the boot nodes.
     pub fn boot_nodes(&self) -> Vec<RoutingNode> {
         self.boot_nodes.clone()
@@ -1257,8 +1224,7 @@ mod tests {
             .with_allow_non_globals_in_dht(true)
             .with_allow_private_ip(true)
             .with_discovery_limit(100)
-            .with_dht_random_walk(true)
-            .set_protocol("/kad/tell/1.0.0");
+            .with_dht_random_walk(true);
 
         let (boot_swarm, addr) = build_node(config);
 

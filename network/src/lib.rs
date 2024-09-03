@@ -8,7 +8,7 @@
 mod behaviour;
 mod control_list;
 pub mod error;
-mod node;
+//mod node;
 mod routing;
 mod service;
 mod transport;
@@ -19,7 +19,7 @@ use std::fmt::Debug;
 
 pub use control_list::Config as ControlListConfig;
 pub use error::Error;
-use identity::identifier::{key_identifier, KeyIdentifier};
+use identity::identifier::KeyIdentifier;
 pub use libp2p::{
     identity::{
         ed25519::PublicKey as PublicKeyEd25519,
@@ -33,15 +33,6 @@ pub use tell::Config as TellConfig;
 pub use worker::{NetworkError, NetworkState, NetworkWorker};
 
 use serde::{Deserialize, Serialize};
-
-/// The maximum allowed number of established connections per peer.
-///
-/// Typically, and by design of the network behaviours in this crate,
-/// there is a single established connection per peer. However, to
-/// avoid unnecessary and nondeterministic connection closure in
-/// case of (possibly repeated) simultaneous dialing attempts between
-/// two peers, the per-peer connection limit is not set to 1 but 2.
-const MAX_CONNECTIONS_PER_PEER: usize = 2;
 
 /// The network configuration.
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -161,14 +152,27 @@ pub enum CommandHelper<T>
 where
     T: Debug + Serialize,
 {
-    SendMessage { message: T },
-    ReceivedMessage { message: Vec<u8> },
+    /// Send a message to the given peer.
+    SendMessage {
+        /// The message to send.
+        message: T,
+    },
+    /// Received a message.
+    ReceivedMessage {
+        /// The message received.
+        message: Vec<u8>,
+    },
 }
 
+/// Event enumeration for the Helper service.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ComunicateInfo {
+    /// The request id.
     pub request_id: String,
+    /// The sender key identifier.
     pub sender: KeyIdentifier,
+    /// The receiver key identifier.
     pub reciver: KeyIdentifier,
+    /// The receiver actor.
     pub reciver_actor: String,
 }

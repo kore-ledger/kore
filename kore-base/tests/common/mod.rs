@@ -249,6 +249,5 @@ pub fn create_info_gov_event(
         evaluators: HashSet::default(),
         approvers: HashSet::default(),
     };
-
     signed(fact_event, gov_keys)
 }

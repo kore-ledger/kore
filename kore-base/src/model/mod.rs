@@ -12,11 +12,12 @@ pub mod request;
 pub mod signature;
 pub mod wrapper;
 pub mod patch;
+pub mod network;
 
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
-use crate::{approval::{request::ApprovalRequest, Approval}, validation::{proof::ValidationProof, request::ValidationReq, response::ValidationRes}, Error};
+use crate::{approval::{request::ApprovalRequest, response::ApprovalResponse}, evaluation::{request::EvaluationReq, response::EvaluationRes}, validation::{proof::ValidationProof, request::ValidationReq, response::ValidationRes}, Error};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
@@ -31,7 +32,10 @@ pub enum SignTypesNode {
     Validation(ValidationProof),
     ValidationReq(ValidationReq),
     ValidationRes(ValidationRes),
+    EvaluationReq(EvaluationReq),
+    EvaluationRes(EvaluationRes),
     ApprovalReq(ApprovalRequest),
+    ApprovalRes(ApprovalResponse),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
