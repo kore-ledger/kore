@@ -226,7 +226,9 @@ impl Handler<RequestHandler> for RequestHandler {
                     EventRequest::Create(request) => {
                         debug!("Create request actor");
                     }
-                    _ => {}
+                    _ => {
+                        todo!()
+                    }
                 }
             }
             RequestHandlerEvent::End { id } => {}
@@ -249,7 +251,7 @@ impl PersistentActor for RequestHandler {
                 self.requests.insert(id.clone());
             }
             RequestHandlerEvent::End { id } => {
-                self.requests.remove(&id);
+                self.requests.remove(id);
             }
         }
     }

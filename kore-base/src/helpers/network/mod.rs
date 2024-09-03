@@ -2,7 +2,11 @@ use actor::Message;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use crate::{evaluation::{request::EvaluationReq, response::EvaluationRes}, validation::{request::ValidationReq, response::ValidationRes}, Signed};
+use crate::{
+    evaluation::{request::EvaluationReq, response::EvaluationRes},
+    validation::{request::ValidationReq, response::ValidationRes},
+    Signed,
+};
 
 pub mod intermediary;
 pub mod service;

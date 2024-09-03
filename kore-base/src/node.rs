@@ -4,16 +4,25 @@
 //! Node module
 //!
 
-use std::{collections::{HashMap, HashSet}, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 use async_std::fs;
 
 use crate::{
-    db::{Database, Storable}, evaluation, helpers::encrypted_pass::EncryptedPass, model::{
+    db::{Database, Storable},
+    evaluation,
+    helpers::encrypted_pass::EncryptedPass,
+    model::{
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    }, subject, validation::proof::ValidationProof, Api, Config, Error, DIGEST_DERIVATOR
+    },
+    subject,
+    validation::proof::ValidationProof,
+    Api, Config, Error, DIGEST_DERIVATOR,
 };
 
 use identity::{
@@ -24,7 +33,8 @@ use identity::{
 };
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorSystem, Error as ActorError, Event, Handler, Message, Response, SystemRef
+    Actor, ActorContext, ActorPath, ActorSystem, Error as ActorError, Event,
+    Handler, Message, Response, SystemRef,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -57,21 +67,19 @@ pub struct Node {
     /// The node's known governances.
     known_governances: Vec<String>,
     /// Compiled contracts
-    compiled_contracts: HashMap<String, CompiledContract>
+    compiled_contracts: HashMap<String, CompiledContract>,
 }
 
 impl Node {
     /// Creates a new node.
-    pub fn new(
-        id: &KeyPair,
-    ) -> Result<Self, Error> {
+    pub fn new(id: &KeyPair) -> Result<Self, Error> {
         Ok(Self {
             owner: id.clone(),
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             owned_governances: Vec::new(),
             known_governances: Vec::new(),
-            compiled_contracts: HashMap::new()
+            compiled_contracts: HashMap::new(),
         })
     }
 
@@ -127,7 +135,7 @@ impl Node {
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-            derivator.clone()
+            *derivator
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
@@ -185,7 +193,10 @@ impl Node {
         if let Some(contract) = self.compiled_contracts.get(contract_path) {
             Ok(contract.0.clone())
         } else {
-            Err(Error::Governance(format!("can not find this schema {}", contract_path)))
+            Err(Error::Governance(format!(
+                "can not find this schema {}",
+                contract_path
+            )))
         }
     }
 }
@@ -199,7 +210,7 @@ pub enum NodeMessage {
     AmISubjectOwner(DigestIdentifier),
     AmIGovernanceOwner(DigestIdentifier),
     GetOwnerIdentifier,
-    CompiledContract(String)
+    CompiledContract(String),
 }
 
 impl Message for NodeMessage {}
@@ -303,11 +314,21 @@ impl Handler<Node> for Node {
             }
             NodeMessage::SignRequest(content) => {
                 let sign = match content {
-                    SignTypesNode::Validation(validation) => self.sign(&validation),
-                    SignTypesNode::ValidationReq(validation_req) => self.sign(&validation_req),
-                    SignTypesNode::ValidationRes(validation_res) => self.sign(&validation_res),
-                    SignTypesNode::EvaluationReq(evaluation_req) => self.sign(&evaluation_req),
-                    SignTypesNode::EvaluationRes(evaluation_res) => self.sign(&evaluation_res)
+                    SignTypesNode::Validation(validation) => {
+                        self.sign(&validation)
+                    }
+                    SignTypesNode::ValidationReq(validation_req) => {
+                        self.sign(&validation_req)
+                    }
+                    SignTypesNode::ValidationRes(validation_res) => {
+                        self.sign(&validation_res)
+                    }
+                    SignTypesNode::EvaluationReq(evaluation_req) => {
+                        self.sign(&evaluation_req)
+                    }
+                    SignTypesNode::EvaluationRes(evaluation_res) => {
+                        self.sign(&evaluation_res)
+                    }
                 };
 
                 match sign {
@@ -319,16 +340,14 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::AmIOwner(
                     self.get_owned_subjects()
                         .iter()
-                        .find(|x| **x == subject_id.to_string())
-                        .is_some(),
+                        .any(|x| **x == subject_id.to_string()),
                 ))
             }
             NodeMessage::AmIGovernanceOwner(governance_id) => {
                 Ok(NodeResponse::AmIOwner(
                     self.get_owned_governances()
                         .iter()
-                        .find(|x| **x == governance_id.to_string())
-                        .is_some(),
+                        .any(|x| **x == governance_id.to_string()),
                 ))
             }
             NodeMessage::RegisterSubject(subject) => {
@@ -347,11 +366,11 @@ impl Handler<Node> for Node {
                     }
                 }
                 Ok(NodeResponse::None)
-            },
+            }
             NodeMessage::CompiledContract(contract_path) => {
                 match self.get_contract(&contract_path) {
                     Ok(contract) => Ok(NodeResponse::Contract(contract)),
-                    Err(e) => Ok(NodeResponse::Error(e))
+                    Err(e) => Ok(NodeResponse::Error(e)),
                 }
             }
         }

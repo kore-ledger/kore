@@ -1,6 +1,12 @@
 use crate::{
-    evaluation::{evaluator::{Evaluator, EvaluatorCommand}, schema::{EvaluationSchema, EvaluationSchemaCommand}},
-    validation::{schema::{ValidationSchema, ValidationSchemaCommand}, validator::{Validator, ValidatorCommand}},
+    evaluation::{
+        evaluator::{Evaluator, EvaluatorCommand},
+        schema::{EvaluationSchema, EvaluationSchemaCommand},
+    },
+    validation::{
+        schema::{ValidationSchema, ValidationSchemaCommand},
+        validator::{Validator, ValidatorCommand},
+    },
     Error,
 };
 
@@ -159,8 +165,9 @@ impl Intermediary {
                         )));
                             };
                         } else {
-                            let validator_actor: Option<ActorRef<ValidationSchema>> =
-                                self.system.get_actor(&validator_path).await;
+                            let validator_actor: Option<
+                                ActorRef<ValidationSchema>,
+                            > = self.system.get_actor(&validator_path).await;
 
                             // We obtain the validator
                             if let Some(validator_actor) = validator_actor {
@@ -188,40 +195,41 @@ impl Intermediary {
                         // Evaluator path.
                         let evaluator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
-                        
-                        if message.info.schema == "governance" {
-                                                    // Evaluator actor.
-                        let evaluator_actor: Option<ActorRef<Evaluator>> =
-                        self.system.get_actor(&evaluator_path).await;
 
-                    // We obtain the validator
-                    if let Some(evaluator_actor) = evaluator_actor {
-                        if let Err(error) = evaluator_actor
-                            .tell(EvaluatorCommand::NetworkRequest {
-                                evaluation_req,
-                                info: message.info,
-                            })
-                            .await
-                        {
-                            return Err(Error::Actor(format!(
+                        if message.info.schema == "governance" {
+                            // Evaluator actor.
+                            let evaluator_actor: Option<ActorRef<Evaluator>> =
+                                self.system.get_actor(&evaluator_path).await;
+
+                            // We obtain the validator
+                            if let Some(evaluator_actor) = evaluator_actor {
+                                if let Err(error) = evaluator_actor
+                                    .tell(EvaluatorCommand::NetworkRequest {
+                                        evaluation_req,
+                                        info: message.info,
+                                    })
+                                    .await
+                                {
+                                    return Err(Error::Actor(format!(
                               "Can not send a message to Validator Actor(Req): {}",
                               error
                           )));
-                        };
-                    } else {
-                        return Err(Error::Actor(format!(
+                                };
+                            } else {
+                                return Err(Error::Actor(format!(
                           "The node actor was not found in the expected path {}",
                           evaluator_path
                       )));
-                    };
+                            };
                         } else {
-                                                    // Evaluator actor.
-                        let evaluator_actor: Option<ActorRef<EvaluationSchema>> =
-                        self.system.get_actor(&evaluator_path).await;
+                            // Evaluator actor.
+                            let evaluator_actor: Option<
+                                ActorRef<EvaluationSchema>,
+                            > = self.system.get_actor(&evaluator_path).await;
 
-                    // We obtain the validator
-                    if let Some(evaluator_actor) = evaluator_actor {
-                        if let Err(error) = evaluator_actor
+                            // We obtain the validator
+                            if let Some(evaluator_actor) = evaluator_actor {
+                                if let Err(error) = evaluator_actor
                             .tell(EvaluationSchemaCommand::NetworkRequest {
                                 evaluation_req,
                                 info: message.info,
@@ -233,14 +241,13 @@ impl Intermediary {
                               error
                           )));
                         };
-                    } else {
-                        return Err(Error::Actor(format!(
+                            } else {
+                                return Err(Error::Actor(format!(
                           "The node actor was not found in the expected path {}",
                           evaluator_path
                       )));
-                    };
+                            };
                         }
-
                     }
                     ActorMessage::ValidationRes(validation_res) => {
                         // Validator path.
@@ -317,9 +324,10 @@ impl Intermediary {
                     let peer = PublicKey::from(public_key);
                     Ok(peer.to_peer_id())
                 } else {
-                    Err(Error::NetworkHelper(format!(
+                    Err(Error::NetworkHelper(
                         "Invalid Ed25519 public key, can not convert to PeerID"
-                    )))
+                            .to_owned(),
+                    ))
                 }
             }
             KeyDerivator::Secp256k1 => {
@@ -328,7 +336,7 @@ impl Intermediary {
                     let peer = PublicKey::from(public_key);
                     Ok(peer.to_peer_id())
                 } else {
-                    Err(Error::NetworkHelper(format!("Invalid Secp256k1 public key, can not convert to PeerID")))
+                    Err(Error::NetworkHelper("Invalid Secp256k1 public key, can not convert to PeerID".to_owned()))
                 }
             }
         }

@@ -15,25 +15,27 @@ mod request;
 mod subject;
 mod validation;
 
+use actor::{ActorSystem, SystemRef};
 pub use api::Api;
 pub use config::{Config as KoreBaseConfig, DbConfig};
-pub use error::Error;
-pub use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
-pub use validation::{Validation, ValidationCommand, ValidationResponse, ValidationInfo};
-pub use governance::{Governance, init::init_state};
-pub use subject::{Subject, SubjectCommand, SubjectResponse, SubjectState};
-pub use model::signature::*;
-pub use model::request::*;
-pub use model::event::*;
-pub use model::event::Event;
-pub use model::ValueWrapper;
-pub use model::HashId;
-pub use helpers::network::*;
-pub use network::*;
-use actor::{ActorSystem, SystemRef};
 use db::Database;
+pub use error::Error;
+pub use governance::{init::init_state, Governance};
 use helpers::encrypted_pass::EncryptedPass;
+pub use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
+pub use model::event::Event;
+pub use model::event::*;
+pub use model::request::*;
+pub use model::signature::*;
+pub use model::HashId;
+pub use model::ValueWrapper;
+pub use network::*;
+pub use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
+pub use subject::{Subject, SubjectCommand, SubjectResponse, SubjectState};
+pub use validation::{
+    Validation, ValidationCommand, ValidationInfo, ValidationResponse,
+};
 
 use lazy_static::lazy_static;
 

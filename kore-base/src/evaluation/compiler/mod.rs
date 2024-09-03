@@ -1,7 +1,8 @@
 use std::{collections::HashSet, process::Command};
 
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler, Message, Response
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use async_std::fs;
 use async_trait::async_trait;
@@ -31,7 +32,7 @@ impl Compiler {
         // Compiling contract
         let status = Command::new("cargo")
             .arg("build")
-            .arg(format!("--manifest-path=contracts/Cargo.toml"))
+            .arg("--manifest-path=contracts/Cargo.toml")
             .arg("--target")
             .arg("wasm32-unknown-unknown")
             .arg("--release")
@@ -86,12 +87,14 @@ impl Compiler {
         // Module represents a precompiled WebAssembly program that is ready to be instantiated and executed.
         // This function receives the previous input from Engine::precompile_module, that is why this function can be considered safe.
         let module = unsafe {
-            Module::deserialize(&engine, contract_bytes.clone()).map_err(|e| {
-                Error::Runner(format!(
-                    "Error deserializing the contract in wastime: {}",
-                    e
-                ))
-            })?
+            Module::deserialize(&engine, contract_bytes.clone()).map_err(
+                |e| {
+                    Error::Runner(format!(
+                        "Error deserializing the contract in wastime: {}",
+                        e
+                    ))
+                },
+            )?
         };
 
         // Obtain imports
@@ -107,11 +110,19 @@ impl Compiler {
                         return Err(Error::Compiler(format!("Module {} has a function that is not contemplated in the sdk", contract_path)));
                     }
                 }
-                _ => return Err(Error::Compiler(format!("Module {} has a import that is not function", contract_path))),
+                _ => {
+                    return Err(Error::Compiler(format!(
+                        "Module {} has a import that is not function",
+                        contract_path
+                    )))
+                }
             }
         }
         if !pending_sdk.is_empty() {
-            return Err(Error::Compiler(format!("Module {} has not al imports of sdk", contract_path)))
+            return Err(Error::Compiler(format!(
+                "Module {} has not al imports of sdk",
+                contract_path
+            )));
         }
 
         Ok(contract_bytes)
@@ -129,13 +140,13 @@ impl Compiler {
 
 #[derive(Debug, Clone)]
 pub enum CompilerCommand {
-    Compile{
+    Compile {
         contract: String,
-        contract_path: String
+        contract_path: String,
     },
-    CompileCheck{
+    CompileCheck {
         contract: String,
-        contract_path: String
+        contract_path: String,
     },
 }
 
@@ -150,7 +161,7 @@ impl Event for CompilerEvent {}
 pub enum CompilerResponse {
     Error(Error),
     Check,
-    Compilation(Vec<u8>)
+    Compilation(Vec<u8>),
 }
 
 impl Response for CompilerResponse {}
@@ -171,24 +182,34 @@ impl Handler<Compiler> for Compiler {
         _ctx: &mut ActorContext<Compiler>,
     ) -> Result<CompilerResponse, ActorError> {
         match msg {
-            CompilerCommand::Compile { contract, contract_path } => {
-                if let Err(e) = Self::compile_contract(&contract, &contract_path).await {
+            CompilerCommand::Compile {
+                contract,
+                contract_path,
+            } => {
+                if let Err(e) =
+                    Self::compile_contract(&contract, &contract_path).await
+                {
                     return Ok(CompilerResponse::Error(e));
                 };
 
                 match Self::check_wasm(&contract_path).await {
                     Ok(wasm) => Ok(CompilerResponse::Compilation(wasm)),
-                    Err(e) => Ok(CompilerResponse::Error(e))
+                    Err(e) => Ok(CompilerResponse::Error(e)),
                 }
-            },
-            CompilerCommand::CompileCheck { contract, contract_path } => {
-                if let Err(e) = Self::compile_contract(&contract, &contract_path).await {
+            }
+            CompilerCommand::CompileCheck {
+                contract,
+                contract_path,
+            } => {
+                if let Err(e) =
+                    Self::compile_contract(&contract, &contract_path).await
+                {
                     return Ok(CompilerResponse::Error(e));
                 };
 
                 match Self::check_wasm(&contract_path).await {
                     Ok(_) => Ok(CompilerResponse::Check),
-                    Err(e) => Ok(CompilerResponse::Error(e))
+                    Err(e) => Ok(CompilerResponse::Error(e)),
                 }
             }
         }

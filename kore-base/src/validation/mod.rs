@@ -7,8 +7,8 @@
 pub mod proof;
 pub mod request;
 pub mod response;
-pub mod validator;
 pub mod schema;
+pub mod validator;
 
 use crate::{
     db::Storable,
@@ -130,7 +130,7 @@ impl Validation {
                 return Err(Error::Actor(format!("The subject encountered problems when signing the proof: {}",error)));
             }
             _ => {
-                return Err(Error::Actor(format!("An unexpected response has been received from subject actor")));
+                return Err(Error::Actor("An unexpected response has been received from subject actor".to_owned()));
             }
         };
 
@@ -190,12 +190,14 @@ impl Validation {
                     Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
                 }
             }
-            SubjectResponse::Error(error) => {
-                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
-            }
-            _ => Err(Error::Actor(format!(
-                "An unexpected response has been received from node actor"
+            SubjectResponse::Error(error) => Err(Error::Actor(format!(
+                "The subject encountered problems when getting governance: {}",
+                error
             ))),
+            _ => Err(Error::Actor(
+                "An unexpected response has been received from node actor"
+                    .to_owned(),
+            )),
         }
     }
 
@@ -223,30 +225,24 @@ impl Validation {
         let our_key = self.node_key.clone();
         // We are signer
         if signer == our_key {
-            if let Err(e) = validator_actor
+            validator_actor
                 .tell(ValidatorCommand::LocalValidation {
                     validation_req: validation_req.content,
                     our_key: signer,
                 })
-                .await
-            {
-                return Err(e);
-            }
+                .await?
         }
         // Other node is signer
         else {
-            if let Err(e) = validator_actor
+            validator_actor
                 .tell(ValidatorCommand::NetworkValidation {
                     request_id: request_id.to_owned(),
                     validation_req,
                     node_key: signer,
                     our_key,
-                    schema: schema.to_owned()
+                    schema: schema.to_owned(),
                 })
-                .await
-            {
-                return Err(e);
-            }
+                .await?
         }
 
         Ok(())
@@ -349,7 +345,7 @@ impl Handler<Validation> for Validation {
                 // Update quorum and validators
                 self.validators_response = vec![];
                 self.quorum = quorum;
-                self.validators = signers.clone();
+                self.validators.clone_from(&signers);
                 self.validators_quantity = signers.len() as u32;
                 let request_id = request_id.to_string();
 
@@ -386,19 +382,14 @@ impl Handler<Validation> for Validation {
                 };
 
                 for signer in signers {
-                    if let Err(error) = self
-                        .create_validators(
-                            ctx,
-                            &request_id,
-                            signed_validation_req.clone(),
-                            &info.subject.schema_id,
-                            signer,
-                        )
-                        .await
-                    {
-                        // Mensaje al padre de error return Err(error);
-                        return Err(error);
-                    }
+                    self.create_validators(
+                        ctx,
+                        &request_id,
+                        signed_validation_req.clone(),
+                        &info.subject.schema_id,
+                        signer,
+                    )
+                    .await?
                 }
             }
             ValidationCommand::Response {
@@ -409,13 +400,16 @@ impl Handler<Validation> for Validation {
 
                 // If node is in validator list
                 if self.check_validator(sender) {
-                    
                     match validation_res {
-                        ValidationRes::Signature(signature) => self.validators_response.push(SignersRes::Signature(signature)),
-                        ValidationRes::TimeOut(timeout) => self.validators_response.push(SignersRes::TimeOut(timeout)),
+                        ValidationRes::Signature(signature) => self
+                            .validators_response
+                            .push(SignersRes::Signature(signature)),
+                        ValidationRes::TimeOut(timeout) => self
+                            .validators_response
+                            .push(SignersRes::TimeOut(timeout)),
                         ValidationRes::Error(error) => {
                             // Mostrar el error TODO
-                        },
+                        }
                     };
 
                     if self.quorum.check_quorum(
@@ -473,8 +467,8 @@ impl Handler<Validation> for Validation {
 #[async_trait]
 impl PersistentActor for Validation {
     fn apply(&mut self, event: &ValidationEvent) {
-        self.prev_event_validation_response =
-            event.actual_event_validation_response.clone();
+        self.prev_event_validation_response
+            .clone_from(&event.actual_event_validation_response);
         self.previous_proof = Some(event.actual_proof.clone());
 
         // Darle a request la conclusión de la validación y la información que necesite. Esto no se puede hacer en el apply TODO

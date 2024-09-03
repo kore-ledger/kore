@@ -4,7 +4,8 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    governance::{Member, Policy, Role, Schema}, Error, ValueWrapper
+    governance::{Member, Policy, Role, Schema},
+    Error, ValueWrapper,
 };
 
 #[derive(Debug)]
@@ -12,7 +13,6 @@ pub struct MemoryManager {
     memory: Vec<u8>,
     map: HashMap<usize, usize>,
 }
-
 
 impl MemoryManager {
     pub fn new() -> Self {
@@ -61,7 +61,9 @@ impl MemoryManager {
     }
 }
 
-#[derive(Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(
+    Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug, Clone,
+)]
 pub struct ContractResult {
     pub final_state: ValueWrapper,
     pub approval_required: bool,

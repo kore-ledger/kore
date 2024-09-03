@@ -7,7 +7,6 @@ use tracing::error;
 
 use crate::Error;
 
-
 pub struct JsonSchema {
     json_schema: JSONSchema,
 }

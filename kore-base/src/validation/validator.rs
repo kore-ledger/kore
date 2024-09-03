@@ -4,9 +4,14 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{Governance, RequestStage}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
+    governance::{Governance, RequestStage},
+    helpers::network::{intermediary::Intermediary, NetworkMessage},
+    model::{
         network::RetryNetwork, signature::Signature, SignTypesNode, TimeStamp,
-    }, node::{self, Node, NodeMessage, NodeResponse}, subject::{SubjectCommand, SubjectResponse}, Error, Signed, Subject
+    },
+    node::{self, Node, NodeMessage, NodeResponse},
+    subject::{SubjectCommand, SubjectResponse},
+    Error, Signed, Subject,
 };
 
 use super::{
@@ -88,14 +93,14 @@ impl Validator {
 
         match response {
             SubjectResponse::Governance(gov) => Ok(gov),
-            SubjectResponse::Error(error) => {
-                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
-            }
-            _ => {
-                return Err(Error::Actor(format!(
-                    "An unexpected response has been received from node actor"
-                )))
-            }
+            SubjectResponse::Error(error) => Err(Error::Actor(format!(
+                "The subject encountered problems when getting governance: {}",
+                error
+            ))),
+            _ => Err(Error::Actor(
+                "An unexpected response has been received from node actor"
+                    .to_owned(),
+            )),
         }
     }
 
@@ -139,12 +144,9 @@ impl Validator {
         }
 
         // Verify subject's signature on proof
-        if let Err(error) = validation_req
+        validation_req
             .subject_signature
-            .verify(&validation_req.proof)
-        {
-            return Err(error);
-        }
+            .verify(&validation_req.proof)?;
 
         let subject_public_key = self
             .check_proofs(
@@ -157,7 +159,7 @@ impl Validator {
         // TODO: verify this, if you rotate the cryptographic material they will not match?
         if validation_req.subject_signature.signer != subject_public_key {
             error!("");
-            return Err(Error::Validation(format!("KeyIdentifier of the subject signature does not match the KeyIdentifier of the check_proof")));
+            return Err(Error::Validation("KeyIdentifier of the subject signature does not match the KeyIdentifier of the check_proof".to_owned()));
         }
 
         // Node path.
@@ -184,9 +186,10 @@ impl Validator {
                 }
             }
         } else {
-            return Err(Error::Actor(format!(
+            return Err(Error::Actor(
                 "The node actor was not found in the expected path /user/node"
-            )));
+                    .to_owned(),
+            ));
         };
 
         // We handle the possible responses of node
@@ -196,9 +199,10 @@ impl Validator {
                 "The node encountered problems when signing the proof: {}",
                 error
             ))),
-            _ => Err(Error::Actor(format!(
+            _ => Err(Error::Actor(
                 "An unexpected response has been received from node actor"
-            ))),
+                    .to_owned(),
+            )),
         }
     }
 
@@ -224,7 +228,7 @@ impl Validator {
                 || previous_proof.governance_id != new_proof.governance_id
             {
                 error!("");
-                return Err(Error::Validation(format!("There are fields that do not match in the comparison of the previous validation proof and the new proof.")));
+                return Err(Error::Validation("There are fields that do not match in the comparison of the previous validation proof and the new proof.".to_owned()));
             }
 
             // Validate the previous proof
@@ -238,7 +242,7 @@ impl Validator {
                             SignersRes::Signature(signature) => {
 
                                 if let Err(error) = signature.verify(&previous_proof) {
-                                    return Err(Error::Signature(format!("An error occurred while validating the previous proof, {:?}", error)));
+                                    Err(Error::Signature(format!("An error occurred while validating the previous proof, {:?}", error)))
                                 } else {
                                     Ok(signature.signer)
                                 }
@@ -270,7 +274,7 @@ impl Validator {
             if previous_proof.governance_version == new_proof.governance_version
             {
                 if actual_signers != previous_signers {
-                    return Err(Error::Validation(format!("The previous event received validations from validators who are not part of governance.")));
+                    return Err(Error::Validation("The previous event received validations from validators who are not part of governance.".to_owned()));
                 }
             } else {
                 // TODO: Si la versión de la governanza es -1, solicitarle a la governanza los validadores de esa versión
@@ -310,7 +314,6 @@ pub enum ValidatorCommand {
 
 impl Message for ValidatorCommand {}
 
-
 #[async_trait]
 impl Actor for Validator {
     type Event = ();
@@ -343,9 +346,10 @@ impl Handler<Validator> for Validator {
                     Err(e) => {
                         // Log con el error. TODO
                         ValidationCommand::Response {
-                            validation_res: ValidationRes::Error(
-                                format!("{}", e),
-                            ),
+                            validation_res: ValidationRes::Error(format!(
+                                "{}",
+                                e
+                            )),
                             sender: our_key,
                         }
                     }
@@ -360,9 +364,7 @@ impl Handler<Validator> for Validator {
 
                 // Send response of validation to parent
                 if let Some(validation_actor) = validation_actor {
-                    if let Err(e) = validation_actor.tell(validation).await {
-                        return Err(e);
-                    }
+                    validation_actor.tell(validation).await?
                 } else {
                     // Can not obtain parent actor
                     return Err(ActorError::Exists(validation_path));
@@ -385,8 +387,7 @@ impl Handler<Validator> for Validator {
                 } else {
                     format!(
                         "/user/node/{}/{}_validation",
-                        validation_req.content.proof.governance_id,
-                        schema
+                        validation_req.content.proof.governance_id, schema
                     )
                 };
 
@@ -483,38 +484,39 @@ impl Handler<Validator> for Validator {
                 info,
             } => {
                 if info.schema == "governance" {
-                // Aquí hay que comprobar que el owner del subject es el que envía la req.
-                let subject_path = ActorPath::from(format!(
-                    "/user/node/{}",
-                    validation_req.content.proof.subject_id.clone()
-                ));
-                let subject_actor: Option<ActorRef<Subject>> =
-                    ctx.system().get_actor(&subject_path).await;
+                    // Aquí hay que comprobar que el owner del subject es el que envía la req.
+                    let subject_path = ActorPath::from(format!(
+                        "/user/node/{}",
+                        validation_req.content.proof.subject_id.clone()
+                    ));
+                    let subject_actor: Option<ActorRef<Subject>> =
+                        ctx.system().get_actor(&subject_path).await;
 
-                // We obtain the validator
-                let response = if let Some(subject_actor) = subject_actor {
-                    match subject_actor.ask(SubjectCommand::GetOwner).await {
-                        Ok(response) => response,
-                        Err(e) => todo!(),
+                    // We obtain the validator
+                    let response = if let Some(subject_actor) = subject_actor {
+                        match subject_actor.ask(SubjectCommand::GetOwner).await
+                        {
+                            Ok(response) => response,
+                            Err(e) => todo!(),
+                        }
+                    } else {
+                        todo!()
+                    };
+
+                    let subject_owner = match response {
+                        SubjectResponse::Owner(owner) => owner,
+                        _ => todo!(),
+                    };
+
+                    if subject_owner != validation_req.signature.signer {
+                        // Error nos llegó una validation req de un nodo el cual no es el dueño
+                        todo!()
                     }
-                } else {
-                    todo!()
-                };
 
-                let subject_owner = match response {
-                    SubjectResponse::Owner(owner) => owner,
-                    _ => todo!(),
-                };
-
-                if subject_owner != validation_req.signature.signer {
-                    // Error nos llegó una validation req de un nodo el cual no es el dueño
-                    todo!()
-                }
-
-                if let Err(e) = validation_req.verify() {
-                    // Hay errores criptográficos
-                    todo!()
-                }
+                    if let Err(e) = validation_req.verify() {
+                        // Hay errores criptográficos
+                        todo!()
+                    }
                 }
 
                 // Llegados a este punto se ha verificado que la req es del owner del sujeto y está todo correcto.

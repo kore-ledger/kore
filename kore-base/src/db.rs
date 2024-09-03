@@ -30,7 +30,7 @@ impl Database {
     pub fn open(config: &DbConfig) -> Result<Self, Error> {
         match config {
             DbConfig::Rocksdb { path } => {
-                let manager = RocksDbManager::new(&path);
+                let manager = RocksDbManager::new(path);
                 Ok(Database::RocksDb(manager))
             }
             #[cfg(feature = "sqlite")]

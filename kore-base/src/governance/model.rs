@@ -8,7 +8,11 @@ use identity::identifier::DigestIdentifier;
 
 use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
 
-use std::{collections::HashSet, default, fmt::{self, write}};
+use std::{
+    collections::HashSet,
+    default,
+    fmt::{self, write},
+};
 
 /// Governance quorum.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -304,6 +308,9 @@ pub struct Role {
     pub schema: SchemaEnum,
 }
 
+#[allow(non_snake_case)]
+#[allow(non_camel_case_types)]
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub enum Roles {
     APPROVER,
@@ -380,7 +387,6 @@ pub struct GovernanceModel {
     /// The set of policies.
     pub policies: Vec<Policy>,
 }
-
 
 /// Request stage.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]

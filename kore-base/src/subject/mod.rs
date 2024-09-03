@@ -37,7 +37,11 @@ use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
 
-use std::{collections::HashSet, str::FromStr, sync::atomic::{AtomicU64, Ordering}};
+use std::{
+    collections::HashSet,
+    str::FromStr,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 /// Suject header
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -128,54 +132,6 @@ impl Subject {
         subject
     }
 
-    async fn get_governace_of_other_subject(
-        &self,
-        ctx: &mut ActorContext<Subject>,
-        subject: DigestIdentifier,
-    ) -> Result<Governance, Error> {
-        // Governance path
-        let governance_path =
-            ActorPath::from(format!("/user/node/{}", subject));
-
-        // Governance actor.
-        let governance_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&governance_path).await;
-
-        // We obtain the actor governance
-        let response = if let Some(governance_actor) = governance_actor {
-            // We ask a governance
-            // TODO si previous_proof.governance_version == new_proof.governance_version pedimos la governanza, sino tenemos que obtener la versión anterior de governanza
-            let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path /user/node/{}",
-                subject
-            )));
-        };
-
-        match response {
-            SubjectResponse::Governance(gov) => Ok(gov),
-            SubjectResponse::Error(error) => {
-                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
-            }
-            _ => {
-                return Err(Error::Actor(format!(
-                    "An unexpected response has been received from node actor"
-                )))
-            }
-        }
-    }
-
     async fn get_node_key(
         &self,
         ctx: &mut ActorContext<Subject>,
@@ -201,17 +157,19 @@ impl Subject {
                 }
             }
         } else {
-            return Err(Error::Actor(format!(
+            return Err(Error::Actor(
                 "The node actor was not found in the expected path /user/node"
-            )));
+                    .to_owned(),
+            ));
         };
 
         // We handle the possible responses of node
         match response {
             NodeResponse::OwnerIdentifier(key) => Ok(key),
-            _ => Err(Error::Actor(format!(
+            _ => Err(Error::Actor(
                 "An unexpected response has been received from node actor"
-            ))),
+                    .to_owned(),
+            )),
         }
     }
 
@@ -240,17 +198,19 @@ impl Subject {
                 }
             }
         } else {
-            return Err(Error::Actor(format!(
+            return Err(Error::Actor(
                 "The node actor was not found in the expected path /user/node"
-            )));
+                    .to_owned(),
+            ));
         };
 
         // We handle the possible responses of node
         match response {
             NodeResponse::AmIOwner(owner) => Ok(owner),
-            _ => Err(Error::Actor(format!(
+            _ => Err(Error::Actor(
                 "An unexpected response has been received from node actor"
-            ))),
+                    .to_owned(),
+            )),
         }
     }
 
@@ -346,7 +306,7 @@ impl Subject {
             schema_id: self.schema_id.clone(),
             namespace: self.namespace.clone(),
             properties: self.properties.clone(),
-            sn: self.sn.clone(),
+            sn: self.sn,
         }
     }
 
@@ -381,13 +341,13 @@ impl Subject {
             error!("Subject: Error Applying Patch");
             return Err(Error::Subject("Error Applying Patch".to_owned()));
         };
-        self.sn = new_sn.into();
+        self.sn = new_sn;
         Ok(())
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-            derivator.clone()
+            *derivator
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
@@ -480,26 +440,28 @@ impl Subject {
 
         let (our_roles, creators) = gov.subjects_schemas_rol_namespace();
         for ((schema, rol), namespaces) in our_roles {
-            let mut valid_users =  HashSet::new();
+            let mut valid_users = HashSet::new();
             for ((schema_creator, id), namespaces_creator) in creators.clone() {
-                if schema == schema_creator && self.check_namespaces(&namespaces, &namespaces_creator) {
+                if schema == schema_creator
+                    && self.check_namespaces(&namespaces, &namespaces_creator)
+                {
                     if let Ok(id) = KeyIdentifier::from_str(&id) {
                         valid_users.insert(id);
                     }
                 }
             }
             match rol {
-                crate::governance::model::Roles::APPROVER => {
-
-                },
+                crate::governance::model::Roles::APPROVER => {}
                 crate::governance::model::Roles::EVALUATOR => {
                     let actor = EvaluationSchema::new(valid_users);
-                    ctx.create_child(&format!("{}_evaluation", schema), actor).await?;
-                },
+                    ctx.create_child(&format!("{}_evaluation", schema), actor)
+                        .await?;
+                }
                 crate::governance::model::Roles::VALIDATOR => {
                     let actor = ValidationSchema::new(valid_users);
-                    ctx.create_child(&format!("{}_validation", schema), actor).await?;
-                },
+                    ctx.create_child(&format!("{}_validation", schema), actor)
+                        .await?;
+                }
                 _ => {}
             }
         }
@@ -522,7 +484,8 @@ impl Subject {
                 let creator_namespace =
                     Namespace::from(creator_namespace.clone());
                 if our_namespace.is_ancestor_of(&creator_namespace)
-                    || our_namespace == creator_namespace || our_namespace.is_empty()
+                    || our_namespace == creator_namespace
+                    || our_namespace.is_empty()
                 {
                     return true;
                 }
@@ -538,9 +501,8 @@ impl Subject {
         our_key: KeyIdentifier,
         gov: &Governance,
     ) -> bool {
-        gov.get_signers(stage.to_role(), &schema, self.namespace.clone())
-            .get(&our_key)
-            .is_some()
+        gov.get_signers(stage.to_role(), schema, self.namespace.clone())
+            .contains(&our_key)
     }
 }
 
@@ -797,7 +759,7 @@ impl PersistentActor for Subject {
                         error!("Error applying patch: {:?}", e);
                     }
                 } else {
-                    self.sn = event.content.sn.into();
+                    self.sn = event.content.sn;
                 }
             }
             EventRequest::Transfer(_) => {

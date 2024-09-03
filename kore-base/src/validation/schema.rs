@@ -32,7 +32,7 @@ pub enum ValidationSchemaCommand {
         validation_req: Signed<ValidationReq>,
         info: ComunicateInfo,
     },
-    UpdateValidators(HashSet<KeyIdentifier>)
+    UpdateValidators(HashSet<KeyIdentifier>),
 }
 
 impl Message for ValidationSchemaCommand {}
@@ -57,8 +57,9 @@ impl Handler<ValidationSchema> for ValidationSchema {
                 validation_req,
                 info,
             } => {
-                let subject_owner = self.validators.get(&validation_req.signature.signer);
-                if let None = subject_owner {
+                let subject_owner =
+                    self.validators.get(&validation_req.signature.signer);
+                if subject_owner.is_none() {
                     todo!()
                 };
 
@@ -82,16 +83,13 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     Err(e) => todo!(),
                 };
 
-                if let Err(e) = validator_actor
+                validator_actor
                     .tell(ValidatorCommand::NetworkRequest {
                         validation_req,
                         info,
                     })
-                    .await
-                {
-                    return Err(e);
-                }
-            },
+                    .await?
+            }
             ValidationSchemaCommand::UpdateValidators(validators) => {
                 self.validators = validators;
             }

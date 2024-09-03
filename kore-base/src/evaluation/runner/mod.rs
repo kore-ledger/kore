@@ -1,7 +1,8 @@
 use std::{collections::HashSet, fmt::format};
 
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler, Message, Response
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use async_trait::async_trait;
 use borsh::{to_vec, BorshDeserialize};
@@ -13,7 +14,10 @@ use types::{
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
 
 use crate::{
-    governance::{model::{Roles, SchemaEnum}, Member, Policy, Role, Schema, Who},
+    governance::{
+        model::{Roles, SchemaEnum},
+        Member, Policy, Role, Schema, Who,
+    },
     model::patch::apply_patch,
     Error, ValueWrapper,
 };
@@ -85,7 +89,7 @@ impl Runner {
             .map_err(|e| {
                 Error::Runner(format!("Contract execution failed: {}", e))
             })?;
-        
+
         let result = Self::get_result(&store, result_ptr)?;
         Ok((result, vec![]))
     }
@@ -93,27 +97,35 @@ impl Runner {
     async fn execute_governance_contract(
         state: &ValueWrapper,
         event: &ValueWrapper,
-    ) -> Result<(ContractResult, Vec<String>), Error>{
-        let event = serde_json::from_value::<GovernanceEvent>(event.0.clone()).map_err(|e| Error::Runner(format!("Can not create governance event {}", e)))?;
+    ) -> Result<(ContractResult, Vec<String>), Error> {
+        let event = serde_json::from_value::<GovernanceEvent>(event.0.clone())
+            .map_err(|e| {
+                Error::Runner(format!("Can not create governance event {}", e))
+            })?;
 
         match &event {
             GovernanceEvent::Patch { data } => {
                 // TODO estudiar todas las operaciones de jsonpatch, qué pasa si eliminamos un schema del cual hay sujetos?
                 // o si hacemos un copy o move. Deberíamos permitirlos?
-                let patched_state = apply_patch(data.0.clone(), state.0.clone()).map_err(|e| Error::Runner(format!("Can not apply pathc {}", e)))?;
+                let patched_state =
+                    apply_patch(data.0.clone(), state.0.clone()).map_err(
+                        |e| Error::Runner(format!("Can not apply pathc {}", e)),
+                    )?;
 
                 if Self::check_governance_state(&patched_state).is_ok() {
                     let compilations = Self::check_compilation(data.0.clone())?;
                     // TODO QUITAR TODOS LOS unwrap()
-                    Ok((ContractResult {
-                        final_state: ValueWrapper(
-                            serde_json::to_value(patched_state).unwrap(),
-                        ),
-                        approval_required: true,
-                        success: true,
-                    }, compilations))
+                    Ok((
+                        ContractResult {
+                            final_state: ValueWrapper(
+                                serde_json::to_value(patched_state).unwrap(),
+                            ),
+                            approval_required: true,
+                            success: true,
+                        },
+                        compilations,
+                    ))
                 } else {
-                    
                     todo!()
                 }
             }
@@ -123,11 +135,14 @@ impl Runner {
     fn check_compilation(operations: Value) -> Result<Vec<String>, Error> {
         // En caso de que sea un replace habría que ver realmente si hay algún cambio, solo cambiar el orden es una operación de replace aunque no cambie nada TODO.
         // TODO ver si tenemos que permitir más operaciones de JSON patch y como las abordamos, sobretodo el remove
-        let operations_array = if let Some(operations_array) = operations.as_array() {
-            operations_array
-        } else {
-            return Err(Error::Runner("json patch operations are not an array".to_owned()));
-        };
+        let operations_array =
+            if let Some(operations_array) = operations.as_array() {
+                operations_array
+            } else {
+                return Err(Error::Runner(
+                    "json patch operations are not an array".to_owned(),
+                ));
+            };
 
         let mut compilations = vec![];
         for val in operations_array {
@@ -135,7 +150,9 @@ impl Runner {
             let op = if let Some(op) = val["op"].as_str() {
                 op
             } else {
-                return Err(Error::Runner("json patch operations have no “op” field".to_owned()));
+                return Err(Error::Runner(
+                    "json patch operations have no “op” field".to_owned(),
+                ));
             };
 
             // Check if op is add or replace, or remove for roles and members
@@ -147,7 +164,7 @@ impl Runner {
                         path
                     } else {
                         return Err(Error::Runner("The path field is not a str".to_owned()))
-                    };  
+                    };
                     if !path.contains("roles") && !path.contains("members") {
                         return Err(Error::Runner(format!("Remove operation in JSON parch is only allowed for members and roles, invalid operation {} for {}", op, path)))   
                     }
@@ -160,7 +177,9 @@ impl Runner {
                 let id = if let Some(id) = val["value"]["id"].as_str() {
                     id
                 } else {
-                    return Err(Error::Runner("The id field is not a str".to_owned()))
+                    return Err(Error::Runner(
+                        "The id field is not a str".to_owned(),
+                    ));
                 };
 
                 // Save the id that needs to be compiled
@@ -292,7 +311,7 @@ impl Runner {
         for role in roles {
             if let Who::NOT_MEMBERS = role.who {
                 if role.role != Roles::ISSUER {
-                    return Err(Error::Runner(format!("The user NOT_MEMBERS only can be assigned to ISSUER rol")));
+                    return Err(Error::Runner("The user NOT_MEMBERS only can be assigned to ISSUER rol".to_owned()));
                 }
             };
 
@@ -302,7 +321,9 @@ impl Runner {
                 }
                 if ID == "governance" {
                     if let Who::MEMBERS = role.who {
-                        if role.role == Roles::WITNESS && role.namespace.is_empty() {
+                        if role.role == Roles::WITNESS
+                            && role.namespace.is_empty()
+                        {
                             members_witness = true;
                         }
                     }
@@ -339,8 +360,15 @@ impl Runner {
                 _ => {}
             }
         }
-        if !owner_eval || !owner_appr || !owner_val || !owner_witness || !members_witness {
-            return Err(Error::Runner("Basic metagovernance roles have been modified".to_owned()));
+        if !owner_eval
+            || !owner_appr
+            || !owner_val
+            || !owner_witness
+            || !members_witness
+        {
+            return Err(Error::Runner(
+                "Basic metagovernance roles have been modified".to_owned(),
+            ));
         }
 
         Ok(())
@@ -451,7 +479,7 @@ impl Runner {
                     e
                 ))
             })?;
-        
+
         if contract_result.success {
             Ok(contract_result)
         } else {
@@ -461,7 +489,7 @@ impl Runner {
 }
 
 #[derive(Debug, Clone)]
-pub struct  RunnerCommand {
+pub struct RunnerCommand {
     pub state: ValueWrapper,
     pub event: ValueWrapper,
     pub compiled_contract: Contract,
@@ -481,7 +509,7 @@ pub enum RunnerResponse {
         result: ContractResult,
         compilations: Vec<String>,
     },
-    Error(Error)
+    Error(Error),
 }
 
 impl Response for RunnerResponse {}
@@ -501,9 +529,19 @@ impl Handler<Runner> for Runner {
         msg: RunnerCommand,
         _ctx: &mut ActorContext<Runner>,
     ) -> Result<RunnerResponse, ActorError> {
-        match Self::execute_contract(&msg.state, &msg.event, msg.compiled_contract, msg.is_owner).await {
-            Ok((result, compilations)) => Ok(RunnerResponse::Response { result, compilations }),
-            Err(e) => Ok(RunnerResponse::Error(e))
+        match Self::execute_contract(
+            &msg.state,
+            &msg.event,
+            msg.compiled_contract,
+            msg.is_owner,
+        )
+        .await
+        {
+            Ok((result, compilations)) => Ok(RunnerResponse::Response {
+                result,
+                compilations,
+            }),
+            Err(e) => Ok(RunnerResponse::Error(e)),
         }
     }
 }

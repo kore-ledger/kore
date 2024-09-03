@@ -9,19 +9,24 @@ mod compiler;
 pub mod evaluator;
 pub mod request;
 pub mod response;
-pub mod schema;
 mod runner;
+pub mod schema;
 
 use crate::{
-    db::Storable, governance::{Governance, Quorum, RequestStage}, model::{
+    db::Storable,
+    governance::{Governance, Quorum, RequestStage},
+    model::{
         event::Event as KoreEvent,
         namespace,
         request::EventRequest,
         signature::{self, Signature, Signed},
         HashId, Namespace, SignTypesNode,
-    }, node::{Node, NodeMessage, NodeResponse}, subject::{
+    },
+    node::{Node, NodeMessage, NodeResponse},
+    subject::{
         Subject, SubjectCommand, SubjectMetadata, SubjectResponse, SubjectState,
-    }, Error, ValueWrapper, DIGEST_DERIVATOR
+    },
+    Error, ValueWrapper, DIGEST_DERIVATOR,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
@@ -56,7 +61,7 @@ pub struct Evaluation {
     // Evaluators quantity
     evaluators_quantity: u32,
 
-    state: ValueWrapper
+    state: ValueWrapper,
 }
 
 impl Evaluation {
@@ -103,9 +108,10 @@ impl Evaluation {
 
         match response {
             SubjectResponse::SubjectMetadata(metadata) => Ok(metadata),
-            _ => Err(Error::Actor(format!(
+            _ => Err(Error::Actor(
                 "An unexpected response has been received from subject actor"
-            ))),
+                    .to_owned(),
+            )),
         }
     }
 
@@ -173,12 +179,14 @@ impl Evaluation {
                     Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
                 }
             }
-            SubjectResponse::Error(error) => {
-                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
-            }
-            _ => Err(Error::Actor(format!(
-                "An unexpected response has been received from node actor"
+            SubjectResponse::Error(error) => Err(Error::Actor(format!(
+                "The subject encountered problems when getting governance: {}",
+                error
             ))),
+            _ => Err(Error::Actor(
+                "An unexpected response has been received from node actor"
+                    .to_owned(),
+            )),
         }
     }
 
@@ -203,46 +211,39 @@ impl Evaluation {
         let our_key = self.node_key.clone();
         // We are signer
         if signer == our_key {
-            if let Err(e) = evaluator_actor
+            evaluator_actor
                 .tell(EvaluatorCommand::LocalEvaluation {
                     evaluation_req: evaluation_req.content,
                     our_key: signer,
                 })
-                .await
-            {
-                return Err(e);
-            }
+                .await?
         }
         // Other node is signer
         else {
-            if let Err(e) = evaluator_actor
+            evaluator_actor
                 .tell(EvaluatorCommand::NetworkEvaluation {
                     request_id: request_id.to_owned(),
                     evaluation_req,
                     node_key: signer,
                     our_key,
-                    schema: schema.to_owned()
+                    schema: schema.to_owned(),
                 })
-                .await
-            {
-                return Err(e);
-            }
+                .await?
         }
 
         Ok(())
     }
 
     fn check_responses(&self) -> bool {
-        let set: HashSet<EvalRes> = HashSet::from_iter(
-            self.evaluators_response.iter().map(|x| x.clone())
-        );
+        let set: HashSet<EvalRes> =
+            HashSet::from_iter(self.evaluators_response.iter().cloned());
 
         set.len() == 1
     }
 
     fn fail_evaluation(&self) -> EvalRes {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-            derivator.clone()
+            *derivator
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
@@ -269,7 +270,7 @@ pub enum EvaluationCommand {
         request: Signed<EventRequest>,
     },
 
-    Response{
+    Response {
         evaluation_res: EvaluationRes,
         sender: KeyIdentifier,
     },
@@ -311,7 +312,9 @@ impl Handler<Evaluation> for Evaluation {
                 request_id,
                 request,
             } => {
-                let subject_id = if let EventRequest::Fact(event) = request.content.clone() {
+                let subject_id = if let EventRequest::Fact(event) =
+                    request.content.clone()
+                {
                     event.subject_id
                 } else {
                     // Error evento incorrecto
@@ -319,11 +322,11 @@ impl Handler<Evaluation> for Evaluation {
                 };
 
                 let metadata = match self.get_metadata(ctx, subject_id).await {
-                  Ok(metadata) => metadata,
-                  Err(e) => {
-                    // No se puede obtener la metadata
-                    todo!()
-                  }
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        // No se puede obtener la metadata
+                        todo!()
+                    }
                 };
 
                 let governance = if metadata.governance_id.digest.is_empty() {
@@ -332,7 +335,15 @@ impl Handler<Evaluation> for Evaluation {
                     metadata.governance_id.clone()
                 };
 
-                let (signers, quorum, gov_version) = match self.get_signers_and_quorum_and_gov_version(ctx, governance, &metadata.schema_id, metadata.namespace.clone()).await {
+                let (signers, quorum, gov_version) = match self
+                    .get_signers_and_quorum_and_gov_version(
+                        ctx,
+                        governance,
+                        &metadata.schema_id,
+                        metadata.namespace.clone(),
+                    )
+                    .await
+                {
                     Ok(data) => data,
                     Err(e) => {
                         // No se puede obtener signers, quorum y gov_ver
@@ -340,23 +351,33 @@ impl Handler<Evaluation> for Evaluation {
                     }
                 };
 
-                let eval_req = self.create_evaluation_req(request, metadata.clone(), gov_version);
+                let eval_req = self.create_evaluation_req(
+                    request,
+                    metadata.clone(),
+                    gov_version,
+                );
 
                 self.evaluators_response = vec![];
                 self.state = eval_req.context.state.clone();
                 self.quorum = quorum;
-                self.evaluators = signers.clone();
+                self.evaluators.clone_from(&signers);
                 self.evaluators_quantity = signers.len() as u32;
                 let request_id = request_id.to_string();
 
                 let node_path = ActorPath::from("/user/node");
-                let node_actor: Option<ActorRef<Node>> =  ctx.system().get_actor(&node_path).await;
+                let node_actor: Option<ActorRef<Node>> =
+                    ctx.system().get_actor(&node_path).await;
 
                 // We obtain the evaluator
                 let node_response = if let Some(node_actor) = node_actor {
-                    match node_actor.ask(NodeMessage::SignRequest(SignTypesNode::EvaluationReq(eval_req.clone()))).await {
+                    match node_actor
+                        .ask(NodeMessage::SignRequest(
+                            SignTypesNode::EvaluationReq(eval_req.clone()),
+                        ))
+                        .await
+                    {
                         Ok(response) => response,
-                        Err(e) => todo!()
+                        Err(e) => todo!(),
                     }
                 } else {
                     todo!()
@@ -365,38 +386,41 @@ impl Handler<Evaluation> for Evaluation {
                 let signature = match node_response {
                     NodeResponse::SignRequest(signature) => signature,
                     NodeResponse::Error(_) => todo!(),
-                    _ => todo!()
+                    _ => todo!(),
                 };
 
-                let signed_evaluation_req: Signed<EvaluationReq> = Signed { content: eval_req, signature };
+                let signed_evaluation_req: Signed<EvaluationReq> = Signed {
+                    content: eval_req,
+                    signature,
+                };
 
                 for signer in signers {
-                    if let Err(error) = self
-                        .create_evaluators(
-                            ctx,
-                            &request_id,
-                            signed_evaluation_req.clone(),
-                            &metadata.schema_id,
-                            signer,
-                        )
-                        .await
-                    {
-                        // Mensaje al padre de error return Err(error);
-                        return Err(error);
-                    }
+                    self.create_evaluators(
+                        ctx,
+                        &request_id,
+                        signed_evaluation_req.clone(),
+                        &metadata.schema_id,
+                        signer,
+                    )
+                    .await?
                 }
-            },
-            EvaluationCommand::Response { evaluation_res, sender } => {
+            }
+            EvaluationCommand::Response {
+                evaluation_res,
+                sender,
+            } => {
                 // TODO Al menos una validación tiene que ser válida, no solo errores y timeout.
 
                 // If node is in evaluator list
                 if self.check_evaluator(sender) {
                     // Check type of validation
                     match evaluation_res {
-                        EvaluationRes::Response(response) => self.evaluators_response.push(response),
+                        EvaluationRes::Response(response) => {
+                            self.evaluators_response.push(response)
+                        }
                         EvaluationRes::Error(error) => {
                             // Mostrar el error TODO
-                        },
+                        }
                     };
 
                     // Add validate response
@@ -413,14 +437,17 @@ impl Handler<Evaluation> for Evaluation {
                         // Chequear que todas las respuestas que hemos recibido son las mismas TODO.
                     } else {
                         if self.evaluators.is_empty() {
-                            let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-                                derivator.clone()
+                            let derivator = if let Ok(derivator) =
+                                DIGEST_DERIVATOR.lock()
+                            {
+                                *derivator
                             } else {
                                 error!("Error getting derivator");
                                 DigestDerivator::Blake3_256
                             };
 
-                            let state_hash = match self.state.hash_id(derivator) {
+                            let state_hash = match self.state.hash_id(derivator)
+                            {
                                 Ok(state_hash) => state_hash,
                                 Err(e) => todo!(),
                             };
@@ -430,7 +457,7 @@ impl Handler<Evaluation> for Evaluation {
                 } else {
                     // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                 }
-            },
+            }
         }
 
         Ok(EvaluationResponse::None)

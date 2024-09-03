@@ -38,7 +38,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
-use std::{collections::{HashMap, HashSet}, str::FromStr, sync::atomic::AtomicU64};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::atomic::AtomicU64,
+};
 
 /// Governance struct.
 ///
@@ -73,7 +77,7 @@ impl Governance {
             return Ok(init::init_state(owner));
         }
         for schema in &self.model.schemas {
-            if &schema.id == schema_id {
+            if schema.id == schema_id {
                 debug!("Schema found: {}", schema_id);
                 return Ok(ValueWrapper(schema.initial_value.clone()));
             }
@@ -87,7 +91,7 @@ impl Governance {
     pub fn get_schema(&self, schema_id: &str) -> Result<Schema, Error> {
         for schema in &self.model.schemas {
             debug!("Schema found: {}", schema_id);
-            if &schema.id == schema_id {
+            if schema.id == schema_id {
                 return Ok(schema.clone());
             }
         }
@@ -105,12 +109,8 @@ impl Governance {
     }
 
     fn id_by_name(&self, name: &str) -> Option<String> {
-        let member = self.model.members.iter().find(|e| &e.name == name);
-        if let Some(member) = member {
-            Some(member.id.clone())
-        } else {
-            None
-        }
+        let member = self.model.members.iter().find(|e| e.name == name);
+        member.map(|member| member.id.clone())
     }
 
     /// Gets the signers for the request stage.
@@ -139,7 +139,7 @@ impl Governance {
                         // We do nothing, the role applies to all schemes.
                     }
                     model::SchemaEnum::ID { ID } => {
-                        if schema != &ID {
+                        if schema != ID {
                             continue;
                         }
                     }
@@ -227,18 +227,27 @@ impl Governance {
         }
     }
 
-    pub fn subjects_schemas_rol_namespace(&self) -> (HashMap<(String, Roles), Vec<String>>, HashMap<(String, String), Vec<String>>){
+    pub fn subjects_schemas_rol_namespace(
+        &self,
+    ) -> (
+        HashMap<(String, Roles), Vec<String>>,
+        HashMap<(String, String), Vec<String>>,
+    ) {
         let subject = self.subject_id.to_string();
-        let mut our_roles: HashMap<(String, Roles), Vec<String>> = HashMap::new();
-        let mut creators: HashMap<(String, String), Vec<String>> = HashMap::new();
-        let all_schemas: Vec<String> = self.model.schemas.iter().map(|x| x.id.clone()).collect();
-        let all_members: Vec<String> = self.model.members.iter().map(|x| x.id.clone()).collect();
+        let mut our_roles: HashMap<(String, Roles), Vec<String>> =
+            HashMap::new();
+        let mut creators: HashMap<(String, String), Vec<String>> =
+            HashMap::new();
+        let all_schemas: Vec<String> =
+            self.model.schemas.iter().map(|x| x.id.clone()).collect();
+        let all_members: Vec<String> =
+            self.model.members.iter().map(|x| x.id.clone()).collect();
 
         for rol in self.model.roles.clone() {
-            let mut schema: String = String::default();
-            let mut is_me: bool = false;
-            let mut is_all: bool = false;
-            let mut member: String = String::default();
+            let mut schema = String::default();
+            let mut is_me = false;
+            let mut is_all = false;
+            let mut member = String::default();
 
             match rol.who {
                 Who::ID { ID } => {
@@ -247,21 +256,21 @@ impl Governance {
                     } else {
                         member = ID;
                     }
-                },
+                }
                 Who::NAME { NAME } => {
                     let id_string = self.id_by_name(&NAME);
-                        if let Some(id) = id_string {
-                            if subject == id {
-                                is_me = true;
-                            } else {
-                                member = id;
-                            }
+                    if let Some(id) = id_string {
+                        if subject == id {
+                            is_me = true;
                         } else {
-                            continue;
+                            member = id;
                         }
-                },
+                    } else {
+                        continue;
+                    }
+                }
                 Who::NOT_MEMBERS => continue,
-                Who::MEMBERS => is_all = true
+                Who::MEMBERS => is_all = true,
             };
 
             match rol.schema {
@@ -271,8 +280,8 @@ impl Governance {
                     } else {
                         continue;
                     }
-                },
-                _ => schema = "NOT_GOVERNANCE".to_owned(),
+                }
+                _ => schema = "NOT_GOVERNANCE".to_string(),
             }
 
             match rol.role {
@@ -280,73 +289,115 @@ impl Governance {
                     if is_me || is_all {
                         if schema == "NOT_GOVERNANCE" {
                             for schema in all_schemas.clone() {
-                                if let Some(state) = our_roles.get(&(schema.clone(), rol.role.clone())) {
+                                if let Some(state) = our_roles
+                                    .get(&(schema.clone(), rol.role.clone()))
+                                {
                                     let mut state = state.clone();
                                     state.push(rol.namespace.clone());
-                                    our_roles.insert((schema, rol.role.clone()),state);
+                                    our_roles.insert(
+                                        (schema, rol.role.clone()),
+                                        state,
+                                    );
                                 } else {
-                                    our_roles.insert((schema, rol.role.clone()), vec![rol.namespace.clone()]);
+                                    our_roles.insert(
+                                        (schema, rol.role.clone()),
+                                        vec![rol.namespace.clone()],
+                                    );
                                 }
                             }
                         } else {
-                            if let Some(state) = our_roles.get(&(schema.clone(), rol.role.clone())) {
+                            if let Some(state) = our_roles
+                                .get(&(schema.clone(), rol.role.clone()))
+                            {
                                 let mut state = state.clone();
                                 state.push(rol.namespace);
-                                our_roles.insert((schema, rol.role),state);
+                                our_roles.insert((schema, rol.role), state);
                             } else {
-                                our_roles.insert((schema, rol.role), vec![rol.namespace]);
+                                our_roles.insert(
+                                    (schema, rol.role),
+                                    vec![rol.namespace],
+                                );
                             }
                         }
                     }
-                },
+                }
                 Roles::CREATOR => {
                     if !is_me {
                         if schema == "NOT_GOVERNANCE" {
                             for schema in all_schemas.clone() {
-                                if let Some(state) = creators.get(&(schema.clone(), member.clone())) {
+                                if let Some(state) = creators
+                                    .get(&(schema.clone(), member.clone()))
+                                {
                                     let mut state = state.clone();
                                     state.push(rol.namespace.clone());
-                                    creators.insert((schema, member.clone()),state);
+                                    creators.insert(
+                                        (schema, member.clone()),
+                                        state,
+                                    );
                                 } else {
-                                    creators.insert((schema, member.clone()), vec![rol.namespace.clone()]);
+                                    creators.insert(
+                                        (schema, member.clone()),
+                                        vec![rol.namespace.clone()],
+                                    );
                                 }
                             }
                         } else {
-                            if let Some(state) = creators.get(&(schema.clone(), member.clone())) {
+                            if let Some(state) =
+                                creators.get(&(schema.clone(), member.clone()))
+                            {
                                 let mut state = state.clone();
                                 state.push(rol.namespace);
-                                creators.insert((schema, member),state.clone());
+                                creators
+                                    .insert((schema, member), state.clone());
                             } else {
-                                creators.insert((schema, member), vec![rol.namespace]);
-                            }  
+                                creators.insert(
+                                    (schema, member),
+                                    vec![rol.namespace],
+                                );
+                            }
                         }
                     } else if is_all {
                         for member in all_members.clone() {
                             if schema == "NOT_GOVERNANCE" {
                                 for schema in all_schemas.clone() {
-                                    if let Some(state) = creators.get(&(schema.clone(), member.clone())) {
+                                    if let Some(state) = creators
+                                        .get(&(schema.clone(), member.clone()))
+                                    {
                                         let mut state = state.clone();
                                         state.push(rol.namespace.clone());
-                                        creators.insert((schema, member.clone()),state);
+                                        creators.insert(
+                                            (schema, member.clone()),
+                                            state,
+                                        );
                                     } else {
-                                        creators.insert((schema, member.clone()), vec![rol.namespace.clone()]);
+                                        creators.insert(
+                                            (schema, member.clone()),
+                                            vec![rol.namespace.clone()],
+                                        );
                                     }
                                 }
                             } else {
-                                if let Some(state) = creators.get(&(schema.clone(), member.clone())) {
+                                if let Some(state) = creators
+                                    .get(&(schema.clone(), member.clone()))
+                                {
                                     let mut state = state.clone();
                                     state.push(rol.namespace.clone());
-                                    creators.insert((schema.clone(), member),state.clone());
+                                    creators.insert(
+                                        (schema.clone(), member),
+                                        state.clone(),
+                                    );
                                 } else {
-                                    creators.insert((schema.clone(), member), vec![rol.namespace.clone()]);
-                                }  
+                                    creators.insert(
+                                        (schema.clone(), member),
+                                        vec![rol.namespace.clone()],
+                                    );
+                                }
                             }
                         }
                     }
-                },
+                }
                 _ => {}
             };
-            
         }
         (our_roles, creators)
     }
@@ -383,7 +434,7 @@ impl Governance {
     /// Check if the key is a member.
     fn is_member(&self, id: &KeyIdentifier) -> bool {
         for member in &self.model.members {
-            if &member.id == &id.to_string() {
+            if member.id == id.to_string() {
                 return true;
             }
         }

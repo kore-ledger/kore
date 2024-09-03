@@ -25,11 +25,7 @@ impl EncryptedPass {
 
         let mut output_key_material = [0u8; 32]; // Can be any desired size
         Argon2::default()
-            .hash_password_into(
-                pass.as_bytes(),
-                &salt,
-                &mut output_key_material,
-            )
+            .hash_password_into(pass.as_bytes(), salt, &mut output_key_material)
             .map_err(|e| Error::Password(e.to_string()))?;
 
         password.encrypt(&output_key_material).map_err(|_| {

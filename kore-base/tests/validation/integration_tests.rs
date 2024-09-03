@@ -1,12 +1,11 @@
 use std::time::Duration;
 
 use crate::common::{
-    create_info_gov_event, create_info_gov_genesis_event, create_network, create_system, get_peer_id, initilize_use_case
+    create_info_gov_event, create_info_gov_genesis_event, create_network,
+    create_system, get_peer_id, initilize_use_case,
 };
 use actor::{ActorPath, ActorRef};
-use identity::
-    identifier::DigestIdentifier
-;
+use identity::identifier::DigestIdentifier;
 use kore_base::{
     NodeMessage, NodeResponse, SubjectCommand, SubjectResponse, SubjectsTypes,
     Validation, ValidationCommand, ValidationInfo, ValueWrapper,
@@ -19,7 +18,6 @@ async fn initialize_logger() {
         .with_env_filter(EnvFilter::from_default_env())
         .try_init();
 }
-
 
 // DigestDerivator::Blake3_256
 #[tokio::test]
@@ -271,7 +269,7 @@ async fn test_network_validation() {
         )))
         .await
         .unwrap();
-    
+
     // Create validatio request -> LocalValidation
     validation_actor
         .tell(ValidationCommand::Create {
@@ -328,7 +326,7 @@ async fn test_network_validation() {
         .await
         .unwrap();
 
-     tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
     // Stop subject actor of system2 to use prestar and create validator actor
     // TODO: al actualizar el sujeto se deben lanzar los los actores de validacion
     subject_actor2.stop().await;
@@ -361,7 +359,7 @@ async fn test_network_validation() {
     };
 
     // Envio el evento a validar
-    // TODO: Ya existe un actor de validator, por eso es probable que de error 
+    // TODO: Ya existe un actor de validator, por eso es probable que de error
     validation_actor
         .tell(ValidationCommand::Create {
             request_id: DigestIdentifier::default(),
@@ -370,5 +368,5 @@ async fn test_network_validation() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_secs(10)).await; 
+    tokio::time::sleep(Duration::from_secs(10)).await;
 }

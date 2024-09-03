@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::Signed;
 
 use super::{
-    request::EvaluationReq,
     evaluator::{Evaluator, EvaluatorCommand},
+    request::EvaluationReq,
 };
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ pub enum EvaluationSchemaCommand {
         evaluation_req: Signed<EvaluationReq>,
         info: ComunicateInfo,
     },
-    UpdateEvaluators(HashSet<KeyIdentifier>)
+    UpdateEvaluators(HashSet<KeyIdentifier>),
 }
 
 impl Message for EvaluationSchemaCommand {}
@@ -57,8 +57,9 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 evaluation_req,
                 info,
             } => {
-                let subject_owner = self.evaluators.get(&evaluation_req.signature.signer);
-                if let None = subject_owner {
+                let subject_owner =
+                    self.evaluators.get(&evaluation_req.signature.signer);
+                if subject_owner.is_none() {
                     todo!()
                 };
 
@@ -82,16 +83,13 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     Err(e) => todo!(),
                 };
 
-                if let Err(e) = evaluator_actor
+                evaluator_actor
                     .tell(EvaluatorCommand::NetworkRequest {
                         evaluation_req,
                         info,
                     })
-                    .await
-                {
-                    return Err(e);
-                }
-            },
+                    .await?
+            }
             EvaluationSchemaCommand::UpdateEvaluators(evaluators) => {
                 self.evaluators = evaluators;
             }
