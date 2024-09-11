@@ -27,6 +27,7 @@ use super::{
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Approver {
     node: KeyIdentifier,
+    request_id: String,
     pass_votation: VotationType,
     request: Option<ApprovalEntity>,
 }
@@ -259,8 +260,6 @@ impl Message for ApproverCommand {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApproverEvent {
-    AllTryHaveBeenMade { node_key: KeyIdentifier },
-    ReTry(NetworkMessage),
     EmitVote { value: bool },
 }
 
@@ -432,14 +431,9 @@ impl Handler<Approver> for Approver {
 impl PersistentActor for Approver {
     fn apply(&mut self, event: &ApproverEvent) {
         match event {
-            ApproverEvent::AllTryHaveBeenMade { node_key } => {
-                self.pass_votation = VotationType::AlwaysAccept;
-            }
-            ApproverEvent::ReTry(msg) => {
-                //self.retry(msg);
-            }
             ApproverEvent::EmitVote { value } => {
-                //self.emit_vote(value);
+                
+                
             }
         }
     }
