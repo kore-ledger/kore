@@ -103,9 +103,9 @@ impl Approval {
             Err(_) => todo!(),
         };
         // Obtengo el governance_id, si es vacio??
-        let gov_id = subject_actor.ask(SubjectCommand::GetSubjectState).await;
-        let gov_id = match gov_id {
-            Ok(SubjectResponse::SubjectState(gov_id)) => gov_id.governance_id,
+        let response = subject_actor.ask(SubjectCommand::GetSubjectState).await;
+        let governance_id = match response {
+            Ok(SubjectResponse::SubjectState(governance)) => governance.governance_id,
             _ => {
                 return Err(Error::Actor(format!("")));
             }
@@ -117,7 +117,7 @@ impl Approval {
             patch: res_evaluation.patch,
             state_hash: res_evaluation.state_hash,
             hash_prev_event,
-            gov_id,
+            governance_id,
         })
     }
     /// TODO refacorizar ya que solo varia la validation stage(se usa en todos los protocolos)
@@ -180,7 +180,7 @@ impl Approval {
         approval_req: Signed<ApprovalRequest>,
         signer: KeyIdentifier,
     ) -> Result<(), ActorError> {
-        // Create Validator child
+        // Create Approvers child
         let child = ctx
             .create_child(
                 &format!("{}", signer),
@@ -211,7 +211,7 @@ impl Approval {
             if let Err(e) = validator_actor
                 .tell(ApproverCommand::NetworkApprover {
                     request_id: request_id.to_owned(),
-                    approval_req,
+                    approval_req: approval_req.clone(),
                     node_key: signer,
                     our_key,
                 })
@@ -235,7 +235,6 @@ pub enum ApprovalCommand {
         info: EvaluationReq,
         response: EvalRes,
     },
-
     Response {
         approval_res: ApprovalResponse,
         sender: KeyIdentifier,

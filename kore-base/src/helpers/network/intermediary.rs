@@ -1,13 +1,11 @@
 use crate::{
-    evaluation::{
+    approval::approver::{Approver, ApproverCommand}, evaluation::{
         evaluator::{Evaluator, EvaluatorCommand},
         schema::{EvaluationSchema, EvaluationSchemaCommand},
-    },
-    validation::{
+    }, validation::{
         schema::{ValidationSchema, ValidationSchemaCommand},
         validator::{Validator, ValidatorCommand},
-    },
-    Error,
+    }, Error
 };
 
 use super::ActorMessage;
@@ -249,6 +247,36 @@ impl Intermediary {
                             };
                         }
                     }
+                    ActorMessage::ApproverReq(approval_req) => {
+                        // Approver path.
+                        let approver_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+
+                            // Approver actor.
+                            let approver_actor: Option<ActorRef<Approver>> =
+                                self.system.get_actor(&approver_path).await;
+
+                            // We obtain the approver
+                            if let Some(approver_actor) = approver_actor {
+                                if let Err(error) = approver_actor
+                                    .tell(ApproverCommand::NetworkRequest {
+                                        approval_req,
+                                        info: message.info,
+                                    })
+                                    .await
+                                {
+                                    return Err(Error::Actor(format!(
+                              "Can not send a message to Approver Actor(Req): {}",
+                              error
+                          )));
+                                };
+                            } else {
+                                return Err(Error::Actor(format!(
+                          "The node actor was not found in the expected path {}",
+                          approver_path
+                        )));
+                            };
+                    }
                     ActorMessage::ValidationRes(validation_res) => {
                         // Validator path.
                         let validator_path =
@@ -296,7 +324,7 @@ impl Intermediary {
                                 .await
                             {
                                 return Err(Error::Actor(format!(
-                                    "Can not send a message to Evaluator Actor(Res): {}",
+                                    "Can not send a message to Approver Actor(Res): {}",
                                     error
                                 )));
                             };
@@ -307,6 +335,36 @@ impl Intermediary {
                             )));
                         };
                     }
+                    ActorMessage::ApproverRes(approval_res) => {
+                        // Approver path.
+                        let approver_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+                        // Approver actor.
+                        let approver_actor: Option<ActorRef<Approver>> =
+                            self.system.get_actor(&approver_path).await;
+
+                        // We obtain the approver
+                        if let Some(approver_actor) = approver_actor {
+                            if let Err(error) = approver_actor
+                                .tell(ApproverCommand::NetworkResponse {
+                                    approval_res,
+                                    request_id: message.info.request_id,
+                                })
+                                .await
+                            {
+                                return Err(Error::Actor(format!(
+                                    "Can not send a message to Approver Actor(Res): {}",
+                                    error
+                                )));
+                            };
+                        } else {
+                            return Err(Error::Actor(format!(
+                                "The node actor was not found in the expected path {}",
+                                approver_path
+                            )));
+                        };
+                    }
+
                 }
             }
         }

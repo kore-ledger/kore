@@ -3,9 +3,7 @@ use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    evaluation::{request::EvaluationReq, response::EvaluationRes},
-    validation::{request::ValidationReq, response::ValidationRes},
-    Signed,
+    approval::{request::ApprovalRequest, response::ApprovalResponse}, evaluation::{request::EvaluationReq, response::EvaluationRes}, validation::{request::ValidationReq, response::ValidationRes}, Signed
 };
 
 pub mod intermediary;
@@ -17,6 +15,8 @@ pub enum ActorMessage {
     ValidationRes(Signed<ValidationRes>),
     EvaluationReq(Signed<EvaluationReq>),
     EvaluationRes(Signed<EvaluationRes>),
+    ApproverReq(Signed<ApprovalRequest>),
+    ApproverRes(Signed<ApprovalResponse>),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

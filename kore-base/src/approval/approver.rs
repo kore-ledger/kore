@@ -1,13 +1,10 @@
 use std::f64::consts::E;
 
 use crate::{
-    model::SignTypesNode, Error, EventRequest, Governance, NetworkMessage,
-    Node, NodeMessage, NodeResponse, Signature, Signed, Subject,
-    SubjectCommand, SubjectResponse, DIGEST_DERIVATOR,
+    db::Storable, model::{network::RetryNetwork, SignTypesNode}, ActorMessage, Error, EventRequest, Governance, NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectCommand, SubjectResponse, DIGEST_DERIVATOR
 };
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event, ExponentialBackoffStrategy, Handler, Message, Response, RetryActor, RetryMessage, Strategy
 };
 use async_trait::async_trait;
 use identity::identifier::{
@@ -15,6 +12,7 @@ use identity::identifier::{
 };
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
+use store::store::PersistentActor;
 use tracing::error;
 
 use super::{
@@ -140,7 +138,7 @@ impl Approver {
         };
 
         // Verifico si esoty actualizado
-        let gov_id = approval_request.content.gov_id.clone();
+        let gov_id = approval_request.content.governance_id.clone();
         let governance = self.get_gov(ctx, gov_id).await?;
 
         match approval_request
@@ -182,7 +180,7 @@ impl Approver {
     async fn generate_vote(
         &self,
         ctx: &mut ActorContext<Approver>,
-        request_id: &DigestIdentifier,
+        pending_request_id: &DigestIdentifier,
         acceptance: bool,
     ) -> Result<Signature, Error> {
         // Node path.
@@ -248,7 +246,7 @@ pub enum ApproverCommand {
         our_key: KeyIdentifier,
     },
     NetworkResponse {
-        approval_res: Signed<ApprovalRequest>,
+        approval_res: Signed<ApprovalResponse>,
         request_id: String,
     },
     NetworkRequest {
@@ -299,18 +297,26 @@ impl Handler<Approver> for Approver {
                 if let Err(e) = self.approval(ctx, approval_req).await {
                     todo!()
                 } else if self.pass_votation == VotationType::AlwaysAccept {
+                    let request_id = match self.request.as_ref() {
+                        Some(value) => value,
+                        None => {
+                            return Err(ActorError::Get(
+                                "Request is missing".to_string(),
+                            ));
+                        }
+                    };
                     // si se ha generado correctamente y aprobamos por defecto
                     let approval = match self
                         .generate_vote(
                             ctx,
-                            &self.request.as_ref().unwrap().id,
+                            &request_id.id,
                             true,
                         )
                         .await
                     {
-                        Ok(validation) => ApprovalCommand::Response {
+                        Ok(approver) => ApprovalCommand::Response {
                             approval_res: ApprovalResponse::Signature(
-                                validation, true,
+                                approver, true,
                             ),
                             sender: our_key.clone(),
                         },
@@ -356,7 +362,61 @@ impl Handler<Approver> for Approver {
                 approval_req,
                 node_key,
                 our_key,
-            } => !unimplemented!(),
+            } => {
+                // Solo admitimos eventos FACT
+                let subject_id = if let EventRequest::Fact(event) =
+                    approval_req.content.event_request.content.clone()
+                {
+                    event.subject_id
+                } else {
+                    todo!()
+                };
+                let reciver_actor = 
+                    format!(
+                        "/user/node/{}/approver",
+                        subject_id
+                    );
+                
+                // Lanzar evento donde lanzar los retrys
+                let message = NetworkMessage {
+                    info: ComunicateInfo {
+                        request_id,
+                        sender: our_key,
+                        reciver: node_key,
+                        reciver_actor,
+                        schema: "".to_string(),
+                    },
+                    message: ActorMessage::ApproverReq(approval_req),
+                };
+                let target = RetryNetwork::default();
+
+                // Estrategia exponencial
+                let strategy = Strategy::ExponentialBackoff(
+                    ExponentialBackoffStrategy::new(
+                        6,
+                    )
+                );
+
+                let retry_actor = RetryActor::new(target, message, strategy);
+
+                let retry = if let Ok(retry) = ctx
+                    .create_child::<RetryActor<RetryNetwork>>(
+                        "retry",
+                        retry_actor,
+                    )
+                    .await
+                {
+                    retry
+                } else {
+                    todo!()
+                };
+
+                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    todo!()
+                };
+
+                todo!()
+            }
             ApproverCommand::NetworkResponse {
                 approval_res,
                 request_id,
@@ -367,3 +427,22 @@ impl Handler<Approver> for Approver {
         }
     }
 }
+
+#[async_trait]
+impl PersistentActor for Approver {
+    fn apply(&mut self, event: &ApproverEvent) {
+        match event {
+            ApproverEvent::AllTryHaveBeenMade { node_key } => {
+                self.pass_votation = VotationType::AlwaysAccept;
+            }
+            ApproverEvent::ReTry(msg) => {
+                //self.retry(msg);
+            }
+            ApproverEvent::EmitVote { value } => {
+                //self.emit_vote(value);
+            }
+        }
+    }
+}
+
+impl Storable for Approver {}
