@@ -65,7 +65,6 @@ impl Approval {
     // generate the approval request
     async fn create_approval_req(
         &mut self,
-        request_id: DigestIdentifier,
         ctx: &mut ActorContext<Approval>,
         req_evaluation: EvaluationReq,
         res_evaluation: EvalRes,
@@ -288,7 +287,7 @@ impl Actor for Approval {
 impl Handler<Approval> for Approval {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: ApprovalCommand,
         ctx: &mut ActorContext<Self>,
     ) -> Result<ApprovalRes, ActorError> {
@@ -301,7 +300,6 @@ impl Handler<Approval> for Approval {
                 // Creamos una petición de aprobación, miramos quorum y lanzamos approvers
                 let approval_req = match self
                     .create_approval_req(
-                        request_id.clone(),
                         ctx,
                         info.clone(),
                         response,
@@ -323,7 +321,7 @@ impl Handler<Approval> for Approval {
                 {
                     Ok(signers_quorum) => signers_quorum,
                     Err(e) => {
-                        // Mensaje al padre de error return Ok(ValidationResponse::Error(e))
+                        // Mensaje al padre de error return Ok(ApprovalRes::Error(e))
                         return Ok(ApprovalRes::Error(e));
                     }
                 };
@@ -411,13 +409,38 @@ impl Handler<Approval> for Approval {
                     {
                         // TODO error al persistir, propagar hacia arriba
                     };
+                } else {
+                    if self.approvers.is_empty(){
+                        // No hay suficientes aprobaciones, no se puede aprobar
+                        if let Err(e) = ctx
+                            .event(ApprovalEvent {
+                                actual_event_approval_response: self
+                                    .approvers_response
+                                    .clone(),
+                                approval: false
+                            })
+                            .await
+                        {
+                            // TODO error al persistir, propagar hacia arriba
+                        };
+                    }
                 }
             }
         }
         Ok(ApprovalRes::None)
     }
+    async fn on_event(
+        &mut self,
+        event: ApprovalEvent,
+        ctx: &mut ActorContext<Approval>,
+    ) {
+        if let Err(e) = self.persist(&event, ctx).await {
+            // TODO error al persistir, propagar hacia arriba
+        };
+    }
 }
 
+// Debemos persistir quienes han aprobado y quienes no
 #[async_trait]
 impl PersistentActor for Approval {
     fn apply(&mut self, event: &ApprovalEvent) {
