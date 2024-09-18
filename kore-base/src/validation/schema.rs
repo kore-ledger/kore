@@ -17,12 +17,12 @@ use super::{
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct ValidationSchema {
-    validators: HashSet<KeyIdentifier>,
+    creators: HashSet<KeyIdentifier>,
 }
 
 impl ValidationSchema {
-    pub fn new(validators: HashSet<KeyIdentifier>) -> Self {
-        ValidationSchema { validators }
+    pub fn new(creators: HashSet<KeyIdentifier>) -> Self {
+        ValidationSchema { creators }
     }
 }
 
@@ -57,9 +57,11 @@ impl Handler<ValidationSchema> for ValidationSchema {
                 validation_req,
                 info,
             } => {
-                let subject_owner =
-                    self.validators.get(&validation_req.signature.signer);
-                if subject_owner.is_none() {
+                // TODO lo primero que hay que hacer es comprobar la versión de la governanza,
+                // para comprobar que sea un creator.
+                let creator =
+                    self.creators.get(&validation_req.signature.signer);
+                if creator.is_none() {
                     todo!()
                 };
 
@@ -91,7 +93,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     .await?
             }
             ValidationSchemaCommand::UpdateValidators(validators) => {
-                self.validators = validators;
+                self.creators = validators;
             }
         };
         Ok(())

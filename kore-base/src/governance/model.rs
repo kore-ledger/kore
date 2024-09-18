@@ -4,14 +4,14 @@
 //! # Governance model.
 //!
 
+use generic_array::typenum::Unsigned;
 use identity::identifier::DigestIdentifier;
 
 use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
 
 use std::{
     collections::HashSet,
-    default,
-    fmt::{self, write},
+    fmt::{self}, hash::Hasher,
 };
 
 /// Governance quorum.
@@ -37,7 +37,7 @@ impl Quorum {
                 let min = std::cmp::min(fixed, &total_members);
                 signers >= *min
             }
-            Quorum::MAJORITY => signers >= total_members / 2 + 1,
+            Quorum::MAJORITY => signers > total_members / 2,
             Quorum::PERCENTAGE { percentage } => {
                 signers >= ((total_members as f64 * percentage).ceil() as u32)
             }
@@ -311,14 +311,55 @@ pub struct Role {
 #[allow(non_snake_case)]
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq)]
 pub enum Roles {
     APPROVER,
     EVALUATOR,
     VALIDATOR,
     WITNESS,
-    CREATOR,
+    CREATOR { quantity: u32},
     ISSUER,
+}
+
+// Implementación personalizada de PartialEq
+impl PartialEq for Roles {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Roles::APPROVER, Roles::APPROVER) |
+            (Roles::EVALUATOR, Roles::EVALUATOR) |
+            (Roles::VALIDATOR, Roles::VALIDATOR) |
+            (Roles::WITNESS, Roles::WITNESS) |
+            (Roles::ISSUER, Roles::ISSUER) |
+            (Roles::CREATOR { .. }, Roles::CREATOR { .. }) => true,
+            _ => false,
+        }
+    }
+}
+
+impl std::hash::Hash for Roles {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Roles::APPROVER => state.write_u8(0),
+            Roles::EVALUATOR => state.write_u8(1),
+            Roles::VALIDATOR => state.write_u8(2),
+            Roles::WITNESS => state.write_u8(3),
+            Roles::CREATOR { .. } => state.write_u8(4),
+            Roles::ISSUER => state.write_u8(5),
+        }
+    }
+}
+
+impl Roles {
+    pub fn to_str(&self) -> &str {
+        match self {
+            Roles::APPROVER => "approver",
+            Roles::EVALUATOR => "evaluator",
+            Roles::VALIDATOR => "validator",
+            Roles::WITNESS => "witness",
+            Roles::CREATOR { quantity: _ } => "creator",
+            Roles::ISSUER => "issuer",
+        }
+    }
 }
 
 impl fmt::Display for Roles {
@@ -328,7 +369,7 @@ impl fmt::Display for Roles {
             Roles::EVALUATOR => write!(f, "Evaluator"),
             Roles::VALIDATOR => write!(f, "Validator"),
             Roles::WITNESS => write!(f, "Witness"),
-            Roles::CREATOR => write!(f, "Creator"),
+            Roles::CREATOR { quantity } => write!(f, "Creator who can create {} subjects", quantity),
             Roles::ISSUER => write!(f, "Issuer"),
         }
     }
@@ -389,15 +430,12 @@ pub struct GovernanceModel {
 }
 
 /// Request stage.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RequestStage {
-    Approve,
     Evaluate,
+    Approve,
     Validate,
-    Witness,
-    #[default]
-    Create,
-    Invoke,
+    Witness
 }
 
 impl RequestStage {
@@ -407,19 +445,15 @@ impl RequestStage {
             RequestStage::Evaluate => "evaluate",
             RequestStage::Validate => "validate",
             RequestStage::Witness => "witness",
-            RequestStage::Create => "create",
-            RequestStage::Invoke => "issue",
         }
     }
 
-    pub fn to_role(&self) -> Roles {
+    pub fn to_role(&self) -> &str {
         match self {
-            RequestStage::Approve => Roles::APPROVER,
-            RequestStage::Evaluate => Roles::EVALUATOR,
-            RequestStage::Validate => Roles::VALIDATOR,
-            RequestStage::Witness => Roles::WITNESS,
-            RequestStage::Create => Roles::CREATOR,
-            RequestStage::Invoke => Roles::ISSUER,
+            RequestStage::Approve => Roles::APPROVER.to_str(),
+            RequestStage::Evaluate => Roles::EVALUATOR.to_str(),
+            RequestStage::Validate => Roles::VALIDATOR.to_str(),
+            RequestStage::Witness => Roles::WITNESS.to_str()
         }
     }
 }

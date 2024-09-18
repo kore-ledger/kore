@@ -14,7 +14,7 @@ pub mod schema;
 
 use crate::{
     db::Storable,
-    governance::{Governance, Quorum, RequestStage},
+    governance::{model::Roles, Governance, Quorum, RequestStage},
     model::{
         event::Event as KoreEvent,
         namespace,
@@ -49,7 +49,7 @@ use wasmtime::Engine;
 
 use std::{collections::HashSet, fs::Metadata, time::Duration};
 // TODO cuando se recibe una evaluación, validación lo que sea debería venir firmado y comprobar que es de quien dice ser, cuando llega por la network y cuando la envía un usuario.
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Default)]
 pub struct Evaluation {
     node_key: KeyIdentifier,
     // Quorum
@@ -174,7 +174,7 @@ impl Evaluation {
         // We handle the possible responses of governance
         match response {
             SubjectResponse::Governance(gov) => {
-                match gov.get_quorum_and_signers(RequestStage::Evaluate, schema_id, namespace) {
+                match gov.get_quorum_and_signers(Roles::EVALUATOR, schema_id, namespace) {
                     Ok((signers, quorum)) => Ok((signers, quorum, gov.get_version())),
                     Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
                 }

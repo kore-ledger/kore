@@ -5,17 +5,12 @@
 //!
 
 use crate::{
-    db::Storable,
-    evaluation::{evaluator::Evaluator, schema::EvaluationSchema, Evaluation},
-    model::{
-        event::Event as KoreEvent,
+    db::Storable, evaluation::{evaluator::Evaluator, schema::EvaluationSchema, Evaluation}, governance::model::Roles, model::{
+        event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
-    },
-    node::{NodeMessage, NodeResponse},
-    validation::{schema::ValidationSchema, validator::Validator, Validation},
-    Error, Governance, Node, DIGEST_DERIVATOR,
+    }, node::{NodeMessage, NodeResponse}, validation::{schema::ValidationSchema, validator::Validator, Validation}, Error, Governance, Node, DIGEST_DERIVATOR
 };
 
 use crate::governance::RequestStage;
@@ -39,6 +34,7 @@ use tracing::{debug, error};
 
 use std::{
     collections::HashSet,
+    ops::Sub,
     str::FromStr,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -90,24 +86,30 @@ impl Subject {
     ///
     pub fn from_event(
         subject_keys: KeyPair,
-        event: &Signed<KoreEvent>,
+        ledger: &Ledger,
     ) -> Result<Self, Error> {
         if let EventRequest::Create(request) =
-            &event.content.event_request.content
-        {
+            &ledger.event_request.content
+        {   
+            let properties = if let LedgerValue::Patch(patch) = ledger.value.clone() {
+                patch
+            } else {
+                return Err(Error::Subject("Invalid create event request".to_string()))
+            };
+
             let subject = Subject {
                 keys: subject_keys,
-                subject_id: event.content.subject_id.clone(),
+                subject_id: ledger.subject_id.clone(),
                 governance_id: request.governance_id.clone(),
-                genesis_gov_version: event.content.gov_version,
+                genesis_gov_version: ledger.gov_version,
                 namespace: Namespace::from(request.namespace.as_str()),
                 name: request.name.clone(),
                 schema_id: request.schema_id.clone(),
-                owner: event.content.event_request.signature.signer.clone(),
-                creator: event.content.event_request.signature.signer.clone(),
+                owner: ledger.event_request.signature.signer.clone(),
+                creator: ledger.event_request.signature.signer.clone(),
                 active: true,
                 sn: 0,
-                properties: event.content.patch.clone(),
+                properties
             };
             Ok(subject)
         } else {
@@ -301,6 +303,7 @@ impl Subject {
     ///
     fn metadata(&self) -> SubjectMetadata {
         SubjectMetadata {
+            keys: self.keys.public_key_pair(),
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
             schema_id: self.schema_id.clone(),
@@ -416,7 +419,7 @@ impl Subject {
             ctx.create_child("evaluation", evaluation).await?;
         } else {
             if self.build_executors(
-                RequestStage::Validate,
+                Roles::VALIDATOR,
                 &self.schema_id,
                 our_key.clone(),
                 &gov,
@@ -427,7 +430,7 @@ impl Subject {
             }
 
             if self.build_executors(
-                RequestStage::Evaluate,
+                Roles::EVALUATOR,
                 &self.schema_id,
                 our_key,
                 &gov,
@@ -496,13 +499,57 @@ impl Subject {
 
     fn build_executors(
         &self,
-        stage: RequestStage,
+        role: Roles,
         schema: &str,
         our_key: KeyIdentifier,
         gov: &Governance,
     ) -> bool {
-        gov.get_signers(stage.to_role(), schema, self.namespace.clone())
+        gov.get_signers(role, schema, self.namespace.clone())
             .contains(&our_key)
+    }
+
+    async fn get_governance_from_other_subject(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+    ) -> Result<Governance, Error> {
+        let governance_path =
+            ActorPath::from(format!("/user/node/{}", self.governance_id));
+
+        let governance_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&governance_path).await;
+
+        let response = if let Some(governance_actor) = governance_actor {
+            // We ask a governance
+            let response =
+                governance_actor.ask(SubjectCommand::GetGovernance).await;
+            match response {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a Subject {}",
+                        e
+                    )));
+                     
+                }
+            }
+        } else {
+            return Err(Error::Actor(format!(
+                "The governance actor was not found in the expected path {}",
+                governance_path
+            )));
+        };
+        
+        match response {
+            SubjectResponse::Governance(gov) => Ok(gov),
+            SubjectResponse::Error(error) => Err(Error::Actor(format!(
+                "The subject encountered problems when getting governance: {}",
+                error
+            ))),
+            _ => Err(Error::Actor(
+                "An unexpected response has been received from node actor"
+                    .to_owned(),
+            )),
+        }
     }
 }
 
@@ -561,6 +608,7 @@ pub struct SubjectState {
     Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
 pub struct SubjectMetadata {
+    pub keys: KeyPair,
     /// The identifier of the subject of the event.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance contract.
@@ -604,10 +652,7 @@ pub enum SubjectCommand {
     GetSubjectState,
     /// Get the subject metadata.
     GetSubjectMetadata,
-    /// Update the subject.
-    UpdateSubject {
-        event: Signed<KoreEvent>,
-    },
+    UpdateState { event: SubjectEvent },
     /// Sign request
     SignRequest(SignTypesSubject),
     /// Get governance if subject is a governance
@@ -629,7 +674,6 @@ pub enum SubjectResponse {
     /// None.
     None,
     Governance(Governance),
-    GovernanceId(DigestIdentifier),
     Owner(KeyIdentifier),
 }
 
@@ -638,20 +682,16 @@ impl Response for SubjectResponse {}
 /// Subject event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SubjectEvent {
-    /// The subject was updated.
-    Update { event: Signed<KoreEvent> },
-    /// The subject was patched.
-    Patch { value: ValueWrapper },
-    /// The subject was deleted.
-    Delete { subject_id: DigestIdentifier },
+    UpdateLedger { ledger_update: Signed<Ledger> },
+    UpdateLastEvent { event: Signed<KoreEvent> },
 }
 
-impl Event for Signed<KoreEvent> {}
+impl Event for SubjectEvent {}
 
 /// Actor implementation for `Subject`.
 #[async_trait]
 impl Actor for Subject {
-    type Event = Signed<KoreEvent>;
+    type Event = SubjectEvent;
     type Message = SubjectCommand;
     type Response = SubjectResponse;
 
@@ -699,11 +739,11 @@ impl Handler<Subject> for Subject {
             SubjectCommand::GetSubjectMetadata => {
                 Ok(SubjectResponse::SubjectMetadata(self.metadata()))
             }
-            SubjectCommand::UpdateSubject { event } => {
+            SubjectCommand::UpdateState { event } => {
                 debug!("Emit event to update subject.");
                 ctx.event(event).await?;
                 Ok(SubjectResponse::None)
-            }
+            },
             SubjectCommand::SignRequest(content) => {
                 let sign = match content {
                     SignTypesSubject::Validation(validation) => {
@@ -717,24 +757,25 @@ impl Handler<Subject> for Subject {
                 }
             }
             SubjectCommand::GetGovernance => {
-                // If a governance
+                // If is a governance
                 if self.governance_id.digest.is_empty() {
                     match Governance::try_from(self.state()) {
                         Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
                         Err(e) => return Ok(SubjectResponse::Error(e)),
                     }
                 }
-                // If not a governance
-                Ok(SubjectResponse::Error(Error::Subject(
-                    "Subject is not a governance".to_owned(),
-                )))
+                // If is not a governance
+                match self.get_governance_from_other_subject(ctx).await {
+                    Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
+                    Err(e) => return Ok(SubjectResponse::Error(e)),
+                }
             }
         }
     }
 
     async fn on_event(
         &mut self,
-        event: Signed<KoreEvent>,
+        event: SubjectEvent,
         ctx: &mut ActorContext<Subject>,
     ) {
         debug!("Persisting subject event.");
@@ -747,8 +788,9 @@ impl Handler<Subject> for Subject {
 
 #[async_trait]
 impl PersistentActor for Subject {
-    fn apply(&mut self, event: &Signed<KoreEvent>) {
-        match &event.content.event_request.content {
+    fn apply(&mut self, event: &SubjectEvent) {
+        /*
+                match &event.content.event_request.content {
             EventRequest::Fact(_) => {
                 if event.content.approved {
                     debug!("Applying patch to subject: {:?}", self.subject_id);
@@ -772,6 +814,7 @@ impl PersistentActor for Subject {
             }
             _ => {}
         }
+         */
     }
 }
 
@@ -815,7 +858,8 @@ mod tests {
             content: event,
             signature,
         };
-        let subject = Subject::from_event(keys, &signed_event).unwrap();
+        let ledger = Ledger::from(signed_event.content);
+        let subject = Subject::from_event(keys, &ledger).unwrap();
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
@@ -899,7 +943,9 @@ mod tests {
             content: event,
             signature,
         };
-        let subject_a = Subject::from_event(keys, &signed_event).unwrap();
+
+        let ledger = Ledger::from(signed_event.content);
+        let subject_a = Subject::from_event(keys, &ledger).unwrap();
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

@@ -272,7 +272,7 @@ mod tests {
         model::{request::EventRequest, signature::Signature},
         system,
         tests::create_system,
-        Config, DbConfig,
+        DbConfig,
     };
 
     use super::*;

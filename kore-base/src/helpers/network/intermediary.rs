@@ -1,4 +1,5 @@
 use crate::{
+    distribution::distributor::{Distributor, DistributorCommand},
     evaluation::{
         evaluator::{Evaluator, EvaluatorCommand},
         schema::{EvaluationSchema, EvaluationSchemaCommand},
@@ -249,6 +250,33 @@ impl Intermediary {
                             };
                         }
                     }
+                    ActorMessage::DistributionLastEventReq(event, subject_keys) => {
+                        // Distributor path.
+                        let distributor_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+                        
+                        // TODO SI ESTE sdistributor no está disponible quiere decir que el sujeto no existe, enviarlo al distributor del nodo
+                        let distributor_actor: Option<ActorRef<Distributor>> =
+                            self.system.get_actor(&distributor_path).await;
+
+                        // We obtain the validator
+                        if let Some(distributor_actor) = distributor_actor {
+                            if let Err(error) = distributor_actor
+                                .tell(DistributorCommand::LastEventDistribution { event, subject_keys, info: message.info })
+                                .await
+                            {
+                                return Err(Error::Actor(format!(
+                                    "Can not send a message to Validator Actor(Req): {}",
+                                    error
+                                )));
+                            };
+                        } else {
+                            return Err(Error::Actor(format!(
+                                "The node actor was not found in the expected path {}",
+                                distributor_path
+                            )));
+                        };
+                    }
                     ActorMessage::ValidationRes(validation_res) => {
                         // Validator path.
                         let validator_path =
@@ -307,6 +335,7 @@ impl Intermediary {
                             )));
                         };
                     }
+                    ActorMessage::DistributionLedgerRes(_, _) => todo!()
                 }
             }
         }
