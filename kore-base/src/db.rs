@@ -117,7 +117,7 @@ impl Collection for DbCollection {
             DbCollection::SQLite(store) => store.iter(reverse),
         }
     }
-    
+
     // TODO, implementar
     fn purge(&mut self) -> Result<(), StoreError> {
         todo!()

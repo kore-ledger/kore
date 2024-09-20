@@ -5,6 +5,7 @@ mod api;
 mod approval;
 pub mod config;
 mod db;
+mod distribution;
 pub mod error;
 mod evaluation;
 mod governance;
@@ -14,7 +15,6 @@ mod node;
 mod request;
 mod subject;
 mod validation;
-mod distribution;
 
 use actor::{ActorSystem, SystemRef};
 pub use api::Api;

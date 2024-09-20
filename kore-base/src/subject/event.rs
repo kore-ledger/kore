@@ -1,4 +1,7 @@
-use actor::{Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler, Message, Response};
+use actor::{
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
+};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
@@ -7,12 +10,12 @@ use crate::{db::Storable, Error, Event as KoreEvent, Signed};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerEvent {
-    pub last_event: Signed<KoreEvent>
+    pub last_event: Signed<KoreEvent>,
 }
 
 #[derive(Debug, Clone)]
 pub enum LedgerEventCommand {
-    UpdateLastEvent { event: Signed<KoreEvent> }
+    UpdateLastEvent { event: Signed<KoreEvent> },
 }
 
 impl Message for LedgerEventCommand {}
@@ -22,7 +25,7 @@ impl Event for Signed<KoreEvent> {}
 #[derive(Debug, Clone)]
 pub enum LedgerEventResponse {
     Error(Error),
-    Ok
+    Ok,
 }
 
 impl Response for LedgerEventResponse {}
@@ -48,7 +51,7 @@ impl Actor for LedgerEvent {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         self.stop_store(ctx).await.map_err(|_| ActorError::Stop)?;
-        
+
         Ok(())
     }
 }
@@ -66,7 +69,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                 if let Err(e) = ctx.event(event).await {
                     todo!()
                 };
-            },
+            }
         }
 
         Ok(LedgerEventResponse::Ok)

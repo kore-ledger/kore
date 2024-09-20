@@ -1,21 +1,34 @@
 use std::time::Duration;
 
-use actor::{Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage, Strategy};
+use actor::{
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
+    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
+    Strategy,
+};
 use async_trait::async_trait;
-use identity::{identifier::{DigestIdentifier, KeyIdentifier}, keys::KeyPair};
+use identity::{
+    identifier::{DigestIdentifier, KeyIdentifier},
+    keys::KeyPair,
+};
 use network::ComunicateInfo;
 
-use crate::{governance::model::Roles, model::{event::Ledger, network::RetryNetwork, Namespace}, ActorMessage, Error, Event as KoreEvent, EventRequest, Governance, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectCommand, SubjectResponse};
+use crate::{
+    governance::model::Roles,
+    model::{event::Ledger, network::RetryNetwork, Namespace},
+    ActorMessage, Error, Event as KoreEvent, EventRequest, Governance,
+    NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject,
+    SubjectCommand, SubjectResponse,
+};
 
 use super::Distribution;
 
 pub enum EventTypes {
     Ledger(Ledger),
-    Event(KoreEvent)
+    Event(KoreEvent),
 }
 
 impl EventTypes {
-    pub fn get_subject_id(&self) -> DigestIdentifier{
+    pub fn get_subject_id(&self) -> DigestIdentifier {
         match self {
             EventTypes::Ledger(ledger) => ledger.subject_id.clone(),
             EventTypes::Event(event) => event.subject_id.clone(),
@@ -25,7 +38,7 @@ impl EventTypes {
     pub fn get_event_request(&self) -> EventRequest {
         match self {
             EventTypes::Ledger(ledger) => ledger.event_request.content.clone(),
-            EventTypes::Event(event) => event.event_request.content.clone()
+            EventTypes::Event(event) => event.event_request.content.clone(),
         }
     }
 }
@@ -33,32 +46,39 @@ impl EventTypes {
 pub struct Distributor {}
 
 impl Distributor {
-    async fn check_first_event(&self,ctx: &mut ActorContext<Distributor>, event: EventTypes, signer: KeyIdentifier, schema: &str) -> Result<bool, Error> {
-         // TODO verificar la versión de la governanza
+    async fn check_first_event(
+        &self,
+        ctx: &mut ActorContext<Distributor>,
+        event: EventTypes,
+        signer: KeyIdentifier,
+        schema: &str,
+    ) -> Result<bool, Error> {
+        // TODO verificar la versión de la governanza
 
         let subject_id = event.get_subject_id();
         // path del sujeto
-        let subject_path = ActorPath::from(format!(
-            "/user/node/{}",
-            subject_id
-        ));
+        let subject_path =
+            ActorPath::from(format!("/user/node/{}", subject_id));
 
         // Sujeto
-        let subject_actor: Option<ActorRef<Subject>> = ctx.system().get_actor(&subject_path).await;
+        let subject_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&subject_path).await;
 
         // Si el sujeto existe.
         let (namespace, create) = if let Some(subject_actor) = subject_actor {
-            let response = match subject_actor.ask(SubjectCommand::GetSubjectMetadata).await
-                {
-                    Ok(response) => response,
-                    Err(e) => todo!(),
-                };
+            let response = match subject_actor
+                .ask(SubjectCommand::GetSubjectMetadata)
+                .await
+            {
+                Ok(response) => response,
+                Err(e) => todo!(),
+            };
 
-                let metadata = match response {
-                    SubjectResponse::SubjectMetadata(metadata) => metadata,
-                    _ => todo!(),
-                };
-                (metadata.namespace.to_string(), false)
+            let metadata = match response {
+                SubjectResponse::SubjectMetadata(metadata) => metadata,
+                _ => todo!(),
+            };
+            (metadata.namespace.to_string(), false)
             // Si el sujeto no existe.
         } else {
             // El primero evento tiene que ser de creación sí o sí
@@ -70,10 +90,12 @@ impl Distributor {
             }
         };
 
-        // SI es una gov ver si la aceptamos, 
+        // SI es una gov ver si la aceptamos,
         if schema == "governance" {
             // SI nada falla
-            if let Ok(know) = self.authorized_gov(ctx, &subject_id.to_string()).await {
+            if let Ok(know) =
+                self.authorized_gov(ctx, &subject_id.to_string()).await
+            {
                 // SI la governanza no la conocemos, por ende no está autorizada.
                 if !know {
                     todo!()
@@ -86,12 +108,14 @@ impl Distributor {
         else {
             let gov = self.get_gov(ctx, subject_id.clone()).await;
             let gov = match gov {
-                Ok(gov) => {
-                   gov
-                },
-                Err(e) => todo!()
+                Ok(gov) => gov,
+                Err(e) => todo!(),
             };
-            let creators = gov.get_signers(Roles::CREATOR { quantity: 0 }, schema, Namespace::from(namespace));
+            let creators = gov.get_signers(
+                Roles::CREATOR { quantity: 0 },
+                schema,
+                Namespace::from(namespace),
+            );
             if !creators.iter().any(|x| x.clone() == signer) {
                 todo!()
             };
@@ -100,11 +124,18 @@ impl Distributor {
         Ok(create)
     }
 
-    async fn update_subject(&self, ctx: &mut ActorContext<Distributor>, events: Vec<Signed<KoreEvent>>) -> Result<(), Error> {
+    async fn update_subject(
+        &self,
+        ctx: &mut ActorContext<Distributor>,
+        events: Vec<Signed<KoreEvent>>,
+    ) -> Result<(), Error> {
         let subject_id = events[0].content.subject_id.clone();
 
-        let subject_path = ActorPath::from(format!("/user/node/{}", subject_id));
-        let subject_actor: ActorRef<Subject> = if let Some(subject_actor) = ctx.system().get_actor(&subject_path).await {
+        let subject_path =
+            ActorPath::from(format!("/user/node/{}", subject_id));
+        let subject_actor: ActorRef<Subject> = if let Some(subject_actor) =
+            ctx.system().get_actor(&subject_path).await
+        {
             subject_actor
         } else {
             return Err(Error::Actor(format!(
@@ -119,13 +150,17 @@ impl Distributor {
             if subject_id != event.content.subject_id {
                 todo!()
             }
-            
         }
         Ok(())
     }
 
-    async fn create_subject(&self, ctx: &mut ActorContext<Distributor>, ledger: Ledger, subject_keys: Option<KeyPair>) -> Result<(), Error> {
-        let subject_keys = if let Some(subject_keys) = subject_keys{
+    async fn create_subject(
+        &self,
+        ctx: &mut ActorContext<Distributor>,
+        ledger: Ledger,
+        subject_keys: Option<KeyPair>,
+    ) -> Result<(), Error> {
+        let subject_keys = if let Some(subject_keys) = subject_keys {
             subject_keys
         } else {
             todo!()
@@ -136,8 +171,9 @@ impl Distributor {
             ctx.system().get_actor(&node_path).await;
 
         let response = if let Some(node_actor) = node_actor {
-            let response =
-            node_actor.ask(NodeMessage::CreateNewSubject(ledger, subject_keys)).await;
+            let response = node_actor
+                .ask(NodeMessage::CreateNewSubject(ledger, subject_keys))
+                .await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -163,14 +199,19 @@ impl Distributor {
         }
     }
 
-    async fn authorized_gov(&self, ctx: &mut ActorContext<Distributor>, subject_id: &str) -> Result<bool, Error> {
+    async fn authorized_gov(
+        &self,
+        ctx: &mut ActorContext<Distributor>,
+        subject_id: &str,
+    ) -> Result<bool, Error> {
         let node_path = ActorPath::from("/user/node");
         let node_actor: Option<ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
 
         let response = if let Some(node_actor) = node_actor {
-            let response =
-            node_actor.ask(NodeMessage::IKnowThisGov(subject_id.to_owned())).await;
+            let response = node_actor
+                .ask(NodeMessage::IKnowThisGov(subject_id.to_owned()))
+                .await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -201,7 +242,8 @@ impl Distributor {
         subject_id: DigestIdentifier,
     ) -> Result<Governance, Error> {
         // Governance path
-        let governance_path = ActorPath::from(format!("/user/node/{}", subject_id));
+        let governance_path =
+            ActorPath::from(format!("/user/node/{}", subject_id));
         // Governance actor.
         let governance_actor: Option<ActorRef<Subject>> =
             ctx.system().get_actor(&governance_path).await;
@@ -272,7 +314,7 @@ pub enum DistributorCommand {
         subject_keys: Option<KeyPair>,
         last_event: Option<Signed<KoreEvent>>,
         info: ComunicateInfo,
-    }
+    },
 }
 
 impl Message for DistributorCommand {}
@@ -287,7 +329,12 @@ impl Handler<Distributor> for Distributor {
     ) -> Result<(), ActorError> {
         match msg {
             DistributorCommand::SendDistribution => todo!(),
-            DistributorCommand::NetworkDistribution { event, subject_keys, node_key, our_key } => {
+            DistributorCommand::NetworkDistribution {
+                event,
+                subject_keys,
+                node_key,
+                our_key,
+            } => {
                 let reciver_actor = format!(
                     "/user/node/{}/distributor",
                     event.content.subject_id
@@ -301,7 +348,10 @@ impl Handler<Distributor> for Distributor {
                         reciver_actor,
                         schema: "".to_owned(),
                     },
-                    message: ActorMessage::DistributionLastEventReq(event, subject_keys),
+                    message: ActorMessage::DistributionLastEventReq(
+                        event,
+                        subject_keys,
+                    ),
                 };
 
                 let target = RetryNetwork::default();
@@ -327,26 +377,39 @@ impl Handler<Distributor> for Distributor {
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
                     todo!()
                 };
-            },
+            }
             DistributorCommand::NetworkResponse => todo!(),
-            DistributorCommand::LastEventDistribution { event, subject_keys, info } => {
-               
-               let event_type = EventTypes::Event(event.content.clone());
-                let new_subject = match self.check_first_event(ctx, event_type, event.signature.signer.clone(), &info.schema).await {
+            DistributorCommand::LastEventDistribution {
+                event,
+                subject_keys,
+                info,
+            } => {
+                let event_type = EventTypes::Event(event.content.clone());
+                let new_subject = match self
+                    .check_first_event(
+                        ctx,
+                        event_type,
+                        event.signature.signer.clone(),
+                        &info.schema,
+                    )
+                    .await
+                {
                     Ok(new) => new,
-                    Err(e) => todo!()
+                    Err(e) => todo!(),
                 };
                 // Llegados a este punto hemos verificado si es la primera copia o no,
                 // Si es una gobernanza y está authorizada o el firmante del evento tiene el rol
                 // de creator.
-                
+
                 // Ahora hay que crear el sujeto si no existe sn = 0, o aplicar los eventos
                 // verificando los hashes y aplicando el patch.
 
                 if new_subject {
                     // Creamos el sujeto.
                     let ledger = Ledger::from(event.content);
-                    if let Err(e) = self.create_subject(ctx, ledger, subject_keys).await {
+                    if let Err(e) =
+                        self.create_subject(ctx, ledger, subject_keys).await
+                    {
                         todo!()
                     };
                 } else {
@@ -355,26 +418,41 @@ impl Handler<Distributor> for Distributor {
                     // Actualizamos el sujeto.
                     todo!()
                 }
-            },
+            }
             DistributorCommand::LedgerDistribution {
                 mut events,
                 info,
                 last_event,
-                subject_keys
+                subject_keys,
             } => {
                 if events.is_empty() {
                     todo!()
                 }
 
                 let event_type = EventTypes::Ledger(events[0].content.clone());
-                let new_subject = match self.check_first_event(ctx, event_type, events[0].signature.signer.clone(), &info.schema).await {
+                let new_subject = match self
+                    .check_first_event(
+                        ctx,
+                        event_type,
+                        events[0].signature.signer.clone(),
+                        &info.schema,
+                    )
+                    .await
+                {
                     Ok(new) => new,
-                    Err(e) => todo!()
+                    Err(e) => todo!(),
                 };
 
                 if new_subject {
                     // Creamos el sujeto.
-                    if let Err(e) = self.create_subject(ctx, events[0].content.clone(), subject_keys).await {
+                    if let Err(e) = self
+                        .create_subject(
+                            ctx,
+                            events[0].content.clone(),
+                            subject_keys,
+                        )
+                        .await
+                    {
                         todo!()
                     };
 
@@ -385,8 +463,8 @@ impl Handler<Distributor> for Distributor {
                     }
                 }
                 // Verificar firmas del evento, el que lo envió es el owner del subject que se va a modificar.
-                    // Checkear hashes, y apply patchs
-                    // Actualizamos el sujeto.
+                // Checkear hashes, y apply patchs
+                // Actualizamos el sujeto.
             }
         };
 
@@ -417,5 +495,4 @@ impl Handler<Distributor> for Distributor {
             }
         }
     }
-
 }

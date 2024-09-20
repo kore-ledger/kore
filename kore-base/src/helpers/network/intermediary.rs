@@ -250,11 +250,14 @@ impl Intermediary {
                             };
                         }
                     }
-                    ActorMessage::DistributionLastEventReq(event, subject_keys) => {
+                    ActorMessage::DistributionLastEventReq(
+                        event,
+                        subject_keys,
+                    ) => {
                         // Distributor path.
                         let distributor_path =
                             ActorPath::from(message.info.reciver_actor.clone());
-                        
+
                         // TODO SI ESTE sdistributor no está disponible quiere decir que el sujeto no existe, enviarlo al distributor del nodo
                         let distributor_actor: Option<ActorRef<Distributor>> =
                             self.system.get_actor(&distributor_path).await;
@@ -262,7 +265,13 @@ impl Intermediary {
                         // We obtain the validator
                         if let Some(distributor_actor) = distributor_actor {
                             if let Err(error) = distributor_actor
-                                .tell(DistributorCommand::LastEventDistribution { event, subject_keys, info: message.info })
+                                .tell(
+                                    DistributorCommand::LastEventDistribution {
+                                        event,
+                                        subject_keys,
+                                        info: message.info,
+                                    },
+                                )
                                 .await
                             {
                                 return Err(Error::Actor(format!(
@@ -335,7 +344,7 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::DistributionLedgerRes(_, _) => todo!()
+                    ActorMessage::DistributionLedgerRes(_, _) => todo!(),
                 }
             }
         }

@@ -178,11 +178,7 @@ impl Governance {
         signers
     }
 
-    fn get_quorum(
-        &self,
-        role: Roles,
-        schema: &str,
-    ) -> Result<Quorum, Error> {
+    fn get_quorum(&self, role: Roles, schema: &str) -> Result<Quorum, Error> {
         let policies = self.model.policies.iter().find(|e| e.id == schema);
         if let Some(policies) = policies {
             match role {
@@ -296,20 +292,18 @@ impl Governance {
                                     );
                                 }
                             }
-                        } else 
-                            if let Some(state) = our_roles
-                                .get(&(schema.clone(), rol.role.clone()))
-                            {
-                                let mut state = state.clone();
-                                state.push(rol.namespace);
-                                our_roles.insert((schema, rol.role), state);
-                            } else {
-                                our_roles.insert(
-                                    (schema, rol.role),
-                                    vec![rol.namespace],
-                                );
-                            }
-                        
+                        } else if let Some(state) =
+                            our_roles.get(&(schema.clone(), rol.role.clone()))
+                        {
+                            let mut state = state.clone();
+                            state.push(rol.namespace);
+                            our_roles.insert((schema, rol.role), state);
+                        } else {
+                            our_roles.insert(
+                                (schema, rol.role),
+                                vec![rol.namespace],
+                            );
+                        }
                     }
                 }
                 Roles::CREATOR { quantity } => {
@@ -332,21 +326,16 @@ impl Governance {
                                     );
                                 }
                             }
-                        } else 
-                            if let Some(state) =
-                                creators.get(&(schema.clone(), member.clone()))
-                            {
-                                let mut state = state.clone();
-                                state.push(rol.namespace);
-                                creators
-                                    .insert((schema, member), state.clone());
-                            } else {
-                                creators.insert(
-                                    (schema, member),
-                                    vec![rol.namespace],
-                                );
-                            }
-                        
+                        } else if let Some(state) =
+                            creators.get(&(schema.clone(), member.clone()))
+                        {
+                            let mut state = state.clone();
+                            state.push(rol.namespace);
+                            creators.insert((schema, member), state.clone());
+                        } else {
+                            creators
+                                .insert((schema, member), vec![rol.namespace]);
+                        }
                     } else if is_all {
                         for member in all_members.clone() {
                             if schema == "NOT_GOVERNANCE" {
@@ -367,23 +356,21 @@ impl Governance {
                                         );
                                     }
                                 }
-                            } else 
-                                if let Some(state) = creators
-                                    .get(&(schema.clone(), member.clone()))
-                                {
-                                    let mut state = state.clone();
-                                    state.push(rol.namespace.clone());
-                                    creators.insert(
-                                        (schema.clone(), member),
-                                        state.clone(),
-                                    );
-                                } else {
-                                    creators.insert(
-                                        (schema.clone(), member),
-                                        vec![rol.namespace.clone()],
-                                    );
-                                }
-                            
+                            } else if let Some(state) =
+                                creators.get(&(schema.clone(), member.clone()))
+                            {
+                                let mut state = state.clone();
+                                state.push(rol.namespace.clone());
+                                creators.insert(
+                                    (schema.clone(), member),
+                                    state.clone(),
+                                );
+                            } else {
+                                creators.insert(
+                                    (schema.clone(), member),
+                                    vec![rol.namespace.clone()],
+                                );
+                            }
                         }
                     }
                 }

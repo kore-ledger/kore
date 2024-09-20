@@ -4,7 +4,10 @@ use actor::{
 };
 use async_trait::async_trait;
 use distributor::{Distributor, DistributorCommand};
-use identity::{identifier::{DigestIdentifier, KeyIdentifier}, keys::KeyPair};
+use identity::{
+    identifier::{DigestIdentifier, KeyIdentifier},
+    keys::KeyPair,
+};
 use tracing::event;
 
 use crate::{
@@ -101,10 +104,10 @@ impl Distribution {
         ctx: &mut ActorContext<Distribution>,
         event: Signed<KoreEvent>,
         signer: KeyIdentifier,
-        subject_keys: Option<KeyPair>
+        subject_keys: Option<KeyPair>,
     ) -> Result<(), ActorError> {
         let child = ctx
-            .create_child(&format!("{}", signer), Distributor{})
+            .create_child(&format!("{}", signer), Distributor {})
             .await;
         let distributor_actor = match child {
             Ok(child) => child,
@@ -115,7 +118,12 @@ impl Distribution {
 
         if signer != our_key {
             distributor_actor
-                .tell(DistributorCommand::NetworkDistribution { event, subject_keys, node_key: signer, our_key } )
+                .tell(DistributorCommand::NetworkDistribution {
+                    event,
+                    subject_keys,
+                    node_key: signer,
+                    our_key,
+                })
                 .await?
         }
 
@@ -143,7 +151,6 @@ impl Handler<Distribution> for Distribution {
         msg: DistributionCommand,
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
-
         let subject_id = msg.0.content.subject_id.clone();
         // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
         let (governance, metadata) =
@@ -170,7 +177,13 @@ impl Handler<Distribution> for Distribution {
         };
 
         for witness in witnesses {
-           self.create_distributors(ctx, msg.0.clone(), witness, subject_keys.clone()) .await?
+            self.create_distributors(
+                ctx,
+                msg.0.clone(),
+                witness,
+                subject_keys.clone(),
+            )
+            .await?
         }
         Ok(())
     }

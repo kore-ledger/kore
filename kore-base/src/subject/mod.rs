@@ -616,7 +616,8 @@ impl Subject {
             if let EventRequest::Fact(_) =
                 new_ledger.content.event_request.content.clone()
             {
-                let LedgerValue::Patch(json_patch) = new_ledger.content.value.clone()
+                let LedgerValue::Patch(json_patch) =
+                    new_ledger.content.value.clone()
                 else {
                     // error el evento fue correcto pero en el value no vino un patch
                     todo!()
@@ -624,12 +625,14 @@ impl Subject {
 
                 let patch_json = serde_json::from_value::<Patch>(json_patch.0)
                     .map_err(|e| todo!())?;
-                let Ok(()) = patch(&mut subject.properties.0, &patch_json) else {
+                let Ok(()) = patch(&mut subject.properties.0, &patch_json)
+                else {
                     // No se pudo aplicar el patch, error
                     todo!()
                 };
 
-                let hash_state_after_patch = subject.properties
+                let hash_state_after_patch = subject
+                    .properties
                     .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                 if hash_state_after_patch != new_ledger.content.state_hash {
@@ -641,12 +644,13 @@ impl Subject {
                 // Error no se puede recibir un evento de creación si ya está creado
                 todo!();
             } else {
-                let hash_without_patch = subject.properties
-                .hash_id(new_ledger.signature.content_hash.derivator)?;
+                let hash_without_patch = subject
+                    .properties
+                    .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                 if hash_without_patch != new_ledger.content.state_hash {
-                // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
-                // propierties deberían ser iguales.
+                    // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
+                    // propierties deberían ser iguales.
                 }
             };
         }
@@ -656,8 +660,9 @@ impl Subject {
                 // Error hay un patch cuando debería haber un error,
             }
 
-            let hash_without_patch = subject.properties
-                    .hash_id(new_ledger.signature.content_hash.derivator)?;
+            let hash_without_patch = subject
+                .properties
+                .hash_id(new_ledger.signature.content_hash.derivator)?;
 
             if hash_without_patch != new_ledger.content.state_hash {
                 // Error, Si el evento no fue correcto no se aplicó nungún patch, por ende las dos
@@ -668,12 +673,22 @@ impl Subject {
         Ok(())
     }
 
-    async fn verify_new_ledger_events(&self, ctx: &mut ActorContext<Subject>, events: Vec<Signed<Ledger>>) -> Result<(), Error> {
+    async fn verify_new_ledger_events(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        events: Vec<Signed<Ledger>>,
+    ) -> Result<(), Error> {
         let mut subject = self.clone();
         let mut last_ledger = self.get_last_ledger_state(ctx).await?;
 
         for event in events {
-            if let Err(e) = Subject::verify_new_ledger_event(&mut subject, &last_ledger, &event).await {
+            if let Err(e) = Subject::verify_new_ledger_event(
+                &mut subject,
+                &last_ledger,
+                &event,
+            )
+            .await
+            {
                 if let Error::Sn(_) = e {
                     // El evento que estamos aplicando no es el siguiente.
                     continue;
@@ -877,7 +892,8 @@ impl Handler<Subject> for Subject {
             }
             SubjectCommand::UpdateLedger { events } => {
                 debug!("Emit event to update subject.");
-                if let Err(e) = self.verify_new_ledger_events(ctx, events).await {
+                if let Err(e) = self.verify_new_ledger_events(ctx, events).await
+                {
                     Ok(SubjectResponse::Error(e))
                 } else {
                     Ok(SubjectResponse::None)
@@ -928,7 +944,10 @@ impl Handler<Subject> for Subject {
 #[async_trait]
 impl PersistentActor for Subject {
     fn apply(&mut self, event: &Signed<Ledger>) {
-        if event.content.appr_success && event.content.eval_success && event.content.vali_success {
+        if event.content.appr_success
+            && event.content.eval_success
+            && event.content.vali_success
+        {
             match &event.content.event_request.content {
                 EventRequest::Create(start_request) => todo!(),
                 EventRequest::Fact(fact_request) => {
@@ -936,21 +955,22 @@ impl PersistentActor for Subject {
                         LedgerValue::Patch(value_wrapper) => value_wrapper,
                         LedgerValue::Error(e) => todo!(),
                     };
-                        
-                    let patch_json = match serde_json::from_value::<Patch>(json_patch.0) {
-                        Ok(patch) => patch,
-                        Err(e) => todo!()
+
+                    let patch_json =
+                        match serde_json::from_value::<Patch>(json_patch.0) {
+                            Ok(patch) => patch,
+                            Err(e) => todo!(),
+                        };
+
+                    if let Err(e) = patch(&mut self.properties.0, &patch_json) {
+                        // No se pudo aplicar el patch, error
+                        todo!()
                     };
-                    
-                if let Err(e) = patch(&mut self.properties.0, &patch_json) {
-                    // No se pudo aplicar el patch, error
-                    todo!()
-                };
-                },
+                }
                 EventRequest::Transfer(transfer_request) => {
                     // TODO hay que darle una vuelta.
                     self.owner = transfer_request.new_owner.clone();
-                },
+                }
                 EventRequest::EOL(eolrequest) => self.active = false,
             }
         }

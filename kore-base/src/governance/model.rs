@@ -11,7 +11,8 @@ use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
 
 use std::{
     collections::HashSet,
-    fmt::{self}, hash::Hasher,
+    fmt::{self},
+    hash::Hasher,
 };
 
 /// Governance quorum.
@@ -317,7 +318,7 @@ pub enum Roles {
     EVALUATOR,
     VALIDATOR,
     WITNESS,
-    CREATOR { quantity: u32},
+    CREATOR { quantity: u32 },
     ISSUER,
 }
 
@@ -325,12 +326,12 @@ pub enum Roles {
 impl PartialEq for Roles {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Roles::APPROVER, Roles::APPROVER) |
-            (Roles::EVALUATOR, Roles::EVALUATOR) |
-            (Roles::VALIDATOR, Roles::VALIDATOR) |
-            (Roles::WITNESS, Roles::WITNESS) |
-            (Roles::ISSUER, Roles::ISSUER) |
-            (Roles::CREATOR { .. }, Roles::CREATOR { .. }) => true,
+            (Roles::APPROVER, Roles::APPROVER)
+            | (Roles::EVALUATOR, Roles::EVALUATOR)
+            | (Roles::VALIDATOR, Roles::VALIDATOR)
+            | (Roles::WITNESS, Roles::WITNESS)
+            | (Roles::ISSUER, Roles::ISSUER)
+            | (Roles::CREATOR { .. }, Roles::CREATOR { .. }) => true,
             _ => false,
         }
     }
@@ -369,7 +370,9 @@ impl fmt::Display for Roles {
             Roles::EVALUATOR => write!(f, "Evaluator"),
             Roles::VALIDATOR => write!(f, "Validator"),
             Roles::WITNESS => write!(f, "Witness"),
-            Roles::CREATOR { quantity } => write!(f, "Creator who can create {} subjects", quantity),
+            Roles::CREATOR { quantity } => {
+                write!(f, "Creator who can create {} subjects", quantity)
+            }
             Roles::ISSUER => write!(f, "Issuer"),
         }
     }
@@ -435,7 +438,7 @@ pub enum RequestStage {
     Evaluate,
     Approve,
     Validate,
-    Witness
+    Witness,
 }
 
 impl RequestStage {
@@ -453,7 +456,7 @@ impl RequestStage {
             RequestStage::Approve => Roles::APPROVER.to_str(),
             RequestStage::Evaluate => Roles::EVALUATOR.to_str(),
             RequestStage::Validate => Roles::VALIDATOR.to_str(),
-            RequestStage::Witness => Roles::WITNESS.to_str()
+            RequestStage::Witness => Roles::WITNESS.to_str(),
         }
     }
 }

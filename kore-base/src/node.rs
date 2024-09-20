@@ -12,16 +12,28 @@ use std::{
 use async_std::fs;
 
 use crate::{
-    db::{Database, Storable}, evaluation, helpers::encrypted_pass::EncryptedPass, model::{
-        event::Ledger, request::EventRequest, signature::{Signature, Signed}, HashId, SignTypesNode
-    }, subject, validation::proof::ValidationProof, Api, Error, Event as KoreEvent, Subject, DIGEST_DERIVATOR
+    db::{Database, Storable},
+    evaluation,
+    helpers::encrypted_pass::EncryptedPass,
+    model::{
+        event::Ledger,
+        request::EventRequest,
+        signature::{Signature, Signed},
+        HashId, SignTypesNode,
+    },
+    subject,
+    validation::proof::ValidationProof,
+    Api, Error, Event as KoreEvent, Subject, DIGEST_DERIVATOR,
 };
 
 use identity::{
     identifier::{
-        derive::{digest::DigestDerivator, KeyDerivator}, DigestIdentifier, KeyIdentifier,
+        derive::{digest::DigestDerivator, KeyDerivator},
+        DigestIdentifier, KeyIdentifier,
     },
-    keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair, Secp256k1KeyPair},
+    keys::{
+        Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair, Secp256k1KeyPair,
+    },
 };
 
 use actor::{
@@ -310,12 +322,15 @@ impl Handler<Node> for Node {
                     Err(e) => return Ok(NodeResponse::Error(e)),
                 };
 
-                if let Err(e) = ctx.create_child(&format!("{}", ledger.subject_id), subject).await {
+                if let Err(e) = ctx
+                    .create_child(&format!("{}", ledger.subject_id), subject)
+                    .await
+                {
                     Ok(NodeResponse::Error(Error::Actor(format!("{}", e))))
                 } else {
-                    Ok(NodeResponse::SonWasCreated)    
+                    Ok(NodeResponse::SonWasCreated)
                 }
-            },
+            }
             NodeMessage::GetOwnerIdentifier => {
                 Ok(NodeResponse::OwnerIdentifier(self.owner()))
             }
@@ -381,8 +396,14 @@ impl Handler<Node> for Node {
                 }
             }
             NodeMessage::IKnowThisGov(subject_id) => {
-                let know_gov = self.known_governances.iter().any(|x| x.clone() == subject_id);
-                let our_gov = self.owned_governances.iter().any(|x| x.clone() == subject_id);
+                let know_gov = self
+                    .known_governances
+                    .iter()
+                    .any(|x| x.clone() == subject_id);
+                let our_gov = self
+                    .owned_governances
+                    .iter()
+                    .any(|x| x.clone() == subject_id);
 
                 Ok(NodeResponse::IKnowThisGov(know_gov || our_gov))
             }

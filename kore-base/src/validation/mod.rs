@@ -14,8 +14,8 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Quorum, RequestStage},
     model::{
-        event::Event as KoreEvent,
-        signature::Signed, Namespace, SignTypesNode, SignTypesSubject,
+        event::Event as KoreEvent, signature::Signed, Namespace, SignTypesNode,
+        SignTypesSubject,
     },
     node::{Node, NodeMessage, NodeResponse},
     subject::{Subject, SubjectCommand, SubjectResponse, SubjectState},
@@ -290,7 +290,8 @@ impl Actor for Validation {
     ) -> Result<(), ActorError> {
         debug!("Starting validation actor with init store.");
         let prefix = ctx.path().parent().key();
-        self.init_store("validation", Some(prefix), false, ctx).await
+        self.init_store("validation", Some(prefix), false, ctx)
+            .await
     }
 
     async fn pre_stop(
@@ -427,23 +428,21 @@ impl Handler<Validation> for Validation {
                         {
                             // TODO error al persistir, propagar hacia arriba
                         };
-                    } else 
-                        if self.validators.is_empty() {
-                            // we have received all the responses and the quorum has not been met
-                            if let Err(e) = ctx
-                                .event(ValidationEvent {
-                                    actual_proof: self.actual_proof.clone(),
-                                    actual_event_validation_response: self
-                                        .validators_response
-                                        .clone(),
-                                    validation: false,
-                                })
-                                .await
-                            {
-                                // TODO error al persistir, propagar hacia arriba
-                            };
-                        }
-                    
+                    } else if self.validators.is_empty() {
+                        // we have received all the responses and the quorum has not been met
+                        if let Err(e) = ctx
+                            .event(ValidationEvent {
+                                actual_proof: self.actual_proof.clone(),
+                                actual_event_validation_response: self
+                                    .validators_response
+                                    .clone(),
+                                validation: false,
+                            })
+                            .await
+                        {
+                            // TODO error al persistir, propagar hacia arriba
+                        };
+                    }
                 } else {
                     // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                 }
