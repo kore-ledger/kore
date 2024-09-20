@@ -100,6 +100,8 @@ impl ValidationProof {
         let event_hash = info.event.hash_id(derivator).map_err(|_| {
             Error::Validation("Error hashing event".to_string())
         })?;
+
+        // TODO revisar esto, que los valores sean correctos, había un error con la transferencia
         match request {
             EventRequest::Create(start_request) => Ok(Self {
                 governance_id: start_request.governance_id.clone(),
@@ -114,7 +116,7 @@ impl ValidationProof {
                 genesis_governance_version: info.gov_version,
                 name: start_request.name.clone(),
             }),
-            EventRequest::EOL(_) | EventRequest::Fact(_) => Ok(Self {
+            _ => Ok(Self {
                 governance_id: info.subject.governance_id.clone(),
                 governance_version: info.gov_version,
                 subject_id: info.subject.subject_id.clone(),
@@ -124,19 +126,6 @@ impl ValidationProof {
                 prev_event_hash: info.event.content.hash_prev_event,
                 event_hash,
                 subject_public_key: info.subject.subject_key.clone(),
-                genesis_governance_version: info.subject.genesis_gov_version,
-                name: info.subject.name.clone(),
-            }),
-            EventRequest::Transfer(transfer) => Ok(Self {
-                governance_id: info.subject.governance_id.clone(),
-                governance_version: info.gov_version,
-                subject_id: info.subject.subject_id.clone(),
-                sn: info.event.content.sn,
-                schema_id: info.subject.schema_id.clone(),
-                namespace: info.subject.namespace.clone(),
-                prev_event_hash: info.event.content.hash_prev_event,
-                event_hash,
-                subject_public_key: transfer.public_key.clone(),
                 genesis_governance_version: info.subject.genesis_gov_version,
                 name: info.subject.name.clone(),
             }),

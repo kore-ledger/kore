@@ -252,7 +252,7 @@ impl Actor for Node {
         };
         // Start store
         debug!("Creating Node store");
-        self.init_store("node", false, ctx).await
+        self.init_store("node", None, false, ctx).await
     }
 
     async fn pre_stop(

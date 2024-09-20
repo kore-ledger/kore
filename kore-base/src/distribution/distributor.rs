@@ -35,11 +35,6 @@ pub struct Distributor {}
 impl Distributor {
     async fn check_first_event(&self,ctx: &mut ActorContext<Distributor>, event: EventTypes, signer: KeyIdentifier, schema: &str) -> Result<bool, Error> {
          // TODO verificar la versión de la governanza
-         /*
-        if distribution_data.is_empty() {
-            todo!()
-        }         
-        */
 
         let subject_id = event.get_subject_id();
         // path del sujeto
@@ -360,26 +355,9 @@ impl Handler<Distributor> for Distributor {
                     // Actualizamos el sujeto.
                     todo!()
                 }
-                /*
-                if sn == 0 {
-                    
-                    
-                    let _ = distribution_data.remove(0);
-                    if distribution_data.is_empty() {
-                        // solo había un evento de creación, terminar TODO
-                        todo!()
-                    }
-                }
-                 */
-                
-                
-                // método update subject.
-                
-
-
             },
             DistributorCommand::LedgerDistribution {
-                events,
+                mut events,
                 info,
                 last_event,
                 subject_keys
@@ -394,6 +372,21 @@ impl Handler<Distributor> for Distributor {
                     Err(e) => todo!()
                 };
 
+                if new_subject {
+                    // Creamos el sujeto.
+                    if let Err(e) = self.create_subject(ctx, events[0].content.clone(), subject_keys).await {
+                        todo!()
+                    };
+
+                    let _ = events.remove(0);
+                    if events.is_empty() {
+                        // solo había un evento de creación, terminar TODO
+                        todo!()
+                    }
+                }
+                // Verificar firmas del evento, el que lo envió es el owner del subject que se va a modificar.
+                    // Checkear hashes, y apply patchs
+                    // Actualizamos el sujeto.
             }
         };
 

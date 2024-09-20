@@ -289,7 +289,8 @@ impl Actor for Validation {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Starting validation actor with init store.");
-        self.init_store("validation", false, ctx).await
+        let prefix = ctx.path().parent().key();
+        self.init_store("validation", Some(prefix), false, ctx).await
     }
 
     async fn pre_stop(

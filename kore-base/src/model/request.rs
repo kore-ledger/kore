@@ -98,7 +98,7 @@ pub struct TransferRequest {
     /// The identifier of the subject to transfer ownership of.
     pub subject_id: DigestIdentifier,
     /// The identifier of the public key of the new owner.
-    pub public_key: KeyIdentifier,
+    pub new_owner: KeyIdentifier,
 }
 
 /// A struct representing a request to mark a subject as end-of-life.
