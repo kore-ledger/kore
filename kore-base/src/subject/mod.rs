@@ -24,6 +24,7 @@ use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
     Handler, Message, Response,
 };
+use event::{LedgerEvent, LedgerEventCommand, LedgerEventResponse};
 use identity::{
     identifier::{
         derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
@@ -94,11 +95,11 @@ impl Subject {
     ///
     pub fn from_event(
         subject_keys: KeyPair,
-        ledger: &Ledger,
+        ledger: &Signed<Ledger>,
     ) -> Result<Self, Error> {
-        if let EventRequest::Create(request) = &ledger.event_request.content {
+        if let EventRequest::Create(request) = &ledger.content.event_request.content {
             let properties =
-                if let LedgerValue::Patch(patch) = ledger.value.clone() {
+                if let LedgerValue::Patch(patch) = ledger.content.value.clone() {
                     patch
                 } else {
                     return Err(Error::Subject(
@@ -108,14 +109,14 @@ impl Subject {
 
             let subject = Subject {
                 keys: subject_keys,
-                subject_id: ledger.subject_id.clone(),
+                subject_id: ledger.content.subject_id.clone(),
                 governance_id: request.governance_id.clone(),
-                genesis_gov_version: ledger.gov_version,
+                genesis_gov_version: ledger.content.gov_version,
                 namespace: Namespace::from(request.namespace.as_str()),
                 name: request.name.clone(),
                 schema_id: request.schema_id.clone(),
-                owner: ledger.event_request.signature.signer.clone(),
-                creator: ledger.event_request.signature.signer.clone(),
+                owner: ledger.content.event_request.signature.signer.clone(),
+                creator: ledger.content.event_request.signature.signer.clone(),
                 active: true,
                 sn: 0,
                 properties,
@@ -677,7 +678,7 @@ impl Subject {
         &self,
         ctx: &mut ActorContext<Subject>,
         events: Vec<Signed<Ledger>>,
-    ) -> Result<(), Error> {
+    ) -> Result<u64, Error> {
         let mut subject = self.clone();
         let mut last_ledger = self.get_last_ledger_state(ctx).await?;
 
@@ -705,7 +706,52 @@ impl Subject {
             last_ledger = event;
         }
 
-        Ok(())
+        Ok(last_ledger.content.sn)
+    }
+
+    async fn get_ledger(&self, ctx: &mut ActorContext<Subject>, last_sn: u64) -> Result<(Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>), Error> {
+        let store: Option<ActorRef<Store<Subject>>> =
+            ctx.get_child("store").await;
+        let response = if let Some(store) = store {
+            match store.ask(StoreCommand::GetEvents { from: last_sn as usize, to: (last_sn + 100) as usize }).await {
+                Ok(response) => response,
+                Err(e) => todo!(),
+            }
+        } else {
+            todo!()
+        };
+
+        match response {
+            StoreResponse::Events(events) => {
+                if events.len() < 100 {
+                    let last_event = self.get_last_event(ctx).await?;
+                    Ok((events, Some(last_event)))
+                } else {
+                    Ok((events, None))
+                }
+            },
+            _ => todo!()
+        }
+    }
+
+    async fn get_last_event(&self, ctx: &mut ActorContext<Subject>) -> Result<Signed<KoreEvent>, Error>{
+        let ledger_event_path = ActorPath::from(format!("/user/node/{}/ledgerEvent", self.subject_id));
+        let ledger_event_actor: Option<ActorRef<LedgerEvent>> = ctx.system().get_actor(&ledger_event_path).await;
+
+        let response = if let Some(ledger_event_actor) = ledger_event_actor {
+            if let Ok(response) = ledger_event_actor.ask(LedgerEventCommand::GetLastEvent).await {
+                response
+            } else {
+                todo!()
+            }
+        } else {
+            todo!()
+        };
+
+        match response {
+            LedgerEventResponse::LastEvent(event) => Ok(event),
+            _ => todo!()
+        }
     }
 }
 
@@ -808,6 +854,9 @@ pub enum SubjectCommand {
     GetSubjectState,
     /// Get the subject metadata.
     GetSubjectMetadata,
+    GetLedger {
+        last_sn: u64
+    },
     UpdateLedger {
         events: Vec<Signed<Ledger>>,
     },
@@ -829,8 +878,8 @@ pub enum SubjectResponse {
     SubjectMetadata(SubjectMetadata),
     SignRequest(Signature),
     Error(Error),
-    /// None.
-    None,
+    LastSn(u64),
+    Ledger((Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>)),
     Governance(Governance),
     Owner(KeyIdentifier),
 }
@@ -881,6 +930,12 @@ impl Handler<Subject> for Subject {
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
+            SubjectCommand::GetLedger { last_sn } => {
+                match self.get_ledger(ctx, last_sn).await {
+                    Ok(response) => Ok(SubjectResponse::Ledger(response)),
+                    Err(e) => Ok(SubjectResponse::Error(e))
+                }
+            }
             SubjectCommand::GetOwner => {
                 Ok(SubjectResponse::Owner(self.owner.clone()))
             }
@@ -892,11 +947,10 @@ impl Handler<Subject> for Subject {
             }
             SubjectCommand::UpdateLedger { events } => {
                 debug!("Emit event to update subject.");
-                if let Err(e) = self.verify_new_ledger_events(ctx, events).await
+                match self.verify_new_ledger_events(ctx, events).await
                 {
-                    Ok(SubjectResponse::Error(e))
-                } else {
-                    Ok(SubjectResponse::None)
+                    Ok(last_sn) => Ok(SubjectResponse::LastSn(last_sn)),
+                    Err(e) => Ok(SubjectResponse::Error(e))   
                 }
             }
             SubjectCommand::SignRequest(content) => {
@@ -1013,14 +1067,15 @@ mod tests {
             DigestDerivator::Blake3_256,
         )
         .unwrap();
+        let ledger = Ledger::from(event);
         let signature =
-            Signature::new(&event, &keys, DigestDerivator::Blake3_256).unwrap();
-        let signed_event = Signed {
-            content: event,
+            Signature::new(&ledger, &keys, DigestDerivator::Blake3_256).unwrap();
+        let signed_ledger = Signed {
+            content: ledger,
             signature,
         };
-        let ledger = Ledger::from(signed_event.content);
-        let subject = Subject::from_event(keys, &ledger).unwrap();
+        
+        let subject = Subject::from_event(keys, &signed_ledger).unwrap();
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
@@ -1098,15 +1153,18 @@ mod tests {
             DigestDerivator::Blake3_256,
         )
         .unwrap();
+
+        let ledger = Ledger::from(event);
+
         let signature =
-            Signature::new(&event, &keys, DigestDerivator::Blake3_256).unwrap();
-        let signed_event = Signed {
-            content: event,
+            Signature::new(&ledger, &keys, DigestDerivator::Blake3_256).unwrap();
+        let signed_ledger = Signed {
+            content: ledger,
             signature,
         };
 
-        let ledger = Ledger::from(signed_event.content);
-        let subject_a = Subject::from_event(keys, &ledger).unwrap();
+        
+        let subject_a = Subject::from_event(keys, &signed_ledger).unwrap();
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

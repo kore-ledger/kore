@@ -380,8 +380,16 @@ impl Governance {
         (our_roles, creators)
     }
 
-    pub fn get_shcemas(&self) -> Vec<Schema> {
+    pub fn get_schemas(&self) -> Vec<Schema> {
         self.model.schemas.clone()
+    }
+
+    pub fn get_subject_id(&self) -> DigestIdentifier {
+        self.subject_id.clone()
+    }
+
+    pub fn get_governance_id(&self) -> DigestIdentifier {
+        self.governance_id.clone()
     }
 
     /// Check if the request is allowed.

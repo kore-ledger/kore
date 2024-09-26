@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
     Message,
@@ -8,21 +10,24 @@ use identity::{
     identifier::{DigestIdentifier, KeyIdentifier},
     keys::KeyPair,
 };
-use tracing::event;
 
 use crate::{
-    governance::model::Roles, subject::SubjectMetadata, Error,
-    Event as KoreEvent, Governance, Signed, Subject, SubjectCommand,
-    SubjectResponse,
+    governance::model::Roles, model::event::Ledger, subject::SubjectMetadata, Error, Event as KoreEvent, Governance, Signed, Subject, SubjectCommand, SubjectResponse
 };
 
 pub mod distributor;
 
 pub struct Distribution {
+    witnesses: HashSet<KeyIdentifier>,
     node_key: KeyIdentifier,
 }
 
 impl Distribution {
+
+    fn check_witness(&mut self, witness: KeyIdentifier) -> bool {
+        self.witnesses.remove(&witness)
+    }
+
     async fn get_gov_metadata(
         &self,
         ctx: &mut ActorContext<Distribution>,
@@ -103,11 +108,12 @@ impl Distribution {
         &self,
         ctx: &mut ActorContext<Distribution>,
         event: Signed<KoreEvent>,
+        ledger: Signed<Ledger>,
         signer: KeyIdentifier,
         subject_keys: Option<KeyPair>,
     ) -> Result<(), ActorError> {
         let child = ctx
-            .create_child(&format!("{}", signer), Distributor {})
+            .create_child(&format!("{}", signer), Distributor {node: signer.clone()})
             .await;
         let distributor_actor = match child {
             Ok(child) => child,
@@ -119,6 +125,7 @@ impl Distribution {
         if signer != our_key {
             distributor_actor
                 .tell(DistributorCommand::NetworkDistribution {
+                    ledger,  
                     event,
                     subject_keys,
                     node_key: signer,
@@ -139,7 +146,15 @@ impl Actor for Distribution {
 }
 
 #[derive(Debug, Clone)]
-pub struct DistributionCommand(Signed<KoreEvent>);
+pub enum DistributionCommand {
+    Create {
+        event: Signed<KoreEvent>,
+        ledger: Signed<Ledger>
+    },
+    Response {
+        sender: KeyIdentifier,
+    }
+}
 
 impl Message for DistributionCommand {}
 
@@ -151,40 +166,55 @@ impl Handler<Distribution> for Distribution {
         msg: DistributionCommand,
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
-        let subject_id = msg.0.content.subject_id.clone();
-        // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
-        let (governance, metadata) =
-            match self.get_gov_metadata(ctx, subject_id).await {
-                Ok(gov) => gov,
-                Err(e) => todo!(),
-            };
+        match msg {
+            DistributionCommand::Create { event, ledger } => {
 
-        let witnesses = if metadata.schema_id == "governance" {
-            governance.members_to_key_identifier()
-        } else {
-            governance.get_signers(
-                Roles::WITNESS,
-                &metadata.schema_id,
-                metadata.namespace,
-            )
-        };
-
-        // Si es un evento de creación necesitamos las claves del sujeto para crearlo en el otro nodo.
-        let subject_keys = if msg.0.content.sn == 0 {
-            Some(metadata.keys)
-        } else {
-            None
-        };
-
-        for witness in witnesses {
-            self.create_distributors(
-                ctx,
-                msg.0.clone(),
-                witness,
-                subject_keys.clone(),
-            )
-            .await?
+                let subject_id = ledger.content.subject_id.clone();
+                // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
+                let (governance, metadata) =
+                    match self.get_gov_metadata(ctx, subject_id).await {
+                        Ok(gov) => gov,
+                        Err(e) => todo!(),
+                    };
+        
+                let witnesses = if metadata.schema_id == "governance" {
+                    governance.members_to_key_identifier()
+                } else {
+                    governance.get_signers(
+                        Roles::WITNESS,
+                        &metadata.schema_id,
+                        metadata.namespace,
+                    )
+                };
+        
+                // Si es un evento de creación necesitamos las claves del sujeto para crearlo en el otro nodo.
+                let subject_keys = if ledger.content.sn == 0 {
+                    Some(metadata.keys)
+                } else {
+                    None
+                };
+        
+                for witness in witnesses {
+                    self.create_distributors(
+                        ctx,
+                        event.clone(),
+                        ledger.clone(),
+                        witness,
+                        subject_keys.clone(),
+                    )
+                    .await?
+                }
+            },
+            DistributionCommand::Response { sender } => {
+                if self.check_witness(sender) {
+                    if self.witnesses.is_empty() {
+                        // TODO todos los testigos recibieron la copia o se hicieron todos los intentos
+                        // terminar distribución.
+                    }
+                }
+            },
         }
+            
         Ok(())
     }
 }

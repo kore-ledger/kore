@@ -109,7 +109,7 @@ impl Runner {
                 // o si hacemos un copy o move. Deberíamos permitirlos?
                 let patched_state =
                     apply_patch(data.0.clone(), state.0.clone()).map_err(
-                        |e| Error::Runner(format!("Can not apply pathc {}", e)),
+                        |e| Error::Runner(format!("Can not apply patch {}", e)),
                     )?;
 
                 if Self::check_governance_state(&patched_state).is_ok() {

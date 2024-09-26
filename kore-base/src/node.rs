@@ -72,6 +72,8 @@ pub struct Node {
     known_governances: Vec<String>,
     /// Compiled contracts
     compiled_contracts: HashMap<String, CompiledContract>,
+
+    authorized_governances: Vec<String>
 }
 
 impl Node {
@@ -84,6 +86,7 @@ impl Node {
             owned_governances: Vec::new(),
             known_governances: Vec::new(),
             compiled_contracts: HashMap::new(),
+            authorized_governances: Vec::new()
         })
     }
 
@@ -105,6 +108,11 @@ impl Node {
     /// Adds a subject to the node's owned subjects.
     pub fn add_owned_subject(&mut self, subject_id: String) {
         self.owned_subjects.push(subject_id);
+    }
+
+    /// Adds a governance to the node's known governances.
+    pub fn add_authorized_governance(&mut self, governance_id: String) {
+        self.authorized_governances.push(governance_id);
     }
 
     /// Adds a governance to the node's known governances.
@@ -208,7 +216,7 @@ impl Node {
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessage {
-    CreateNewSubject(Ledger, KeyPair),
+    CreateNewSubject(Signed<Ledger>, KeyPair),
     RegisterSubject(SubjectsTypes),
     SignRequest(SignTypesNode),
     AmISubjectOwner(DigestIdentifier),
@@ -245,6 +253,7 @@ pub enum NodeEvent {
     KnownSubject(String),
     OwnedGovernance(String),
     KnownGovernance(String),
+    AuthorizedSubject(String)
 }
 
 impl Event for NodeEvent {}
@@ -294,6 +303,9 @@ impl PersistentActor for Node {
             NodeEvent::KnownGovernance(governance_id) => {
                 self.add_known_governance(governance_id.clone());
             }
+            NodeEvent::AuthorizedSubject(governance_id) => {
+                self.add_authorized_governance(governance_id.clone());
+            }
         }
     }
 
@@ -322,8 +334,9 @@ impl Handler<Node> for Node {
                     Err(e) => return Ok(NodeResponse::Error(e)),
                 };
 
+                // TODO cuando se crea un sujeto hay que guardar el evento de creación con la firma.
                 if let Err(e) = ctx
-                    .create_child(&format!("{}", ledger.subject_id), subject)
+                    .create_child(&format!("{}", ledger.content.subject_id), subject)
                     .await
                 {
                     Ok(NodeResponse::Error(Error::Actor(format!("{}", e))))
@@ -396,6 +409,7 @@ impl Handler<Node> for Node {
                 }
             }
             NodeMessage::IKnowThisGov(subject_id) => {
+                // TODO Esto no se puede utilizar para governanza autorizada, tiene que ir a parte
                 let know_gov = self
                     .known_governances
                     .iter()

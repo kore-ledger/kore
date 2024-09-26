@@ -16,6 +16,7 @@ pub struct LedgerEvent {
 #[derive(Debug, Clone)]
 pub enum LedgerEventCommand {
     UpdateLastEvent { event: Signed<KoreEvent> },
+    GetLastEvent
 }
 
 impl Message for LedgerEventCommand {}
@@ -25,6 +26,7 @@ impl Event for Signed<KoreEvent> {}
 #[derive(Debug, Clone)]
 pub enum LedgerEventResponse {
     Error(Error),
+    LastEvent(Signed<KoreEvent>),
     Ok,
 }
 
@@ -69,10 +71,12 @@ impl Handler<LedgerEvent> for LedgerEvent {
                 if let Err(e) = ctx.event(event).await {
                     todo!()
                 };
+                Ok(LedgerEventResponse::Ok)
+            },
+            LedgerEventCommand::GetLastEvent => {
+                Ok(LedgerEventResponse::LastEvent(self.last_event.clone()))
             }
         }
-
-        Ok(LedgerEventResponse::Ok)
     }
 
     async fn on_event(

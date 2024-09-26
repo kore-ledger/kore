@@ -136,7 +136,7 @@ impl Intermediary {
                     };
                 // Refactorizar esto TODO:
                 match message.message {
-                    ActorMessage::ValidationReq(validation_req) => {
+                    ActorMessage::ValidationReq{req} => {
                         // Validator path.
                         let validator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -149,7 +149,7 @@ impl Intermediary {
                             if let Some(validator_actor) = validator_actor {
                                 if let Err(error) = validator_actor
                                     .tell(ValidatorCommand::NetworkRequest {
-                                        validation_req,
+                                        validation_req: req,
                                         info: message.info,
                                     })
                                     .await
@@ -174,7 +174,7 @@ impl Intermediary {
                             if let Some(validator_actor) = validator_actor {
                                 if let Err(error) = validator_actor
                                     .tell(ValidationSchemaCommand::NetworkRequest {
-                                        validation_req,
+                                        validation_req: req,
                                         info: message.info,
                                     })
                                     .await
@@ -192,7 +192,7 @@ impl Intermediary {
                             };
                         }
                     }
-                    ActorMessage::EvaluationReq(evaluation_req) => {
+                    ActorMessage::EvaluationReq{req} => {
                         // Evaluator path.
                         let evaluator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -206,7 +206,7 @@ impl Intermediary {
                             if let Some(evaluator_actor) = evaluator_actor {
                                 if let Err(error) = evaluator_actor
                                     .tell(EvaluatorCommand::NetworkRequest {
-                                        evaluation_req,
+                                        evaluation_req: req,
                                         info: message.info,
                                     })
                                     .await
@@ -232,7 +232,7 @@ impl Intermediary {
                             if let Some(evaluator_actor) = evaluator_actor {
                                 if let Err(error) = evaluator_actor
                             .tell(EvaluationSchemaCommand::NetworkRequest {
-                                evaluation_req,
+                                evaluation_req: req,
                                 info: message.info,
                             })
                             .await
@@ -250,10 +250,11 @@ impl Intermediary {
                             };
                         }
                     }
-                    ActorMessage::DistributionLastEventReq(
+                    ActorMessage::DistributionLastEventReq {
                         event,
+                        ledger,
                         subject_keys,
-                    ) => {
+                    } => {
                         // Distributor path.
                         let distributor_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -268,6 +269,7 @@ impl Intermediary {
                                 .tell(
                                     DistributorCommand::LastEventDistribution {
                                         event,
+                                        ledger,
                                         subject_keys,
                                         info: message.info,
                                     },
@@ -286,7 +288,8 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::ValidationRes(validation_res) => {
+                    ActorMessage::DistributionLedgerReq { gov_version, actual_sn, subject_id } => todo!(),
+                    ActorMessage::ValidationRes{res} => {
                         // Validator path.
                         let validator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -298,7 +301,7 @@ impl Intermediary {
                         if let Some(validator_actor) = validator_actor {
                             if let Err(error) = validator_actor
                                 .tell(ValidatorCommand::NetworkResponse {
-                                    validation_res,
+                                    validation_res:res,
                                     request_id: message.info.request_id,
                                 })
                                 .await
@@ -315,7 +318,7 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::EvaluationRes(evaluation_res) => {
+                    ActorMessage::EvaluationRes{res} => {
                         // Validator path.
                         let evaluator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -327,7 +330,7 @@ impl Intermediary {
                         if let Some(evaluator_actor) = evaluator_actor {
                             if let Err(error) = evaluator_actor
                                 .tell(EvaluatorCommand::NetworkResponse {
-                                    evaluation_res,
+                                    evaluation_res: res,
                                     request_id: message.info.request_id,
                                 })
                                 .await
@@ -344,7 +347,8 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::DistributionLedgerRes(_, _) => todo!(),
+                    ActorMessage::DistributionLedgerRes { ledger, subject_keys, last_event } => todo!(),
+                    ActorMessage::DistributionLastEventRes { signer } => todo!()
                 }
             }
         }

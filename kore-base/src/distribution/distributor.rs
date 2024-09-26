@@ -11,16 +11,28 @@ use identity::{
     keys::KeyPair,
 };
 use network::ComunicateInfo;
+use tracing::event;
 
 use crate::{
+    evaluation::schema,
     governance::model::Roles,
+    intermediary::Intermediary,
     model::{event::Ledger, network::RetryNetwork, Namespace},
+    subject::{
+        event::{LedgerEvent, LedgerEventCommand, LedgerEventResponse},
+        SubjectMetadata,
+    },
     ActorMessage, Error, Event as KoreEvent, EventRequest, Governance,
     NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject,
     SubjectCommand, SubjectResponse,
 };
 
-use super::Distribution;
+use super::{Distribution, DistributionCommand};
+
+enum CheckGovernance {
+    Continue { metadata: SubjectMetadata },
+    Finish,
+}
 
 pub enum EventTypes {
     Ledger(Ledger),
@@ -43,7 +55,9 @@ impl EventTypes {
     }
 }
 
-pub struct Distributor {}
+pub struct Distributor {
+    pub node: KeyIdentifier,
+}
 
 impl Distributor {
     async fn check_first_event(
@@ -53,8 +67,6 @@ impl Distributor {
         signer: KeyIdentifier,
         schema: &str,
     ) -> Result<bool, Error> {
-        // TODO verificar la versión de la governanza
-
         let subject_id = event.get_subject_id();
         // path del sujeto
         let subject_path =
@@ -124,13 +136,11 @@ impl Distributor {
         Ok(create)
     }
 
-    async fn update_subject(
+    async fn get_subject(
         &self,
         ctx: &mut ActorContext<Distributor>,
-        events: Vec<Signed<KoreEvent>>,
-    ) -> Result<(), Error> {
-        let subject_id = events[0].content.subject_id.clone();
-
+        subject_id: DigestIdentifier,
+    ) -> Result<ActorRef<Subject>, Error> {
         let subject_path =
             ActorPath::from(format!("/user/node/{}", subject_id));
         let subject_actor: ActorRef<Subject> = if let Some(subject_actor) =
@@ -144,20 +154,13 @@ impl Distributor {
             )));
         };
 
-        // Verificar firmas de cada evento, que el owner sea el que firmo el Event.
-        // recorrer el vector hasta que
-        for event in events {
-            if subject_id != event.content.subject_id {
-                todo!()
-            }
-        }
-        Ok(())
+        Ok(subject_actor)
     }
 
     async fn create_subject(
         &self,
         ctx: &mut ActorContext<Distributor>,
-        ledger: Ledger,
+        ledger: Signed<Ledger>,
         subject_keys: Option<KeyPair>,
     ) -> Result<(), Error> {
         let subject_keys = if let Some(subject_keys) = subject_keys {
@@ -281,6 +284,259 @@ impl Distributor {
             )),
         }
     }
+
+    async fn update_event(
+        &self,
+        ctx: &mut ActorContext<Distributor>,
+        event: Signed<KoreEvent>,
+    ) -> Result<(), Error> {
+        let ledger_event_path = ActorPath::from(format!(
+            "/user/node/{}/ledgerEvent",
+            event.content.subject_id
+        ));
+        let ledger_event_actor: Option<ActorRef<LedgerEvent>> =
+            ctx.system().get_actor(&ledger_event_path).await;
+
+        let response = if let Some(ledger_event_actor) = ledger_event_actor {
+            match ledger_event_actor
+                .ask(LedgerEventCommand::UpdateLastEvent { event })
+                .await
+            {
+                Ok(res) => res,
+                Err(e) => todo!(),
+            }
+        } else {
+            todo!()
+        };
+
+        if let LedgerEventResponse::Error(e) = response {
+            todo!()
+        };
+
+        Ok(())
+    }
+
+    async fn get_metadata(
+        &self,
+        ctx: &mut ActorContext<Distributor>,
+        subject_id: DigestIdentifier,
+    ) -> Result<SubjectMetadata, Error> {
+        let subject_path =
+            ActorPath::from(format!("/user/node/{}", subject_id));
+        let subject_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&subject_path).await;
+
+        let response = if let Some(subject_actor) = subject_actor {
+            // We ask a node
+            let response =
+                subject_actor.ask(SubjectCommand::GetSubjectMetadata).await;
+            match response {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a subject {}",
+                        e
+                    )));
+                }
+            }
+        } else {
+            return Err(Error::Actor(format!(
+                "The node actor was not found in the expected path {}",
+                subject_path
+            )));
+        };
+
+        match response {
+            SubjectResponse::SubjectMetadata(metadata) => Ok(metadata),
+            _ => Err(Error::Actor(
+                "An unexpected response has been received from subject actor"
+                    .to_owned(),
+            )),
+        }
+    }
+
+    async fn get_ledger(
+        &self,
+        ctx: &mut ActorContext<Distributor>,
+        subject_id: DigestIdentifier,
+        last_sn: u64,
+    ) -> Result<(Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>), Error> {
+        let subject_path =
+            ActorPath::from(format!("/user/node/{}", subject_id));
+        let subject_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&subject_path).await;
+
+        let response = if let Some(subject_actor) = subject_actor {
+            // We ask a node
+            let response = subject_actor
+                .ask(SubjectCommand::GetLedger { last_sn })
+                .await;
+            match response {
+                Ok(response) => response,
+                Err(e) => {
+                    return Err(Error::Actor(format!(
+                        "Error when asking a subject {}",
+                        e
+                    )));
+                }
+            }
+        } else {
+            return Err(Error::Actor(format!(
+                "The node actor was not found in the expected path {}",
+                subject_path
+            )));
+        };
+
+        match response {
+            SubjectResponse::Ledger(data) => Ok(data),
+            SubjectResponse::Error(e) => todo!(),
+            _ => Err(Error::Actor(
+                "An unexpected response has been received from subject actor"
+                    .to_owned(),
+            )),
+        }
+    }
+
+    async fn check_gov_version(
+        &self,
+        ctx: &mut ActorContext<Distributor>,
+        subject_id: DigestIdentifier,
+        gov_version: Option<u64>,
+        info: ComunicateInfo,
+    ) -> Result<CheckGovernance, ActorError> {
+        let gov = match self.get_gov(ctx, subject_id.clone()).await {
+            Ok(gov) => gov,
+            Err(e) => todo!(),
+        };
+
+        let our_gov_version = gov.get_version();
+
+        if let Some(gov_version) = gov_version {
+            // Comprobar versión de la gobernanza, si no es la misma le digo que se actualice o me actualizo.
+            match our_gov_version.cmp(&gov_version) {
+                std::cmp::Ordering::Less => {
+                    let gov_id = if info.schema != "governance" {
+                        gov.get_governance_id()
+                    } else {
+                        gov.get_subject_id()
+                    };
+
+                    // Mi version es menor, me actualizo. y no le envío nada
+                    let new_info = ComunicateInfo {
+                        reciver: info.sender,
+                        sender: info.reciver,
+                        request_id: info.request_id,
+                        reciver_actor: format!(
+                            "/user/node/{}/distributor",
+                            gov_id
+                        ),
+                        schema: "governance".to_owned(),
+                    };
+
+                    let helper: Option<Intermediary> =
+                        ctx.system().get_helper("NetworkIntermediary").await;
+
+                    let mut helper = if let Some(helper) = helper {
+                        helper
+                    } else {
+                        // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
+                        // return Err(ActorError::Get("Error".to_owned()))
+                        return Err(ActorError::NotHelper);
+                    };
+
+                    // TODO firmar la respuesta. Por ahora no, ya que si no tengo la gov en la última versión no puedo saber si es un testigo.
+                    if let Err(e) = helper
+                        .send_command(network::CommandHelper::SendMessage {
+                            message: NetworkMessage {
+                                info: new_info,
+                                message: ActorMessage::DistributionLedgerReq {
+                                    gov_version: Some(our_gov_version),
+                                    actual_sn: Some(our_gov_version),
+                                    subject_id: gov_id,
+                                },
+                            },
+                        })
+                        .await
+                    {
+                        todo!()
+                        // error al enviar mensaje, propagar hacia arriba
+                    };
+
+                    return Ok(CheckGovernance::Finish);
+                }
+                std::cmp::Ordering::Equal => {}
+                std::cmp::Ordering::Greater => {
+                    // Su version es menor. Traslado la solicitud de actualización
+                    // a mi distributor gov.
+                    if info.schema != "governance" {
+                        let new_info = ComunicateInfo {
+                            reciver: info.reciver,
+                            sender: info.sender,
+                            request_id: info.request_id,
+                            reciver_actor: format!(
+                                "/user/node/{}/distributor",
+                                gov.get_governance_id()
+                            ),
+                            schema: "governance".to_owned(),
+                        };
+
+                        let distributor_path = ActorPath::from(format!(
+                            "/user/node/{}/distributor",
+                            gov.get_governance_id()
+                        ));
+                        let distributor_actor: ActorRef<Distributor> =
+                            if let Some(distributor_actor) =
+                                ctx.system().get_actor(&distributor_path).await
+                            {
+                                distributor_actor
+                            } else {
+                                todo!()
+                            };
+
+                        if let Err(e) = distributor_actor
+                            .tell(DistributorCommand::SendDistribution {
+                                gov_version: Some(gov_version),
+                                actual_sn: Some(gov_version),
+                                subject_id: gov.get_governance_id(),
+                                info: new_info,
+                            })
+                            .await
+                        {
+                            todo!()
+                        }
+                        return Ok(CheckGovernance::Finish);
+                    }
+                }
+            }
+        } else {
+            if info.schema != "governance" {
+                // Error me estás pidiendo el ledger para un sujeto que no es una governanza
+                // Y no me pasas la versión de lagov
+                todo!()
+            }
+        }
+
+        // Si es la misma compruebo que sea un testigo.
+        let metadata = match self.get_metadata(ctx, subject_id.clone()).await {
+            Ok(metadata) => metadata,
+            Err(e) => todo!(),
+        };
+
+        if !gov
+            .get_signers(
+                Roles::WITNESS,
+                &metadata.schema_id.clone(),
+                metadata.namespace.clone(),
+            )
+            .iter()
+            .any(|x| x.clone() == info.sender)
+        {
+            // Se podría dar que sí sea testigo pero que yo no tenga la última versión.
+            todo!()
+        };
+
+        Ok(CheckGovernance::Continue { metadata })
+    }
 }
 
 #[async_trait]
@@ -293,19 +549,28 @@ impl Actor for Distributor {
 #[derive(Debug, Clone)]
 pub enum DistributorCommand {
     // Un nodo nos solicitó la copia del ledger.
-    SendDistribution,
+    SendDistribution {
+        gov_version: Option<u64>,
+        actual_sn: Option<u64>,
+        subject_id: DigestIdentifier,
+        info: ComunicateInfo,
+    },
     // Enviar a un nodo la replicación.
     NetworkDistribution {
         event: Signed<KoreEvent>,
+        ledger: Signed<Ledger>,
         subject_keys: Option<KeyPair>,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
     // El nodo al que le enviamos la replica la recivió, parar los reintentos.
-    NetworkResponse,
+    NetworkResponse {
+        signer: KeyIdentifier,
+    },
     // Nos llega una replica, guardarla en informar que la hemos recivido
     LastEventDistribution {
         event: Signed<KoreEvent>,
+        ledger: Signed<Ledger>,
         subject_keys: Option<KeyPair>,
         info: ComunicateInfo,
     },
@@ -328,12 +593,83 @@ impl Handler<Distributor> for Distributor {
         ctx: &mut ActorContext<Distributor>,
     ) -> Result<(), ActorError> {
         match msg {
-            DistributorCommand::SendDistribution => todo!(),
+            DistributorCommand::SendDistribution {
+                actual_sn,
+                info,
+                gov_version,
+                subject_id,
+            } => {
+                let result = self
+                    .check_gov_version(
+                        ctx,
+                        subject_id.clone(),
+                        gov_version,
+                        info.clone(),
+                    )
+                    .await?;
+                let metadata = match result {
+                    CheckGovernance::Continue { metadata } => metadata,
+                    CheckGovernance::Finish => return Ok(()),
+                };
+
+                let (sn, subject_keys) = if let Some(actual_sn) = actual_sn {
+                    (actual_sn, None)
+                } else {
+                    (0, Some(metadata.keys))
+                };
+
+                // Sacar eventos.
+                let (ledger, last_event) =
+                    match self.get_ledger(ctx, subject_id.clone(), sn).await {
+                        Ok(res) => res,
+                        Err(e) => todo!(),
+                    };
+
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver,
+                    request_id: info.request_id,
+                    reciver_actor: format!(
+                        "/user/node/{}/distributor",
+                        subject_id
+                    ),
+                    schema: info.schema,
+                };
+
+                let helper: Option<Intermediary> =
+                    ctx.system().get_helper("NetworkIntermediary").await;
+
+                let mut helper = if let Some(helper) = helper {
+                    helper
+                } else {
+                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
+                    // return Err(ActorError::Get("Error".to_owned()))
+                    return Err(ActorError::NotHelper);
+                };
+
+                // TODO firmar la respuesta.
+                if let Err(e) = helper
+                    .send_command(network::CommandHelper::SendMessage {
+                        message: NetworkMessage {
+                            info: new_info,
+                            message: ActorMessage::DistributionLedgerRes {
+                                ledger,
+                                subject_keys,
+                                last_event,
+                            },
+                        },
+                    })
+                    .await
+                {
+                    todo!()
+                };
+            }
             DistributorCommand::NetworkDistribution {
                 event,
                 subject_keys,
                 node_key,
                 our_key,
+                ledger,
             } => {
                 let reciver_actor = format!(
                     "/user/node/{}/distributor",
@@ -348,10 +684,11 @@ impl Handler<Distributor> for Distributor {
                         reciver_actor,
                         schema: "".to_owned(),
                     },
-                    message: ActorMessage::DistributionLastEventReq(
+                    message: ActorMessage::DistributionLastEventReq {
+                        ledger,
                         event,
                         subject_keys,
-                    ),
+                    },
                 };
 
                 let target = RetryNetwork::default();
@@ -378,13 +715,59 @@ impl Handler<Distributor> for Distributor {
                     todo!()
                 };
             }
-            DistributorCommand::NetworkResponse => todo!(),
+            DistributorCommand::NetworkResponse { signer } => {
+                if signer == self.node {
+                    let distribution_path = ctx.path().parent();
+
+                    let distribution_actor: Option<ActorRef<Distribution>> =
+                        ctx.system().get_actor(&distribution_path).await;
+
+                    if let Some(distribution_actor) = distribution_actor {
+                        if let Err(e) = distribution_actor
+                            .tell(DistributionCommand::Response {
+                                sender: self.node.clone(),
+                            })
+                            .await
+                        {
+                            todo!()
+                        }
+                    } else {
+                        todo!()
+                    }
+
+                    let retry = if let Some(retry) =
+                        ctx.get_child::<RetryActor<RetryNetwork>>("retry").await
+                    {
+                        retry
+                    } else {
+                        todo!()
+                    };
+                    if let Err(e) = retry.tell(RetryMessage::End).await {
+                        todo!()
+                    };
+                    ctx.stop().await;
+                }
+            }
             DistributorCommand::LastEventDistribution {
                 event,
+                ledger,
                 subject_keys,
                 info,
             } => {
+                let result = self
+                    .check_gov_version(
+                        ctx,
+                        ledger.content.subject_id.clone(),
+                        Some(ledger.content.gov_version.clone()),
+                        info.clone(),
+                    )
+                    .await?;
+                if let CheckGovernance::Finish = result {
+                    return Ok(());
+                };
+
                 let event_type = EventTypes::Event(event.content.clone());
+                // TODO verificar la versión de la governanza
                 let new_subject = match self
                     .check_first_event(
                         ctx,
@@ -406,18 +789,135 @@ impl Handler<Distributor> for Distributor {
 
                 if new_subject {
                     // Creamos el sujeto.
-                    let ledger = Ledger::from(event.content);
                     if let Err(e) =
                         self.create_subject(ctx, ledger, subject_keys).await
                     {
                         todo!()
                     };
                 } else {
-                    // Verificar firmas del evento, el que lo envió es el owner del subject que se va a modificar.
-                    // Checkear hashes, y apply patchs
-                    // Actualizamos el sujeto.
-                    todo!()
+                    let subject_ref = match self
+                        .get_subject(ctx, ledger.content.subject_id.clone())
+                        .await
+                    {
+                        Ok(subject) => subject,
+                        Err(e) => todo!(),
+                    };
+
+                    let response = match subject_ref
+                        .ask(SubjectCommand::UpdateLedger {
+                            events: vec![ledger.clone()],
+                        })
+                        .await
+                    {
+                        Ok(res) => res,
+                        Err(e) => todo!(),
+                    };
+
+                    match response {
+                        SubjectResponse::LastSn(last_sn) => {
+                            // NO se aplicó el evento porque tendría un sn demasiado grande, no es el que toca o ya está aplicado.
+                            // Si fue demasiado grande
+                            if last_sn < ledger.content.sn {
+                                let gov = match self
+                                    .get_gov(
+                                        ctx,
+                                        ledger.content.subject_id.clone(),
+                                    )
+                                    .await
+                                {
+                                    Ok(gov) => gov,
+                                    Err(e) => todo!(),
+                                };
+
+                                let our_gov_version = gov.get_version();
+
+                                let new_info = ComunicateInfo {
+                                    reciver: info.sender,
+                                    sender: info.reciver,
+                                    request_id: info.request_id,
+                                    reciver_actor: format!(
+                                        "/user/node/{}/distributor",
+                                        ledger.content.subject_id
+                                    ),
+                                    schema: info.schema,
+                                };
+
+                                let helper: Option<Intermediary> = ctx
+                                    .system()
+                                    .get_helper("NetworkIntermediary")
+                                    .await;
+
+                                let mut helper = if let Some(helper) = helper {
+                                    helper
+                                } else {
+                                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
+                                    // return Err(ActorError::Get("Error".to_owned()))
+                                    return Err(ActorError::NotHelper);
+                                };
+
+                                // Pedimos copia del ledger.
+                                if let Err(e) = helper.send_command(network::CommandHelper::SendMessage {
+                                    message: NetworkMessage {
+                                    info: new_info,
+                                    message: ActorMessage::DistributionLedgerReq {
+                                        gov_version: Some(our_gov_version),
+                                        actual_sn: Some(last_sn),
+                                        subject_id: ledger.content.subject_id,
+                                    },
+                                },
+                            }).await {
+                                todo!()
+                                // error al enviar mensaje, propagar hacia arriba
+                            };
+
+                                return Ok(());
+                            }
+                        }
+                        SubjectResponse::Error(e) => todo!(),
+                        _ => todo!(),
+                    };
                 }
+
+                if let Err(e) = self.update_event(ctx, event.clone()).await {
+                    todo!()
+                };
+
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver.clone(),
+                    request_id: info.request_id,
+                    reciver_actor: format!(
+                        "/user/node/{}/distribution/{}",
+                        event.content.subject_id,
+                        info.reciver.clone()
+                    ),
+                    schema: info.schema.clone(),
+                };
+
+                let helper: Option<Intermediary> =
+                    ctx.system().get_helper("NetworkIntermediary").await;
+
+                let mut helper = if let Some(helper) = helper {
+                    helper
+                } else {
+                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
+                    // return Err(ActorError::Get("Error".to_owned()))
+                    return Err(ActorError::NotHelper);
+                };
+
+                if let Err(e) = helper
+                    .send_command(network::CommandHelper::SendMessage {
+                        message: NetworkMessage {
+                            info: new_info,
+                            message: ActorMessage::DistributionLastEventRes {
+                                signer: info.reciver,
+                            },
+                        },
+                    })
+                    .await
+                {
+                    todo!()
+                };
             }
             DistributorCommand::LedgerDistribution {
                 mut events,
@@ -428,8 +928,12 @@ impl Handler<Distributor> for Distributor {
                 if events.is_empty() {
                     todo!()
                 }
+                // TODO no voy a comparar governanzas, no creo que aquí haga falta, revizar en un futuro.
+
+                let subject_id = events[0].content.subject_id.clone();
 
                 let event_type = EventTypes::Ledger(events[0].content.clone());
+
                 let new_subject = match self
                     .check_first_event(
                         ctx,
@@ -446,11 +950,7 @@ impl Handler<Distributor> for Distributor {
                 if new_subject {
                     // Creamos el sujeto.
                     if let Err(e) = self
-                        .create_subject(
-                            ctx,
-                            events[0].content.clone(),
-                            subject_keys,
-                        )
+                        .create_subject(ctx, events[0].clone(), subject_keys)
                         .await
                     {
                         todo!()
@@ -458,20 +958,136 @@ impl Handler<Distributor> for Distributor {
 
                     let _ = events.remove(0);
                     if events.is_empty() {
-                        // solo había un evento de creación, terminar TODO
-                        todo!()
+                        // solo había un evento de creación, terminar
+                        return Ok(());
                     }
                 }
-                // Verificar firmas del evento, el que lo envió es el owner del subject que se va a modificar.
-                // Checkear hashes, y apply patchs
-                // Actualizamos el sujeto.
+
+                let subject_ref = match self
+                    .get_subject(ctx, events[0].content.subject_id.clone())
+                    .await
+                {
+                    Ok(subject) => subject,
+                    Err(e) => todo!(),
+                };
+
+                // Obtenemos el last_sn para saber si nos vale la pena intentar actualizar el ledger
+                let response = match subject_ref
+                    .ask(SubjectCommand::GetSubjectMetadata)
+                    .await
+                {
+                    Ok(res) => res,
+                    Err(e) => todo!(),
+                };
+
+                let metadata = match response {
+                    SubjectResponse::SubjectMetadata(data) => data,
+                    _ => todo!(),
+                };
+
+                let last_sn_events = if let Some(last_ledger) = events.last() {
+                    last_ledger.content.sn
+                } else {
+                    todo!()
+                };
+
+                let last_sn = if last_sn_events > metadata.sn {
+                    let response = match subject_ref
+                        .ask(SubjectCommand::UpdateLedger { events })
+                        .await
+                    {
+                        Ok(res) => res,
+                        Err(e) => todo!(),
+                    };
+
+                    let last_sn = match response {
+                        SubjectResponse::LastSn(last_sn) => last_sn,
+                        SubjectResponse::Error(e) => todo!(),
+                        _ => todo!(),
+                    };
+                    last_sn
+                } else {
+                    metadata.sn
+                };
+
+                if let Some(event) = last_event {
+
+                    // si me envía esto quiere decir que ya no hay más eventos, terminó,
+                    // Llegados a este punto este signed<Event> puede tener un sn inferior al mío.
+                    // Entonces le tenemos que decir que se actualice.
+                    // Si me actualicé ya no le digo nada más.
+                    if last_sn > last_sn_events {
+                        let our_path = ActorPath::from(format!("/user/node/{}/distributor", subject_id));
+                        let our_actor:Option<ActorRef<Distributor>> = ctx.system().get_actor(&our_path).await;
+                        if let Some(our_actor) = our_actor {
+                            if let Err(e) = our_actor.tell(DistributorCommand::SendDistribution { gov_version: Some(event.content.gov_version), actual_sn: Some(last_sn_events), subject_id, info }).await {
+                                todo!()
+                            }
+                        } else {
+
+                        }
+
+                    } else if last_sn < last_sn_events {
+                        if let Err(e) = self.update_event(ctx, event).await {
+                            todo!()
+                        };
+                    }
+                    return Ok(());
+                };
+
+                let gov_id = if info.schema == "governance" {
+                    metadata.subject_id
+                } else {
+                    metadata.governance_id
+                };
+
+                let gov = match self.get_gov(ctx, gov_id).await {
+                    Ok(gov) => gov,
+                    Err(e) => todo!(),
+                };
+
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver.clone(),
+                    request_id: info.request_id,
+                    reciver_actor: format!(
+                        "/user/node/{}/distributor",
+                        subject_id
+                    ),
+                    schema: info.schema.clone(),
+                };
+
+                let helper: Option<Intermediary> =
+                    ctx.system().get_helper("NetworkIntermediary").await;
+                let mut helper = if let Some(helper) = helper {
+                    helper
+                } else {
+                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
+                    // return Err(ActorError::Get("Error".to_owned()))
+                    return Err(ActorError::NotHelper);
+                };
+
+                if let Err(e) = helper
+                    .send_command(network::CommandHelper::SendMessage {
+                        message: NetworkMessage {
+                            info: new_info,
+                            message: ActorMessage::DistributionLedgerReq {
+                                gov_version: Some(gov.get_version()),
+                                actual_sn: Some(last_sn),
+                                subject_id,
+                            },
+                        },
+                    })
+                    .await
+                {
+                    todo!()
+                };
             }
         };
 
         Ok(())
     }
 
-    // Realmente nos interesa manejar el máximo número de reintentos¿? TODO
     async fn on_child_error(
         &mut self,
         error: ActorError,
@@ -479,14 +1095,22 @@ impl Handler<Distributor> for Distributor {
     ) {
         if let ActorError::Functional(error) = error {
             if &error == "Max retries reached." {
-                let replication_path = ctx.path().parent();
+                let distribuiton_path = ctx.path().parent();
 
                 // Replication actor.
-                let replication_actor: Option<ActorRef<Distribution>> =
-                    ctx.system().get_actor(&replication_path).await;
+                let distribuiton_actor: Option<ActorRef<Distribution>> =
+                    ctx.system().get_actor(&distribuiton_path).await;
 
-                if let Some(replication_actor) = replication_actor {
-                    //TODO
+                if let Some(distribuiton_actor) = distribuiton_actor {
+                    if let Err(e) = distribuiton_actor
+                        .tell(DistributionCommand::Response {
+                            sender: self.node.clone(),
+                        })
+                        .await
+                    {
+                        // TODO error, no se puede enviar la response
+                        // return Err(e);
+                    }
                 } else {
                     // TODO no se puede obtener evaluation! Parar.
                     // Can not obtain parent actor

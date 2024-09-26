@@ -1,5 +1,5 @@
 use actor::Message;
-use identity::keys::KeyPair;
+use identity::{identifier::{DigestIdentifier, KeyIdentifier}, keys::KeyPair};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
@@ -15,12 +15,36 @@ pub mod service;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ActorMessage {
-    ValidationReq(Signed<ValidationReq>),
-    ValidationRes(Signed<ValidationRes>),
-    EvaluationReq(Signed<EvaluationReq>),
-    EvaluationRes(Signed<EvaluationRes>),
-    DistributionLastEventReq(Signed<KoreEvent>, Option<KeyPair>),
-    DistributionLedgerRes(Vec<Signed<Ledger>>, Option<KeyPair>),
+    ValidationReq {
+        req: Signed<ValidationReq>,
+    },
+    ValidationRes {
+        res: Signed<ValidationRes>,
+    },
+    EvaluationReq {
+        req: Signed<EvaluationReq>,
+    },
+    EvaluationRes {
+        res: Signed<EvaluationRes>,
+    },
+    DistributionLastEventReq {
+        ledger: Signed<Ledger>,
+        event: Signed<KoreEvent>,
+        subject_keys: Option<KeyPair>,
+    },
+    DistributionLastEventRes {
+        signer: KeyIdentifier
+    },
+    DistributionLedgerReq {
+        gov_version: Option<u64>,
+        actual_sn: Option<u64>,
+        subject_id: DigestIdentifier,
+    },
+    DistributionLedgerRes {
+        ledger: Vec<Signed<Ledger>>,
+        subject_keys: Option<KeyPair>,
+        last_event: Option<Signed<KoreEvent>>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

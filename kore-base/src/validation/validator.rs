@@ -400,7 +400,7 @@ impl Handler<Validator> for Validator {
                         reciver_actor,
                         schema,
                     },
-                    message: ActorMessage::ValidationReq(validation_req),
+                    message: ActorMessage::ValidationReq{req: validation_req},
                 };
 
                 let target = RetryNetwork::default();
@@ -592,9 +592,9 @@ impl Handler<Validator> for Validator {
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
-                            message: ActorMessage::ValidationRes(
-                                signed_response,
-                            ),
+                            message: ActorMessage::ValidationRes{
+                                res: signed_response,
+                            },
                         },
                     })
                     .await
