@@ -359,7 +359,6 @@ async fn test_network_validation() {
     };
 
     // Envio el evento a validar
-    // TODO: Ya existe un actor de validator, por eso es probable que de error
     validation_actor
         .tell(ValidationCommand::Create {
             request_id: DigestIdentifier::default(),

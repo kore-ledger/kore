@@ -4,7 +4,7 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{Governance, RequestStage},
+    governance::{model::Roles, Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
         network::RetryNetwork, signature::Signature, SignTypesNode, TimeStamp,
@@ -98,7 +98,7 @@ impl Validator {
                 error
             ))),
             _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
+                "An unexpected response has been received from subject actor"
                     .to_owned(),
             )),
         }
@@ -265,7 +265,7 @@ impl Validator {
                 )
                 .await?
                 .get_signers(
-                    RequestStage::Validate.to_role(),
+                    Roles::VALIDATOR,
                     &new_proof.schema_id,
                     new_proof.namespace.clone(),
                 );
@@ -400,13 +400,15 @@ impl Handler<Validator> for Validator {
                         reciver_actor,
                         schema,
                     },
-                    message: ActorMessage::ValidationReq(validation_req),
+                    message: ActorMessage::ValidationReq {
+                        req: validation_req,
+                    },
                 };
 
                 let target = RetryNetwork::default();
 
                 let strategy = Strategy::FixedInterval(
-                    FixedIntervalStrategy::new(3, Duration::from_secs(2)),
+                    FixedIntervalStrategy::new(3, Duration::from_secs(3)),
                 );
 
                 let retry_actor = RetryActor::new(target, message, strategy);
@@ -483,6 +485,7 @@ impl Handler<Validator> for Validator {
                 validation_req,
                 info,
             } => {
+                // TODO lo primero que hay que hacer es comprobar la versión de la governanza,
                 if info.schema == "governance" {
                     // Aquí hay que comprobar que el owner del subject es el que envía la req.
                     let subject_path = ActorPath::from(format!(
@@ -591,9 +594,9 @@ impl Handler<Validator> for Validator {
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
-                            message: ActorMessage::ValidationRes(
-                                signed_response,
-                            ),
+                            message: ActorMessage::ValidationRes {
+                                res: signed_response,
+                            },
                         },
                     })
                     .await

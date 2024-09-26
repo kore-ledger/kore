@@ -10,8 +10,31 @@ pub fn schema() -> Value {
     json!({
       "$defs": {
         "role": {
-          "type": "string",
-          "enum": ["VALIDATOR", "CREATOR", "ISSUER", "WITNESS", "APPROVER", "EVALUATOR"]
+          "type": "object",
+          "properties": {
+            "role": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "role": {
+                      "const": "CREATOR"
+                    },
+                    "quantity": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": ["role", "quantity"]
+                },
+                {
+                  "type": "string",
+                  "enum": ["APPROVER", "EVALUATOR", "VALIDATOR", "WITNESS", "ISSUER"]
+                }
+              ]
+            }
+          },
+          "required": ["role"]
         },
         "quorum": {
           "oneOf": [

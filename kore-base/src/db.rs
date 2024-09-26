@@ -117,6 +117,11 @@ impl Collection for DbCollection {
             DbCollection::SQLite(store) => store.iter(reverse),
         }
     }
+
+    // TODO, implementar
+    fn purge(&mut self) -> Result<(), StoreError> {
+        todo!()
+    }
 }
 
 #[async_trait]
@@ -124,6 +129,7 @@ pub trait Storable: PersistentActor {
     async fn init_store(
         &mut self,
         name: &str,
+        prefix: Option<String>,
         encrypt: bool,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
@@ -153,7 +159,7 @@ pub trait Storable: PersistentActor {
             None
         };
         // Start store
-        self.start_store(name, ctx, db, key).await?;
+        self.start_store(name, prefix, ctx, db, key).await?;
         Ok(())
     }
 }

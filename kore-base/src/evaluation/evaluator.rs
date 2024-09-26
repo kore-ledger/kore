@@ -21,8 +21,7 @@ use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
 use identity::identifier::{
-    derive::digest::DigestDerivator, key_identifier, DigestIdentifier,
-    KeyIdentifier,
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -512,7 +511,9 @@ impl Handler<Evaluator> for Evaluator {
                         reciver_actor,
                         schema,
                     },
-                    message: ActorMessage::EvaluationReq(evaluation_req),
+                    message: ActorMessage::EvaluationReq {
+                        req: evaluation_req,
+                    },
                 };
 
                 let target = RetryNetwork::default();
@@ -707,9 +708,9 @@ impl Handler<Evaluator> for Evaluator {
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
-                            message: ActorMessage::EvaluationRes(
-                                signed_response,
-                            ),
+                            message: ActorMessage::EvaluationRes {
+                                res: signed_response,
+                            },
                         },
                     })
                     .await

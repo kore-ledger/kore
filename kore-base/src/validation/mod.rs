@@ -12,13 +12,10 @@ pub mod validator;
 
 use crate::{
     db::Storable,
-    governance::{Governance, Quorum, RequestStage},
+    governance::{model::Roles, Quorum, RequestStage},
     model::{
-        event::Event as KoreEvent,
-        namespace,
-        request::EventRequest,
-        signature::{self, Signature, Signed},
-        HashId, Namespace, SignTypesNode, SignTypesSubject,
+        event::Event as KoreEvent, signature::Signed, Namespace, SignTypesNode,
+        SignTypesSubject,
     },
     node::{Node, NodeMessage, NodeResponse},
     subject::{Subject, SubjectCommand, SubjectResponse, SubjectState},
@@ -185,7 +182,7 @@ impl Validation {
         // We handle the possible responses of governance
         match response {
             SubjectResponse::Governance(gov) => {
-                match gov.get_quorum_and_signers(RequestStage::Validate, schema_id, namespace) {
+                match gov.get_quorum_and_signers(Roles::VALIDATOR, schema_id, namespace) {
                     Ok(quorum_and_signers) => Ok(quorum_and_signers),
                     Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
                 }
@@ -292,7 +289,9 @@ impl Actor for Validation {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         debug!("Starting validation actor with init store.");
-        self.init_store("validation", false, ctx).await
+        let prefix = ctx.path().parent().key();
+        self.init_store("validation", Some(prefix), false, ctx)
+            .await
     }
 
     async fn pre_stop(
@@ -429,22 +428,20 @@ impl Handler<Validation> for Validation {
                         {
                             // TODO error al persistir, propagar hacia arriba
                         };
-                    } else {
-                        if self.validators.is_empty() {
-                            // we have received all the responses and the quorum has not been met
-                            if let Err(e) = ctx
-                                .event(ValidationEvent {
-                                    actual_proof: self.actual_proof.clone(),
-                                    actual_event_validation_response: self
-                                        .validators_response
-                                        .clone(),
-                                    validation: false,
-                                })
-                                .await
-                            {
-                                // TODO error al persistir, propagar hacia arriba
-                            };
-                        }
+                    } else if self.validators.is_empty() {
+                        // we have received all the responses and the quorum has not been met
+                        if let Err(e) = ctx
+                            .event(ValidationEvent {
+                                actual_proof: self.actual_proof.clone(),
+                                actual_event_validation_response: self
+                                    .validators_response
+                                    .clone(),
+                                validation: false,
+                            })
+                            .await
+                        {
+                            // TODO error al persistir, propagar hacia arriba
+                        };
                     }
                 } else {
                     // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.

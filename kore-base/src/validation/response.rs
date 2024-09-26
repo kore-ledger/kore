@@ -15,8 +15,6 @@ use identity::identifier::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashSet;
-
 #[derive(
     Debug,
     Clone,

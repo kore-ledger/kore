@@ -178,7 +178,7 @@ impl Actor for RequestHandler {
     ) -> Result<(), ActorError> {
         debug!("Creating RequestHandler store");
         // Start store
-        self.init_store("request_handler", false, ctx).await?;
+        self.init_store("request_handler", None, false, ctx).await?;
         Ok(())
     }
 
@@ -272,7 +272,7 @@ mod tests {
         model::{request::EventRequest, signature::Signature},
         system,
         tests::create_system,
-        Config, DbConfig,
+        DbConfig,
     };
 
     use super::*;

@@ -27,7 +27,8 @@ pub struct RequestState {
 }
 
 impl RequestState {
-    /// Creates a new `RequestState`.
+    // Creates a new `RequestState`.
+    /*
     pub fn from_request(id: DigestIdentifier, request: EventRequest) -> Self {
         Self {
             id,
@@ -35,6 +36,7 @@ impl RequestState {
             stage: RequestStage::Create,
         }
     }
+    */
 }
 
 #[derive(Clone, Debug)]

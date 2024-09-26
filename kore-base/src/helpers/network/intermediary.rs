@@ -1,4 +1,5 @@
 use crate::{
+    distribution::distributor::{Distributor, DistributorCommand},
     evaluation::{
         evaluator::{Evaluator, EvaluatorCommand},
         schema::{EvaluationSchema, EvaluationSchemaCommand},
@@ -135,7 +136,7 @@ impl Intermediary {
                     };
                 // Refactorizar esto TODO:
                 match message.message {
-                    ActorMessage::ValidationReq(validation_req) => {
+                    ActorMessage::ValidationReq { req } => {
                         // Validator path.
                         let validator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -148,7 +149,7 @@ impl Intermediary {
                             if let Some(validator_actor) = validator_actor {
                                 if let Err(error) = validator_actor
                                     .tell(ValidatorCommand::NetworkRequest {
-                                        validation_req,
+                                        validation_req: req,
                                         info: message.info,
                                     })
                                     .await
@@ -173,7 +174,7 @@ impl Intermediary {
                             if let Some(validator_actor) = validator_actor {
                                 if let Err(error) = validator_actor
                                     .tell(ValidationSchemaCommand::NetworkRequest {
-                                        validation_req,
+                                        validation_req: req,
                                         info: message.info,
                                     })
                                     .await
@@ -191,7 +192,7 @@ impl Intermediary {
                             };
                         }
                     }
-                    ActorMessage::EvaluationReq(evaluation_req) => {
+                    ActorMessage::EvaluationReq { req } => {
                         // Evaluator path.
                         let evaluator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -205,7 +206,7 @@ impl Intermediary {
                             if let Some(evaluator_actor) = evaluator_actor {
                                 if let Err(error) = evaluator_actor
                                     .tell(EvaluatorCommand::NetworkRequest {
-                                        evaluation_req,
+                                        evaluation_req: req,
                                         info: message.info,
                                     })
                                     .await
@@ -231,7 +232,7 @@ impl Intermediary {
                             if let Some(evaluator_actor) = evaluator_actor {
                                 if let Err(error) = evaluator_actor
                             .tell(EvaluationSchemaCommand::NetworkRequest {
-                                evaluation_req,
+                                evaluation_req: req,
                                 info: message.info,
                             })
                             .await
@@ -249,7 +250,50 @@ impl Intermediary {
                             };
                         }
                     }
-                    ActorMessage::ValidationRes(validation_res) => {
+                    ActorMessage::DistributionLastEventReq {
+                        event,
+                        ledger,
+                        subject_keys,
+                    } => {
+                        // Distributor path.
+                        let distributor_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+
+                        // TODO SI ESTE sdistributor no está disponible quiere decir que el sujeto no existe, enviarlo al distributor del nodo
+                        let distributor_actor: Option<ActorRef<Distributor>> =
+                            self.system.get_actor(&distributor_path).await;
+
+                        // We obtain the validator
+                        if let Some(distributor_actor) = distributor_actor {
+                            if let Err(error) = distributor_actor
+                                .tell(
+                                    DistributorCommand::LastEventDistribution {
+                                        event,
+                                        ledger,
+                                        subject_keys,
+                                        info: message.info,
+                                    },
+                                )
+                                .await
+                            {
+                                return Err(Error::Actor(format!(
+                                    "Can not send a message to Validator Actor(Req): {}",
+                                    error
+                                )));
+                            };
+                        } else {
+                            return Err(Error::Actor(format!(
+                                "The node actor was not found in the expected path {}",
+                                distributor_path
+                            )));
+                        };
+                    }
+                    ActorMessage::DistributionLedgerReq {
+                        gov_version,
+                        actual_sn,
+                        subject_id,
+                    } => todo!(),
+                    ActorMessage::ValidationRes { res } => {
                         // Validator path.
                         let validator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -261,7 +305,7 @@ impl Intermediary {
                         if let Some(validator_actor) = validator_actor {
                             if let Err(error) = validator_actor
                                 .tell(ValidatorCommand::NetworkResponse {
-                                    validation_res,
+                                    validation_res: res,
                                     request_id: message.info.request_id,
                                 })
                                 .await
@@ -278,7 +322,7 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::EvaluationRes(evaluation_res) => {
+                    ActorMessage::EvaluationRes { res } => {
                         // Validator path.
                         let evaluator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -290,7 +334,7 @@ impl Intermediary {
                         if let Some(evaluator_actor) = evaluator_actor {
                             if let Err(error) = evaluator_actor
                                 .tell(EvaluatorCommand::NetworkResponse {
-                                    evaluation_res,
+                                    evaluation_res: res,
                                     request_id: message.info.request_id,
                                 })
                                 .await
@@ -306,6 +350,14 @@ impl Intermediary {
                                 evaluator_path
                             )));
                         };
+                    }
+                    ActorMessage::DistributionLedgerRes {
+                        ledger,
+                        subject_keys,
+                        last_event,
+                    } => todo!(),
+                    ActorMessage::DistributionLastEventRes { signer } => {
+                        todo!()
                     }
                 }
             }

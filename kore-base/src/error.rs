@@ -41,6 +41,9 @@ pub enum Error {
     /// Event error.
     #[error("Event error: {0}")]
     Event(String),
+    /// SN error.
+    #[error("SN error: {0}")]
+    Sn(String),
     /// Validation error.
     #[error("Validation error: {0}")]
     Validation(String),

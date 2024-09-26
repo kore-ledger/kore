@@ -17,12 +17,12 @@ use super::{
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct EvaluationSchema {
-    evaluators: HashSet<KeyIdentifier>,
+    creators: HashSet<KeyIdentifier>,
 }
 
 impl EvaluationSchema {
-    pub fn new(evaluators: HashSet<KeyIdentifier>) -> Self {
-        EvaluationSchema { evaluators }
+    pub fn new(creators: HashSet<KeyIdentifier>) -> Self {
+        EvaluationSchema { creators }
     }
 }
 
@@ -57,9 +57,12 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 evaluation_req,
                 info,
             } => {
-                let subject_owner =
-                    self.evaluators.get(&evaluation_req.signature.signer);
-                if subject_owner.is_none() {
+                // TODO lo primero que hay que hacer es comprobar la versión de la governanza,
+                // para comprobar que sea un creator, si estamos desactualizados, puede ser un creator
+                // nuevo.
+                let creator =
+                    self.creators.get(&evaluation_req.signature.signer);
+                if creator.is_none() {
                     todo!()
                 };
 
@@ -90,8 +93,8 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     })
                     .await?
             }
-            EvaluationSchemaCommand::UpdateEvaluators(evaluators) => {
-                self.evaluators = evaluators;
+            EvaluationSchemaCommand::UpdateEvaluators(creators) => {
+                self.creators = creators;
             }
         };
         Ok(())

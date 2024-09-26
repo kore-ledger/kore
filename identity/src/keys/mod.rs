@@ -67,6 +67,31 @@ impl KeyPair {
             }
         }
     }
+
+    pub fn public_key_pair(&self) -> Self {
+        match self {
+            KeyPair::Ed25519(keys) => KeyPair::Ed25519(
+                Ed25519KeyPair::from_public_key(&keys.public_key_bytes()),
+            ),
+            #[cfg(feature = "secp256k1")]
+            KeyPair::Secp256k1(keys) => KeyPair::Secp256k1(
+                Secp256k1KeyPair::from_public_key(&keys.public_key_bytes()),
+            ),
+        }
+    }
+}
+
+impl From<KeyIdentifier> for KeyPair {
+    fn from(value: KeyIdentifier) -> Self {
+        match value.derivator {
+            KeyDerivator::Ed25519 => KeyPair::Ed25519(
+                Ed25519KeyPair::from_public_key(&value.public_key),
+            ),
+            KeyDerivator::Secp256k1 => KeyPair::Secp256k1(
+                Secp256k1KeyPair::from_public_key(&value.public_key),
+            ),
+        }
+    }
 }
 
 impl Default for KeyPair {
