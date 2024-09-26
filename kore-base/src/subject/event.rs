@@ -16,7 +16,7 @@ pub struct LedgerEvent {
 #[derive(Debug, Clone)]
 pub enum LedgerEventCommand {
     UpdateLastEvent { event: Signed<KoreEvent> },
-    GetLastEvent
+    GetLastEvent,
 }
 
 impl Message for LedgerEventCommand {}
@@ -72,7 +72,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     todo!()
                 };
                 Ok(LedgerEventResponse::Ok)
-            },
+            }
             LedgerEventCommand::GetLastEvent => {
                 Ok(LedgerEventResponse::LastEvent(self.last_event.clone()))
             }

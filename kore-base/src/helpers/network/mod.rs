@@ -1,5 +1,8 @@
 use actor::Message;
-use identity::{identifier::{DigestIdentifier, KeyIdentifier}, keys::KeyPair};
+use identity::{
+    identifier::{DigestIdentifier, KeyIdentifier},
+    keys::KeyPair,
+};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +36,7 @@ pub enum ActorMessage {
         subject_keys: Option<KeyPair>,
     },
     DistributionLastEventRes {
-        signer: KeyIdentifier
+        signer: KeyIdentifier,
     },
     DistributionLedgerReq {
         gov_version: Option<u64>,

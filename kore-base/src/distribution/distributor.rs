@@ -1011,22 +1011,33 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 if let Some(event) = last_event {
-
                     // si me envía esto quiere decir que ya no hay más eventos, terminó,
                     // Llegados a este punto este signed<Event> puede tener un sn inferior al mío.
                     // Entonces le tenemos que decir que se actualice.
                     // Si me actualicé ya no le digo nada más.
                     if last_sn > last_sn_events {
-                        let our_path = ActorPath::from(format!("/user/node/{}/distributor", subject_id));
-                        let our_actor:Option<ActorRef<Distributor>> = ctx.system().get_actor(&our_path).await;
+                        let our_path = ActorPath::from(format!(
+                            "/user/node/{}/distributor",
+                            subject_id
+                        ));
+                        let our_actor: Option<ActorRef<Distributor>> =
+                            ctx.system().get_actor(&our_path).await;
                         if let Some(our_actor) = our_actor {
-                            if let Err(e) = our_actor.tell(DistributorCommand::SendDistribution { gov_version: Some(event.content.gov_version), actual_sn: Some(last_sn_events), subject_id, info }).await {
+                            if let Err(e) = our_actor
+                                .tell(DistributorCommand::SendDistribution {
+                                    gov_version: Some(
+                                        event.content.gov_version,
+                                    ),
+                                    actual_sn: Some(last_sn_events),
+                                    subject_id,
+                                    info,
+                                })
+                                .await
+                            {
                                 todo!()
                             }
                         } else {
-
                         }
-
                     } else if last_sn < last_sn_events {
                         if let Err(e) = self.update_event(ctx, event).await {
                             todo!()

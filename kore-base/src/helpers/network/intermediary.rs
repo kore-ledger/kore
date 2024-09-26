@@ -136,7 +136,7 @@ impl Intermediary {
                     };
                 // Refactorizar esto TODO:
                 match message.message {
-                    ActorMessage::ValidationReq{req} => {
+                    ActorMessage::ValidationReq { req } => {
                         // Validator path.
                         let validator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -192,7 +192,7 @@ impl Intermediary {
                             };
                         }
                     }
-                    ActorMessage::EvaluationReq{req} => {
+                    ActorMessage::EvaluationReq { req } => {
                         // Evaluator path.
                         let evaluator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -288,8 +288,12 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::DistributionLedgerReq { gov_version, actual_sn, subject_id } => todo!(),
-                    ActorMessage::ValidationRes{res} => {
+                    ActorMessage::DistributionLedgerReq {
+                        gov_version,
+                        actual_sn,
+                        subject_id,
+                    } => todo!(),
+                    ActorMessage::ValidationRes { res } => {
                         // Validator path.
                         let validator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -301,7 +305,7 @@ impl Intermediary {
                         if let Some(validator_actor) = validator_actor {
                             if let Err(error) = validator_actor
                                 .tell(ValidatorCommand::NetworkResponse {
-                                    validation_res:res,
+                                    validation_res: res,
                                     request_id: message.info.request_id,
                                 })
                                 .await
@@ -318,7 +322,7 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::EvaluationRes{res} => {
+                    ActorMessage::EvaluationRes { res } => {
                         // Validator path.
                         let evaluator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
@@ -347,8 +351,14 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::DistributionLedgerRes { ledger, subject_keys, last_event } => todo!(),
-                    ActorMessage::DistributionLastEventRes { signer } => todo!()
+                    ActorMessage::DistributionLedgerRes {
+                        ledger,
+                        subject_keys,
+                        last_event,
+                    } => todo!(),
+                    ActorMessage::DistributionLastEventRes { signer } => {
+                        todo!()
+                    }
                 }
             }
         }

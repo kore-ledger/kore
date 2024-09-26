@@ -73,7 +73,7 @@ pub struct Node {
     /// Compiled contracts
     compiled_contracts: HashMap<String, CompiledContract>,
 
-    authorized_governances: Vec<String>
+    authorized_governances: Vec<String>,
 }
 
 impl Node {
@@ -86,7 +86,7 @@ impl Node {
             owned_governances: Vec::new(),
             known_governances: Vec::new(),
             compiled_contracts: HashMap::new(),
-            authorized_governances: Vec::new()
+            authorized_governances: Vec::new(),
         })
     }
 
@@ -253,7 +253,7 @@ pub enum NodeEvent {
     KnownSubject(String),
     OwnedGovernance(String),
     KnownGovernance(String),
-    AuthorizedSubject(String)
+    AuthorizedSubject(String),
 }
 
 impl Event for NodeEvent {}
@@ -336,7 +336,10 @@ impl Handler<Node> for Node {
 
                 // TODO cuando se crea un sujeto hay que guardar el evento de creación con la firma.
                 if let Err(e) = ctx
-                    .create_child(&format!("{}", ledger.content.subject_id), subject)
+                    .create_child(
+                        &format!("{}", ledger.content.subject_id),
+                        subject,
+                    )
                     .await
                 {
                     Ok(NodeResponse::Error(Error::Actor(format!("{}", e))))

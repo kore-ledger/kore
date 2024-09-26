@@ -12,7 +12,9 @@ use identity::{
 };
 
 use crate::{
-    governance::model::Roles, model::event::Ledger, subject::SubjectMetadata, Error, Event as KoreEvent, Governance, Signed, Subject, SubjectCommand, SubjectResponse
+    governance::model::Roles, model::event::Ledger, subject::SubjectMetadata,
+    Error, Event as KoreEvent, Governance, Signed, Subject, SubjectCommand,
+    SubjectResponse,
 };
 
 pub mod distributor;
@@ -23,7 +25,6 @@ pub struct Distribution {
 }
 
 impl Distribution {
-
     fn check_witness(&mut self, witness: KeyIdentifier) -> bool {
         self.witnesses.remove(&witness)
     }
@@ -113,7 +114,12 @@ impl Distribution {
         subject_keys: Option<KeyPair>,
     ) -> Result<(), ActorError> {
         let child = ctx
-            .create_child(&format!("{}", signer), Distributor {node: signer.clone()})
+            .create_child(
+                &format!("{}", signer),
+                Distributor {
+                    node: signer.clone(),
+                },
+            )
             .await;
         let distributor_actor = match child {
             Ok(child) => child,
@@ -125,7 +131,7 @@ impl Distribution {
         if signer != our_key {
             distributor_actor
                 .tell(DistributorCommand::NetworkDistribution {
-                    ledger,  
+                    ledger,
                     event,
                     subject_keys,
                     node_key: signer,
@@ -149,11 +155,11 @@ impl Actor for Distribution {
 pub enum DistributionCommand {
     Create {
         event: Signed<KoreEvent>,
-        ledger: Signed<Ledger>
+        ledger: Signed<Ledger>,
     },
     Response {
         sender: KeyIdentifier,
-    }
+    },
 }
 
 impl Message for DistributionCommand {}
@@ -168,7 +174,6 @@ impl Handler<Distribution> for Distribution {
     ) -> Result<(), ActorError> {
         match msg {
             DistributionCommand::Create { event, ledger } => {
-
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
                 let (governance, metadata) =
@@ -176,7 +181,7 @@ impl Handler<Distribution> for Distribution {
                         Ok(gov) => gov,
                         Err(e) => todo!(),
                     };
-        
+
                 let witnesses = if metadata.schema_id == "governance" {
                     governance.members_to_key_identifier()
                 } else {
@@ -186,14 +191,14 @@ impl Handler<Distribution> for Distribution {
                         metadata.namespace,
                     )
                 };
-        
+
                 // Si es un evento de creación necesitamos las claves del sujeto para crearlo en el otro nodo.
                 let subject_keys = if ledger.content.sn == 0 {
                     Some(metadata.keys)
                 } else {
                     None
                 };
-        
+
                 for witness in witnesses {
                     self.create_distributors(
                         ctx,
@@ -204,7 +209,7 @@ impl Handler<Distribution> for Distribution {
                     )
                     .await?
                 }
-            },
+            }
             DistributionCommand::Response { sender } => {
                 if self.check_witness(sender) {
                     if self.witnesses.is_empty() {
@@ -212,9 +217,9 @@ impl Handler<Distribution> for Distribution {
                         // terminar distribución.
                     }
                 }
-            },
+            }
         }
-            
+
         Ok(())
     }
 }
