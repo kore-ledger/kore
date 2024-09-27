@@ -114,10 +114,8 @@ impl Intermediary {
                     })
                     .await
                 {
-                    return Err(Error::Network(format!(
-                        "Can not send message to network: {}",
-                        error
-                    )));
+                    todo!()
+                    //return Err(Error::Network(format!("Can not send message to network: {}",error)));
                 };
             }
             Command::ReceivedMessage { message } => {
@@ -128,10 +126,8 @@ impl Intermediary {
                     match Deserialize::deserialize(&mut de) {
                         Ok(message) => message,
                         Err(e) => {
-                            return Err(Error::NetworkHelper(format!(
-                                "Can not deserialize message: {}",
-                                e
-                            )));
+                            todo!()
+                            // return Err(Error::NetworkHelper(format!("Can not deserialize message: {}",e)));
                         }
                     };
                 // Refactorizar esto TODO:
@@ -154,16 +150,12 @@ impl Intermediary {
                                     })
                                     .await
                                 {
-                                    return Err(Error::Actor(format!(
-                                "Can not send a message to Validator Actor(Req): {}",
-                                error
-                            )));
+                                    todo!()
+                                    //return Err(Error::Actor(format!("Can not send a message to Validator Actor(Req): {}",error)));
                                 };
                             } else {
-                                return Err(Error::Actor(format!(
-                            "The node actor was not found in the expected path {}",
-                            validator_path
-                        )));
+                                todo!()
+                                //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",validator_path)));
                             };
                         } else {
                             let validator_actor: Option<
@@ -179,16 +171,12 @@ impl Intermediary {
                                     })
                                     .await
                                 {
-                                    return Err(Error::Actor(format!(
-                                "Can not send a message to Validator Actor(Req): {}",
-                                error
-                            )));
+                                    todo!()
+                                    // return Err(Error::Actor(format!("Can not send a message to Validator Actor(Req): {}",error)));
                                 };
                             } else {
-                                return Err(Error::Actor(format!(
-                            "The node actor was not found in the expected path {}",
-                            validator_path
-                        )));
+                                todo!()
+                                //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",validator_path)));
                             };
                         }
                     }
@@ -211,16 +199,12 @@ impl Intermediary {
                                     })
                                     .await
                                 {
-                                    return Err(Error::Actor(format!(
-                              "Can not send a message to Validator Actor(Req): {}",
-                              error
-                          )));
+                                    todo!()
+                                    // return Err(Error::Actor(format!("Can not send a message to Validator Actor(Req): {}",error)));
                                 };
                             } else {
-                                return Err(Error::Actor(format!(
-                          "The node actor was not found in the expected path {}",
-                          evaluator_path
-                      )));
+                                todo!()
+                                //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",evaluator_path)));
                             };
                         } else {
                             // Evaluator actor.
@@ -237,16 +221,12 @@ impl Intermediary {
                             })
                             .await
                         {
-                            return Err(Error::Actor(format!(
-                              "Can not send a message to Validator Actor(Req): {}",
-                              error
-                          )));
+                            todo!()
+                            //return Err(Error::Actor(format!("Can not send a message to Validator Actor(Req): {}",error)));
                         };
                             } else {
-                                return Err(Error::Actor(format!(
-                          "The node actor was not found in the expected path {}",
-                          evaluator_path
-                      )));
+                                todo!()
+                                //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",evaluator_path)));
                             };
                         }
                     }
@@ -259,40 +239,76 @@ impl Intermediary {
                         let distributor_path =
                             ActorPath::from(message.info.reciver_actor.clone());
 
-                        // TODO SI ESTE sdistributor no está disponible quiere decir que el sujeto no existe, enviarlo al distributor del nodo
+                        // SI ESTE sdistributor no está disponible quiere decir que el sujeto no existe, enviarlo al distributor del nodo
                         let distributor_actor: Option<ActorRef<Distributor>> =
                             self.system.get_actor(&distributor_path).await;
 
-                        // We obtain the validator
-                        if let Some(distributor_actor) = distributor_actor {
-                            if let Err(error) = distributor_actor
-                                .tell(
-                                    DistributorCommand::LastEventDistribution {
-                                        event,
-                                        ledger,
-                                        subject_keys,
-                                        info: message.info,
-                                    },
-                                )
-                                .await
-                            {
-                                return Err(Error::Actor(format!(
-                                    "Can not send a message to Validator Actor(Req): {}",
-                                    error
-                                )));
-                            };
+                        let distributor_actor = if let Some(distributor_actor) =
+                            distributor_actor
+                        {
+                            distributor_actor
                         } else {
-                            return Err(Error::Actor(format!(
-                                "The node actor was not found in the expected path {}",
-                                distributor_path
-                            )));
+                            let node_distributor_path =
+                                ActorPath::from("/user/node/distributor");
+                            let node_distributor_actor: Option<
+                                ActorRef<Distributor>,
+                            > = self
+                                .system
+                                .get_actor(&node_distributor_path)
+                                .await;
+                            if let Some(node_distributor_actor) =
+                                node_distributor_actor
+                            {
+                                node_distributor_actor
+                            } else {
+                                // Si este actor no está disponible hay un problema en el nodo TODO.
+                                todo!()
+                            }
+                        };
+
+                        // We obtain the validator
+                        if let Err(error) = distributor_actor
+                            .tell(DistributorCommand::LastEventDistribution {
+                                event,
+                                ledger,
+                                subject_keys,
+                                info: message.info,
+                            })
+                            .await
+                        {
+                            todo!()
+                            //return Err(Error::Actor(format!("Can not send a message to Validator Actor(Req): {}",error)));
                         };
                     }
                     ActorMessage::DistributionLedgerReq {
                         gov_version,
                         actual_sn,
                         subject_id,
-                    } => todo!(),
+                    } => {
+                        let distributor_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+                        // Validator actor.
+                        let distributor_actor: Option<ActorRef<Distributor>> =
+                            self.system.get_actor(&distributor_path).await;
+
+                        if let Some(distributor_actor) = distributor_actor {
+                            if let Err(error) = distributor_actor
+                                .tell(DistributorCommand::SendDistribution {
+                                    gov_version,
+                                    actual_sn,
+                                    subject_id,
+                                    info: message.info,
+                                })
+                                .await
+                            {
+                                todo!()
+                                //return Err(Error::Actor(format!("Can not send a message to Evaluator Actor(Res): {}",error)));
+                            };
+                        } else {
+                            todo!()
+                            //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",evaluator_path)));
+                        };
+                    }
                     ActorMessage::ValidationRes { res } => {
                         // Validator path.
                         let validator_path =
@@ -310,16 +326,12 @@ impl Intermediary {
                                 })
                                 .await
                             {
-                                return Err(Error::Actor(format!(
-                                    "Can not send a message to Validator Actor(Res): {}",
-                                    error
-                                )));
+                                todo!()
+                                //return Err(Error::Actor(format!("Can not send a message to Validator Actor(Res): {}",error)));
                             };
                         } else {
-                            return Err(Error::Actor(format!(
-                                "The node actor was not found in the expected path {}",
-                                validator_path
-                            )));
+                            todo!()
+                            //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",validator_path)));
                         };
                     }
                     ActorMessage::EvaluationRes { res } => {
@@ -339,25 +351,87 @@ impl Intermediary {
                                 })
                                 .await
                             {
-                                return Err(Error::Actor(format!(
-                                    "Can not send a message to Evaluator Actor(Res): {}",
-                                    error
-                                )));
+                                todo!()
+                                //return Err(Error::Actor(format!("Can not send a message to Evaluator Actor(Res): {}",error)));
                             };
                         } else {
-                            return Err(Error::Actor(format!(
-                                "The node actor was not found in the expected path {}",
-                                evaluator_path
-                            )));
+                            todo!()
+                            //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",evaluator_path)));
                         };
                     }
                     ActorMessage::DistributionLedgerRes {
                         ledger,
                         subject_keys,
                         last_event,
-                    } => todo!(),
+                    } => {
+                        // Distributor path.
+                        let distributor_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+
+                        // SI ESTE sdistributor no está disponible quiere decir que el sujeto no existe, enviarlo al distributor del nodo
+                        let distributor_actor: Option<ActorRef<Distributor>> =
+                            self.system.get_actor(&distributor_path).await;
+
+                        let distributor_actor = if let Some(distributor_actor) =
+                            distributor_actor
+                        {
+                            distributor_actor
+                        } else {
+                            let node_distributor_path =
+                                ActorPath::from("/user/node/distributor");
+                            let node_distributor_actor: Option<
+                                ActorRef<Distributor>,
+                            > = self
+                                .system
+                                .get_actor(&node_distributor_path)
+                                .await;
+                            if let Some(node_distributor_actor) =
+                                node_distributor_actor
+                            {
+                                node_distributor_actor
+                            } else {
+                                // Si este actor no está disponible hay un problema en el nodo TODO.
+                                todo!()
+                            }
+                        };
+
+                        // We obtain the validator
+                        if let Err(error) = distributor_actor
+                            .tell(DistributorCommand::LedgerDistribution {
+                                events: ledger,
+                                subject_keys,
+                                last_event,
+                                info: message.info,
+                            })
+                            .await
+                        {
+                            todo!()
+                            //return Err(Error::Actor(format!("Can not send a message to Validator Actor(Req): {}",error)));
+                        };
+                    }
                     ActorMessage::DistributionLastEventRes { signer } => {
-                        todo!()
+                        // Validator path.
+                        let distributor_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+                        // Validator actor.
+                        let distributor_actor: Option<ActorRef<Distributor>> =
+                            self.system.get_actor(&distributor_path).await;
+
+                        // We obtain the validator
+                        if let Some(evaluator_actor) = distributor_actor {
+                            if let Err(error) = evaluator_actor
+                                .tell(DistributorCommand::NetworkResponse {
+                                    signer,
+                                })
+                                .await
+                            {
+                                todo!()
+                                // return Err(Error::Actor(format!("Can not send a message to Distributor Actor(Res): {}",error)));
+                            };
+                        } else {
+                            todo!()
+                            // return Err(Error::Actor(format!("The node actor was not found in the expected path {}",evaluator_path)));
+                        };
                     }
                 }
             }
