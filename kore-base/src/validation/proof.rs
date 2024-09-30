@@ -16,6 +16,37 @@ use serde::{Deserialize, Serialize};
 
 use tracing::{debug, error};
 
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    BorshSerialize,
+    BorshDeserialize,
+)]
+pub enum EventProof {
+    Create,
+    Fact,
+    Transfer { new_owner: KeyIdentifier},
+    Confirm,
+    EOL,
+}
+
+// Implementación personalizada de PartialEq
+impl PartialEq for EventProof {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (EventProof::Create, EventProof::Create)
+            | (EventProof::Fact, EventProof::Fact)
+            | (EventProof::Confirm, EventProof::Confirm)
+            | (EventProof::EOL, EventProof::EOL)
+            | (EventProof::Transfer { .. }, EventProof::Transfer { .. }) => true,
+            _ => false,
+        }
+    }
+}
+
 /// A struct representing a validation proof.
 #[derive(
     Debug,
@@ -50,6 +81,7 @@ pub struct ValidationProof {
     pub event_hash: DigestIdentifier,
     /// The version of the governance contract used to validate the subject.
     pub governance_version: u64,
+    pub event: EventProof
 }
 
 impl Default for ValidationProof {
@@ -66,6 +98,7 @@ impl Default for ValidationProof {
             subject_public_key: KeyIdentifier::default(),
             genesis_governance_version: 0,
             name: "name".to_string(),
+            event: EventProof::Create
         }
     }
 }
@@ -101,34 +134,39 @@ impl ValidationProof {
             Error::Validation("Error hashing event".to_string())
         })?;
 
-        // TODO revisar esto, que los valores sean correctos, había un error con la transferencia
+        let mut validation_proof: ValidationProof = Self {
+            governance_id: info.subject.governance_id.clone(),
+            governance_version: info.gov_version,
+            subject_id: info.subject.subject_id.clone(),
+            sn: info.event.content.sn,
+            schema_id: info.subject.schema_id.clone(),
+            namespace: info.subject.namespace.clone(),
+            prev_event_hash: DigestIdentifier::default(),
+            event_hash,
+            subject_public_key: info.subject.subject_key.clone(),
+            genesis_governance_version: info.gov_version,
+            name: info.subject.name.clone(),
+            event: EventProof::Create
+        };
+
         match request {
-            EventRequest::Create(start_request) => Ok(Self {
-                governance_id: start_request.governance_id.clone(),
-                governance_version: info.gov_version,
-                subject_id: info.subject.subject_id.clone(),
-                sn: 0,
-                schema_id: start_request.schema_id.clone(),
-                namespace: Namespace::from(start_request.namespace.as_str()),
-                prev_event_hash: DigestIdentifier::default(),
-                event_hash,
-                subject_public_key: start_request.public_key.clone(),
-                genesis_governance_version: info.gov_version,
-                name: start_request.name.clone(),
-            }),
-            _ => Ok(Self {
-                governance_id: info.subject.governance_id.clone(),
-                governance_version: info.gov_version,
-                subject_id: info.subject.subject_id.clone(),
-                sn: info.event.content.sn,
-                schema_id: info.subject.schema_id.clone(),
-                namespace: info.subject.namespace.clone(),
-                prev_event_hash: info.event.content.hash_prev_event,
-                event_hash,
-                subject_public_key: info.subject.subject_key.clone(),
-                genesis_governance_version: info.subject.genesis_gov_version,
-                name: info.subject.name.clone(),
-            }),
+            EventRequest::Create(_start_request) => Ok(validation_proof),
+            EventRequest::Fact(_fact_request) => {
+                validation_proof.event = EventProof::Fact;
+                Ok(validation_proof)
+            },
+            EventRequest::Transfer(transfer_request) => {
+                validation_proof.event = EventProof::Transfer { new_owner: transfer_request.new_owner.clone() };
+                Ok(validation_proof)
+            },
+            EventRequest::Confirm(_confirm_request) => {
+                validation_proof.event = EventProof::Confirm;
+                Ok(validation_proof)
+            },
+            EventRequest::EOL(_eol_request) => {
+                validation_proof.event = EventProof::EOL;
+                Ok(validation_proof)
+            },
         }
     }
 }

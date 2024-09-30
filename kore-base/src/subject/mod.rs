@@ -52,7 +52,7 @@ pub mod event;
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Subject {
     /// The key pair used to sign the subject.
-    keys: KeyPair,
+    keys: Option<KeyPair>,
     /// The identifier of the subject.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance that drives this subject.
@@ -94,7 +94,7 @@ impl Subject {
     /// An error is returned if the event is invalid.
     ///
     pub fn from_event(
-        subject_keys: KeyPair,
+        subject_keys: Option<KeyPair>,
         ledger: &Signed<Ledger>,
     ) -> Result<Self, Error> {
         if let EventRequest::Create(request) =
@@ -289,11 +289,17 @@ impl Subject {
     /// The subject state.
     ///
     pub fn state(&self) -> SubjectState {
+        let subject_key = if let Some(keys) = self.keys.clone() {
+            KeyIdentifier::new(
+                keys.get_key_derivator(),
+                &keys.public_key_bytes(),
+            )
+        } else {
+            KeyIdentifier::default()
+        };
+
         SubjectState {
-            subject_key: KeyIdentifier::new(
-                self.keys.get_key_derivator(),
-                &self.keys.public_key_bytes(),
-            ),
+            subject_key,
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
             genesis_gov_version: self.genesis_gov_version,
@@ -315,8 +321,13 @@ impl Subject {
     /// The subject metadata.
     ///
     fn metadata(&self) -> SubjectMetadata {
+        let keys  = if let Some(keys) = self.keys.clone() {
+            Some(keys.public_key_pair())
+        } else {
+            None
+        };
         SubjectMetadata {
-            keys: self.keys.public_key_pair(),
+            keys,
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
             schema_id: self.schema_id.clone(),
@@ -334,7 +345,13 @@ impl Subject {
             DigestDerivator::Blake3_256
         };
 
-        Signature::new(content, &self.keys, derivator)
+        let keys = if let Some(keys) = self.keys.clone() {
+            keys
+        } else {
+            todo!()
+        };
+
+        Signature::new(content, &keys, derivator)
             .map_err(|e| Error::Signature(format!("{}", e)))
     }
 
@@ -597,7 +614,7 @@ impl Subject {
                 if transfer.new_owner != new_ledger.signature.signer {
                     todo!();
                 }
-                // verifY
+                // verifY TODO
             } else if let EventRequest::EOL(end) =
                 last_ledger.content.event_request.content.clone()
             {
@@ -607,7 +624,7 @@ impl Subject {
                 if last_ledger.signature.signer != new_ledger.signature.signer {
                     todo!();
                 }
-                // verifY
+                // verifY TODO
             };
         }
 
@@ -616,45 +633,73 @@ impl Subject {
             && new_ledger.content.eval_success
             && new_ledger.content.vali_success
         {
-            // Al estado actual aplicarle el patch del nuevo evento y ver que obtenemos el mismo hash que el hash del nuevo evento
-            if let EventRequest::Fact(_) =
-                new_ledger.content.event_request.content.clone()
-            {
-                let LedgerValue::Patch(json_patch) =
-                    new_ledger.content.value.clone()
-                else {
-                    // error el evento fue correcto pero en el value no vino un patch
-                    todo!()
-                };
-
-                let patch_json = serde_json::from_value::<Patch>(json_patch.0)
-                    .map_err(|e| todo!())?;
-                let Ok(()) = patch(&mut subject.properties.0, &patch_json)
-                else {
-                    // No se pudo aplicar el patch, error
-                    todo!()
-                };
-
-                let hash_state_after_patch = subject
-                    .properties
-                    .hash_id(new_ledger.signature.content_hash.derivator)?;
-
-                if hash_state_after_patch != new_ledger.content.state_hash {
-                    // Error, hemos aplicado el nuevo patch y hemos obtenido un estado diferenta al del nodo original
+            match new_ledger.content.event_request.content.clone() {
+                EventRequest::Create(start_request) => {
+                    // Error no se puede recibir un evento de creación si ya está creado
+                    todo!();
                 }
-            } else if let EventRequest::Create(_) =
-                new_ledger.content.event_request.content.clone()
-            {
-                // Error no se puede recibir un evento de creación si ya está creado
-                todo!();
-            } else {
-                let hash_without_patch = subject
-                    .properties
-                    .hash_id(new_ledger.signature.content_hash.derivator)?;
+                EventRequest::Fact(fact_request) => {
+                    // Al estado actual aplicarle el patch del nuevo evento y ver que obtenemos el mismo hash que el hash del nuevo evento
+                    let LedgerValue::Patch(json_patch) =
+                        new_ledger.content.value.clone()
+                    else {
+                        // error el evento fue correcto pero en el value no vino un patch
+                        todo!()
+                    };
 
-                if hash_without_patch != new_ledger.content.state_hash {
-                    // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
-                    // propierties deberían ser iguales.
+                    let patch_json =
+                        serde_json::from_value::<Patch>(json_patch.0)
+                            .map_err(|e| todo!())?;
+                    let Ok(()) = patch(&mut subject.properties.0, &patch_json)
+                    else {
+                        // No se pudo aplicar el patch, error
+                        todo!()
+                    };
+
+                    let hash_state_after_patch = subject
+                        .properties
+                        .hash_id(new_ledger.signature.content_hash.derivator)?;
+
+                    if hash_state_after_patch != new_ledger.content.state_hash {
+                        // Error, hemos aplicado el nuevo patch y hemos obtenido un estado diferenta al del nodo original
+                    }
+                }
+                EventRequest::Transfer(transfer_request) => {
+                    let hash_without_patch = subject
+                        .properties
+                        .hash_id(new_ledger.signature.content_hash.derivator)?;
+
+                    if hash_without_patch != new_ledger.content.state_hash {
+                        // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
+                        // propierties deberían ser iguales.
+                    }
+
+                    subject.owner = transfer_request.new_owner;
+                }
+                EventRequest::Confirm(confirm_request) => {
+                    let hash_without_patch = subject
+                        .properties
+                        .hash_id(new_ledger.signature.content_hash.derivator)?;
+
+                    if hash_without_patch != new_ledger.content.state_hash {
+                        // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
+                        // propierties deberían ser iguales.
+                    }
+
+                    // tenemos que guardar las nuevas claves,
+                    todo!()
+                }
+                EventRequest::EOL(eolrequest) => {
+                    let hash_without_patch = subject
+                        .properties
+                        .hash_id(new_ledger.signature.content_hash.derivator)?;
+
+                    if hash_without_patch != new_ledger.content.state_hash {
+                        // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
+                        // propierties deberían ser iguales.
+                    }
+
+                    subject.active = false;
                 }
             };
         }
@@ -833,7 +878,7 @@ pub struct SubjectState {
     Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
 pub struct SubjectMetadata {
-    pub keys: KeyPair,
+    pub keys: Option<KeyPair>,
     /// The identifier of the subject of the event.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance contract.
@@ -850,11 +895,17 @@ pub struct SubjectMetadata {
 
 impl From<Subject> for SubjectState {
     fn from(subject: Subject) -> Self {
+        let subject_key = if let Some(keys) = subject.keys.clone() {
+            KeyIdentifier::new(
+                keys.get_key_derivator(),
+                &keys.public_key_bytes(),
+            )
+        } else {
+            KeyIdentifier::default()
+        };
+
         Self {
-            subject_key: KeyIdentifier::new(
-                subject.keys.get_key_derivator(),
-                &subject.keys.public_key_bytes(),
-            ),
+            subject_key: subject_key,
             subject_id: subject.subject_id,
             governance_id: subject.governance_id,
             genesis_gov_version: subject.genesis_gov_version,
@@ -1048,6 +1099,9 @@ impl PersistentActor for Subject {
                     self.owner = transfer_request.new_owner.clone();
                 }
                 EventRequest::EOL(eolrequest) => self.active = false,
+                EventRequest::Confirm(confirm_request) => {
+                    todo!()
+                }
             }
         }
 
@@ -1098,7 +1152,7 @@ mod tests {
             signature,
         };
 
-        let subject = Subject::from_event(keys, &signed_ledger).unwrap();
+        let subject = Subject::from_event(Some(keys), &signed_ledger).unwrap();
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
@@ -1187,7 +1241,7 @@ mod tests {
             signature,
         };
 
-        let subject_a = Subject::from_event(keys, &signed_ledger).unwrap();
+        let subject_a = Subject::from_event(Some(keys), &signed_ledger).unwrap();
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

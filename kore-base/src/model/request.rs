@@ -5,7 +5,7 @@
 //!
 
 use super::{
-    signature::{Signature, Signed},
+    signature::Signed,
     wrapper::ValueWrapper,
     HashId,
 };
@@ -37,6 +37,8 @@ pub enum EventRequest {
     Fact(FactRequest),
     /// A request to transfer ownership of a subject.
     Transfer(TransferRequest),
+
+    Confirm(ConfirmRequest),
     /// A request to mark a subject as end-of-life.
     EOL(EOLRequest),
 }
@@ -61,8 +63,6 @@ pub struct StartRequest {
     pub namespace: String,
     /// The name of the subject.
     pub name: String,
-    /// The identifier of the public key of the subject owner.
-    pub public_key: KeyIdentifier,
 }
 
 /// A struct representing a request to add a fact to a subject.
@@ -101,6 +101,22 @@ pub struct TransferRequest {
     pub new_owner: KeyIdentifier,
 }
 
+/// A struct representing a request to transfer ownership of a subject.
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+)]
+pub struct ConfirmRequest {
+    pub subject_id: DigestIdentifier,
+}
+
+
 /// A struct representing a request to mark a subject as end-of-life.
 #[derive(
     Debug,
@@ -123,7 +139,8 @@ impl EventRequest {
             EventRequest::Fact(_) => true,
             EventRequest::Create(_)
             | EventRequest::Transfer(_)
-            | EventRequest::EOL(_) => false,
+            | EventRequest::EOL(_) 
+            | EventRequest::Confirm(_) => false,
         }
     }
 }
@@ -196,6 +213,9 @@ impl TryFrom<Signed<EventRequest>> for KoreRequest {
             EventRequest::EOL(eol_request) => {
                 Some(eol_request.subject_id.clone())
             }
+            EventRequest::Confirm(confirm_request) => {
+                Some(confirm_request.subject_id.clone())
+            }
         };
         Ok(Self {
             id,
@@ -210,6 +230,8 @@ impl TryFrom<Signed<EventRequest>> for KoreRequest {
 
 #[cfg(test)]
 pub mod tests {
+
+    use crate::Signature;
 
     use super::*;
 
@@ -228,7 +250,6 @@ pub mod tests {
             schema_id: "governance".to_string(),
             namespace: "namespace".to_string(),
             name: "name".to_string(),
-            public_key: key_id,
         };
         let content = EventRequest::Create(req);
         let signature =

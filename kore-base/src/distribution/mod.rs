@@ -111,7 +111,6 @@ impl Distribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         signer: KeyIdentifier,
-        subject_keys: Option<KeyPair>,
     ) -> Result<(), ActorError> {
         let child = ctx
             .create_child(
@@ -133,7 +132,6 @@ impl Distribution {
                 .tell(DistributorCommand::NetworkDistribution {
                     ledger,
                     event,
-                    subject_keys,
                     node_key: signer,
                     our_key,
                 })
@@ -192,12 +190,6 @@ impl Handler<Distribution> for Distribution {
                     )
                 };
 
-                // Si es un evento de creación necesitamos las claves del sujeto para crearlo en el otro nodo.
-                let subject_keys = if ledger.content.sn == 0 {
-                    Some(metadata.keys)
-                } else {
-                    None
-                };
 
                 for witness in witnesses {
                     self.create_distributors(
@@ -205,7 +197,6 @@ impl Handler<Distribution> for Distribution {
                         event.clone(),
                         ledger.clone(),
                         witness,
-                        subject_keys.clone(),
                     )
                     .await?
                 }

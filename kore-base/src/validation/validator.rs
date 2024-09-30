@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::{
-    proof::ValidationProof,
+    proof::{EventProof, ValidationProof},
     request::{SignersRes, ValidationReq},
     response::{ValidationRes, ValidationTimeOut},
     Validation, ValidationCommand, ValidationResponse,
@@ -104,6 +104,75 @@ impl Validator {
         }
     }
 
+    fn check_event_proof(
+        &self,
+        proof: &ValidationProof,
+        subject_signature: &Signature,
+        previous_proof: &Option<ValidationProof>,
+    ) -> Result<(), Error> {
+        let previous_proof = if let Some(previous_proof) = previous_proof {
+            previous_proof
+        } else {
+            if proof.event != EventProof::Create {
+                // Error
+                todo!()
+            }
+            return Ok(());
+        };
+
+        let transfer_event = EventProof::Transfer {
+            new_owner: KeyIdentifier::default(),
+        };
+
+        match proof.event.clone() {
+            EventProof::Create => {
+                // Error
+                todo!()
+            }
+            EventProof::Fact => {
+                if previous_proof.event == EventProof::EOL
+                    || previous_proof.event == transfer_event
+                {
+                    //Error
+                    todo!()
+                }
+            }
+            EventProof::Transfer { new_owner } => {
+                if previous_proof.event == EventProof::EOL || previous_proof.event == transfer_event {
+                    //Error
+                    todo!()
+                }
+            }
+            EventProof::Confirm => {
+                if let EventProof::Transfer { new_owner } = previous_proof.event.clone()
+                {
+                    if new_owner == subject_signature.signer {
+                        return Ok(());
+                    }
+                }
+                //Error
+                todo!()
+            }
+            EventProof::EOL => {
+                if previous_proof.event == EventProof::EOL || previous_proof.event == transfer_event {
+                    //Error
+                    todo!()
+                }
+            }
+        };
+
+        if previous_proof.event != EventProof::Confirm {
+            if previous_proof.subject_public_key
+                != subject_signature.signer.clone()
+            {
+                // Error,
+                todo!()
+            }
+        }
+
+        return Ok(());
+    }
+
     // TODO si es un nuevo validador va a necesitar la prueba anterior y las firmas.
     async fn validation(
         &self,
@@ -148,7 +217,9 @@ impl Validator {
             .subject_signature
             .verify(&validation_req.proof)?;
 
-        let subject_public_key = self
+        self.check_event_proof(&validation_req.proof, &validation_req.subject_signature, &validation_req.previous_proof)?;
+
+        self
             .check_proofs(
                 ctx,
                 &validation_req.proof,
@@ -156,11 +227,6 @@ impl Validator {
                 validation_req.prev_event_validation_response,
             )
             .await?;
-        // TODO: verify this, if you rotate the cryptographic material they will not match?
-        if validation_req.subject_signature.signer != subject_public_key {
-            error!("");
-            return Err(Error::Validation("KeyIdentifier of the subject signature does not match the KeyIdentifier of the check_proof".to_owned()));
-        }
 
         // Node path.
         let node_path = ActorPath::from("/user/node");
@@ -212,7 +278,7 @@ impl Validator {
         new_proof: &ValidationProof,
         previous_proof: Option<ValidationProof>,
         previous_validation_signatures: Vec<SignersRes>,
-    ) -> Result<KeyIdentifier, Error> {
+    ) -> Result<(), Error> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
             // subject_public_key is not verified because it can change if a transfer of the subject is made. is correct?
@@ -279,12 +345,11 @@ impl Validator {
             } else {
                 // TODO: Si la versión de la governanza es -1, solicitarle a la governanza los validadores de esa versión
             }
-
-            Ok(previous_proof.subject_public_key.clone())
+            Ok(())
 
         // Genesis event, it is first proof
         } else {
-            Ok(new_proof.subject_public_key.clone())
+            Ok(())
         }
     }
 }
