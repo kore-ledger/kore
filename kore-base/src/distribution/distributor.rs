@@ -161,13 +161,7 @@ impl Distributor {
         &self,
         ctx: &mut ActorContext<Distributor>,
         ledger: Signed<Ledger>,
-        subject_keys: Option<KeyPair>,
     ) -> Result<(), Error> {
-        let subject_keys = if let Some(subject_keys) = subject_keys {
-            subject_keys
-        } else {
-            todo!()
-        };
 
         let node_path = ActorPath::from("/user/node");
         let node_actor: Option<ActorRef<Node>> =
@@ -175,7 +169,7 @@ impl Distributor {
 
         let response = if let Some(node_actor) = node_actor {
             let response = node_actor
-                .ask(NodeMessage::CreateNewSubject(ledger, subject_keys))
+                .ask(NodeMessage::CreateNewSubject(ledger))
                 .await;
             match response {
                 Ok(response) => response,
@@ -559,7 +553,6 @@ pub enum DistributorCommand {
     NetworkDistribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
-        subject_keys: Option<KeyPair>,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
@@ -571,12 +564,10 @@ pub enum DistributorCommand {
     LastEventDistribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
-        subject_keys: Option<KeyPair>,
         info: ComunicateInfo,
     },
     LedgerDistribution {
         events: Vec<Signed<Ledger>>,
-        subject_keys: Option<KeyPair>,
         last_event: Option<Signed<KoreEvent>>,
         info: ComunicateInfo,
     },
@@ -654,7 +645,6 @@ impl Handler<Distributor> for Distributor {
                             info: new_info,
                             message: ActorMessage::DistributionLedgerRes {
                                 ledger,
-                                subject_keys,
                                 last_event,
                             },
                         },
@@ -666,7 +656,6 @@ impl Handler<Distributor> for Distributor {
             }
             DistributorCommand::NetworkDistribution {
                 event,
-                subject_keys,
                 node_key,
                 our_key,
                 ledger,
@@ -686,8 +675,7 @@ impl Handler<Distributor> for Distributor {
                     },
                     message: ActorMessage::DistributionLastEventReq {
                         ledger,
-                        event,
-                        subject_keys,
+                        event
                     },
                 };
 
@@ -751,7 +739,6 @@ impl Handler<Distributor> for Distributor {
             DistributorCommand::LastEventDistribution {
                 event,
                 ledger,
-                subject_keys,
                 info,
             } => {
                 let result = self
@@ -790,7 +777,7 @@ impl Handler<Distributor> for Distributor {
                 if new_subject {
                     // Creamos el sujeto.
                     if let Err(e) =
-                        self.create_subject(ctx, ledger, subject_keys).await
+                        self.create_subject(ctx, ledger).await
                     {
                         todo!()
                     };
@@ -923,7 +910,6 @@ impl Handler<Distributor> for Distributor {
                 mut events,
                 info,
                 last_event,
-                subject_keys,
             } => {
                 if events.is_empty() {
                     todo!()
@@ -950,7 +936,7 @@ impl Handler<Distributor> for Distributor {
                 if new_subject {
                     // Creamos el sujeto.
                     if let Err(e) = self
-                        .create_subject(ctx, events[0].clone(), subject_keys)
+                        .create_subject(ctx, events[0].clone())
                         .await
                     {
                         todo!()

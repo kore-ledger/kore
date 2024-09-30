@@ -14,9 +14,7 @@ use crate::{
 use super::ActorMessage;
 use super::{service::HelperService, NetworkMessage};
 use actor::{ActorPath, ActorRef, SystemRef};
-use identity::identifier::{
-    derive::KeyDerivator, key_identifier, KeyIdentifier,
-};
+use identity::identifier::derive::KeyDerivator;
 use network::Command as NetworkCommand;
 use network::CommandHelper as Command;
 use network::{PeerId, PublicKey, PublicKeyEd25519, PublicKeysecp256k1};
@@ -233,7 +231,6 @@ impl Intermediary {
                     ActorMessage::DistributionLastEventReq {
                         event,
                         ledger,
-                        subject_keys,
                     } => {
                         // Distributor path.
                         let distributor_path =
@@ -271,7 +268,6 @@ impl Intermediary {
                             .tell(DistributorCommand::LastEventDistribution {
                                 event,
                                 ledger,
-                                subject_keys,
                                 info: message.info,
                             })
                             .await
@@ -361,7 +357,6 @@ impl Intermediary {
                     }
                     ActorMessage::DistributionLedgerRes {
                         ledger,
-                        subject_keys,
                         last_event,
                     } => {
                         // Distributor path.
@@ -399,7 +394,6 @@ impl Intermediary {
                         if let Err(error) = distributor_actor
                             .tell(DistributorCommand::LedgerDistribution {
                                 events: ledger,
-                                subject_keys,
                                 last_event,
                                 info: message.info,
                             })

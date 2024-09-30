@@ -216,7 +216,7 @@ impl Node {
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessage {
-    CreateNewSubject(Signed<Ledger>, KeyPair),
+    CreateNewSubject(Signed<Ledger>),
     RegisterSubject(SubjectsTypes),
     SignRequest(SignTypesNode),
     AmISubjectOwner(DigestIdentifier),
@@ -327,8 +327,8 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
-            NodeMessage::CreateNewSubject(ledger, subject_keys) => {
-                let subject = Subject::from_event(subject_keys, &ledger);
+            NodeMessage::CreateNewSubject(ledger) => {
+                let subject = Subject::from_event(None, &ledger);
                 let subject = match subject {
                     Ok(subject) => subject,
                     Err(e) => return Ok(NodeResponse::Error(e)),

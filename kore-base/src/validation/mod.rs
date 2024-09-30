@@ -49,6 +49,7 @@ pub struct ValidationInfo {
     pub subject: SubjectState,
     pub event: Signed<KoreEvent>,
     pub gov_version: u64,
+    pub owner: KeyIdentifier
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
