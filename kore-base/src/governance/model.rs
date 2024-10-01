@@ -4,13 +4,9 @@
 //! # Governance model.
 //!
 
-use generic_array::typenum::Unsigned;
-use identity::identifier::DigestIdentifier;
-
 use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
 
 use std::{
-    collections::HashSet,
     fmt::{self},
     hash::Hasher,
 };
@@ -410,26 +406,6 @@ pub struct Policy {
     pub evaluate: Validation,
     /// Validate quorum
     pub validate: Validation,
-}
-
-/// Governance model.
-/// This struct represents the governance model.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct GovernanceModel {
-    /// The version of the governance model.
-    #[serde(default)]
-    pub version: u64,
-    /// The set of subjects identifiers directed by this governance.
-    #[serde(default)]
-    pub subjects_id: HashSet<DigestIdentifier>,
-    /// The set of members.
-    pub members: Vec<Member>,
-    /// The set of roles.
-    pub roles: Vec<Role>,
-    /// The set of schemas.
-    pub schemas: Vec<Schema>,
-    /// The set of policies.
-    pub policies: Vec<Policy>,
 }
 
 /// Request stage.

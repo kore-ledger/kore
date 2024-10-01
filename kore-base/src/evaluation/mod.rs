@@ -5,7 +5,7 @@
 //! This module contains the evaluation logic for the Kore protocol.
 //!
 
-mod compiler;
+pub mod compiler;
 pub mod evaluator;
 pub mod request;
 pub mod response;

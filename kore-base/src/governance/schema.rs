@@ -9,33 +9,6 @@ use serde_json::{json, Value};
 pub fn schema() -> Value {
     json!({
       "$defs": {
-        "role": {
-          "type": "object",
-          "properties": {
-            "role": {
-              "oneOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "role": {
-                      "const": "CREATOR"
-                    },
-                    "quantity": {
-                      "type": "integer",
-                      "minimum": 1
-                    }
-                  },
-                  "required": ["role", "quantity"]
-                },
-                {
-                  "type": "string",
-                  "enum": ["APPROVER", "EVALUATOR", "VALIDATOR", "WITNESS", "ISSUER"]
-                }
-              ]
-            }
-          },
-          "required": ["role"]
-        },
         "quorum": {
           "oneOf": [
             {
@@ -143,7 +116,25 @@ pub fn schema() -> Value {
               "type": "string"
             },
             "role": {
-              "$ref": "#/$defs/role"
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "const": "CREATOR"
+                        },
+                        "quantity": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      },
+                      "required": ["type", "quantity"]
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["APPROVER", "EVALUATOR", "VALIDATOR", "WITNESS", "ISSUER"]
+                    }
+                  ]
             },
             "schema": {
               "oneOf": [
@@ -180,8 +171,8 @@ pub fn schema() -> Value {
                 "type": "string"
               },
               "schema": {
-                "$schema": "http://json-schema.org/draft/2020-12/schema",
-                "$id": "http://json-schema.org/draft/2020-12/schema",
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$id": "https://json-schema.org/draft/2020-12/schema",
                 "$vocabulary": {
                   "http://json-schema.org/draft/2020-12/vocab/core": true,
                   "http://json-schema.org/draft/2020-12/vocab/applicator": true,

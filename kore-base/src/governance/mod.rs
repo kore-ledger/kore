@@ -4,6 +4,8 @@
 //! # Governance module.
 //!
 
+// TODO Cuando haya un cambio en la governanza, en un schema para el cual soy evaluador, tengo que realizar la compilación de JSONSchema y compilación del contrato,
+// solo en el caso de que haya ocurrido algún cambio.
 pub mod init;
 pub mod json_schema;
 pub mod model;
@@ -16,23 +18,18 @@ use crate::{
     Error,
 };
 
+use json_schema::JsonSchema;
 use model::{Contract, Roles};
 pub use schema::schema;
 
 pub use model::{
-    GovernanceModel, Member, Policy, Quorum, RequestStage, Role, Schema, Who,
+    Member, Policy, Quorum, RequestStage, Role, Schema, Who,
 };
 
 use identity::{
     identifier::{DigestIdentifier, KeyIdentifier},
     keys::KeyPair,
 };
-
-use actor::{
-    Actor, ActorContext, Error as ActorError, Event, Handler, Message, Response,
-};
-
-use store::{database::DbManager, store::PersistentActor};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -48,20 +45,20 @@ use std::{
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Governance {
-    /// The identifier of the governance.
-    subject_id: DigestIdentifier,
-    /// The identifier of the governance that drives this subject.
-    governance_id: DigestIdentifier,
-    /// The namespace of the subject.
-    namespace: Namespace,
-    /// The name of the subject.
-    name: String,
-    /// Indicates whether the governace is active or not.
-    active: bool,
-    /// The current sequence number of the events.
-    sn: u64,
-    /// The governance model.
-    model: GovernanceModel,
+    /// The version of the governance 
+    #[serde(default)]
+    pub version: u64,
+    /// The set of subjects identifiers directed by this governance.
+    #[serde(default)]
+    pub subjects_id: HashSet<DigestIdentifier>,
+    /// The set of members.
+    pub members: Vec<Member>,
+    /// The set of roles.
+    pub roles: Vec<Role>,
+    /// The set of schemas.
+    pub schemas: Vec<Schema>,
+    /// The set of policies.
+    pub policies: Vec<Policy>,
 }
 
 impl Governance {
@@ -72,11 +69,11 @@ impl Governance {
         schema_id: &str,
         owner: &str,
     ) -> Result<ValueWrapper, Error> {
-        if self.governance_id.digest.is_empty() {
+        if schema_id == "governance" {
             debug!("Meta-governance initial state.");
             return Ok(init::init_state(owner));
         }
-        for schema in &self.model.schemas {
+        for schema in &self.schemas {
             if schema.id == schema_id {
                 debug!("Schema found: {}", schema_id);
                 return Ok(ValueWrapper(schema.initial_value.clone()));
@@ -89,7 +86,7 @@ impl Governance {
     /// Get the schema by id.
     ///
     pub fn get_schema(&self, schema_id: &str) -> Result<Schema, Error> {
-        for schema in &self.model.schemas {
+        for schema in &self.schemas {
             debug!("Schema found: {}", schema_id);
             if schema.id == schema_id {
                 return Ok(schema.clone());
@@ -101,15 +98,14 @@ impl Governance {
 
     pub fn members_to_key_identifier(&self) -> HashSet<KeyIdentifier> {
         HashSet::from_iter(
-            self.model
-                .members
+            self.members
                 .iter()
                 .filter_map(|e| KeyIdentifier::from_str(&e.id).ok()),
         )
     }
 
     fn id_by_name(&self, name: &str) -> Option<String> {
-        let member = self.model.members.iter().find(|e| e.name == name);
+        let member = self.members.iter().find(|e| e.name == name);
         member.map(|member| member.id.clone())
     }
 
@@ -121,7 +117,7 @@ impl Governance {
         namespace: Namespace,
     ) -> HashSet<KeyIdentifier> {
         let mut signers = HashSet::new();
-        for rol in &self.model.roles {
+        for rol in &self.roles {
             // Check if the stage is for the role.
             if role == rol.role {
                 // Check namespace
@@ -179,7 +175,7 @@ impl Governance {
     }
 
     fn get_quorum(&self, role: Roles, schema: &str) -> Result<Quorum, Error> {
-        let policies = self.model.policies.iter().find(|e| e.id == schema);
+        let policies = self.policies.iter().find(|e| e.id == schema);
         if let Some(policies) = policies {
             match role {
                 Roles::APPROVER => Ok(policies.approve.quorum.clone()),
@@ -214,31 +210,94 @@ impl Governance {
         }
     }
 
+    pub fn schemas(
+        &self,
+        role: Roles,
+        our_id: &str
+    ) -> Vec<Schema> {
+        let mut schemas_id: Vec<String> = vec![];
+        let mut all_schemas = false;
+
+        for rol in self.roles.clone() {
+
+            match rol.who {
+                Who::ID { ID } => {
+                    if our_id != ID {
+                        continue;
+                    }
+                }
+                Who::NAME { NAME } => {
+                    let id_string = self.id_by_name(&NAME);
+                    if let Some(id) = id_string {
+                        if our_id != id {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+                Who::NOT_MEMBERS => continue,
+                Who::MEMBERS => {},
+            };
+
+            if rol.role == role {
+                match rol.schema {
+                    model::SchemaEnum::ID { ID } => {
+                        if ID != "governance" {
+                            schemas_id.push(ID);
+                        } else {
+                            continue;
+                        }
+                    }
+                    _ => {
+                        all_schemas = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if all_schemas {
+            return self.schemas.clone();
+        } else {
+            let mut schemas: Vec<Schema> = vec![];
+            for id in schemas_id {
+                for schema in self.schemas.clone() {
+                    if id == schema.id {
+                        schemas.push(schema);
+                    }
+                }
+            }
+
+            return schemas;
+        }
+    }
+
     pub fn subjects_schemas_rol_namespace(
         &self,
+        our_id: &str,
     ) -> (
         HashMap<(String, Roles), Vec<String>>,
         HashMap<(String, String), Vec<String>>,
     ) {
-        let subject = self.subject_id.to_string();
         let mut our_roles: HashMap<(String, Roles), Vec<String>> =
             HashMap::new();
         let mut creators: HashMap<(String, String), Vec<String>> =
             HashMap::new();
         let all_schemas: Vec<String> =
-            self.model.schemas.iter().map(|x| x.id.clone()).collect();
+            self.schemas.iter().map(|x| x.id.clone()).collect();
         let all_members: Vec<String> =
-            self.model.members.iter().map(|x| x.id.clone()).collect();
+            self.members.iter().map(|x| x.id.clone()).collect();
 
-        for rol in self.model.roles.clone() {
-            let mut schema = String::default();
+        for rol in self.roles.clone() {
+            let schema: String;
             let mut is_me = false;
             let mut is_all = false;
             let mut member = String::default();
 
             match rol.who {
                 Who::ID { ID } => {
-                    if subject == ID {
+                    if our_id == ID {
                         is_me = true;
                     } else {
                         member = ID;
@@ -247,7 +306,7 @@ impl Governance {
                 Who::NAME { NAME } => {
                     let id_string = self.id_by_name(&NAME);
                     if let Some(id) = id_string {
-                        if subject == id {
+                        if our_id == id {
                             is_me = true;
                         } else {
                             member = id;
@@ -381,15 +440,7 @@ impl Governance {
     }
 
     pub fn get_schemas(&self) -> Vec<Schema> {
-        self.model.schemas.clone()
-    }
-
-    pub fn get_subject_id(&self) -> DigestIdentifier {
-        self.subject_id.clone()
-    }
-
-    pub fn get_governance_id(&self) -> DigestIdentifier {
-        self.governance_id.clone()
+        self.schemas.clone()
     }
 
     /// Check if the request is allowed.
@@ -399,7 +450,7 @@ impl Governance {
         name: &str,
         stage: RequestStage,
     ) -> bool {
-        for rol in &self.model.roles {
+        for rol in &self.roles {
             if rol.role.to_str() == stage.to_role() {
                 match &rol.who {
                     Who::ID { ID } => return &id.to_string() == ID,
@@ -414,12 +465,12 @@ impl Governance {
 
     /// Governance version.
     pub fn get_version(&self) -> u64 {
-        self.model.version
+        self.version
     }
 
     /// Check if the key is a member.
     fn is_member(&self, id: &KeyIdentifier) -> bool {
-        for member in &self.model.members {
+        for member in &self.members {
             if member.id == id.to_string() {
                 return true;
             }
@@ -432,18 +483,10 @@ impl TryFrom<SubjectState> for Governance {
     type Error = Error;
 
     fn try_from(subject: SubjectState) -> Result<Self, Self::Error> {
-        let model: GovernanceModel =
+        let governance: Governance =
             serde_json::from_value(subject.properties.0).map_err(|_| {
                 Error::Governance("Governance model not found.".to_owned())
             })?;
-        Ok(Governance {
-            subject_id: subject.subject_id,
-            governance_id: subject.governance_id,
-            namespace: subject.namespace,
-            name: subject.name,
-            active: subject.active,
-            sn: subject.sn,
-            model,
-        })
+        Ok(governance)
     }
 }

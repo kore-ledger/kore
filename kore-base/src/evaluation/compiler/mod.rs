@@ -6,13 +6,19 @@ use actor::{
 };
 use async_std::fs;
 use async_trait::async_trait;
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use tracing::error;
 use wasmtime::{Config, Engine, ExternType, Module};
 
-use crate::Error;
+use crate::{governance::json_schema::JsonSchema, Error, HashId, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR, SCHEMAS};
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Compiler {}
+pub struct Compiler {
+    pub schema: DigestIdentifier,
+    pub contract: DigestIdentifier,
+}
 
 impl Compiler {
     async fn compile_contract(
@@ -142,10 +148,14 @@ impl Compiler {
 pub enum CompilerCommand {
     Compile {
         contract: String,
+        schema: ValueWrapper,
+        initial_value: Value,
         contract_path: String,
     },
     CompileCheck {
         contract: String,
+        schema: ValueWrapper,
+        initial_value: Value,
         contract_path: String,
     },
 }
@@ -161,7 +171,7 @@ impl Event for CompilerEvent {}
 pub enum CompilerResponse {
     Error(Error),
     Check,
-    Compilation(Vec<u8>),
+    Ok,
 }
 
 impl Response for CompilerResponse {}
@@ -185,32 +195,114 @@ impl Handler<Compiler> for Compiler {
             CompilerCommand::Compile {
                 contract,
                 contract_path,
+                initial_value,
+                schema,
             } => {
-                if let Err(e) =
-                    Self::compile_contract(&contract, &contract_path).await
-                {
-                    return Ok(CompilerResponse::Error(e));
+                let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+                    *derivator
+                } else {
+                    error!("Error getting derivator");
+                    DigestDerivator::Blake3_256
                 };
 
-                match Self::check_wasm(&contract_path).await {
-                    Ok(wasm) => Ok(CompilerResponse::Compilation(wasm)),
-                    Err(e) => Ok(CompilerResponse::Error(e)),
+                let contract_wrapper = ValueWrapper(json!({"raw": contract}));
+                let contract_hash = match contract_wrapper.hash_id(derivator) {
+                    Ok(hash) => hash,
+                    Err(e) => todo!(),
+                };
+
+                if contract_hash != self.contract {
+                    if let Err(e) =
+                        Self::compile_contract(&contract, &contract_path).await
+                    {
+                        return Ok(CompilerResponse::Error(e));
+                    };
+
+                    let contract = match Self::check_wasm(&contract_path).await {
+                        Ok(contract) => contract,
+                        Err(e) => return Ok(CompilerResponse::Error(e))
+                    };
+
+                    {
+                        let mut contracts = CONTRACTS.write().await;
+                        contracts.insert(contract_path.clone(), contract);
+                    }
+                    
+                    self.contract = contract_hash;
                 }
+
+                let schema_hash = match schema.hash_id(derivator) {
+                    Ok(hash) => hash,
+                    Err(e) => todo!(),
+                };
+
+                if schema_hash != self.schema {
+                    let compilation = match JsonSchema::compile(&schema.0) {
+                        Ok(compilation) => compilation,
+                        Err(e) => todo!()
+                    };
+
+                    if !compilation.fast_validate(&initial_value) {
+                        todo!()
+                    }
+
+                    {
+                        let mut schemas = SCHEMAS.write().await;
+                        schemas.insert(contract_path, compilation);
+                    }
+                    self.schema = schema_hash;
+                }
+
+                Ok(CompilerResponse::Ok)
             }
             CompilerCommand::CompileCheck {
                 contract,
                 contract_path,
+                initial_value,
+                schema,
             } => {
-                if let Err(e) =
-                    Self::compile_contract(&contract, &contract_path).await
-                {
-                    return Ok(CompilerResponse::Error(e));
+                let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+                    *derivator
+                } else {
+                    error!("Error getting derivator");
+                    DigestDerivator::Blake3_256
                 };
 
-                match Self::check_wasm(&contract_path).await {
-                    Ok(_) => Ok(CompilerResponse::Check),
-                    Err(e) => Ok(CompilerResponse::Error(e)),
+                let contract_wrapper = ValueWrapper(json!({"raw": contract}));
+                let contract_hash = match contract_wrapper.hash_id(derivator) {
+                    Ok(hash) => hash,
+                    Err(e) => todo!(),
+                };
+
+                if contract_hash != self.contract {
+                    if let Err(e) =
+                        Self::compile_contract(&contract, &contract_path).await
+                    {
+                        return Ok(CompilerResponse::Error(e));
+                    };
+
+                    if let Err(e) = Self::check_wasm(&contract_path).await {
+                        return Ok(CompilerResponse::Error(e));
+                    }
                 }
+
+                let schema_hash = match schema.hash_id(derivator) {
+                    Ok(hash) => hash,
+                    Err(e) => todo!(),
+                };
+
+                if schema_hash != self.schema {
+                    let compilation = match JsonSchema::compile(&schema.0) {
+                        Ok(compilation) => compilation,
+                        Err(e) => todo!()
+                    };
+
+                    if !compilation.fast_validate(&initial_value) {
+                        todo!()
+                    }
+                }
+
+                Ok(CompilerResponse::Check)
             }
         }
     }

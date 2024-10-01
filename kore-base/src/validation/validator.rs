@@ -170,7 +170,7 @@ impl Validator {
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     // TODO si es un nuevo validador va a necesitar la prueba anterior y las firmas.

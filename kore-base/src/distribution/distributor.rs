@@ -30,7 +30,7 @@ use crate::{
 use super::{Distribution, DistributionCommand};
 
 enum CheckGovernance {
-    Continue { metadata: SubjectMetadata },
+    Continue,
     Finish,
 }
 
@@ -403,6 +403,11 @@ impl Distributor {
             Err(e) => todo!(),
         };
 
+        let metadata = match self.get_metadata(ctx, subject_id.clone()).await {
+            Ok(metadata) => metadata,
+            Err(e) => todo!(),
+        };
+
         let our_gov_version = gov.get_version();
 
         if let Some(gov_version) = gov_version {
@@ -410,9 +415,9 @@ impl Distributor {
             match our_gov_version.cmp(&gov_version) {
                 std::cmp::Ordering::Less => {
                     let gov_id = if info.schema != "governance" {
-                        gov.get_governance_id()
+                        metadata.governance_id
                     } else {
-                        gov.get_subject_id()
+                        metadata.subject_id
                     };
 
                     // Mi version es menor, me actualizo. y no le envío nada
@@ -469,14 +474,14 @@ impl Distributor {
                             request_id: info.request_id,
                             reciver_actor: format!(
                                 "/user/node/{}/distributor",
-                                gov.get_governance_id()
+                                metadata.governance_id
                             ),
                             schema: "governance".to_owned(),
                         };
 
                         let distributor_path = ActorPath::from(format!(
                             "/user/node/{}/distributor",
-                            gov.get_governance_id()
+                            metadata.governance_id
                         ));
                         let distributor_actor: ActorRef<Distributor> =
                             if let Some(distributor_actor) =
@@ -491,7 +496,7 @@ impl Distributor {
                             .tell(DistributorCommand::SendDistribution {
                                 gov_version: Some(gov_version),
                                 actual_sn: Some(gov_version),
-                                subject_id: gov.get_governance_id(),
+                                subject_id: metadata.governance_id,
                                 info: new_info,
                             })
                             .await
@@ -510,12 +515,6 @@ impl Distributor {
             }
         }
 
-        // Si es la misma compruebo que sea un testigo.
-        let metadata = match self.get_metadata(ctx, subject_id.clone()).await {
-            Ok(metadata) => metadata,
-            Err(e) => todo!(),
-        };
-
         if !gov
             .get_signers(
                 Roles::WITNESS,
@@ -529,7 +528,7 @@ impl Distributor {
             todo!()
         };
 
-        Ok(CheckGovernance::Continue { metadata })
+        Ok(CheckGovernance::Continue)
     }
 }
 
@@ -598,15 +597,15 @@ impl Handler<Distributor> for Distributor {
                         info.clone(),
                     )
                     .await?;
-                let metadata = match result {
-                    CheckGovernance::Continue { metadata } => metadata,
-                    CheckGovernance::Finish => return Ok(()),
+
+                if let CheckGovernance::Finish = result {
+                    return Ok(());
                 };
 
-                let (sn, subject_keys) = if let Some(actual_sn) = actual_sn {
-                    (actual_sn, None)
+                let sn = if let Some(actual_sn) = actual_sn {
+                    actual_sn
                 } else {
-                    (0, Some(metadata.keys))
+                    0
                 };
 
                 // Sacar eventos.

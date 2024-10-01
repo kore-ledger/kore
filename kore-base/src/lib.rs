@@ -18,9 +18,12 @@ mod validation;
 
 use actor::{ActorSystem, SystemRef};
 pub use api::Api;
+use async_std::sync::RwLock;
 pub use config::{Config as KoreBaseConfig, DbConfig};
 use db::Database;
 pub use error::Error;
+use governance::json_schema::JsonSchema;
+use governance::schema;
 pub use governance::{init::init_state, Governance};
 use helpers::encrypted_pass::EncryptedPass;
 pub use helpers::network::*;
@@ -38,6 +41,7 @@ pub use validation::{
 
 use lazy_static::lazy_static;
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 lazy_static! {
@@ -45,12 +49,28 @@ lazy_static! {
     pub static ref DIGEST_DERIVATOR: Mutex<DigestDerivator> = Mutex::new(DigestDerivator::Blake3_256);
     /// The key derivator for the system.
     pub static ref KEY_DERIVATOR: Mutex<KeyDerivator> = Mutex::new(KeyDerivator::Ed25519);
+
+    pub static ref SCHEMAS: RwLock<HashMap<String, JsonSchema>> = {
+        let mut schemas = HashMap::new();
+        if let Ok(json_schema) = JsonSchema::compile(&schema()) {
+            schemas.insert("governance".to_owned(), json_schema);
+        };
+
+        RwLock::new(schemas)
+    };
+
+    pub static ref CONTRACTS: RwLock<HashMap<String, Vec<u8>>> = {
+        let contracts = HashMap::new();
+
+        RwLock::new(contracts)
+    };
 }
 
 pub async fn system(
     config: KoreBaseConfig,
     password: &str,
 ) -> Result<SystemRef, Error> {
+    
     // Update statics.
     if let Ok(mut derivator) = DIGEST_DERIVATOR.lock() {
         *derivator = config.digest_derivator;
