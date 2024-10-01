@@ -210,6 +210,69 @@ impl Governance {
         }
     }
 
+    pub fn schemas(
+        &self,
+        role: Roles,
+        our_id: &str
+    ) -> Vec<Schema> {
+        let mut schemas_id: Vec<String> = vec![];
+        let mut all_schemas = false;
+
+        for rol in self.roles.clone() {
+
+            match rol.who {
+                Who::ID { ID } => {
+                    if our_id != ID {
+                        continue;
+                    }
+                }
+                Who::NAME { NAME } => {
+                    let id_string = self.id_by_name(&NAME);
+                    if let Some(id) = id_string {
+                        if our_id != id {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+                Who::NOT_MEMBERS => continue,
+                Who::MEMBERS => {},
+            };
+
+            if rol.role == role {
+                match rol.schema {
+                    model::SchemaEnum::ID { ID } => {
+                        if ID != "governance" {
+                            schemas_id.push(ID);
+                        } else {
+                            continue;
+                        }
+                    }
+                    _ => {
+                        all_schemas = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if all_schemas {
+            return self.schemas.clone();
+        } else {
+            let mut schemas: Vec<Schema> = vec![];
+            for id in schemas_id {
+                for schema in self.schemas.clone() {
+                    if id == schema.id {
+                        schemas.push(schema);
+                    }
+                }
+            }
+
+            return schemas;
+        }
+    }
+
     pub fn subjects_schemas_rol_namespace(
         &self,
         our_id: &str,

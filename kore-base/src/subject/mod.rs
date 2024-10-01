@@ -6,7 +6,12 @@
 
 use crate::{
     db::Storable,
-    evaluation::{evaluator::Evaluator, schema::EvaluationSchema, Evaluation},
+    evaluation::{
+        compiler::{Compiler, CompilerCommand},
+        evaluator::Evaluator,
+        schema::EvaluationSchema,
+        Evaluation,
+    },
     governance::model::Roles,
     model::{
         event::{Event as KoreEvent, Ledger, LedgerValue},
@@ -19,7 +24,6 @@ use crate::{
     Error, Governance, Node, DIGEST_DERIVATOR,
 };
 
-use crate::governance::RequestStage;
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
     Handler, Message, Response,
@@ -188,47 +192,6 @@ impl Subject {
         }
     }
 
-    async fn am_i_owner(
-        &self,
-        ctx: &mut ActorContext<Subject>,
-        message: NodeMessage,
-    ) -> Result<bool, Error> {
-        // Node path.
-        let node_path = ActorPath::from("/user/node");
-        // Node actor.
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        // We obtain the actor node
-        let response = if let Some(node_actor) = node_actor {
-            // We ask a node
-            let response = node_actor.ask(message).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a node {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(
-                "The node actor was not found in the expected path /user/node"
-                    .to_owned(),
-            ));
-        };
-
-        // We handle the possible responses of node
-        match response {
-            NodeResponse::AmIOwner(owner) => Ok(owner),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
-        }
-    }
-
     /// Updates the subject with a new subject id.
     ///
     /// # Arguments
@@ -321,11 +284,6 @@ impl Subject {
     /// The subject metadata.
     ///
     fn metadata(&self) -> SubjectMetadata {
-        let keys  = if let Some(keys) = self.keys.clone() {
-            Some(keys.public_key_pair())
-        } else {
-            None
-        };
         SubjectMetadata {
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
@@ -364,13 +322,7 @@ impl Subject {
             .await
             .map_err(|e| ActorError::Create)?;
 
-        let owner = self
-            .am_i_owner(
-                ctx,
-                NodeMessage::AmISubjectOwner(self.subject_id.clone()),
-            )
-            .await
-            .map_err(|e| ActorError::Create)?;
+        let owner = our_key == self.owner;
 
         if owner {
             let validation = Validation::new(our_key.clone());
@@ -396,13 +348,7 @@ impl Subject {
         let gov = Governance::try_from(self.state())
             .map_err(|e| ActorError::Create)?;
 
-        let owner = self
-            .am_i_owner(
-                ctx,
-                NodeMessage::AmIGovernanceOwner(self.subject_id.clone()),
-            )
-            .await
-            .map_err(|e| ActorError::Create)?;
+        let owner = our_key == self.owner;
 
         // If we are owner of subject
         if owner {
@@ -435,7 +381,27 @@ impl Subject {
             }
         }
 
-        let (our_roles, creators) = gov.subjects_schemas_rol_namespace(&our_key.to_string());
+        let schemas = gov.schemas(Roles::EVALUATOR, &our_key.to_string());
+        for schema in schemas {
+            let actor = Compiler::default();
+            let actor = ctx
+                .create_child(&format!("{}_compiler", schema.id), actor)
+                .await?;
+            if let Err(e) = actor
+                .tell(CompilerCommand::Compile {
+                    contract: schema.contract.raw.clone(),
+                    schema: ValueWrapper(schema.schema.clone()),
+                    initial_value: schema.initial_value.clone(),
+                    contract_path: format!("{}_{}", self.subject_id, schema.id),
+                })
+                .await
+            {
+                todo!()
+            };
+        }
+
+        let (our_roles, creators) =
+            gov.subjects_schemas_rol_namespace(&our_key.to_string());
         for ((schema, rol), namespaces) in our_roles {
             let mut valid_users = HashSet::new();
             for ((schema_creator, id), namespaces_creator) in creators.clone() {
@@ -450,9 +416,12 @@ impl Subject {
             match rol {
                 crate::governance::model::Roles::APPROVER => {}
                 crate::governance::model::Roles::EVALUATOR => {
-                    let actor = EvaluationSchema::new(valid_users);
-                    ctx.create_child(&format!("{}_evaluation", schema), actor)
-                        .await?;
+                    let eval_actor = EvaluationSchema::new(valid_users);
+                    ctx.create_child(
+                        &format!("{}_evaluation", schema),
+                        eval_actor,
+                    )
+                    .await?;
                 }
                 crate::governance::model::Roles::VALIDATOR => {
                     let actor = ValidationSchema::new(valid_users);
@@ -1239,7 +1208,8 @@ mod tests {
             signature,
         };
 
-        let subject_a = Subject::from_event(Some(keys), &signed_ledger).unwrap();
+        let subject_a =
+            Subject::from_event(Some(keys), &signed_ledger).unwrap();
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

@@ -4,17 +4,10 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    evaluation::response::Response as EvalRes,
-    governance::{json_schema::JsonSchema, Governance, RequestStage, Schema},
-    helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{
+    evaluation::response::Response as EvalRes, governance::{json_schema::{self, JsonSchema}, Governance, RequestStage, Schema}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
         network::RetryNetwork, signature::Signature, HashId, SignTypesNode,
         TimeStamp,
-    },
-    node::{self, Node, NodeMessage, NodeResponse},
-    subject::{SubjectCommand, SubjectResponse},
-    Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper,
-    DIGEST_DERIVATOR,
+    }, node::{self, Node, NodeMessage, NodeResponse}, subject::{SubjectCommand, SubjectResponse}, Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR, SCHEMAS
 };
 
 use crate::helpers::network::ActorMessage;
@@ -145,12 +138,6 @@ impl Evaluator {
         schemas: Vec<Schema>,
         governance_id: &str,
     ) -> Result<(), Error> {
-        let child = ctx.create_child("compiler", Compiler::default()).await;
-
-        let compiler_actor = match child {
-            Ok(child) => child,
-            Err(e) => return Err(Error::Actor(format!("{}", e))),
-        };
         for id in ids {
             let schema = if let Some(schema) =
                 schemas.iter().find(|x| x.id.clone() == id.clone())
@@ -160,9 +147,20 @@ impl Evaluator {
                 return Err(Error::Evaluation("There is a contract that requires compilation but its scheme could not be found".to_owned()));
             };
 
+            let compiler_path = ActorPath::from(format!("/user/node/{}/{}_compiler", governance_id, schema.id));
+            let compiler_actor = ctx.system().get_actor(&compiler_path).await;
+
+            let compiler_actor: ActorRef<Compiler> = if let Some(compiler_actor) = compiler_actor {
+                compiler_actor
+            } else {
+                return Err(Error::Actor(format!("Can not find compiler actor in {}", compiler_path)))
+            };
+
             let response = compiler_actor
                 .ask(CompilerCommand::CompileCheck {
                     contract: schema.contract.raw.clone(),
+                    schema: ValueWrapper(schema.schema.clone()),
+                    initial_value: schema.initial_value.clone(),
                     contract_path: format!("{}_{}", governance_id, id),
                 })
                 .await;
@@ -235,37 +233,14 @@ impl Evaluator {
         let contract: Contract = if is_governance {
             Contract::GovContract
         } else {
-            let response = match node_actor
-                .ask(NodeMessage::CompiledContract(format!(
-                    "{}_{}",
-                    governance_id, execute_contract.context.schema_id
-                )))
-                .await
-            {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            };
-
-            match response {
-                NodeResponse::Contract(compiled_contract) => {
-                    Contract::CompiledContract(compiled_contract)
-                }
-                // TODO, si no encuentra el contrato se podría volver a compilar
-                NodeResponse::Error(e) => {
-                    return Err(Error::Actor(format!(
-                        "The compiled contract could not be found: {}",
-                        e
-                    )))
-                }
-                _ => return Err(Error::Actor(
-                    "An unexpected response has been received from node actor"
-                        .to_owned(),
-                )),
+            let contracts = CONTRACTS.read().await;
+            if let Some(contract) = contracts.get(&format!(
+                "{}_{}",
+                governance_id, execute_contract.context.schema_id
+            )) {
+                Contract::CompiledContract(contract.clone())
+            } else {
+                todo!()
             }
         };
 
@@ -322,7 +297,7 @@ impl Evaluator {
         })
     }
 
-    fn build_response(
+    async fn build_response(
         evaluation: ContractResult,
         evaluation_req: EvaluationReq,
     ) -> EvaluationRes {
@@ -359,11 +334,19 @@ impl Evaluator {
                 todo!()
             };
 
-            // TODO las compilaciones se deben guardar en memoria, en la governanza, en un Option
-            let json_schema = match JsonSchema::compile(&schema.schema) {
-                Ok(json_schema) => json_schema,
-                Err(e) => todo!(),
-            };
+                // Get governance id
+                let governance_id = if evaluation_req.context.schema_id == "governance" {
+                    evaluation_req.context.subject_id.clone()
+                } else {
+                    evaluation_req.context.governance_id.clone()
+                };
+
+                let schemas = SCHEMAS.read().await;
+                let json_schema = if let Some(json_schema) = schemas.get(&format!("{}_{}", governance_id, schema.id)) {
+                    json_schema
+                } else {
+                    todo!()
+                };
 
             let value =
                 match serde_json::to_value(evaluation.final_state.clone()) {
@@ -454,7 +437,7 @@ impl Handler<Evaluator> for Evaluator {
                     match self.evaluate(ctx, &evaluation_req, state_data).await
                     {
                         Ok(evaluation) => {
-                            Self::build_response(evaluation, evaluation_req)
+                            Self::build_response(evaluation, evaluation_req).await
                         }
                         Err(e) => {
                             // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
@@ -657,7 +640,7 @@ impl Handler<Evaluator> for Evaluator {
                     Ok(evaluation) => Self::build_response(
                         evaluation,
                         evaluation_req.content.clone(),
-                    ),
+                    ).await,
                     Err(e) => {
                         // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
                         todo!()

@@ -50,11 +50,17 @@ lazy_static! {
     /// The key derivator for the system.
     pub static ref KEY_DERIVATOR: Mutex<KeyDerivator> = Mutex::new(KeyDerivator::Ed25519);
 
-    pub static ref CONTRACTS: RwLock<HashMap<&'static str, JsonSchema>> = {
-        let mut contracts = HashMap::new();
-        if let Ok(contract) = JsonSchema::compile(&schema()) {
-            contracts.insert("governance", contract);
+    pub static ref SCHEMAS: RwLock<HashMap<String, JsonSchema>> = {
+        let mut schemas = HashMap::new();
+        if let Ok(json_schema) = JsonSchema::compile(&schema()) {
+            schemas.insert("governance".to_owned(), json_schema);
         };
+
+        RwLock::new(schemas)
+    };
+
+    pub static ref CONTRACTS: RwLock<HashMap<String, Vec<u8>>> = {
+        let contracts = HashMap::new();
 
         RwLock::new(contracts)
     };
