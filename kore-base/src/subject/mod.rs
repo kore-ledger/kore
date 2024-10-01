@@ -327,7 +327,6 @@ impl Subject {
             None
         };
         SubjectMetadata {
-            keys,
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
             schema_id: self.schema_id.clone(),
@@ -410,7 +409,7 @@ impl Subject {
             let validation = Validation::new(our_key.clone());
             ctx.create_child("validation", validation).await?;
 
-            let evaluation = Evaluation::new(our_key);
+            let evaluation = Evaluation::new(our_key.clone());
             ctx.create_child("evaluation", evaluation).await?;
         } else {
             if self.build_executors(
@@ -427,7 +426,7 @@ impl Subject {
             if self.build_executors(
                 Roles::EVALUATOR,
                 &self.schema_id,
-                our_key,
+                our_key.clone(),
                 &gov,
             ) {
                 // If we are a evaluator
@@ -436,7 +435,7 @@ impl Subject {
             }
         }
 
-        let (our_roles, creators) = gov.subjects_schemas_rol_namespace();
+        let (our_roles, creators) = gov.subjects_schemas_rol_namespace(&our_key.to_string());
         for ((schema, rol), namespaces) in our_roles {
             let mut valid_users = HashSet::new();
             for ((schema_creator, id), namespaces_creator) in creators.clone() {
@@ -878,7 +877,6 @@ pub struct SubjectState {
     Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
 pub struct SubjectMetadata {
-    pub keys: Option<KeyPair>,
     /// The identifier of the subject of the event.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance contract.
