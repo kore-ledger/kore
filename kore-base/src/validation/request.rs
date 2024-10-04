@@ -3,12 +3,12 @@
 
 use super::{
     proof::ValidationProof,
-    response::{ValidationRes, ValidationTimeOut},
+    response::ValidationRes,
 };
 
 use crate::{
     model::{
-        request::EventRequest, signature::Signature, HashId, ValueWrapper,
+        network::TimeOutResponse, request::EventRequest, signature::Signature, HashId, ValueWrapper
     },
     Error,
 };
@@ -38,7 +38,7 @@ pub struct ValidationReq {
 )]
 pub enum SignersRes {
     Signature(Signature),
-    TimeOut(ValidationTimeOut),
+    TimeOut(TimeOutResponse),
 }
 
 impl HashId for ValidationReq {

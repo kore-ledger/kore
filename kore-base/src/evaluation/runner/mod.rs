@@ -9,7 +9,7 @@ use borsh::{to_vec, BorshDeserialize};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use types::{
-    Contract, ContractResult, GovernanceData, GovernanceEvent, MemoryManager,
+    Contract, ContractResult, GovernanceData, GovernanceEvent, MemoryManager, RunnerResult,
 };
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
 
@@ -33,7 +33,7 @@ impl Runner {
         event: &ValueWrapper,
         compiled_contract: Contract,
         is_owner: bool,
-    ) -> Result<(ContractResult, Vec<String>), Error> {
+    ) -> Result<(RunnerResult, Vec<String>), Error> {
         // If it is a governance we do not need to use wastime, since the governance contract is always the same and it is known before starting the node
         let Contract::CompiledContract(contract_bytes) = compiled_contract
         else {
@@ -91,13 +91,17 @@ impl Runner {
             })?;
 
         let result = Self::get_result(&store, result_ptr)?;
-        Ok((result, vec![]))
+        Ok((RunnerResult {
+            approval_required: false,
+            final_state: result.final_state,
+            success: result.success
+        }, vec![]))
     }
 
     async fn execute_governance_contract(
         state: &ValueWrapper,
         event: &ValueWrapper,
-    ) -> Result<(ContractResult, Vec<String>), Error> {
+    ) -> Result<(RunnerResult, Vec<String>), Error> {
         let event = serde_json::from_value::<GovernanceEvent>(event.0.clone())
             .map_err(|e| {
                 Error::Runner(format!("Can not create governance event {}", e))
@@ -116,7 +120,7 @@ impl Runner {
                     let compilations = Self::check_compilation(data.0.clone())?;
                     // TODO QUITAR TODOS LOS unwrap()
                     Ok((
-                        ContractResult {
+                        RunnerResult {
                             final_state: ValueWrapper(
                                 serde_json::to_value(patched_state).unwrap(),
                             ),
@@ -315,6 +319,12 @@ impl Runner {
                 }
             };
 
+            if let Roles::APPROVER = role.role {
+                if role.schema == SchemaEnum::ALL || SchemaEnum::NOT_GOVERNANCE == role.schema {
+                    return Err(Error::Runner("The approver role only can be asing to governance schema".to_owned()));
+                }
+            };
+
             if let SchemaEnum::ID { ID } = &role.schema {
                 if !policies.contains(ID) {
                     return Err(Error::Runner(format!("The role {} of member {} belongs to an invalid schema.", role.role, role.who)));
@@ -506,7 +516,7 @@ impl Event for RunnerEvent {}
 #[derive(Debug, Clone)]
 pub enum RunnerResponse {
     Response {
-        result: ContractResult,
+        result: RunnerResult,
         compilations: Vec<String>,
     },
     Error(Error),

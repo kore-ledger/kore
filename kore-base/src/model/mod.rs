@@ -18,11 +18,9 @@ pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
 use crate::{
-    evaluation::{request::EvaluationReq, response::EvaluationRes},
-    validation::{
+    approval::{request::ApprovalReq, response::{ApprovalRes, ApprovalSignature}}, evaluation::{request::EvaluationReq, response::EvaluationRes}, validation::{
         proof::ValidationProof, request::ValidationReq, response::ValidationRes,
-    },
-    Error,
+    }, Error
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -40,6 +38,9 @@ pub enum SignTypesNode {
     ValidationRes(ValidationRes),
     EvaluationReq(EvaluationReq),
     EvaluationRes(EvaluationRes),
+    ApprovalRes(ApprovalRes),
+    ApprovalReq(ApprovalReq),
+    ApprovalSignature(ApprovalSignature),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

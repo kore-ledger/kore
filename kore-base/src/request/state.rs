@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    approval::response::ApprovalResponse,
     evaluation::response::EvaluationRes,
     governance::RequestStage,
     model::{
@@ -39,9 +38,12 @@ impl RequestState {
     */
 }
 
+/*
 #[derive(Clone, Debug)]
 pub enum StateCommand {
     Evaluation(EvaluationRes),
     Approval(ApprovalResponse),
     Validation(Signature),
 }
+*/
+

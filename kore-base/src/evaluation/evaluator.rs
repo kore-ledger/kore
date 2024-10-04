@@ -36,7 +36,7 @@ use super::{
     request::EvaluationReq,
     response::EvaluationRes,
     runner::{
-        types::{Contract, ContractResult, GovernanceData},
+        types::{Contract, ContractResult, GovernanceData, RunnerResult},
         Runner, RunnerCommand, RunnerResponse,
     },
     Evaluation, EvaluationCommand, EvaluationResponse,
@@ -184,7 +184,7 @@ impl Evaluator {
         ctx: &mut ActorContext<Evaluator>,
         execute_contract: &EvaluationReq,
         event: &FactRequest,
-    ) -> Result<ContractResult, Error> {
+    ) -> Result<RunnerResult, Error> {
         // TODO: En el original se usa el sn y no el gov version, revizar.
 
         let is_governance = execute_contract.context.schema_id == "governance";
@@ -298,7 +298,7 @@ impl Evaluator {
     }
 
     async fn build_response(
-        evaluation: ContractResult,
+        evaluation: RunnerResult,
         evaluation_req: EvaluationReq,
     ) -> EvaluationRes {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {

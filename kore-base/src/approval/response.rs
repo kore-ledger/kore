@@ -1,41 +1,64 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{model::HashId, Error};
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
+use crate::{model::{network::TimeOutResponse, HashId, TimeStamp}, Error, Signature};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-/// A struct representing an approval response.
+use super::request::ApprovalReq;
+
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    BorshSerialize,
+    BorshDeserialize,
+    PartialOrd,
+)]
+pub enum ApprovalRes {
+    Response(Signature, bool),
+    TimeOut(TimeOutResponse),
+}
+
+impl HashId for ApprovalRes {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |_| Error::Evaluation("HashId for ApprovalRes fails".to_string()),
+        )
+    }
+}
+
 #[derive(
     Debug,
     Clone,
     Serialize,
     Deserialize,
     Eq,
+    PartialEq,
     BorshSerialize,
     BorshDeserialize,
-    PartialOrd,
-    PartialEq,
-    Hash,
 )]
-pub struct ApprovalResponse {
-    /// The hash of the approval request being responded to.
-    pub appr_req_hash: DigestIdentifier,
-    /// Whether the approval request was approved or not.
-    pub approved: bool,
+pub struct ApprovalSignature {
+    pub request: ApprovalReq,
+    pub response: bool
 }
 
-impl HashId for ApprovalResponse {
+impl HashId for ApprovalSignature {
     fn hash_id(
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| {
-                Error::Approval("HashId for ApprovalResponse Fails".to_string())
-            },
+            |_| Error::Evaluation("HashId for ApprovalSignature fails".to_string()),
         )
     }
 }

@@ -14,7 +14,7 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Quorum, RequestStage},
     model::{
-        event::Event as KoreEvent, signature::Signed, Namespace, SignTypesNode,
+        event::{Event as KoreEvent, ProofEvent}, signature::Signed, Namespace, SignTypesNode,
         SignTypesSubject,
     },
     node::{Node, NodeMessage, NodeResponse},
@@ -47,7 +47,8 @@ use std::{collections::HashSet, time::Duration};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ValidationInfo {
     pub subject: SubjectState,
-    pub event: Signed<KoreEvent>,
+    pub event: Signed<ProofEvent>,
+    pub prev_proof_event_hash: DigestIdentifier,
     pub gov_version: u64,
     pub owner: KeyIdentifier
 }
@@ -470,7 +471,6 @@ impl PersistentActor for Validation {
         self.previous_proof = Some(event.actual_proof.clone());
 
         // Darle a request la conclusión de la validación y la información que necesite. Esto no se puede hacer en el apply TODO
-        self.validators_response = vec![];
     }
 }
 
