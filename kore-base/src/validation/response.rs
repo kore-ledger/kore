@@ -3,10 +3,8 @@
 
 use crate::{
     model::{
-        request::EventRequest, signature::Signature, HashId, TimeStamp,
-        ValueWrapper,
-    },
-    Error,
+        network::TimeOutResponse, request::EventRequest, signature::Signature, HashId, TimeStamp, ValueWrapper
+    }, Error
 };
 use identity::identifier::{
     derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
@@ -15,23 +13,6 @@ use identity::identifier::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    PartialEq,
-    Eq,
-    Hash,
-    BorshSerialize,
-    BorshDeserialize,
-    PartialOrd,
-)]
-pub struct ValidationTimeOut {
-    pub who: KeyIdentifier,
-    pub re_trys: u32,
-    pub timestamp: TimeStamp,
-}
 
 /// A Enum representing a validation response.
 #[derive(
@@ -48,7 +29,7 @@ pub struct ValidationTimeOut {
 )]
 pub enum ValidationRes {
     Signature(Signature),
-    TimeOut(ValidationTimeOut),
+    TimeOut(TimeOutResponse),
     Error(String),
 }
 

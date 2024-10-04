@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
     BorshSerialize,
     BorshDeserialize,
 )]
-pub struct ApprovalRequest {
+pub struct ApprovalReq {
     /// The signed event request.
     pub event_request: Signed<EventRequest>,
     /// The sequence number of the event.
@@ -35,10 +35,10 @@ pub struct ApprovalRequest {
     /// The hash of the previous event.
     pub hash_prev_event: DigestIdentifier,
     /// The hash of the previous event.
-    pub gov_id: DigestIdentifier,
+    pub subject_id: DigestIdentifier,
 }
 
-impl HashId for ApprovalRequest {
+impl HashId for ApprovalReq {
     fn hash_id(
         &self,
         derivator: DigestDerivator,

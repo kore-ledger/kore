@@ -1,4 +1,5 @@
 use crate::{
+    approval::approver::{Approver, ApproverCommand},
     distribution::distributor::{Distributor, DistributorCommand},
     evaluation::{
         evaluator::{Evaluator, EvaluatorCommand},
@@ -228,6 +229,31 @@ impl Intermediary {
                             };
                         }
                     }
+                    ActorMessage::ApprovalReq { req } => {
+                        let approver_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+
+                        // Evaluator actor.
+                        let approver_actor: Option<ActorRef<Approver>> =
+                            self.system.get_actor(&approver_path).await;
+
+                        // We obtain the validator
+                        if let Some(approver_actor) = approver_actor {
+                            if let Err(error) = approver_actor
+                                .tell(ApproverCommand::NetworkRequest {
+                                    approval_req: req,
+                                    info: message.info,
+                                })
+                                .await
+                            {
+                                todo!()
+                                // return Err(Error::Actor(format!("Can not send a message to Validator Actor(Req): {}",error)));
+                            };
+                        } else {
+                            todo!()
+                            //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",evaluator_path)));
+                        };
+                    }
                     ActorMessage::DistributionLastEventReq {
                         event,
                         ledger,
@@ -343,6 +369,31 @@ impl Intermediary {
                             if let Err(error) = evaluator_actor
                                 .tell(EvaluatorCommand::NetworkResponse {
                                     evaluation_res: res,
+                                    request_id: message.info.request_id,
+                                })
+                                .await
+                            {
+                                todo!()
+                                //return Err(Error::Actor(format!("Can not send a message to Evaluator Actor(Res): {}",error)));
+                            };
+                        } else {
+                            todo!()
+                            //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",evaluator_path)));
+                        };
+                    }
+                    ActorMessage::ApprovalRes { res } => {
+                        // Validator path.
+                        let approver_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+                        // Validator actor.
+                        let approver_actor: Option<ActorRef<Approver>> =
+                            self.system.get_actor(&approver_path).await;
+
+                        // We obtain the validator
+                        if let Some(approver_actor) = approver_actor {
+                            if let Err(error) = approver_actor
+                                .tell(ApproverCommand::NetworkResponse {
+                                    approval_res: res,
                                     request_id: message.info.request_id,
                                 })
                                 .await

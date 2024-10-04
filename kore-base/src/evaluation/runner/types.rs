@@ -66,9 +66,18 @@ impl MemoryManager {
 )]
 pub struct ContractResult {
     pub final_state: ValueWrapper,
+    pub success: bool,
+}
+
+#[derive(
+    Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug, Clone,
+)]
+pub struct RunnerResult {
+    pub final_state: ValueWrapper,
     pub approval_required: bool,
     pub success: bool,
 }
+
 
 #[derive(Debug, Clone)]
 pub enum Contract {

@@ -7,7 +7,7 @@ use crate::{
     governance::{model::Roles, Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        network::RetryNetwork, signature::Signature, SignTypesNode, TimeStamp,
+        network::{RetryNetwork, TimeOutResponse}, signature::Signature, SignTypesNode, TimeStamp,
     },
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectCommand, SubjectResponse},
@@ -17,7 +17,7 @@ use crate::{
 use super::{
     proof::{EventProof, ValidationProof},
     request::{SignersRes, ValidationReq},
-    response::{ValidationRes, ValidationTimeOut},
+    response::ValidationRes,
     Validation, ValidationCommand, ValidationResponse,
 };
 
@@ -694,7 +694,7 @@ impl Handler<Validator> for Validator {
                     if let Err(e) = validation_actor
                         .tell(ValidationCommand::Response {
                             validation_res: ValidationRes::TimeOut(
-                                ValidationTimeOut {
+                                TimeOutResponse {
                                     re_trys: 3,
                                     timestamp: TimeStamp::now(),
                                     who: self.node.clone(),

@@ -7,10 +7,7 @@ use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    evaluation::{request::EvaluationReq, response::EvaluationRes},
-    model::event::Ledger,
-    validation::{request::ValidationReq, response::ValidationRes},
-    Event as KoreEvent, Signed,
+    approval::{request::ApprovalReq, response::ApprovalRes, Approval}, evaluation::{request::EvaluationReq, response::EvaluationRes}, model::event::Ledger, validation::{request::ValidationReq, response::ValidationRes}, Event as KoreEvent, Signed
 };
 
 pub mod intermediary;
@@ -29,6 +26,12 @@ pub enum ActorMessage {
     },
     EvaluationRes {
         res: Signed<EvaluationRes>,
+    },
+    ApprovalReq {
+        req: Signed<ApprovalReq>,
+    },
+    ApprovalRes {
+        res: Signed<ApprovalRes>,
     },
     DistributionLastEventReq {
         ledger: Signed<Ledger>,

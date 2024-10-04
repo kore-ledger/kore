@@ -1,8 +1,31 @@
 use actor::{Actor, ActorContext, ActorPath, Error as ActorError, Handler};
 use async_trait::async_trait;
+use borsh::{BorshDeserialize, BorshSerialize};
+use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 
 use crate::{intermediary::Intermediary, NetworkMessage};
+
+use super::TimeStamp;
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    BorshSerialize,
+    BorshDeserialize,
+    PartialOrd,
+    Ord
+)]
+pub struct TimeOutResponse {
+    pub who: KeyIdentifier,
+    pub re_trys: u32,
+    pub timestamp: TimeStamp,
+}
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct RetryNetwork {}

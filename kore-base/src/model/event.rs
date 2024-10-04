@@ -5,12 +5,9 @@
 //!
 
 use super::{
-    request::{
+    network::TimeOutResponse, request::{
         EOLRequest, EventRequest, FactRequest, StartRequest, TransferRequest,
-    },
-    signature::{Signature, Signed},
-    wrapper::ValueWrapper,
-    HashId,
+    }, signature::{Signature, Signed}, wrapper::ValueWrapper, HashId
 };
 
 use crate::{
@@ -29,6 +26,83 @@ use json_patch::diff;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashSet;
+
+/// A struct representing an event.
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+)]
+pub struct ProofEvent {
+    /// The identifier of the subject of the event.
+    pub subject_id: DigestIdentifier,
+    /// The signed event request.
+    pub event_request: Signed<EventRequest>,
+    /// The sequence number of the event.
+    pub sn: u64,
+    /// The version of the governance contract.
+    pub gov_version: u64,
+    /// The patch to apply to the state.
+    pub value: LedgerValue,
+    /// The hash of the state after applying the patch.
+    pub state_hash: DigestIdentifier,
+    /// Whether the evaluation was successful and the result was validated against the schema.
+    pub eval_success: bool,
+    /// Whether approval is required for the event to be applied to the state.
+    pub appr_required: bool,
+    /// Whether the event has been approved.
+    pub appr_success: bool,
+    /// The hash of the previous event.
+    pub hash_prev_proof_event: DigestIdentifier,
+    /// The set of evaluators who have evaluated the event.
+    pub evaluators: HashSet<Signature>,
+    /// The set of approvers who have approved the event.
+    pub approvers: HashSet<ProtocolsResponse>,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+    Hash,
+    PartialOrd,
+    Ord
+)]
+pub enum ProtocolsResponse {
+    Signature(Signature),
+    TimeOut(TimeOutResponse),
+}
+
+impl HashId for ProofEvent {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self, derivator)
+            .map_err(|_| Error::Subject("HashId for Event Fails".to_string()))
+    }
+}
+
+impl HashId for Signed<ProofEvent> {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |_| Error::Subject("HashId for Signed Event Fails".to_string()),
+        )
+    }
+}
 
 /// A struct representing an event.
 #[derive(
@@ -60,15 +134,16 @@ pub struct Event {
     pub appr_required: bool,
     /// Whether the event has been approved.
     pub appr_success: bool,
+
     pub vali_success: bool,
     /// The hash of the previous event.
     pub hash_prev_event: DigestIdentifier,
     /// The set of evaluators who have evaluated the event.
     pub evaluators: HashSet<Signature>,
     /// The set of approvers who have approved the event.
-    pub approvers: HashSet<Signature>,
+    pub approvers: HashSet<ProtocolsResponse>,
 
-    pub validators: HashSet<Signature>,
+    pub validators: HashSet<ProtocolsResponse>,
 }
 
 impl HashId for Event {
