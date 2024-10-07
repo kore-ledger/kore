@@ -369,7 +369,7 @@ impl Handler<Node> for Node {
                     }
                     SignTypesNode::ApprovalReq(approval_req) => {
                         self.sign(&approval_req)
-                    },
+                    }
                     SignTypesNode::ApprovalRes(approval_res) => {
                         self.sign(&approval_res)
                     }

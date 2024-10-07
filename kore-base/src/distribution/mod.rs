@@ -190,7 +190,6 @@ impl Handler<Distribution> for Distribution {
                     )
                 };
 
-
                 for witness in witnesses {
                     self.create_distributors(
                         ctx,

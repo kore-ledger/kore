@@ -380,7 +380,6 @@ impl Handler<Approval> for Approval {
                 };
                 // Update quorum and validators
                 let request_id = request_id.to_string();
-            
 
                 let node_path = ActorPath::from("/user/node");
                 let node_actor: Option<ActorRef<Node>> =
@@ -428,18 +427,18 @@ impl Handler<Approval> for Approval {
                 }
 
                 if let Err(e) = ctx
-                        .event(ApprovalEvent::SafeState {
-                            request_id: self.request_id.clone(),
-                            quorum: self.quorum.clone(),
-                            request: self.request.clone(),
-                            approvers: self.approvers.clone(),
-                            approvers_response: self.approvers_response.clone(),
-                            approvers_quantity: self.approvers_quantity.clone(),
-                        })
-                        .await
-                    {
-                        // TODO error al persistir, propagar hacia arriba
-                    };
+                    .event(ApprovalEvent::SafeState {
+                        request_id: self.request_id.clone(),
+                        quorum: self.quorum.clone(),
+                        request: self.request.clone(),
+                        approvers: self.approvers.clone(),
+                        approvers_response: self.approvers_response.clone(),
+                        approvers_quantity: self.approvers_quantity.clone(),
+                    })
+                    .await
+                {
+                    // TODO error al persistir, propagar hacia arriba
+                };
             }
             ApprovalCommand::Response {
                 approval_res,

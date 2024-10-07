@@ -3,8 +3,10 @@
 
 use crate::{
     model::{
-        network::TimeOutResponse, request::EventRequest, signature::Signature, HashId, TimeStamp, ValueWrapper
-    }, Error
+        network::TimeOutResponse, request::EventRequest, signature::Signature,
+        HashId, TimeStamp, ValueWrapper,
+    },
+    Error,
 };
 use identity::identifier::{
     derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
@@ -12,7 +14,6 @@ use identity::identifier::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-
 
 /// A Enum representing a validation response.
 #[derive(

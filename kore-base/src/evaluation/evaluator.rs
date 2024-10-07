@@ -4,10 +4,20 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    evaluation::response::Response as EvalRes, governance::{json_schema::{self, JsonSchema}, Governance, RequestStage, Schema}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
+    evaluation::response::Response as EvalRes,
+    governance::{
+        json_schema::{self, JsonSchema},
+        Governance, RequestStage, Schema,
+    },
+    helpers::network::{intermediary::Intermediary, NetworkMessage},
+    model::{
         network::RetryNetwork, signature::Signature, HashId, SignTypesNode,
         TimeStamp,
-    }, node::{self, Node, NodeMessage, NodeResponse}, subject::{SubjectCommand, SubjectResponse}, Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR, SCHEMAS
+    },
+    node::{self, Node, NodeMessage, NodeResponse},
+    subject::{SubjectCommand, SubjectResponse},
+    Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
+    DIGEST_DERIVATOR, SCHEMAS,
 };
 
 use crate::helpers::network::ActorMessage;
@@ -147,14 +157,21 @@ impl Evaluator {
                 return Err(Error::Evaluation("There is a contract that requires compilation but its scheme could not be found".to_owned()));
             };
 
-            let compiler_path = ActorPath::from(format!("/user/node/{}/{}_compiler", governance_id, schema.id));
+            let compiler_path = ActorPath::from(format!(
+                "/user/node/{}/{}_compiler",
+                governance_id, schema.id
+            ));
             let compiler_actor = ctx.system().get_actor(&compiler_path).await;
 
-            let compiler_actor: ActorRef<Compiler> = if let Some(compiler_actor) = compiler_actor {
-                compiler_actor
-            } else {
-                return Err(Error::Actor(format!("Can not find compiler actor in {}", compiler_path)))
-            };
+            let compiler_actor: ActorRef<Compiler> =
+                if let Some(compiler_actor) = compiler_actor {
+                    compiler_actor
+                } else {
+                    return Err(Error::Actor(format!(
+                        "Can not find compiler actor in {}",
+                        compiler_path
+                    )));
+                };
 
             let response = compiler_actor
                 .ask(CompilerCommand::CompileCheck {
@@ -334,19 +351,22 @@ impl Evaluator {
                 todo!()
             };
 
-                // Get governance id
-                let governance_id = if evaluation_req.context.schema_id == "governance" {
+            // Get governance id
+            let governance_id =
+                if evaluation_req.context.schema_id == "governance" {
                     evaluation_req.context.subject_id.clone()
                 } else {
                     evaluation_req.context.governance_id.clone()
                 };
 
-                let schemas = SCHEMAS.read().await;
-                let json_schema = if let Some(json_schema) = schemas.get(&format!("{}_{}", governance_id, schema.id)) {
-                    json_schema
-                } else {
-                    todo!()
-                };
+            let schemas = SCHEMAS.read().await;
+            let json_schema = if let Some(json_schema) =
+                schemas.get(&format!("{}_{}", governance_id, schema.id))
+            {
+                json_schema
+            } else {
+                todo!()
+            };
 
             let value =
                 match serde_json::to_value(evaluation.final_state.clone()) {
@@ -433,17 +453,18 @@ impl Handler<Evaluator> for Evaluator {
                     todo!()
                 };
 
-                let evaluation =
-                    match self.evaluate(ctx, &evaluation_req, state_data).await
-                    {
-                        Ok(evaluation) => {
-                            Self::build_response(evaluation, evaluation_req).await
-                        }
-                        Err(e) => {
-                            // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
-                            todo!()
-                        }
-                    };
+                let evaluation = match self
+                    .evaluate(ctx, &evaluation_req, state_data)
+                    .await
+                {
+                    Ok(evaluation) => {
+                        Self::build_response(evaluation, evaluation_req).await
+                    }
+                    Err(e) => {
+                        // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
+                        todo!()
+                    }
+                };
 
                 // Evaluatiob path.
                 let evaluation_path = ctx.path().parent();
@@ -637,10 +658,13 @@ impl Handler<Evaluator> for Evaluator {
                     .evaluate(ctx, &evaluation_req.content, state_data)
                     .await
                 {
-                    Ok(evaluation) => Self::build_response(
-                        evaluation,
-                        evaluation_req.content.clone(),
-                    ).await,
+                    Ok(evaluation) => {
+                        Self::build_response(
+                            evaluation,
+                            evaluation_req.content.clone(),
+                        )
+                        .await
+                    }
                     Err(e) => {
                         // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
                         todo!()

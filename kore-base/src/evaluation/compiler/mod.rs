@@ -12,7 +12,10 @@ use serde_json::{json, Value};
 use tracing::error;
 use wasmtime::{Config, Engine, ExternType, Module};
 
-use crate::{governance::json_schema::JsonSchema, Error, HashId, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR, SCHEMAS};
+use crate::{
+    governance::json_schema::JsonSchema, Error, HashId, ValueWrapper,
+    CONTRACTS, DIGEST_DERIVATOR, SCHEMAS,
+};
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Compiler {
@@ -218,16 +221,17 @@ impl Handler<Compiler> for Compiler {
                         return Ok(CompilerResponse::Error(e));
                     };
 
-                    let contract = match Self::check_wasm(&contract_path).await {
+                    let contract = match Self::check_wasm(&contract_path).await
+                    {
                         Ok(contract) => contract,
-                        Err(e) => return Ok(CompilerResponse::Error(e))
+                        Err(e) => return Ok(CompilerResponse::Error(e)),
                     };
 
                     {
                         let mut contracts = CONTRACTS.write().await;
                         contracts.insert(contract_path.clone(), contract);
                     }
-                    
+
                     self.contract = contract_hash;
                 }
 
@@ -239,7 +243,7 @@ impl Handler<Compiler> for Compiler {
                 if schema_hash != self.schema {
                     let compilation = match JsonSchema::compile(&schema.0) {
                         Ok(compilation) => compilation,
-                        Err(e) => todo!()
+                        Err(e) => todo!(),
                     };
 
                     if !compilation.fast_validate(&initial_value) {
@@ -294,7 +298,7 @@ impl Handler<Compiler> for Compiler {
                 if schema_hash != self.schema {
                     let compilation = match JsonSchema::compile(&schema.0) {
                         Ok(compilation) => compilation,
-                        Err(e) => todo!()
+                        Err(e) => todo!(),
                     };
 
                     if !compilation.fast_validate(&initial_value) {

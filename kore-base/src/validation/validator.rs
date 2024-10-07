@@ -7,7 +7,9 @@ use crate::{
     governance::{model::Roles, Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        network::{RetryNetwork, TimeOutResponse}, signature::Signature, SignTypesNode, TimeStamp,
+        network::{RetryNetwork, TimeOutResponse},
+        signature::Signature,
+        SignTypesNode, TimeStamp,
     },
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectCommand, SubjectResponse},
@@ -138,13 +140,16 @@ impl Validator {
                 }
             }
             EventProof::Transfer { new_owner } => {
-                if previous_proof.event == EventProof::EOL || previous_proof.event == transfer_event {
+                if previous_proof.event == EventProof::EOL
+                    || previous_proof.event == transfer_event
+                {
                     //Error
                     todo!()
                 }
             }
             EventProof::Confirm => {
-                if let EventProof::Transfer { new_owner } = previous_proof.event.clone()
+                if let EventProof::Transfer { new_owner } =
+                    previous_proof.event.clone()
                 {
                     if new_owner == subject_signature.signer {
                         return Ok(());
@@ -154,7 +159,9 @@ impl Validator {
                 todo!()
             }
             EventProof::EOL => {
-                if previous_proof.event == EventProof::EOL || previous_proof.event == transfer_event {
+                if previous_proof.event == EventProof::EOL
+                    || previous_proof.event == transfer_event
+                {
                     //Error
                     todo!()
                 }
@@ -217,16 +224,19 @@ impl Validator {
             .subject_signature
             .verify(&validation_req.proof)?;
 
-        self.check_event_proof(&validation_req.proof, &validation_req.subject_signature, &validation_req.previous_proof)?;
+        self.check_event_proof(
+            &validation_req.proof,
+            &validation_req.subject_signature,
+            &validation_req.previous_proof,
+        )?;
 
-        self
-            .check_proofs(
-                ctx,
-                &validation_req.proof,
-                validation_req.previous_proof,
-                validation_req.prev_event_validation_response,
-            )
-            .await?;
+        self.check_proofs(
+            ctx,
+            &validation_req.proof,
+            validation_req.previous_proof,
+            validation_req.prev_event_validation_response,
+        )
+        .await?;
 
         // Node path.
         let node_path = ActorPath::from("/user/node");

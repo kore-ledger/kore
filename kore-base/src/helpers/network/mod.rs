@@ -7,7 +7,11 @@ use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    approval::{request::ApprovalReq, response::ApprovalRes, Approval}, evaluation::{request::EvaluationReq, response::EvaluationRes}, model::event::Ledger, validation::{request::ValidationReq, response::ValidationRes}, Event as KoreEvent, Signed
+    approval::{request::ApprovalReq, response::ApprovalRes, Approval},
+    evaluation::{request::EvaluationReq, response::EvaluationRes},
+    model::event::Ledger,
+    validation::{request::ValidationReq, response::ValidationRes},
+    Event as KoreEvent, Signed,
 };
 
 pub mod intermediary;

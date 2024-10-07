@@ -70,7 +70,6 @@ pub async fn system(
     config: KoreBaseConfig,
     password: &str,
 ) -> Result<SystemRef, Error> {
-    
     // Update statics.
     if let Ok(mut derivator) = DIGEST_DERIVATOR.lock() {
         *derivator = config.digest_derivator;

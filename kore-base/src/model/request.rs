@@ -4,11 +4,7 @@
 //! # Request data model.
 //!
 
-use super::{
-    signature::Signed,
-    wrapper::ValueWrapper,
-    HashId,
-};
+use super::{signature::Signed, wrapper::ValueWrapper, HashId};
 
 use crate::Error;
 
@@ -116,7 +112,6 @@ pub struct ConfirmRequest {
     pub subject_id: DigestIdentifier,
 }
 
-
 /// A struct representing a request to mark a subject as end-of-life.
 #[derive(
     Debug,
@@ -139,7 +134,7 @@ impl EventRequest {
             EventRequest::Fact(_) => true,
             EventRequest::Create(_)
             | EventRequest::Transfer(_)
-            | EventRequest::EOL(_) 
+            | EventRequest::EOL(_)
             | EventRequest::Confirm(_) => false,
         }
     }

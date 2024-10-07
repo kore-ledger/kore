@@ -1,14 +1,12 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use super::{
-    proof::ValidationProof,
-    response::ValidationRes,
-};
+use super::{proof::ValidationProof, response::ValidationRes};
 
 use crate::{
     model::{
-        network::TimeOutResponse, request::EventRequest, signature::Signature, HashId, ValueWrapper
+        network::TimeOutResponse, request::EventRequest, signature::Signature,
+        HashId, ValueWrapper,
     },
     Error,
 };

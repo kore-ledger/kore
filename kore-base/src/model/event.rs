@@ -5,9 +5,13 @@
 //!
 
 use super::{
-    network::TimeOutResponse, request::{
+    network::TimeOutResponse,
+    request::{
         EOLRequest, EventRequest, FactRequest, StartRequest, TransferRequest,
-    }, signature::{Signature, Signed}, wrapper::ValueWrapper, HashId
+    },
+    signature::{Signature, Signed},
+    wrapper::ValueWrapper,
+    HashId,
 };
 
 use crate::{
@@ -76,7 +80,7 @@ pub struct ProofEvent {
     BorshDeserialize,
     Hash,
     PartialOrd,
-    Ord
+    Ord,
 )]
 pub enum ProtocolsResponse {
     Signature(Signature),
