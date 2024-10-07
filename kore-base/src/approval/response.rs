@@ -1,14 +1,18 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{model::{network::TimeOutResponse, HashId, TimeStamp}, Error, Signature};
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
+use crate::{
+    model::{network::TimeOutResponse, HashId, TimeStamp},
+    Error, Signature,
+};
+use identity::identifier::{
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 use super::request::ApprovalReq;
-
 
 #[derive(
     Debug,
@@ -49,7 +53,7 @@ impl HashId for ApprovalRes {
 )]
 pub struct ApprovalSignature {
     pub request: ApprovalReq,
-    pub response: bool
+    pub response: bool,
 }
 
 impl HashId for ApprovalSignature {
@@ -58,7 +62,11 @@ impl HashId for ApprovalSignature {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| Error::Evaluation("HashId for ApprovalSignature fails".to_string()),
+            |_| {
+                Error::Evaluation(
+                    "HashId for ApprovalSignature fails".to_string(),
+                )
+            },
         )
     }
 }

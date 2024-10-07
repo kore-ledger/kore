@@ -46,4 +46,3 @@ pub enum StateCommand {
     Validation(Signature),
 }
 */
-

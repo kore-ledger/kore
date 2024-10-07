@@ -17,18 +17,12 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
 #[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
+    Debug, Clone, Serialize, Deserialize, Eq, BorshSerialize, BorshDeserialize,
 )]
 pub enum EventProof {
     Create,
     Fact,
-    Transfer { new_owner: KeyIdentifier},
+    Transfer { new_owner: KeyIdentifier },
     Confirm,
     EOL,
 }
@@ -41,7 +35,9 @@ impl PartialEq for EventProof {
             | (EventProof::Fact, EventProof::Fact)
             | (EventProof::Confirm, EventProof::Confirm)
             | (EventProof::EOL, EventProof::EOL)
-            | (EventProof::Transfer { .. }, EventProof::Transfer { .. }) => true,
+            | (EventProof::Transfer { .. }, EventProof::Transfer { .. }) => {
+                true
+            }
             _ => false,
         }
     }
@@ -81,7 +77,7 @@ pub struct ValidationProof {
     pub event_hash: DigestIdentifier,
     /// The version of the governance contract used to validate the subject.
     pub governance_version: u64,
-    pub event: EventProof
+    pub event: EventProof,
 }
 
 impl Default for ValidationProof {
@@ -98,7 +94,7 @@ impl Default for ValidationProof {
             subject_public_key: KeyIdentifier::default(),
             genesis_governance_version: 0,
             name: "name".to_string(),
-            event: EventProof::Create
+            event: EventProof::Create,
         }
     }
 }
@@ -146,7 +142,7 @@ impl ValidationProof {
             subject_public_key: info.subject.subject_key.clone(),
             genesis_governance_version: info.gov_version,
             name: info.subject.name.clone(),
-            event: EventProof::Create
+            event: EventProof::Create,
         };
 
         match request {
@@ -154,19 +150,21 @@ impl ValidationProof {
             EventRequest::Fact(_fact_request) => {
                 validation_proof.event = EventProof::Fact;
                 Ok(validation_proof)
-            },
+            }
             EventRequest::Transfer(transfer_request) => {
-                validation_proof.event = EventProof::Transfer { new_owner: transfer_request.new_owner.clone() };
+                validation_proof.event = EventProof::Transfer {
+                    new_owner: transfer_request.new_owner.clone(),
+                };
                 Ok(validation_proof)
-            },
+            }
             EventRequest::Confirm(_confirm_request) => {
                 validation_proof.event = EventProof::Confirm;
                 Ok(validation_proof)
-            },
+            }
             EventRequest::EOL(_eol_request) => {
                 validation_proof.event = EventProof::EOL;
                 Ok(validation_proof)
-            },
+            }
         }
     }
 }

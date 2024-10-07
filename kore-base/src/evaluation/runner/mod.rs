@@ -9,7 +9,8 @@ use borsh::{to_vec, BorshDeserialize};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use types::{
-    Contract, ContractResult, GovernanceData, GovernanceEvent, MemoryManager, RunnerResult,
+    Contract, ContractResult, GovernanceData, GovernanceEvent, MemoryManager,
+    RunnerResult,
 };
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
 
@@ -91,11 +92,14 @@ impl Runner {
             })?;
 
         let result = Self::get_result(&store, result_ptr)?;
-        Ok((RunnerResult {
-            approval_required: false,
-            final_state: result.final_state,
-            success: result.success
-        }, vec![]))
+        Ok((
+            RunnerResult {
+                approval_required: false,
+                final_state: result.final_state,
+                success: result.success,
+            },
+            vec![],
+        ))
     }
 
     async fn execute_governance_contract(
@@ -320,7 +324,9 @@ impl Runner {
             };
 
             if let Roles::APPROVER = role.role {
-                if role.schema == SchemaEnum::ALL || SchemaEnum::NOT_GOVERNANCE == role.schema {
+                if role.schema == SchemaEnum::ALL
+                    || SchemaEnum::NOT_GOVERNANCE == role.schema
+                {
                     return Err(Error::Runner("The approver role only can be asing to governance schema".to_owned()));
                 }
             };

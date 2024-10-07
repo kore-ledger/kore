@@ -364,7 +364,6 @@ impl Handler<Approver> for Approver {
     ) -> Result<ApproverResponse, ActorError> {
         match msg {
             ApproverCommand::ChangeResponse { response } => {
-
                 let state = if let Some(state) = self.state.clone() {
                     state
                 } else {
@@ -390,33 +389,35 @@ impl Handler<Approver> for Approver {
                             } else {
                                 (false, ApprovalState::RespondedRejected)
                             };
-    
+
                         let approval_req =
                             if let Some(approval_req) = self.request.clone() {
                                 approval_req
                             } else {
                                 todo!()
                             };
-    
-                        if let Err(e) = self.send_response(ctx, approval_req, response).await {
+
+                        if let Err(e) = self
+                            .send_response(ctx, approval_req, response)
+                            .await
+                        {
                             todo!()
                         };
-    
+
                         if let Err(e) = ctx
-                        .event(ApproverEvent::SafeState {
-                            request: self.request.clone(),
-                            state,
-                            info: self.info.clone(),
-                        })
-                        .await
-                    {
-                        todo!()
-                    };
+                            .event(ApproverEvent::SafeState {
+                                request: self.request.clone(),
+                                state,
+                                info: self.info.clone(),
+                            })
+                            .await
+                        {
+                            todo!()
+                        };
                     }
                 } else {
                     todo!()
                 }
-                
             }
             // aprobar si esta por defecto
             ApproverCommand::LocalApproval {
@@ -669,7 +670,14 @@ impl Handler<Approver> for Approver {
                     }
 
                     if self.pass_votation == VotationType::AlwaysAccept {
-                        if let Err(e) = self.send_response(ctx, approval_req.content.clone(), true).await {
+                        if let Err(e) = self
+                            .send_response(
+                                ctx,
+                                approval_req.content.clone(),
+                                true,
+                            )
+                            .await
+                        {
                             todo!()
                         };
 
@@ -712,13 +720,16 @@ impl Handler<Approver> for Approver {
                     };
 
                     let approval_req =
-                    if let Some(approval_req) = self.request.clone() {
-                        approval_req
-                    } else {
-                        todo!()
-                    };
+                        if let Some(approval_req) = self.request.clone() {
+                            approval_req
+                        } else {
+                            todo!()
+                        };
 
-                    if let Err(e) = self.send_response(ctx, approval_req.clone(), response).await {
+                    if let Err(e) = self
+                        .send_response(ctx, approval_req.clone(), response)
+                        .await
+                    {
                         todo!()
                     };
                 }

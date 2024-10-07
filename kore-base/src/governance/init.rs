@@ -84,7 +84,8 @@ mod test {
 
     #[test]
     fn gov_schema_init_state() {
-        let init_state = init_state("EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE");
+        let init_state =
+            init_state("EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE");
         let schema = JsonSchema::compile(&schema()).unwrap();
         assert_eq!(schema.fast_validate(&init_state.0), true);
     }

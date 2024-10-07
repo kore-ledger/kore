@@ -22,9 +22,7 @@ use json_schema::JsonSchema;
 use model::{Contract, Roles};
 pub use schema::schema;
 
-pub use model::{
-    Member, Policy, Quorum, RequestStage, Role, Schema, Who,
-};
+pub use model::{Member, Policy, Quorum, RequestStage, Role, Schema, Who};
 
 use identity::{
     identifier::{DigestIdentifier, KeyIdentifier},
@@ -45,7 +43,7 @@ use std::{
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Governance {
-    /// The version of the governance 
+    /// The version of the governance
     #[serde(default)]
     pub version: u64,
     /// The set of subjects identifiers directed by this governance.
@@ -210,16 +208,11 @@ impl Governance {
         }
     }
 
-    pub fn schemas(
-        &self,
-        role: Roles,
-        our_id: &str
-    ) -> Vec<Schema> {
+    pub fn schemas(&self, role: Roles, our_id: &str) -> Vec<Schema> {
         let mut schemas_id: Vec<String> = vec![];
         let mut all_schemas = false;
 
         for rol in self.roles.clone() {
-
             match rol.who {
                 Who::ID { ID } => {
                     if our_id != ID {
@@ -237,7 +230,7 @@ impl Governance {
                     }
                 }
                 Who::NOT_MEMBERS => continue,
-                Who::MEMBERS => {},
+                Who::MEMBERS => {}
             };
 
             if rol.role == role {

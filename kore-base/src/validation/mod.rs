@@ -14,8 +14,9 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Quorum, RequestStage},
     model::{
-        event::{Event as KoreEvent, ProofEvent}, signature::Signed, Namespace, SignTypesNode,
-        SignTypesSubject,
+        event::{Event as KoreEvent, ProofEvent},
+        signature::Signed,
+        Namespace, SignTypesNode, SignTypesSubject,
     },
     node::{Node, NodeMessage, NodeResponse},
     subject::{Subject, SubjectCommand, SubjectResponse, SubjectState},
@@ -50,7 +51,7 @@ pub struct ValidationInfo {
     pub event: Signed<ProofEvent>,
     pub prev_proof_event_hash: DigestIdentifier,
     pub gov_version: u64,
-    pub owner: KeyIdentifier
+    pub owner: KeyIdentifier,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]

@@ -20,9 +20,7 @@ impl JsonSchema {
             .with_format("keyidentifier", validate_gov_keyidentifiers)
             .build(schema)
         {
-            Ok(json_schema) => {
-                Ok(JsonSchema { json_schema })
-            },
+            Ok(json_schema) => Ok(JsonSchema { json_schema }),
             Err(e) => Err(Error::JSONSChema(format!("{}", e))),
         }
     }
@@ -47,4 +45,3 @@ impl JsonSchema {
 fn validate_gov_keyidentifiers(key: &str) -> bool {
     KeyIdentifier::from_str(key).is_ok()
 }
-

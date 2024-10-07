@@ -19,7 +19,7 @@ use super::TimeStamp;
     BorshSerialize,
     BorshDeserialize,
     PartialOrd,
-    Ord
+    Ord,
 )]
 pub struct TimeOutResponse {
     pub who: KeyIdentifier,

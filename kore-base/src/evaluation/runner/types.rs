@@ -78,7 +78,6 @@ pub struct RunnerResult {
     pub success: bool,
 }
 
-
 #[derive(Debug, Clone)]
 pub enum Contract {
     CompiledContract(Vec<u8>),

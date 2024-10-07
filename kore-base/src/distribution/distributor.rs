@@ -162,15 +162,13 @@ impl Distributor {
         ctx: &mut ActorContext<Distributor>,
         ledger: Signed<Ledger>,
     ) -> Result<(), Error> {
-
         let node_path = ActorPath::from("/user/node");
         let node_actor: Option<ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
 
         let response = if let Some(node_actor) = node_actor {
-            let response = node_actor
-                .ask(NodeMessage::CreateNewSubject(ledger))
-                .await;
+            let response =
+                node_actor.ask(NodeMessage::CreateNewSubject(ledger)).await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -674,7 +672,7 @@ impl Handler<Distributor> for Distributor {
                     },
                     message: ActorMessage::DistributionLastEventReq {
                         ledger,
-                        event
+                        event,
                     },
                 };
 
@@ -775,9 +773,7 @@ impl Handler<Distributor> for Distributor {
 
                 if new_subject {
                     // Creamos el sujeto.
-                    if let Err(e) =
-                        self.create_subject(ctx, ledger).await
-                    {
+                    if let Err(e) = self.create_subject(ctx, ledger).await {
                         todo!()
                     };
                 } else {
@@ -934,9 +930,8 @@ impl Handler<Distributor> for Distributor {
 
                 if new_subject {
                     // Creamos el sujeto.
-                    if let Err(e) = self
-                        .create_subject(ctx, events[0].clone())
-                        .await
+                    if let Err(e) =
+                        self.create_subject(ctx, events[0].clone()).await
                     {
                         todo!()
                     };
