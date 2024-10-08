@@ -60,24 +60,14 @@ pub struct Governance {
 }
 
 impl Governance {
-    /// Gets initial state of the subject from governance
-    ///
-    pub fn get_initial_state(
-        &self,
-        schema_id: &str,
-        owner: &str,
-    ) -> Result<ValueWrapper, Error> {
-        if schema_id == "governance" {
-            debug!("Meta-governance initial state.");
-            return Ok(init::init_state(owner));
-        }
+    pub fn get_init_state(&self, schema_id: &str) -> Result<ValueWrapper, Error> {
         for schema in &self.schemas {
             if schema.id == schema_id {
                 debug!("Schema found: {}", schema_id);
                 return Ok(ValueWrapper(schema.initial_value.clone()));
             }
         }
-        error!("Schema not found: {}", schema_id);
+
         Err(Error::Governance("Schema not found.".to_owned()))
     }
 

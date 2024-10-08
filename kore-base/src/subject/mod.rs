@@ -5,23 +5,17 @@
 //!
 
 use crate::{
-    db::Storable,
-    evaluation::{
+    db::Storable, evaluation::{
         compiler::{Compiler, CompilerCommand},
         evaluator::Evaluator,
         schema::EvaluationSchema,
         Evaluation,
-    },
-    governance::model::Roles,
-    model::{
+    }, governance::model::Roles, model::{
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
-    },
-    node::{NodeMessage, NodeResponse},
-    validation::{schema::ValidationSchema, validator::Validator, Validation},
-    Error, Governance, Node, DIGEST_DERIVATOR,
+    }, node::{NodeMessage, NodeResponse}, validation::{schema::ValidationSchema, validator::Validator, Validation}, CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR
 };
 
 use actor::{
@@ -51,6 +45,38 @@ use std::{
 };
 
 pub mod event;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateSubjectData {
+    pub keys: KeyPair,
+    pub create_req: CreateRequest,
+    pub subject_id: DigestIdentifier,
+    pub creator: KeyIdentifier,
+    pub genesis_gov_version: u64,
+    pub value: ValueWrapper
+}
+
+#[derive(
+    Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
+)]
+pub struct SubjectID {
+    // La generamos nosotros
+    pub request: Signed<EventRequest>,
+    // La generamos nosotros, keypair, derivator (del sujeto) Lo tiene que generar el sujeto
+    pub keys: KeyPair
+}
+
+impl HashId for SubjectID {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |_| Error::Evaluation("HashId for ValidationReq fails".to_string()),
+        )
+    }
+}
+
 
 /// Suject header
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -82,6 +108,24 @@ pub struct Subject {
 }
 
 impl Subject {
+    pub fn new(data: CreateSubjectData) -> Self {
+
+        Subject {
+            keys: Some(data.keys),
+            subject_id: data.subject_id,
+            governance_id: data.create_req.governance_id,
+            genesis_gov_version: data.genesis_gov_version,
+            namespace: data.create_req.namespace,
+            name: data.create_req.name,
+            schema_id: data.create_req.schema_id,
+            owner: data.creator.clone(),
+            creator: data.creator,
+            active: true,
+            sn: 0,
+            properties: data.value,
+        }
+    }
+
     /// Creates a new `Subject` from an create event.
     ///
     /// # Arguments
@@ -119,7 +163,7 @@ impl Subject {
                 subject_id: ledger.content.subject_id.clone(),
                 governance_id: request.governance_id.clone(),
                 genesis_gov_version: ledger.content.gov_version,
-                namespace: Namespace::from(request.namespace.as_str()),
+                namespace: request.namespace.clone(),
                 name: request.name.clone(),
                 schema_id: request.schema_id.clone(),
                 owner: ledger.content.event_request.signature.signer.clone(),
@@ -133,22 +177,6 @@ impl Subject {
             error!("Invalid create event request");
             Err(Error::Subject("Invalid create event request".to_string()))
         }
-    }
-
-    /// Build a new `Subject` from a subject id with default values.
-    ///
-    /// # Arguments
-    ///
-    /// * `subject_id` - The subject identifier.
-    ///
-    /// # Returns
-    ///
-    /// A new `Subject` with default values.
-    ///
-    pub fn from_subject_id(subject_id: DigestIdentifier) -> Self {
-        let mut subject = Subject::default();
-        subject.with_subject_id(subject_id);
-        subject
     }
 
     async fn get_node_key(
@@ -290,6 +318,8 @@ impl Subject {
             schema_id: self.schema_id.clone(),
             namespace: self.namespace.clone(),
             properties: self.properties.clone(),
+            owner: self.owner.clone(),
+            active: self.active,
             sn: self.sn,
         }
     }
@@ -542,6 +572,39 @@ impl Subject {
         }
     }
 
+    fn verify_protocols_state(request: EventRequestType, eval: Option<bool>, approve: Option<bool>, approval_require: bool, val: bool) -> Result<bool, Error> {
+        match request {
+            EventRequestType::Create | EventRequestType::Transfer | EventRequestType::Confirm | EventRequestType::EOL => {
+                if approve.is_some() || eval.is_some() || approval_require {
+                    todo!()
+                }
+                Ok(val)
+            },
+            EventRequestType::Fact => {
+                let eval = if let Some(eval) = eval {
+                    eval
+                } else {
+                    todo!()
+                };
+
+                if approval_require {
+                    let approve = if let Some(approve) = approve {
+                        approve
+                    } else {
+                        todo!()
+                    };
+                    Ok(eval && approve && eval)
+                } else {
+                    if let Some(_approve) = approve {
+                        todo!()
+                    }
+
+                    Ok(val && eval)
+                }
+            }
+        }
+    }
+
     async fn verify_new_ledger_event(
         subject: &mut Subject,
         last_ledger: &Signed<Ledger>,
@@ -569,11 +632,15 @@ impl Subject {
             todo!();
         }
 
+        let valid_last_event = match Self::verify_protocols_state(EventRequestType::from(last_ledger.content.event_request.content.clone()), last_ledger.content.eval_success, last_ledger.content.appr_success, last_ledger.content.appr_required, last_ledger.content.vali_success) {
+            Ok(is_ok) => is_ok,
+            Err(e) => todo!()
+        };
+
+
         // Si el último evento guardado fue correcto, por ende se aplicó lo que ese
         // evento decía.
-        if last_ledger.content.appr_success
-            && last_ledger.content.eval_success
-            && last_ledger.content.vali_success
+        if valid_last_event
         {
             // Comprobar firma,
             if let EventRequest::Transfer(transfer) =
@@ -596,10 +663,12 @@ impl Subject {
             };
         }
 
+        let valid_new_event = match Self::verify_protocols_state(EventRequestType::from(new_ledger.content.event_request.content.clone()), new_ledger.content.eval_success, new_ledger.content.appr_success, new_ledger.content.appr_required, new_ledger.content.vali_success) {
+            Ok(is_ok) => is_ok,
+            Err(e) => todo!()
+        };
         // Si el nuevo evento a registrar fue correcto.
-        if new_ledger.content.appr_success
-            && new_ledger.content.eval_success
-            && new_ledger.content.vali_success
+        if valid_new_event
         {
             match new_ledger.content.event_request.content.clone() {
                 EventRequest::Create(start_request) => {
@@ -735,8 +804,8 @@ impl Subject {
         let response = if let Some(store) = store {
             match store
                 .ask(StoreCommand::GetEvents {
-                    from: last_sn as usize,
-                    to: (last_sn + 100) as usize,
+                    from: last_sn,
+                    to: last_sn + 100,
                 })
                 .await
             {
@@ -856,6 +925,10 @@ pub struct SubjectMetadata {
     pub namespace: Namespace,
     /// The current sequence number of the subject.
     pub sn: u64,
+    /// The identifier of the public key of the subject owner.
+    pub owner: KeyIdentifier,
+    /// Indicates whether the subject is active or not.
+    pub active: bool,
     /// The current status of the subject.
     pub properties: ValueWrapper,
 }
@@ -1038,9 +1111,14 @@ impl Handler<Subject> for Subject {
 #[async_trait]
 impl PersistentActor for Subject {
     fn apply(&mut self, event: &Signed<Ledger>) {
-        if event.content.appr_success
-            && event.content.eval_success
-            && event.content.vali_success
+
+
+        let valid_event = match Self::verify_protocols_state(EventRequestType::from(event.content.event_request.content.clone()), event.content.eval_success, event.content.appr_success, event.content.appr_required, event.content.vali_success) {
+            Ok(is_ok) => is_ok,
+            Err(e) => todo!()
+        };
+
+        if valid_event
         {
             match &event.content.event_request.content {
                 EventRequest::Create(start_request) => todo!(),
@@ -1091,6 +1169,55 @@ mod tests {
         },
         tests::create_system,
     };
+
+    impl KoreEvent {
+        pub fn from_create_request(
+            subject_keys: &KeyPair,
+            request: &Signed<EventRequest>,
+            governance_version: u64,
+            init_state: &ValueWrapper,
+            derivator: DigestDerivator,
+        ) -> Result<Self, Error> {
+            let EventRequest::Create(start_request) = &request.content else {
+                return Err(Error::Event("Invalid Event Request".to_string()));
+            };
+            let public_key = KeyIdentifier::new(
+                subject_keys.get_key_derivator(),
+                &subject_keys.public_key_bytes(),
+            );
+    
+            let subject_id = Subject::subject_id(
+                start_request.namespace.clone(),
+                &start_request.schema_id,
+                public_key,
+                start_request.governance_id.clone(),
+                governance_version,
+                derivator,
+            )?;
+            let state_hash =
+                DigestIdentifier::from_serializable_borsh(init_state, derivator)
+                    .map_err(|_| {
+                        Error::Digest("Error converting state to hash".to_owned())
+                    })?;
+    
+            Ok(KoreEvent {
+                subject_id,
+                event_request: request.clone(),
+                sn: 0,
+                gov_version: governance_version,
+                value: LedgerValue::Patch(init_state.clone()),
+                state_hash,
+                eval_success: None,
+                appr_required: false,
+                hash_prev_event: DigestIdentifier::default(),
+                evaluators: None,
+                approvers: None,
+                appr_success: None,
+                vali_success: true,
+                validators: HashSet::new(),
+            })
+        }
+    }
 
     use identity::keys::{Ed25519KeyPair, KeyGenerator};
 

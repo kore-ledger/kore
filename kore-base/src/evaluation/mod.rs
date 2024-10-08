@@ -16,11 +16,7 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Governance, Quorum, RequestStage},
     model::{
-        event::Event as KoreEvent,
-        namespace,
-        request::EventRequest,
-        signature::{self, Signature, Signed},
-        HashId, Namespace, SignTypesNode,
+        common::get_metadata, event::Event as KoreEvent, namespace, request::EventRequest, signature::{self, Signature, Signed}, HashId, Namespace, SignTypesNode
     },
     node::{Node, NodeMessage, NodeResponse},
     subject::{
@@ -74,45 +70,6 @@ impl Evaluation {
 
     fn check_evaluator(&mut self, evaluator: KeyIdentifier) -> bool {
         self.evaluators.remove(&evaluator)
-    }
-
-    async fn get_metadata(
-        &self,
-        ctx: &mut ActorContext<Evaluation>,
-        subject_id: DigestIdentifier,
-    ) -> Result<SubjectMetadata, Error> {
-        let subject_path =
-            ActorPath::from(format!("/user/node/{}", subject_id));
-        let subject_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&subject_path).await;
-
-        let response = if let Some(subject_actor) = subject_actor {
-            // We ask a node
-            let response =
-                subject_actor.ask(SubjectCommand::GetSubjectMetadata).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The node actor was not found in the expected path {}",
-                subject_path
-            )));
-        };
-
-        match response {
-            SubjectResponse::SubjectMetadata(metadata) => Ok(metadata),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from subject actor"
-                    .to_owned(),
-            )),
-        }
     }
 
     fn create_evaluation_req(
@@ -321,7 +278,7 @@ impl Handler<Evaluation> for Evaluation {
                     todo!()
                 };
 
-                let metadata = match self.get_metadata(ctx, subject_id).await {
+                let metadata = match get_metadata(ctx, subject_id).await {
                     Ok(metadata) => metadata,
                     Err(e) => {
                         // No se puede obtener la metadata

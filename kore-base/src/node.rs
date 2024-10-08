@@ -21,7 +21,7 @@ use crate::{
         signature::{Signature, Signed},
         HashId, SignTypesNode,
     },
-    subject,
+    subject::{self, CreateSubjectData},
     validation::proof::ValidationProof,
     Api, Error, Event as KoreEvent, Subject, DIGEST_DERIVATOR,
 };
@@ -52,8 +52,6 @@ pub struct CompiledContract(Vec<u8>);
 pub enum SubjectsTypes {
     KnowSubject(String),
     OwnerSubject(String),
-    KnowGovernance(String),
-    OwnerGovernance(String),
 }
 
 /// Node struct.
@@ -66,13 +64,7 @@ pub struct Node {
     owned_subjects: Vec<String>,
     /// The node's known subjects.
     known_subjects: Vec<String>,
-    /// The node's owned governances.
-    owned_governances: Vec<String>,
-    /// The node's known governances.
-    known_governances: Vec<String>,
-    /// Compiled contracts
-    compiled_contracts: HashMap<String, CompiledContract>,
-
+    /// The authorized governances.
     authorized_governances: Vec<String>,
 }
 
@@ -83,9 +75,6 @@ impl Node {
             owner: id.clone(),
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
-            owned_governances: Vec::new(),
-            known_governances: Vec::new(),
-            compiled_contracts: HashMap::new(),
             authorized_governances: Vec::new(),
         })
     }
@@ -115,16 +104,6 @@ impl Node {
         self.authorized_governances.push(governance_id);
     }
 
-    /// Adds a governance to the node's known governances.
-    pub fn add_known_governance(&mut self, governance_id: String) {
-        self.known_governances.push(governance_id);
-    }
-
-    /// Adds a governance to the node's owned governances.
-    pub fn add_owned_governance(&mut self, governance_id: String) {
-        self.owned_governances.push(governance_id);
-    }
-
     /// Gets the node's owned subjects.
     pub fn get_owned_subjects(&self) -> &Vec<String> {
         &self.owned_subjects
@@ -133,16 +112,6 @@ impl Node {
     /// Gets the node's known subjects.
     pub fn get_known_subjects(&self) -> &Vec<String> {
         &self.known_subjects
-    }
-
-    /// Gets the node's owned governances.
-    pub fn get_owned_governances(&self) -> &Vec<String> {
-        &self.owned_governances
-    }
-
-    /// Gets the node's known governances.
-    pub fn get_known_governances(&self) -> &Vec<String> {
-        &self.known_governances
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
@@ -200,30 +169,18 @@ impl Node {
       "#
         .into()
     }
-
-    pub fn get_contract(&self, contract_path: &str) -> Result<Vec<u8>, Error> {
-        if let Some(contract) = self.compiled_contracts.get(contract_path) {
-            Ok(contract.0.clone())
-        } else {
-            Err(Error::Governance(format!(
-                "can not find this schema {}",
-                contract_path
-            )))
-        }
-    }
 }
 
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessage {
-    CreateNewSubject(Signed<Ledger>),
+    CreateNewSubjectLedger(Signed<Ledger>),
+    CreateNewSubjectReq(CreateSubjectData),
     RegisterSubject(SubjectsTypes),
     SignRequest(SignTypesNode),
-    AmISubjectOwner(DigestIdentifier),
-    AmIGovernanceOwner(DigestIdentifier),
-    IKnowThisGov(String),
+    AmISubjectOwner(String),
+    IsAuthorized(String),
     GetOwnerIdentifier,
-    CompiledContract(String),
 }
 
 impl Message for NodeMessage {}
@@ -239,7 +196,7 @@ pub enum NodeResponse {
     OwnerIdentifier(KeyIdentifier),
     AmIOwner(bool),
     Contract(Vec<u8>),
-    IKnowThisGov(bool),
+    IsAuthorized(bool),
     Error(Error),
     None,
 }
@@ -251,8 +208,6 @@ impl Response for NodeResponse {}
 pub enum NodeEvent {
     OwnedSubject(String),
     KnownSubject(String),
-    OwnedGovernance(String),
-    KnownGovernance(String),
     AuthorizedSubject(String),
 }
 
@@ -297,12 +252,6 @@ impl PersistentActor for Node {
             NodeEvent::KnownSubject(subject_id) => {
                 self.add_known_subject(subject_id.clone());
             }
-            NodeEvent::OwnedGovernance(governance_id) => {
-                self.add_owned_governance(governance_id.clone());
-            }
-            NodeEvent::KnownGovernance(governance_id) => {
-                self.add_known_governance(governance_id.clone());
-            }
             NodeEvent::AuthorizedSubject(governance_id) => {
                 self.add_authorized_governance(governance_id.clone());
             }
@@ -313,8 +262,6 @@ impl PersistentActor for Node {
     fn update(&mut self, state: Self) {
         self.owned_subjects = state.owned_subjects;
         self.known_subjects = state.known_subjects;
-        self.owned_governances = state.owned_governances;
-        self.known_governances = state.known_governances;
     }
 }
 
@@ -327,7 +274,7 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
-            NodeMessage::CreateNewSubject(ledger) => {
+            NodeMessage::CreateNewSubjectLedger(ledger) => {
                 let subject = Subject::from_event(None, &ledger);
                 let subject = match subject {
                     Ok(subject) => subject,
@@ -338,6 +285,22 @@ impl Handler<Node> for Node {
                 if let Err(e) = ctx
                     .create_child(
                         &format!("{}", ledger.content.subject_id),
+                        subject,
+                    )
+                    .await
+                {
+                    Ok(NodeResponse::Error(Error::Actor(format!("{}", e))))
+                } else {
+                    Ok(NodeResponse::SonWasCreated)
+                }
+            }
+            NodeMessage::CreateNewSubjectReq(data) => {
+                let subject = Subject::new(data.clone());
+
+
+                if let Err(e) = ctx
+                    .create_child(
+                        &format!("{}", data.subject_id),
                         subject,
                     )
                     .await
@@ -384,17 +347,11 @@ impl Handler<Node> for Node {
                 }
             }
             NodeMessage::AmISubjectOwner(subject_id) => {
+                
                 Ok(NodeResponse::AmIOwner(
                     self.get_owned_subjects()
                         .iter()
-                        .any(|x| **x == subject_id.to_string()),
-                ))
-            }
-            NodeMessage::AmIGovernanceOwner(governance_id) => {
-                Ok(NodeResponse::AmIOwner(
-                    self.get_owned_governances()
-                        .iter()
-                        .any(|x| **x == governance_id.to_string()),
+                        .any(|x| **x == subject_id),
                 ))
             }
             NodeMessage::RegisterSubject(subject) => {
@@ -405,33 +362,15 @@ impl Handler<Node> for Node {
                     SubjectsTypes::OwnerSubject(subj) => {
                         ctx.event(NodeEvent::OwnedSubject(subj)).await?;
                     }
-                    SubjectsTypes::KnowGovernance(gov) => {
-                        ctx.event(NodeEvent::KnownGovernance(gov)).await?;
-                    }
-                    SubjectsTypes::OwnerGovernance(gov) => {
-                        ctx.event(NodeEvent::OwnedGovernance(gov)).await?;
-                    }
                 }
                 Ok(NodeResponse::None)
             }
-            NodeMessage::CompiledContract(contract_path) => {
-                match self.get_contract(&contract_path) {
-                    Ok(contract) => Ok(NodeResponse::Contract(contract)),
-                    Err(e) => Ok(NodeResponse::Error(e)),
-                }
-            }
-            NodeMessage::IKnowThisGov(subject_id) => {
+            NodeMessage::IsAuthorized(subject_id) => {
                 // TODO Esto no se puede utilizar para governanza autorizada, tiene que ir a parte
-                let know_gov = self
-                    .known_governances
+                Ok(NodeResponse::IsAuthorized(self
+                    .authorized_governances
                     .iter()
-                    .any(|x| x.clone() == subject_id);
-                let our_gov = self
-                    .owned_governances
-                    .iter()
-                    .any(|x| x.clone() == subject_id);
-
-                Ok(NodeResponse::IKnowThisGov(know_gov || our_gov))
+                    .any(|x| x.clone() == subject_id)))
             }
         }
     }

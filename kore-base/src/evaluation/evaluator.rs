@@ -11,8 +11,7 @@ use crate::{
     },
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        network::RetryNetwork, signature::Signature, HashId, SignTypesNode,
-        TimeStamp,
+        common::get_gov, network::RetryNetwork, signature::Signature, HashId, SignTypesNode, TimeStamp
     },
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectCommand, SubjectResponse},
@@ -62,53 +61,6 @@ pub struct Evaluator {
 impl Evaluator {
     pub fn new(request_id: String, node: KeyIdentifier) -> Self {
         Evaluator { request_id, node }
-    }
-
-    async fn get_gov(
-        &self,
-        ctx: &mut ActorContext<Evaluator>,
-        governance_id: DigestIdentifier,
-    ) -> Result<Governance, Error> {
-        // Governance path
-        let governance_path =
-            ActorPath::from(format!("/user/node/{}", governance_id));
-
-        // Governance actor.
-        let governance_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&governance_path).await;
-
-        // We obtain the actor governance
-        let response = if let Some(governance_actor) = governance_actor {
-            // We ask a governance
-            let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path {}",
-                governance_path
-            )));
-        };
-
-        match response {
-            SubjectResponse::Governance(gov) => Ok(gov),
-            SubjectResponse::Error(error) => Err(Error::Actor(format!(
-                "The subject encountered problems when getting governance: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
-        }
     }
 
     async fn execute_contract(
@@ -214,7 +166,7 @@ impl Evaluator {
         };
 
         // Get governance
-        let governance = self.get_gov(ctx, governance_id.clone()).await?;
+        let governance = get_gov(ctx, governance_id.clone()).await?;
         // Get governance version
         let governance_version = governance.get_version();
 

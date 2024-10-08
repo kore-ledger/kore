@@ -15,6 +15,15 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
 
+/// Accept response of Validators, can be a Signature or a TimeOut if all trys have been made
+#[derive(
+    Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
+)]
+pub enum SignersRes {
+    Signature(Signature),
+    TimeOut(TimeOutResponse),
+}
+
 /// A struct representing a validation request.
 #[derive(
     Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
@@ -28,15 +37,6 @@ pub struct ValidationReq {
     pub previous_proof: Option<ValidationProof>,
     // Hay que sacarlo de la base de datos,
     pub prev_event_validation_response: Vec<SignersRes>,
-}
-
-/// Accept response of Validators, can be a Signature or a TimeOut if all trys have been made
-#[derive(
-    Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
-)]
-pub enum SignersRes {
-    Signature(Signature),
-    TimeOut(TimeOutResponse),
 }
 
 impl HashId for ValidationReq {

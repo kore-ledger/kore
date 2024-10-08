@@ -32,6 +32,9 @@ pub enum Error {
     /// Request event
     #[error("Request event error: {0}")]
     RequestEvent(String),
+    /// Request Handler
+    #[error("Request handler error: {0}")]
+    RequestHandler(String),
     /// Governance error.
     #[error("Governance error: {0}")]
     Governance(String),
