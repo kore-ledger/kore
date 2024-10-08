@@ -6,16 +6,14 @@
 
 use super::{
     network::TimeOutResponse,
-    request::{
-        EOLRequest, EventRequest, FactRequest, StartRequest, TransferRequest,
-    },
+    request::EventRequest,
     signature::{Signature, Signed},
     wrapper::ValueWrapper,
     HashId,
 };
 
 use crate::{
-    governance::init::init_state, model::Namespace, subject::Subject, Error,
+model::Namespace, subject::Subject, Error,
 };
 
 use identity::{
@@ -26,9 +24,7 @@ use identity::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use json_patch::diff;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::collections::HashSet;
 
 /// A struct representing an event.
@@ -56,17 +52,17 @@ pub struct ProofEvent {
     /// The hash of the state after applying the patch.
     pub state_hash: DigestIdentifier,
     /// Whether the evaluation was successful and the result was validated against the schema.
-    pub eval_success: bool,
+    pub eval_success: Option<bool>,
     /// Whether approval is required for the event to be applied to the state.
     pub appr_required: bool,
     /// Whether the event has been approved.
-    pub appr_success: bool,
+    pub appr_success: Option<bool>,
     /// The hash of the previous event.
     pub hash_prev_proof_event: DigestIdentifier,
     /// The set of evaluators who have evaluated the event.
-    pub evaluators: HashSet<Signature>,
+    pub evaluators: Option<HashSet<Signature>>,
     /// The set of approvers who have approved the event.
-    pub approvers: HashSet<ProtocolsResponse>,
+    pub approvers: Option<HashSet<ProtocolsResponse>>,
 }
 
 #[derive(
@@ -133,19 +129,19 @@ pub struct Event {
     /// The hash of the state after applying the patch.
     pub state_hash: DigestIdentifier,
     /// Whether the evaluation was successful and the result was validated against the schema.
-    pub eval_success: bool,
+    pub eval_success: Option<bool>,
     /// Whether approval is required for the event to be applied to the state.
     pub appr_required: bool,
     /// Whether the event has been approved.
-    pub appr_success: bool,
+    pub appr_success: Option<bool>,
 
     pub vali_success: bool,
     /// The hash of the previous event.
     pub hash_prev_event: DigestIdentifier,
     /// The set of evaluators who have evaluated the event.
-    pub evaluators: HashSet<Signature>,
+    pub evaluators: Option<HashSet<Signature>>,
     /// The set of approvers who have approved the event.
-    pub approvers: HashSet<ProtocolsResponse>,
+    pub approvers: Option<HashSet<ProtocolsResponse>>,
 
     pub validators: HashSet<ProtocolsResponse>,
 }
@@ -195,10 +191,10 @@ pub struct Ledger {
     /// The hash of the state after applying the patch.
     pub state_hash: DigestIdentifier,
     /// Whether the evaluation was successful and the result was validated against the schema.
-    pub eval_success: bool,
+    pub eval_success: Option<bool>,
     /// Whether approval is required for the event to be applied to the state.
     pub appr_required: bool,
-    pub appr_success: bool,
+    pub appr_success: Option<bool>,
     /// Whether the event has been approved.
     pub vali_success: bool,
     /// The hash of the previous event.
@@ -260,7 +256,7 @@ pub enum LedgerValue {
 }
 
 // TODO REVISAR ESTO, sobre todo la parte final donde se crea el evento
-impl Event {
+impl ProofEvent {
     pub fn from_create_request(
         subject_keys: &KeyPair,
         request: &Signed<EventRequest>,
@@ -277,7 +273,7 @@ impl Event {
         );
 
         let subject_id = Subject::subject_id(
-            Namespace::from(start_request.namespace.as_str()),
+            start_request.namespace.clone(),
             &start_request.schema_id,
             public_key,
             start_request.governance_id.clone(),
@@ -290,21 +286,19 @@ impl Event {
                     Error::Digest("Error converting state to hash".to_owned())
                 })?;
 
-        Ok(Event {
+        Ok(ProofEvent {
             subject_id,
             event_request: request.clone(),
             sn: 0,
             gov_version: governance_version,
             value: LedgerValue::Patch(init_state.clone()),
             state_hash,
-            eval_success: true,
+            eval_success: None,
             appr_required: false,
-            hash_prev_event: DigestIdentifier::default(),
-            evaluators: HashSet::new(),
-            approvers: HashSet::new(),
-            appr_success: true,
-            vali_success: true,
-            validators: HashSet::new(),
+            hash_prev_proof_event: DigestIdentifier::default(),
+            evaluators: None,
+            approvers: None,
+            appr_success: None,
         })
     }
 }

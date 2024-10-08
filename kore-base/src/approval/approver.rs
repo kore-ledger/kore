@@ -1,7 +1,7 @@
 use crate::{
     db::Storable,
     intermediary::Intermediary,
-    model::{network::RetryNetwork, signature, SignTypesNode},
+    model::{common::get_gov, network::RetryNetwork, signature, SignTypesNode},
     ActorMessage, Error, EventRequest, Governance, NetworkMessage, Node,
     NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectCommand,
     SubjectResponse, DIGEST_DERIVATOR,
@@ -83,61 +83,14 @@ impl Approver {
             ..Default::default()
         }
     }
-    // Refactorizar el get_gov se usa en todos los procesos
-    async fn get_gov(
-        &self,
-        ctx: &mut ActorContext<Approver>,
-        governance_id: DigestIdentifier,
-    ) -> Result<Governance, Error> {
-        // Governance path
-        let governance_path =
-            ActorPath::from(format!("/user/node/{}", governance_id));
-
-        // Governance actor.
-        let governance_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&governance_path).await;
-
-        // We obtain the actor governance
-        let response = if let Some(governance_actor) = governance_actor {
-            // We ask a governance
-            let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path {}",
-                governance_path
-            )));
-        };
-
-        match response {
-            SubjectResponse::Governance(gov) => Ok(gov),
-            SubjectResponse::Error(error) => {
-                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
-            }
-            _ => {
-                return Err(Error::Actor(format!(
-                    "An unexpected response has been received from node actor"
-                )))
-            }
-        }
-    }
-
+    
     async fn check_governance(
         &self,
         ctx: &mut ActorContext<Approver>,
         subject_id: DigestIdentifier,
         gov_version: u64,
     ) -> Result<(), Error> {
-        let governance = self.get_gov(ctx, subject_id).await?;
+        let governance = get_gov(ctx, subject_id).await?;
 
         match gov_version.cmp(&governance.get_version()) {
             std::cmp::Ordering::Equal => {

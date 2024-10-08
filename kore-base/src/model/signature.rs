@@ -16,7 +16,7 @@ use identity::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
 /// The format, in addition to the signature, includes additional
 /// information, namely the signer's identifier, the signature timestamp
@@ -96,23 +96,6 @@ impl Signature {
     }
 }
 
-/// Helper struct to validate the unique signature.
-#[derive(Debug)]
-pub(crate) struct UniqueSignature {
-    pub signature: Signature,
-}
-
-impl PartialEq for UniqueSignature {
-    fn eq(&self, other: &Self) -> bool {
-        self.signature.signer == other.signature.signer
-    }
-}
-
-impl Hash for UniqueSignature {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.signature.signer.hash(state);
-    }
-}
 
 /// Represents any signed data entity
 #[derive(
@@ -215,23 +198,5 @@ mod tests {
         let signature = generate_signature(&content, &key_pair);
         let signed = Signed { content, signature };
         assert!(signed.signature.verify(&signed.content).is_ok());
-    }
-
-    #[test]
-    fn tes_unique_signature() {
-        let key_pair = generate_key_pair();
-        let content1 = TestContent {
-            value: "test1".to_owned(),
-        };
-        let signature = generate_signature(&content1, &key_pair);
-
-        let unique_signature1 = UniqueSignature { signature };
-        let content2 = TestContent {
-            value: "test2".to_owned(),
-        };
-        let signature = generate_signature(&content2, &key_pair);
-
-        let unique_signature2 = UniqueSignature { signature };
-        assert_eq!(unique_signature1, unique_signature2);
     }
 }

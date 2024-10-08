@@ -7,9 +7,7 @@ use crate::{
     governance::{model::Roles, Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        network::{RetryNetwork, TimeOutResponse},
-        signature::Signature,
-        SignTypesNode, TimeStamp,
+        common::get_gov, network::{RetryNetwork, TimeOutResponse}, signature::Signature, SignTypesNode, TimeStamp
     },
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectCommand, SubjectResponse},
@@ -55,56 +53,6 @@ impl Validator {
         Validator { request_id, node }
     }
 
-    async fn get_gov(
-        &self,
-        ctx: &mut ActorContext<Validator>,
-        subject_id: DigestIdentifier,
-        governance_id: DigestIdentifier,
-        schema_id: &str,
-    ) -> Result<Governance, Error> {
-        // Governance path
-        let governance_path = if schema_id == "governance" {
-            ActorPath::from(format!("/user/node/{}", subject_id))
-        } else {
-            ActorPath::from(format!("/user/node/{}", governance_id))
-        };
-        // Governance actor.
-        let governance_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&governance_path).await;
-
-        // We obtain the actor governance
-        let response = if let Some(governance_actor) = governance_actor {
-            // We ask a governance
-            let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path {}",
-                governance_path
-            )));
-        };
-
-        match response {
-            SubjectResponse::Governance(gov) => Ok(gov),
-            SubjectResponse::Error(error) => Err(Error::Actor(format!(
-                "The subject encountered problems when getting governance: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from subject actor"
-                    .to_owned(),
-            )),
-        }
-    }
 
     fn check_event_proof(
         &self,
@@ -194,11 +142,16 @@ impl Validator {
             0
         // ask the government for its version
         } else {
-            self.get_gov(
+
+            let governance_id = if validation_req.proof.schema_id == "governance" {
+                validation_req.proof.subject_id.clone()
+            } else {
+                validation_req.proof.governance_id.clone()
+            };
+
+            get_gov(
                 ctx,
-                validation_req.proof.subject_id.clone(),
-                validation_req.proof.governance_id.clone(),
-                &validation_req.proof.schema_id,
+                governance_id
             )
             .await?
             .get_version()
@@ -332,12 +285,15 @@ impl Validator {
 
             // TODO previamente se obtiene la governanza, ver si podemos refactorizar para no tener que volver a pedirla
             // Get validation signers
-            let actual_signers = self
-                .get_gov(
+            let governance_id = if new_proof.schema_id == "governance" {
+                new_proof.subject_id.clone()
+            } else {
+                new_proof.governance_id.clone()
+            };
+
+            let actual_signers = get_gov(
                     ctx,
-                    new_proof.subject_id.clone(),
-                    new_proof.governance_id.clone(),
-                    &new_proof.schema_id,
+                    governance_id
                 )
                 .await?
                 .get_signers(

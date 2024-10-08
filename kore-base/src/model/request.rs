@@ -4,7 +4,7 @@
 //! # Request data model.
 //!
 
-use super::{signature::Signed, wrapper::ValueWrapper, HashId};
+use super::{signature::Signed, wrapper::ValueWrapper, HashId, Namespace};
 
 use crate::Error;
 
@@ -14,6 +14,27 @@ use identity::identifier::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+
+
+pub enum EventRequestType {
+    Create,
+    Fact,
+    Transfer,
+    Confirm,
+    EOL
+}
+
+impl From<EventRequest> for EventRequestType {
+    fn from(value: EventRequest) -> Self {
+        match value {
+            EventRequest::Create(_start_request) => Self::Create,
+            EventRequest::Fact(_fact_request) => Self::Fact,
+            EventRequest::Transfer(_transfer_request) => Self::Transfer,
+            EventRequest::Confirm(_confirm_request) => Self::Confirm,
+            EventRequest::EOL(_eolrequest) => Self::EOL,
+        }
+    }
+}
 
 /// An enum representing a Kore Ledger event request.
 #[derive(
@@ -28,7 +49,7 @@ use serde::{Deserialize, Serialize};
 )]
 pub enum EventRequest {
     /// A request to create a new subject.
-    Create(StartRequest),
+    Create(CreateRequest),
     /// A request to add a fact to a subject.
     Fact(FactRequest),
     /// A request to transfer ownership of a subject.
@@ -50,13 +71,13 @@ pub enum EventRequest {
     BorshSerialize,
     BorshDeserialize,
 )]
-pub struct StartRequest {
+pub struct CreateRequest {
     /// The identifier of the governance contract.
     pub governance_id: DigestIdentifier,
     /// The identifier of the schema used to validate the event.
     pub schema_id: String,
     /// The namespace of the subject.
-    pub namespace: String,
+    pub namespace: Namespace,
     /// The name of the subject.
     pub name: String,
 }
@@ -239,11 +260,11 @@ pub mod tests {
 
     // Create governance request mock.
     pub fn create_start_request_mock(issuer: &str) -> Signed<EventRequest> {
-        let (key_pair, key_id) = issuer_identity(issuer);
-        let req = StartRequest {
+        let (key_pair, _key_id) = issuer_identity(issuer);
+        let req = CreateRequest {
             governance_id: DigestIdentifier::default(),
             schema_id: "governance".to_string(),
-            namespace: "namespace".to_string(),
+            namespace: Namespace::from("namespace"),
             name: "name".to_string(),
         };
         let content = EventRequest::Create(req);

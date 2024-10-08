@@ -17,7 +17,7 @@ use crate::{
     evaluation::schema,
     governance::model::Roles,
     intermediary::Intermediary,
-    model::{event::Ledger, network::RetryNetwork, Namespace},
+    model::{common::{get_gov, get_metadata}, event::Ledger, network::RetryNetwork, Namespace},
     subject::{
         event::{LedgerEvent, LedgerEventCommand, LedgerEventResponse},
         SubjectMetadata,
@@ -90,7 +90,7 @@ impl Distributor {
                 SubjectResponse::SubjectMetadata(metadata) => metadata,
                 _ => todo!(),
             };
-            (metadata.namespace.to_string(), false)
+            (metadata.namespace, false)
             // Si el sujeto no existe.
         } else {
             // El primero evento tiene que ser de creación sí o sí
@@ -118,7 +118,7 @@ impl Distributor {
         }
         // si no es una gov ver si el signer es creator.
         else {
-            let gov = self.get_gov(ctx, subject_id.clone()).await;
+            let gov = get_gov(ctx, subject_id.clone()).await;
             let gov = match gov {
                 Ok(gov) => gov,
                 Err(e) => todo!(),
@@ -126,7 +126,7 @@ impl Distributor {
             let creators = gov.get_signers(
                 Roles::CREATOR { quantity: 0 },
                 schema,
-                Namespace::from(namespace),
+                namespace,
             );
             if !creators.iter().any(|x| x.clone() == signer) {
                 todo!()
@@ -168,7 +168,7 @@ impl Distributor {
 
         let response = if let Some(node_actor) = node_actor {
             let response =
-                node_actor.ask(NodeMessage::CreateNewSubject(ledger)).await;
+                node_actor.ask(NodeMessage::CreateNewSubjectLedger(ledger)).await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -205,7 +205,7 @@ impl Distributor {
 
         let response = if let Some(node_actor) = node_actor {
             let response = node_actor
-                .ask(NodeMessage::IKnowThisGov(subject_id.to_owned()))
+                .ask(NodeMessage::IsAuthorized(subject_id.to_owned()))
                 .await;
             match response {
                 Ok(response) => response,
@@ -223,55 +223,9 @@ impl Distributor {
             )));
         };
         match response {
-            NodeResponse::IKnowThisGov(know) => Ok(know),
+            NodeResponse::IsAuthorized(know) => Ok(know),
             _ => Err(Error::Actor(
                 "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
-        }
-    }
-
-    async fn get_gov(
-        &self,
-        ctx: &mut ActorContext<Distributor>,
-        subject_id: DigestIdentifier,
-    ) -> Result<Governance, Error> {
-        // Governance path
-        let governance_path =
-            ActorPath::from(format!("/user/node/{}", subject_id));
-        // Governance actor.
-        let governance_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&governance_path).await;
-
-        // We obtain the actor governance
-        let response = if let Some(governance_actor) = governance_actor {
-            // We ask a governance
-            let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path {}",
-                governance_path
-            )));
-        };
-
-        match response {
-            SubjectResponse::Governance(gov) => Ok(gov),
-            SubjectResponse::Error(error) => Err(Error::Actor(format!(
-                "The subject encountered problems when getting governance: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from subject actor"
                     .to_owned(),
             )),
         }
@@ -306,45 +260,6 @@ impl Distributor {
         };
 
         Ok(())
-    }
-
-    async fn get_metadata(
-        &self,
-        ctx: &mut ActorContext<Distributor>,
-        subject_id: DigestIdentifier,
-    ) -> Result<SubjectMetadata, Error> {
-        let subject_path =
-            ActorPath::from(format!("/user/node/{}", subject_id));
-        let subject_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&subject_path).await;
-
-        let response = if let Some(subject_actor) = subject_actor {
-            // We ask a node
-            let response =
-                subject_actor.ask(SubjectCommand::GetSubjectMetadata).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The node actor was not found in the expected path {}",
-                subject_path
-            )));
-        };
-
-        match response {
-            SubjectResponse::SubjectMetadata(metadata) => Ok(metadata),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from subject actor"
-                    .to_owned(),
-            )),
-        }
     }
 
     async fn get_ledger(
@@ -396,12 +311,12 @@ impl Distributor {
         gov_version: Option<u64>,
         info: ComunicateInfo,
     ) -> Result<CheckGovernance, ActorError> {
-        let gov = match self.get_gov(ctx, subject_id.clone()).await {
+        let gov = match get_gov(ctx, subject_id.clone()).await {
             Ok(gov) => gov,
             Err(e) => todo!(),
         };
 
-        let metadata = match self.get_metadata(ctx, subject_id.clone()).await {
+        let metadata = match get_metadata(ctx, subject_id.clone()).await {
             Ok(metadata) => metadata,
             Err(e) => todo!(),
         };
@@ -800,8 +715,7 @@ impl Handler<Distributor> for Distributor {
                             // NO se aplicó el evento porque tendría un sn demasiado grande, no es el que toca o ya está aplicado.
                             // Si fue demasiado grande
                             if last_sn < ledger.content.sn {
-                                let gov = match self
-                                    .get_gov(
+                                let gov = match get_gov(
                                         ctx,
                                         ledger.content.subject_id.clone(),
                                     )
@@ -1032,7 +946,7 @@ impl Handler<Distributor> for Distributor {
                     metadata.governance_id
                 };
 
-                let gov = match self.get_gov(ctx, gov_id).await {
+                let gov = match get_gov(ctx, gov_id).await {
                     Ok(gov) => gov,
                     Err(e) => todo!(),
                 };

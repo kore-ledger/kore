@@ -41,7 +41,7 @@ impl Actor for RetryNetwork {
 impl Handler<RetryNetwork> for RetryNetwork {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: NetworkMessage,
         ctx: &mut ActorContext<RetryNetwork>,
     ) -> Result<(), ActorError> {
