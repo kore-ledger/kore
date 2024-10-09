@@ -12,9 +12,7 @@ use super::{
     HashId,
 };
 
-use crate::{
-model::Namespace, subject::Subject, Error,
-};
+use crate::{model::Namespace, subject::Subject, Error};
 
 use identity::{
     identifier::{

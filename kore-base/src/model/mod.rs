@@ -6,6 +6,7 @@
 //! This module contains the data model for the Kore base.
 //!
 
+pub mod common;
 pub mod event;
 pub mod namespace;
 pub mod network;
@@ -13,7 +14,6 @@ pub mod patch;
 pub mod request;
 pub mod signature;
 pub mod wrapper;
-pub mod common;
 
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;

@@ -297,12 +297,8 @@ impl Handler<Node> for Node {
             NodeMessage::CreateNewSubjectReq(data) => {
                 let subject = Subject::new(data.clone());
 
-
                 if let Err(e) = ctx
-                    .create_child(
-                        &format!("{}", data.subject_id),
-                        subject,
-                    )
+                    .create_child(&format!("{}", data.subject_id), subject)
                     .await
                 {
                     Ok(NodeResponse::Error(Error::Actor(format!("{}", e))))
@@ -347,11 +343,8 @@ impl Handler<Node> for Node {
                 }
             }
             NodeMessage::AmISubjectOwner(subject_id) => {
-                
                 Ok(NodeResponse::AmIOwner(
-                    self.get_owned_subjects()
-                        .iter()
-                        .any(|x| **x == subject_id),
+                    self.get_owned_subjects().iter().any(|x| **x == subject_id),
                 ))
             }
             NodeMessage::RegisterSubject(subject) => {
@@ -367,10 +360,11 @@ impl Handler<Node> for Node {
             }
             NodeMessage::IsAuthorized(subject_id) => {
                 // TODO Esto no se puede utilizar para governanza autorizada, tiene que ir a parte
-                Ok(NodeResponse::IsAuthorized(self
-                    .authorized_governances
-                    .iter()
-                    .any(|x| x.clone() == subject_id)))
+                Ok(NodeResponse::IsAuthorized(
+                    self.authorized_governances
+                        .iter()
+                        .any(|x| x.clone() == subject_id),
+                ))
             }
         }
     }

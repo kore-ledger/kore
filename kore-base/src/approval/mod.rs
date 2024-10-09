@@ -7,7 +7,7 @@ use actor::{
     Actor, ActorContext, Error as ActorError, Handler, Message, Response,
 };
 use actor::{ActorPath, ActorRef, Event};
-use approver::{Approver, ApproverCommand};
+use approver::{Approver, ApproverMessage};
 use async_trait::async_trait;
 use identity::identifier::derive::digest::DigestDerivator;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
@@ -23,7 +23,7 @@ use crate::governance::model::Roles;
 use crate::governance::RequestStage;
 use crate::model::{namespace, Namespace, SignTypesNode};
 use crate::subject::event::{
-    LedgerEvent, LedgerEventCommand, LedgerEventResponse,
+    LedgerEvent, LedgerEventMessage, LedgerEventResponse,
 };
 use crate::validation::response::ValidationRes;
 use crate::{
@@ -37,7 +37,7 @@ use crate::{
     Error, Governance, Signature, Signed, Subject,
 };
 use crate::{
-    governance, EventRequest, Node, NodeMessage, NodeResponse, SubjectCommand,
+    governance, EventRequest, Node, NodeMessage, NodeResponse, SubjectMessage,
     SubjectResponse, DIGEST_DERIVATOR,
 };
 
@@ -108,7 +108,7 @@ impl Approval {
             };
 
         let response = subject_event_actor
-            .ask(LedgerEventCommand::GetLastEvent)
+            .ask(LedgerEventMessage::GetLastEvent)
             .await;
         let prev_event = match response {
             Ok(LedgerEventResponse::LastEvent(event)) => event,
@@ -153,7 +153,7 @@ impl Approval {
         let response = if let Some(governance_actor) = governance_actor {
             // We ask a governance
             let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
+                governance_actor.ask(SubjectMessage::GetGovernance).await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -206,7 +206,7 @@ impl Approval {
                 .await;
             if let Some(approver_actor) = approver_actor {
                 if let Err(e) = approver_actor
-                    .tell(ApproverCommand::LocalApproval {
+                    .tell(ApproverMessage::LocalApproval {
                         request_id: request_id.to_owned(),
                         approval_req: approval_req.content,
                         our_key: signer,
@@ -232,7 +232,7 @@ impl Approval {
             };
 
             if let Err(e) = approver_actor
-                .tell(ApproverCommand::NetworkApproval {
+                .tell(ApproverMessage::NetworkApproval {
                     request_id: request_id.to_owned(),
                     approval_req: approval_req.clone(),
                     node_key: signer,
@@ -252,7 +252,7 @@ impl Approval {
 }
 
 #[derive(Debug, Clone)]
-pub enum ApprovalCommand {
+pub enum ApprovalMessage {
     Create {
         request_id: DigestIdentifier,
         info: EvaluationReq,
@@ -265,7 +265,7 @@ pub enum ApprovalCommand {
     ReLaunch,
 }
 
-impl Message for ApprovalCommand {}
+impl Message for ApprovalMessage {}
 
 //
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -296,7 +296,7 @@ impl Response for ApprovalResponse {}
 #[async_trait]
 impl Actor for Approval {
     type Event = ApprovalEvent;
-    type Message = ApprovalCommand;
+    type Message = ApprovalMessage;
     type Response = ApprovalResponse;
 
     async fn pre_start(
@@ -323,11 +323,11 @@ impl Handler<Approval> for Approval {
     async fn handle_message(
         &mut self,
         _sender: ActorPath,
-        msg: ApprovalCommand,
+        msg: ApprovalMessage,
         ctx: &mut ActorContext<Self>,
     ) -> Result<ApprovalResponse, ActorError> {
         match msg {
-            ApprovalCommand::ReLaunch => {
+            ApprovalMessage::ReLaunch => {
                 let request = if let Some(request) = self.request.clone() {
                     request
                 } else {
@@ -349,7 +349,7 @@ impl Handler<Approval> for Approval {
                     }
                 }
             }
-            ApprovalCommand::Create {
+            ApprovalMessage::Create {
                 request_id,
                 info,
                 eval_response,
@@ -440,7 +440,7 @@ impl Handler<Approval> for Approval {
                     // TODO error al persistir, propagar hacia arriba
                 };
             }
-            ApprovalCommand::Response {
+            ApprovalMessage::Response {
                 approval_res,
                 sender,
             } => {

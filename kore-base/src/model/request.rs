@@ -15,13 +15,12 @@ use identity::identifier::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-
 pub enum EventRequestType {
     Create,
     Fact,
     Transfer,
     Confirm,
-    EOL
+    EOL,
 }
 
 impl From<EventRequest> for EventRequestType {

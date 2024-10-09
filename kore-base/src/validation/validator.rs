@@ -7,10 +7,13 @@ use crate::{
     governance::{model::Roles, Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::get_gov, network::{RetryNetwork, TimeOutResponse}, signature::Signature, SignTypesNode, TimeStamp
+        common::get_gov,
+        network::{RetryNetwork, TimeOutResponse},
+        signature::Signature,
+        SignTypesNode, TimeStamp,
     },
     node::{self, Node, NodeMessage, NodeResponse},
-    subject::{SubjectCommand, SubjectResponse},
+    subject::{SubjectMessage, SubjectResponse},
     Error, Signed, Subject,
 };
 
@@ -18,7 +21,7 @@ use super::{
     proof::{EventProof, ValidationProof},
     request::{SignersRes, ValidationReq},
     response::ValidationRes,
-    Validation, ValidationCommand, ValidationResponse,
+    Validation, ValidationMessage, ValidationResponse,
 };
 
 use crate::helpers::network::ActorMessage;
@@ -52,7 +55,6 @@ impl Validator {
     pub fn new(request_id: String, node: KeyIdentifier) -> Self {
         Validator { request_id, node }
     }
-
 
     fn check_event_proof(
         &self,
@@ -142,19 +144,14 @@ impl Validator {
             0
         // ask the government for its version
         } else {
+            let governance_id =
+                if validation_req.proof.schema_id == "governance" {
+                    validation_req.proof.subject_id.clone()
+                } else {
+                    validation_req.proof.governance_id.clone()
+                };
 
-            let governance_id = if validation_req.proof.schema_id == "governance" {
-                validation_req.proof.subject_id.clone()
-            } else {
-                validation_req.proof.governance_id.clone()
-            };
-
-            get_gov(
-                ctx,
-                governance_id
-            )
-            .await?
-            .get_version()
+            get_gov(ctx, governance_id).await?.get_version()
         };
 
         match actual_gov_version.cmp(&validation_req.proof.governance_version) {
@@ -291,12 +288,8 @@ impl Validator {
                 new_proof.governance_id.clone()
             };
 
-            let actual_signers = get_gov(
-                    ctx,
-                    governance_id
-                )
-                .await?
-                .get_signers(
+            let actual_signers =
+                get_gov(ctx, governance_id).await?.get_signers(
                     Roles::VALIDATOR,
                     &new_proof.schema_id,
                     new_proof.namespace.clone(),
@@ -321,7 +314,7 @@ impl Validator {
 }
 
 #[derive(Debug, Clone)]
-pub enum ValidatorCommand {
+pub enum ValidatorMessage {
     LocalValidation {
         validation_req: ValidationReq,
         our_key: KeyIdentifier,
@@ -343,12 +336,12 @@ pub enum ValidatorCommand {
     },
 }
 
-impl Message for ValidatorCommand {}
+impl Message for ValidatorMessage {}
 
 #[async_trait]
 impl Actor for Validator {
     type Event = ();
-    type Message = ValidatorCommand;
+    type Message = ValidatorMessage;
     type Response = ();
 }
 
@@ -357,11 +350,11 @@ impl Handler<Validator> for Validator {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: ValidatorCommand,
+        msg: ValidatorMessage,
         ctx: &mut ActorContext<Validator>,
     ) -> Result<(), ActorError> {
         match msg {
-            ValidatorCommand::LocalValidation {
+            ValidatorMessage::LocalValidation {
                 validation_req,
                 our_key,
             } => {
@@ -370,13 +363,13 @@ impl Handler<Validator> for Validator {
                     .validation(ctx, validation_req)
                     .await
                 {
-                    Ok(validation) => ValidationCommand::Response {
+                    Ok(validation) => ValidationMessage::Response {
                         validation_res: ValidationRes::Signature(validation),
                         sender: our_key,
                     },
                     Err(e) => {
                         // Log con el error. TODO
-                        ValidationCommand::Response {
+                        ValidationMessage::Response {
                             validation_res: ValidationRes::Error(format!(
                                 "{}",
                                 e
@@ -403,7 +396,7 @@ impl Handler<Validator> for Validator {
 
                 ctx.stop().await;
             }
-            ValidatorCommand::NetworkValidation {
+            ValidatorMessage::NetworkValidation {
                 request_id,
                 validation_req,
                 schema,
@@ -460,7 +453,7 @@ impl Handler<Validator> for Validator {
                     todo!()
                 };
             }
-            ValidatorCommand::NetworkResponse {
+            ValidatorMessage::NetworkResponse {
                 validation_res,
                 request_id,
             } => {
@@ -484,7 +477,7 @@ impl Handler<Validator> for Validator {
 
                     if let Some(validation_actor) = validation_actor {
                         if let Err(e) = validation_actor
-                            .tell(ValidationCommand::Response {
+                            .tell(ValidationMessage::Response {
                                 validation_res: validation_res.content,
                                 sender: self.node.clone(),
                             })
@@ -512,7 +505,7 @@ impl Handler<Validator> for Validator {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
                 }
             }
-            ValidatorCommand::NetworkRequest {
+            ValidatorMessage::NetworkRequest {
                 validation_req,
                 info,
             } => {
@@ -528,7 +521,7 @@ impl Handler<Validator> for Validator {
 
                     // We obtain the validator
                     let response = if let Some(subject_actor) = subject_actor {
-                        match subject_actor.ask(SubjectCommand::GetOwner).await
+                        match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
                             Err(e) => todo!(),
@@ -658,7 +651,7 @@ impl Handler<Validator> for Validator {
 
                 if let Some(validation_actor) = validation_actor {
                     if let Err(e) = validation_actor
-                        .tell(ValidationCommand::Response {
+                        .tell(ValidationMessage::Response {
                             validation_res: ValidationRes::TimeOut(
                                 TimeOutResponse {
                                     re_trys: 3,

@@ -5,7 +5,7 @@ use crate::{
     evaluation::response::EvaluationRes,
     governance::RequestStage,
     model::{
-        request::{EventRequest, CreateRequest},
+        request::{CreateRequest, EventRequest},
         signature::{Signature, Signed},
     },
     Error,

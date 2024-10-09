@@ -17,17 +17,22 @@ use crate::{
     evaluation::schema,
     governance::model::Roles,
     intermediary::Intermediary,
-    model::{common::{get_gov, get_metadata}, event::Ledger, network::RetryNetwork, Namespace},
+    model::{
+        common::{get_gov, get_metadata},
+        event::Ledger,
+        network::RetryNetwork,
+        Namespace,
+    },
     subject::{
-        event::{LedgerEvent, LedgerEventCommand, LedgerEventResponse},
+        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
         SubjectMetadata,
     },
     ActorMessage, Error, Event as KoreEvent, EventRequest, Governance,
     NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject,
-    SubjectCommand, SubjectResponse,
+    SubjectMessage, SubjectResponse,
 };
 
-use super::{Distribution, DistributionCommand};
+use super::{Distribution, DistributionMessage};
 
 enum CheckGovernance {
     Continue,
@@ -79,7 +84,7 @@ impl Distributor {
         // Si el sujeto existe.
         let (namespace, create) = if let Some(subject_actor) = subject_actor {
             let response = match subject_actor
-                .ask(SubjectCommand::GetSubjectMetadata)
+                .ask(SubjectMessage::GetSubjectMetadata)
                 .await
             {
                 Ok(response) => response,
@@ -167,8 +172,9 @@ impl Distributor {
             ctx.system().get_actor(&node_path).await;
 
         let response = if let Some(node_actor) = node_actor {
-            let response =
-                node_actor.ask(NodeMessage::CreateNewSubjectLedger(ledger)).await;
+            let response = node_actor
+                .ask(NodeMessage::CreateNewSubjectLedger(ledger))
+                .await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -245,7 +251,7 @@ impl Distributor {
 
         let response = if let Some(ledger_event_actor) = ledger_event_actor {
             match ledger_event_actor
-                .ask(LedgerEventCommand::UpdateLastEvent { event })
+                .ask(LedgerEventMessage::UpdateLastEvent { event })
                 .await
             {
                 Ok(res) => res,
@@ -276,7 +282,7 @@ impl Distributor {
         let response = if let Some(subject_actor) = subject_actor {
             // We ask a node
             let response = subject_actor
-                .ask(SubjectCommand::GetLedger { last_sn })
+                .ask(SubjectMessage::GetLedger { last_sn })
                 .await;
             match response {
                 Ok(response) => response,
@@ -406,7 +412,7 @@ impl Distributor {
                             };
 
                         if let Err(e) = distributor_actor
-                            .tell(DistributorCommand::SendDistribution {
+                            .tell(DistributorMessage::SendDistribution {
                                 gov_version: Some(gov_version),
                                 actual_sn: Some(gov_version),
                                 subject_id: metadata.governance_id,
@@ -448,12 +454,12 @@ impl Distributor {
 #[async_trait]
 impl Actor for Distributor {
     type Event = ();
-    type Message = DistributorCommand;
+    type Message = DistributorMessage;
     type Response = ();
 }
 
 #[derive(Debug, Clone)]
-pub enum DistributorCommand {
+pub enum DistributorMessage {
     // Un nodo nos solicitó la copia del ledger.
     SendDistribution {
         gov_version: Option<u64>,
@@ -485,18 +491,18 @@ pub enum DistributorCommand {
     },
 }
 
-impl Message for DistributorCommand {}
+impl Message for DistributorMessage {}
 
 #[async_trait]
 impl Handler<Distributor> for Distributor {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: DistributorCommand,
+        msg: DistributorMessage,
         ctx: &mut ActorContext<Distributor>,
     ) -> Result<(), ActorError> {
         match msg {
-            DistributorCommand::SendDistribution {
+            DistributorMessage::SendDistribution {
                 actual_sn,
                 info,
                 gov_version,
@@ -566,7 +572,7 @@ impl Handler<Distributor> for Distributor {
                     todo!()
                 };
             }
-            DistributorCommand::NetworkDistribution {
+            DistributorMessage::NetworkDistribution {
                 event,
                 node_key,
                 our_key,
@@ -615,7 +621,7 @@ impl Handler<Distributor> for Distributor {
                     todo!()
                 };
             }
-            DistributorCommand::NetworkResponse { signer } => {
+            DistributorMessage::NetworkResponse { signer } => {
                 if signer == self.node {
                     let distribution_path = ctx.path().parent();
 
@@ -624,7 +630,7 @@ impl Handler<Distributor> for Distributor {
 
                     if let Some(distribution_actor) = distribution_actor {
                         if let Err(e) = distribution_actor
-                            .tell(DistributionCommand::Response {
+                            .tell(DistributionMessage::Response {
                                 sender: self.node.clone(),
                             })
                             .await
@@ -648,7 +654,7 @@ impl Handler<Distributor> for Distributor {
                     ctx.stop().await;
                 }
             }
-            DistributorCommand::LastEventDistribution {
+            DistributorMessage::LastEventDistribution {
                 event,
                 ledger,
                 info,
@@ -701,7 +707,7 @@ impl Handler<Distributor> for Distributor {
                     };
 
                     let response = match subject_ref
-                        .ask(SubjectCommand::UpdateLedger {
+                        .ask(SubjectMessage::UpdateLedger {
                             events: vec![ledger.clone()],
                         })
                         .await
@@ -716,10 +722,10 @@ impl Handler<Distributor> for Distributor {
                             // Si fue demasiado grande
                             if last_sn < ledger.content.sn {
                                 let gov = match get_gov(
-                                        ctx,
-                                        ledger.content.subject_id.clone(),
-                                    )
-                                    .await
+                                    ctx,
+                                    ledger.content.subject_id.clone(),
+                                )
+                                .await
                                 {
                                     Ok(gov) => gov,
                                     Err(e) => todo!(),
@@ -815,7 +821,7 @@ impl Handler<Distributor> for Distributor {
                     todo!()
                 };
             }
-            DistributorCommand::LedgerDistribution {
+            DistributorMessage::LedgerDistribution {
                 mut events,
                 info,
                 last_event,
@@ -867,7 +873,7 @@ impl Handler<Distributor> for Distributor {
 
                 // Obtenemos el last_sn para saber si nos vale la pena intentar actualizar el ledger
                 let response = match subject_ref
-                    .ask(SubjectCommand::GetSubjectMetadata)
+                    .ask(SubjectMessage::GetSubjectMetadata)
                     .await
                 {
                     Ok(res) => res,
@@ -887,7 +893,7 @@ impl Handler<Distributor> for Distributor {
 
                 let last_sn = if last_sn_events > metadata.sn {
                     let response = match subject_ref
-                        .ask(SubjectCommand::UpdateLedger { events })
+                        .ask(SubjectMessage::UpdateLedger { events })
                         .await
                     {
                         Ok(res) => res,
@@ -918,7 +924,7 @@ impl Handler<Distributor> for Distributor {
                             ctx.system().get_actor(&our_path).await;
                         if let Some(our_actor) = our_actor {
                             if let Err(e) = our_actor
-                                .tell(DistributorCommand::SendDistribution {
+                                .tell(DistributorMessage::SendDistribution {
                                     gov_version: Some(
                                         event.content.gov_version,
                                     ),
@@ -1008,7 +1014,7 @@ impl Handler<Distributor> for Distributor {
 
                 if let Some(distribuiton_actor) = distribuiton_actor {
                     if let Err(e) = distribuiton_actor
-                        .tell(DistributionCommand::Response {
+                        .tell(DistributionMessage::Response {
                             sender: self.node.clone(),
                         })
                         .await

@@ -5,7 +5,7 @@ use actor::{
     Message,
 };
 use async_trait::async_trait;
-use distributor::{Distributor, DistributorCommand};
+use distributor::{Distributor, DistributorMessage};
 use identity::{
     identifier::{DigestIdentifier, KeyIdentifier},
     keys::KeyPair,
@@ -13,7 +13,7 @@ use identity::{
 
 use crate::{
     governance::model::Roles, model::event::Ledger, subject::SubjectMetadata,
-    Error, Event as KoreEvent, Governance, Signed, Subject, SubjectCommand,
+    Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage,
     SubjectResponse,
 };
 
@@ -54,7 +54,7 @@ impl Distribution {
 
         // We ask a governance
         let response =
-            governance_actor.ask(SubjectCommand::GetGovernance).await;
+            governance_actor.ask(SubjectMessage::GetGovernance).await;
         let response = match response {
             Ok(response) => response,
             Err(e) => {
@@ -81,7 +81,7 @@ impl Distribution {
             };
 
         let response = governance_actor
-            .ask(SubjectCommand::GetSubjectMetadata)
+            .ask(SubjectMessage::GetSubjectMetadata)
             .await;
         let response = match response {
             Ok(response) => response,
@@ -129,7 +129,7 @@ impl Distribution {
 
         if signer != our_key {
             distributor_actor
-                .tell(DistributorCommand::NetworkDistribution {
+                .tell(DistributorMessage::NetworkDistribution {
                     ledger,
                     event,
                     node_key: signer,
@@ -145,12 +145,12 @@ impl Distribution {
 #[async_trait]
 impl Actor for Distribution {
     type Event = ();
-    type Message = DistributionCommand;
+    type Message = DistributionMessage;
     type Response = ();
 }
 
 #[derive(Debug, Clone)]
-pub enum DistributionCommand {
+pub enum DistributionMessage {
     Create {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
@@ -160,18 +160,18 @@ pub enum DistributionCommand {
     },
 }
 
-impl Message for DistributionCommand {}
+impl Message for DistributionMessage {}
 
 #[async_trait]
 impl Handler<Distribution> for Distribution {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: DistributionCommand,
+        msg: DistributionMessage,
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
         match msg {
-            DistributionCommand::Create { event, ledger } => {
+            DistributionMessage::Create { event, ledger } => {
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
                 let (governance, metadata) =
@@ -200,7 +200,7 @@ impl Handler<Distribution> for Distribution {
                     .await?
                 }
             }
-            DistributionCommand::Response { sender } => {
+            DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) {
                     if self.witnesses.is_empty() {
                         // TODO todos los testigos recibieron la copia o se hicieron todos los intentos

@@ -3,7 +3,7 @@ use crate::{
     intermediary::Intermediary,
     model::{common::get_gov, network::RetryNetwork, signature, SignTypesNode},
     ActorMessage, Error, EventRequest, Governance, NetworkMessage, Node,
-    NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectCommand,
+    NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage,
     SubjectResponse, DIGEST_DERIVATOR,
 };
 use actor::{
@@ -23,7 +23,7 @@ use tracing::error;
 use super::{
     request::ApprovalReq,
     response::{self, ApprovalRes, ApprovalSignature},
-    Approval, ApprovalCommand,
+    Approval, ApprovalMessage,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -83,7 +83,7 @@ impl Approver {
             ..Default::default()
         }
     }
-    
+
     async fn check_governance(
         &self,
         ctx: &mut ActorContext<Approver>,
@@ -251,7 +251,7 @@ impl Approver {
 }
 
 #[derive(Debug, Clone)]
-pub enum ApproverCommand {
+pub enum ApproverMessage {
     // Mensaje para aprobar localmente
     LocalApproval {
         request_id: String,
@@ -280,7 +280,7 @@ pub enum ApproverCommand {
     }, // Necesito poder emitir un evento de aprobación, no solo el automático
 }
 
-impl Message for ApproverCommand {}
+impl Message for ApproverMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApproverEvent {
@@ -303,7 +303,7 @@ impl Response for ApproverResponse {}
 #[async_trait]
 impl Actor for Approver {
     type Event = ApproverEvent;
-    type Message = ApproverCommand;
+    type Message = ApproverMessage;
     type Response = ApproverResponse;
 }
 
@@ -312,11 +312,11 @@ impl Handler<Approver> for Approver {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: ApproverCommand,
+        msg: ApproverMessage,
         ctx: &mut ActorContext<Approver>,
     ) -> Result<ApproverResponse, ActorError> {
         match msg {
-            ApproverCommand::ChangeResponse { response } => {
+            ApproverMessage::ChangeResponse { response } => {
                 let state = if let Some(state) = self.state.clone() {
                     state
                 } else {
@@ -373,7 +373,7 @@ impl Handler<Approver> for Approver {
                 }
             }
             // aprobar si esta por defecto
-            ApproverCommand::LocalApproval {
+            ApproverMessage::LocalApproval {
                 request_id,
                 approval_req,
                 our_key,
@@ -414,7 +414,7 @@ impl Handler<Approver> for Approver {
                         // Send response of validation to parent
                         if let Some(approval_actor) = approval_actor {
                             if let Err(e) = approval_actor
-                                .tell(ApprovalCommand::Response {
+                                .tell(ApprovalMessage::Response {
                                     approval_res: ApprovalRes::Response(
                                         signature, true,
                                     ),
@@ -453,7 +453,7 @@ impl Handler<Approver> for Approver {
                     }
                 }
             }
-            ApproverCommand::NetworkApproval {
+            ApproverMessage::NetworkApproval {
                 request_id,
                 approval_req,
                 node_key,
@@ -508,7 +508,7 @@ impl Handler<Approver> for Approver {
                 };
             }
             // Finaliza los retries
-            ApproverCommand::NetworkResponse {
+            ApproverMessage::NetworkResponse {
                 approval_res,
                 request_id,
             } => {
@@ -531,7 +531,7 @@ impl Handler<Approver> for Approver {
 
                     if let Some(approval_actor) = approval_actor {
                         if let Err(e) = approval_actor
-                            .tell(ApprovalCommand::Response {
+                            .tell(ApprovalMessage::Response {
                                 approval_res: approval_res.content,
                                 sender: self.node.clone(),
                             })
@@ -559,7 +559,7 @@ impl Handler<Approver> for Approver {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
                 }
             }
-            ApproverCommand::NetworkRequest { approval_req, info } => {
+            ApproverMessage::NetworkRequest { approval_req, info } => {
                 if info.request_id != self.request_id {
                     let subject_path = ActorPath::from(format!(
                         "/user/node/{}",
@@ -570,7 +570,7 @@ impl Handler<Approver> for Approver {
 
                     // We obtain the evaluator
                     let response = if let Some(subject_actor) = subject_actor {
-                        match subject_actor.ask(SubjectCommand::GetOwner).await
+                        match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
                             Err(e) => todo!(),

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::Signed;
 
 use super::{
-    evaluator::{Evaluator, EvaluatorCommand},
+    evaluator::{Evaluator, EvaluatorMessage},
     request::EvaluationReq,
 };
 
@@ -27,7 +27,7 @@ impl EvaluationSchema {
 }
 
 #[derive(Debug, Clone)]
-pub enum EvaluationSchemaCommand {
+pub enum EvaluationSchemaMessage {
     NetworkRequest {
         evaluation_req: Signed<EvaluationReq>,
         info: ComunicateInfo,
@@ -35,12 +35,12 @@ pub enum EvaluationSchemaCommand {
     UpdateEvaluators(HashSet<KeyIdentifier>),
 }
 
-impl Message for EvaluationSchemaCommand {}
+impl Message for EvaluationSchemaMessage {}
 
 #[async_trait]
 impl Actor for EvaluationSchema {
     type Event = ();
-    type Message = EvaluationSchemaCommand;
+    type Message = EvaluationSchemaMessage;
     type Response = ();
 }
 
@@ -49,11 +49,11 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: EvaluationSchemaCommand,
+        msg: EvaluationSchemaMessage,
         ctx: &mut ActorContext<EvaluationSchema>,
     ) -> Result<(), ActorError> {
         match msg {
-            EvaluationSchemaCommand::NetworkRequest {
+            EvaluationSchemaMessage::NetworkRequest {
                 evaluation_req,
                 info,
             } => {
@@ -87,13 +87,13 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 };
 
                 evaluator_actor
-                    .tell(EvaluatorCommand::NetworkRequest {
+                    .tell(EvaluatorMessage::NetworkRequest {
                         evaluation_req,
                         info,
                     })
                     .await?
             }
-            EvaluationSchemaCommand::UpdateEvaluators(creators) => {
+            EvaluationSchemaMessage::UpdateEvaluators(creators) => {
                 self.creators = creators;
             }
         };

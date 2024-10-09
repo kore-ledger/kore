@@ -60,7 +60,10 @@ pub struct Governance {
 }
 
 impl Governance {
-    pub fn get_init_state(&self, schema_id: &str) -> Result<ValueWrapper, Error> {
+    pub fn get_init_state(
+        &self,
+        schema_id: &str,
+    ) -> Result<ValueWrapper, Error> {
         for schema in &self.schemas {
             if schema.id == schema_id {
                 debug!("Schema found: {}", schema_id);

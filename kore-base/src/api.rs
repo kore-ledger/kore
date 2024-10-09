@@ -7,9 +7,7 @@
 use crate::{
     model::{request::EventRequest, signature::Signed},
     node::Node,
-    request::handler::{
-        RequestHandler, RequestHandlerCommand, RequestResponse,
-    },
+    request::{RequestHandler, RequestHandlerResponse},
     Error,
 };
 
@@ -31,18 +29,21 @@ impl Api {
     pub async fn external_request(
         &self,
         event: Signed<EventRequest>,
-    ) -> Result<RequestResponse, Error> {
+    ) -> Result<RequestHandlerResponse, Error> {
+        /*
         self.request
             .ask(RequestHandlerCommand::StartRequest(event))
             .await
             .map_err(|e| Error::Actor(e.to_string()))
+         */
+        todo!()
     }
 
     /// Own request.
     pub async fn own_request(
         &self,
         event: EventRequest,
-    ) -> Result<RequestResponse, Error> {
+    ) -> Result<RequestHandlerResponse, Error> {
         todo!()
     }
 }

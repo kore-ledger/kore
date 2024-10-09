@@ -11,10 +11,11 @@ use crate::{
     },
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::get_gov, network::RetryNetwork, signature::Signature, HashId, SignTypesNode, TimeStamp
+        common::get_gov, network::RetryNetwork, signature::Signature, HashId,
+        SignTypesNode, TimeStamp,
     },
     node::{self, Node, NodeMessage, NodeResponse},
-    subject::{SubjectCommand, SubjectResponse},
+    subject::{SubjectMessage, SubjectResponse},
     Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
     DIGEST_DERIVATOR, SCHEMAS,
 };
@@ -41,14 +42,14 @@ use serde_json::{json, Value};
 use tracing::{debug, error};
 
 use super::{
-    compiler::{Compiler, CompilerCommand, CompilerResponse},
+    compiler::{Compiler, CompilerMessage, CompilerResponse},
     request::EvaluationReq,
     response::EvaluationRes,
     runner::{
         types::{Contract, ContractResult, GovernanceData, RunnerResult},
-        Runner, RunnerCommand, RunnerResponse,
+        Runner, RunnerMessage, RunnerResponse,
     },
-    Evaluation, EvaluationCommand, EvaluationResponse,
+    Evaluation, EvaluationMessage, EvaluationResponse,
 };
 
 /// A struct representing a Evaluator actor.
@@ -79,7 +80,7 @@ impl Evaluator {
         };
 
         let response = runner_actor
-            .ask(RunnerCommand {
+            .ask(RunnerMessage {
                 state: state.clone(),
                 event: event.clone(),
                 compiled_contract,
@@ -126,7 +127,7 @@ impl Evaluator {
                 };
 
             let response = compiler_actor
-                .ask(CompilerCommand::CompileCheck {
+                .ask(CompilerMessage::CompileCheck {
                     contract: schema.contract.raw.clone(),
                     schema: ValueWrapper(schema.schema.clone()),
                     initial_value: schema.initial_value.clone(),
@@ -354,7 +355,7 @@ impl Evaluator {
 }
 
 #[derive(Debug, Clone)]
-pub enum EvaluatorCommand {
+pub enum EvaluatorMessage {
     LocalEvaluation {
         evaluation_req: EvaluationReq,
         our_key: KeyIdentifier,
@@ -376,12 +377,12 @@ pub enum EvaluatorCommand {
     },
 }
 
-impl Message for EvaluatorCommand {}
+impl Message for EvaluatorMessage {}
 
 #[async_trait]
 impl Actor for Evaluator {
     type Event = ();
-    type Message = EvaluatorCommand;
+    type Message = EvaluatorMessage;
     type Response = ();
 }
 
@@ -390,11 +391,11 @@ impl Handler<Evaluator> for Evaluator {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: EvaluatorCommand,
+        msg: EvaluatorMessage,
         ctx: &mut ActorContext<Evaluator>,
     ) -> Result<(), ActorError> {
         match msg {
-            EvaluatorCommand::LocalEvaluation {
+            EvaluatorMessage::LocalEvaluation {
                 evaluation_req,
                 our_key,
             } => {
@@ -427,7 +428,7 @@ impl Handler<Evaluator> for Evaluator {
                 // Send response of evaluation to parent
                 if let Some(evaluation_actor) = evaluation_actor {
                     evaluation_actor
-                        .tell(EvaluationCommand::Response {
+                        .tell(EvaluationMessage::Response {
                             evaluation_res: evaluation,
                             sender: our_key,
                         })
@@ -439,7 +440,7 @@ impl Handler<Evaluator> for Evaluator {
 
                 ctx.stop().await;
             }
-            EvaluatorCommand::NetworkEvaluation {
+            EvaluatorMessage::NetworkEvaluation {
                 request_id,
                 evaluation_req,
                 schema,
@@ -497,7 +498,7 @@ impl Handler<Evaluator> for Evaluator {
                     todo!()
                 };
             }
-            EvaluatorCommand::NetworkResponse {
+            EvaluatorMessage::NetworkResponse {
                 evaluation_res,
                 request_id,
             } => {
@@ -521,7 +522,7 @@ impl Handler<Evaluator> for Evaluator {
 
                     if let Some(evaluation_actor) = evaluation_actor {
                         if let Err(e) = evaluation_actor
-                            .tell(EvaluationCommand::Response {
+                            .tell(EvaluationMessage::Response {
                                 evaluation_res: evaluation_res.content,
                                 sender: self.node.clone(),
                             })
@@ -549,7 +550,7 @@ impl Handler<Evaluator> for Evaluator {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
                 }
             }
-            EvaluatorCommand::NetworkRequest {
+            EvaluatorMessage::NetworkRequest {
                 evaluation_req,
                 info,
             } => {
@@ -564,7 +565,7 @@ impl Handler<Evaluator> for Evaluator {
 
                     // We obtain the evaluator
                     let response = if let Some(subject_actor) = subject_actor {
-                        match subject_actor.ask(SubjectCommand::GetOwner).await
+                        match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
                             Err(e) => todo!(),
@@ -701,7 +702,7 @@ impl Handler<Evaluator> for Evaluator {
 
                 if let Some(evaluation_actor) = evaluation_actor {
                     if let Err(e) = evaluation_actor
-                        .tell(EvaluationCommand::Response {
+                        .tell(EvaluationMessage::Response {
                             evaluation_res: EvaluationRes::Error(error),
                             sender: self.node.clone(),
                         })

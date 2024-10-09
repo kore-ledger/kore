@@ -19,7 +19,7 @@ use crate::{
         Namespace, SignTypesNode, SignTypesSubject,
     },
     node::{Node, NodeMessage, NodeResponse},
-    subject::{Subject, SubjectCommand, SubjectResponse, SubjectState},
+    subject::{Subject, SubjectMessage, SubjectResponse, SubjectState},
     Error, DIGEST_DERIVATOR,
 };
 use actor::{
@@ -40,7 +40,7 @@ use response::ValidationRes;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
-use validator::{Validator, ValidatorCommand};
+use validator::{Validator, ValidatorMessage};
 
 use std::{collections::HashSet, time::Duration};
 
@@ -103,7 +103,7 @@ impl Validation {
         let response = if let Some(subject_actor) = subject_actor {
             // We ask a subject
             let response = subject_actor
-                .ask(SubjectCommand::SignRequest(SignTypesSubject::Validation(
+                .ask(SubjectMessage::SignRequest(SignTypesSubject::Validation(
                     proof.clone(),
                 )))
                 .await;
@@ -165,7 +165,7 @@ impl Validation {
         let response = if let Some(governance_actor) = governance_actor {
             // We ask a governance
             let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
+                governance_actor.ask(SubjectMessage::GetGovernance).await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -226,7 +226,7 @@ impl Validation {
         // We are signer
         if signer == our_key {
             validator_actor
-                .tell(ValidatorCommand::LocalValidation {
+                .tell(ValidatorMessage::LocalValidation {
                     validation_req: validation_req.content,
                     our_key: signer,
                 })
@@ -235,7 +235,7 @@ impl Validation {
         // Other node is signer
         else {
             validator_actor
-                .tell(ValidatorCommand::NetworkValidation {
+                .tell(ValidatorMessage::NetworkValidation {
                     request_id: request_id.to_owned(),
                     validation_req,
                     node_key: signer,
@@ -250,7 +250,7 @@ impl Validation {
 }
 
 #[derive(Debug, Clone)]
-pub enum ValidationCommand {
+pub enum ValidationMessage {
     Create {
         request_id: DigestIdentifier,
         info: ValidationInfo,
@@ -262,7 +262,7 @@ pub enum ValidationCommand {
     },
 }
 
-impl Message for ValidationCommand {}
+impl Message for ValidationMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationEvent {
@@ -284,7 +284,7 @@ impl Response for ValidationResponse {}
 #[async_trait]
 impl Actor for Validation {
     type Event = ValidationEvent;
-    type Message = ValidationCommand;
+    type Message = ValidationMessage;
     type Response = ValidationResponse;
 
     async fn pre_start(
@@ -312,11 +312,11 @@ impl Handler<Validation> for Validation {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: ValidationCommand,
+        msg: ValidationMessage,
         ctx: &mut ActorContext<Validation>,
     ) -> Result<ValidationResponse, ActorError> {
         match msg {
-            ValidationCommand::Create { request_id, info } => {
+            ValidationMessage::Create { request_id, info } => {
                 let (validation_req, proof) =
                     match self.create_validation_req(ctx, info.clone()).await {
                         Ok(validation_req) => validation_req,
@@ -394,7 +394,7 @@ impl Handler<Validation> for Validation {
                     .await?
                 }
             }
-            ValidationCommand::Response {
+            ValidationMessage::Response {
                 validation_res,
                 sender,
             } => {

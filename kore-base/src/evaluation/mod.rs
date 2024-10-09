@@ -16,11 +16,16 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Governance, Quorum, RequestStage},
     model::{
-        common::get_metadata, event::Event as KoreEvent, namespace, request::EventRequest, signature::{self, Signature, Signed}, HashId, Namespace, SignTypesNode
+        common::get_metadata,
+        event::Event as KoreEvent,
+        namespace,
+        request::EventRequest,
+        signature::{self, Signature, Signed},
+        HashId, Namespace, SignTypesNode,
     },
     node::{Node, NodeMessage, NodeResponse},
     subject::{
-        Subject, SubjectCommand, SubjectMetadata, SubjectResponse, SubjectState,
+        Subject, SubjectMessage, SubjectMetadata, SubjectResponse, SubjectState,
     },
     Error, ValueWrapper, DIGEST_DERIVATOR,
 };
@@ -31,7 +36,7 @@ use actor::{
 
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
-use evaluator::{Evaluator, EvaluatorCommand};
+use evaluator::{Evaluator, EvaluatorMessage};
 use identity::identifier::{
     derive::digest::DigestDerivator, key_identifier, DigestIdentifier,
     KeyIdentifier,
@@ -111,7 +116,7 @@ impl Evaluation {
         let response = if let Some(governance_actor) = governance_actor {
             // We ask a governance
             let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
+                governance_actor.ask(SubjectMessage::GetGovernance).await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -169,7 +174,7 @@ impl Evaluation {
         // We are signer
         if signer == our_key {
             evaluator_actor
-                .tell(EvaluatorCommand::LocalEvaluation {
+                .tell(EvaluatorMessage::LocalEvaluation {
                     evaluation_req: evaluation_req.content,
                     our_key: signer,
                 })
@@ -178,7 +183,7 @@ impl Evaluation {
         // Other node is signer
         else {
             evaluator_actor
-                .tell(EvaluatorCommand::NetworkEvaluation {
+                .tell(EvaluatorMessage::NetworkEvaluation {
                     request_id: request_id.to_owned(),
                     evaluation_req,
                     node_key: signer,
@@ -221,7 +226,7 @@ impl Evaluation {
 }
 
 #[derive(Debug, Clone)]
-pub enum EvaluationCommand {
+pub enum EvaluationMessage {
     Create {
         request_id: DigestIdentifier,
         request: Signed<EventRequest>,
@@ -233,7 +238,7 @@ pub enum EvaluationCommand {
     },
 }
 
-impl Message for EvaluationCommand {}
+impl Message for EvaluationMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvaluationEvent {}
@@ -251,7 +256,7 @@ impl Response for EvaluationResponse {}
 #[async_trait]
 impl Actor for Evaluation {
     type Event = EvaluationEvent;
-    type Message = EvaluationCommand;
+    type Message = EvaluationMessage;
     type Response = EvaluationResponse;
 }
 
@@ -261,11 +266,11 @@ impl Handler<Evaluation> for Evaluation {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: EvaluationCommand,
+        msg: EvaluationMessage,
         ctx: &mut ActorContext<Evaluation>,
     ) -> Result<EvaluationResponse, ActorError> {
         match msg {
-            EvaluationCommand::Create {
+            EvaluationMessage::Create {
                 request_id,
                 request,
             } => {
@@ -362,7 +367,7 @@ impl Handler<Evaluation> for Evaluation {
                     .await?
                 }
             }
-            EvaluationCommand::Response {
+            EvaluationMessage::Response {
                 evaluation_res,
                 sender,
             } => {

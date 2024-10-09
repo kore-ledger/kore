@@ -5,24 +5,30 @@
 //!
 
 use crate::{
-    db::Storable, evaluation::{
-        compiler::{Compiler, CompilerCommand},
+    db::Storable,
+    evaluation::{
+        compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
         schema::EvaluationSchema,
         Evaluation,
-    }, governance::model::Roles, model::{
+    },
+    governance::model::Roles,
+    model::{
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
-    }, node::{NodeMessage, NodeResponse}, validation::{schema::ValidationSchema, validator::Validator, Validation}, CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR
+    },
+    node::{NodeMessage, NodeResponse},
+    validation::{schema::ValidationSchema, validator::Validator, Validation},
+    CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
 };
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
     Handler, Message, Response,
 };
-use event::{LedgerEvent, LedgerEventCommand, LedgerEventResponse};
+use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
 use identity::{
     identifier::{
         derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
@@ -53,7 +59,7 @@ pub struct CreateSubjectData {
     pub subject_id: DigestIdentifier,
     pub creator: KeyIdentifier,
     pub genesis_gov_version: u64,
-    pub value: ValueWrapper
+    pub value: ValueWrapper,
 }
 
 #[derive(
@@ -63,7 +69,7 @@ pub struct SubjectID {
     // La generamos nosotros
     pub request: Signed<EventRequest>,
     // La generamos nosotros, keypair, derivator (del sujeto) Lo tiene que generar el sujeto
-    pub keys: KeyPair
+    pub keys: KeyPair,
 }
 
 impl HashId for SubjectID {
@@ -76,7 +82,6 @@ impl HashId for SubjectID {
         )
     }
 }
-
 
 /// Suject header
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -109,7 +114,6 @@ pub struct Subject {
 
 impl Subject {
     pub fn new(data: CreateSubjectData) -> Self {
-
         Subject {
             keys: Some(data.keys),
             subject_id: data.subject_id,
@@ -418,7 +422,7 @@ impl Subject {
                 .create_child(&format!("{}_compiler", schema.id), actor)
                 .await?;
             if let Err(e) = actor
-                .tell(CompilerCommand::Compile {
+                .tell(CompilerMessage::Compile {
                     contract: schema.contract.raw.clone(),
                     schema: ValueWrapper(schema.schema.clone()),
                     initial_value: schema.initial_value.clone(),
@@ -514,7 +518,7 @@ impl Subject {
         let response = if let Some(governance_actor) = governance_actor {
             // We ask a governance
             let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
+                governance_actor.ask(SubjectMessage::GetGovernance).await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -572,20 +576,25 @@ impl Subject {
         }
     }
 
-    fn verify_protocols_state(request: EventRequestType, eval: Option<bool>, approve: Option<bool>, approval_require: bool, val: bool) -> Result<bool, Error> {
+    fn verify_protocols_state(
+        request: EventRequestType,
+        eval: Option<bool>,
+        approve: Option<bool>,
+        approval_require: bool,
+        val: bool,
+    ) -> Result<bool, Error> {
         match request {
-            EventRequestType::Create | EventRequestType::Transfer | EventRequestType::Confirm | EventRequestType::EOL => {
+            EventRequestType::Create
+            | EventRequestType::Transfer
+            | EventRequestType::Confirm
+            | EventRequestType::EOL => {
                 if approve.is_some() || eval.is_some() || approval_require {
                     todo!()
                 }
                 Ok(val)
-            },
+            }
             EventRequestType::Fact => {
-                let eval = if let Some(eval) = eval {
-                    eval
-                } else {
-                    todo!()
-                };
+                let eval = if let Some(eval) = eval { eval } else { todo!() };
 
                 if approval_require {
                     let approve = if let Some(approve) = approve {
@@ -632,16 +641,22 @@ impl Subject {
             todo!();
         }
 
-        let valid_last_event = match Self::verify_protocols_state(EventRequestType::from(last_ledger.content.event_request.content.clone()), last_ledger.content.eval_success, last_ledger.content.appr_success, last_ledger.content.appr_required, last_ledger.content.vali_success) {
+        let valid_last_event = match Self::verify_protocols_state(
+            EventRequestType::from(
+                last_ledger.content.event_request.content.clone(),
+            ),
+            last_ledger.content.eval_success,
+            last_ledger.content.appr_success,
+            last_ledger.content.appr_required,
+            last_ledger.content.vali_success,
+        ) {
             Ok(is_ok) => is_ok,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
-
 
         // Si el último evento guardado fue correcto, por ende se aplicó lo que ese
         // evento decía.
-        if valid_last_event
-        {
+        if valid_last_event {
             // Comprobar firma,
             if let EventRequest::Transfer(transfer) =
                 last_ledger.content.event_request.content.clone()
@@ -663,13 +678,20 @@ impl Subject {
             };
         }
 
-        let valid_new_event = match Self::verify_protocols_state(EventRequestType::from(new_ledger.content.event_request.content.clone()), new_ledger.content.eval_success, new_ledger.content.appr_success, new_ledger.content.appr_required, new_ledger.content.vali_success) {
+        let valid_new_event = match Self::verify_protocols_state(
+            EventRequestType::from(
+                new_ledger.content.event_request.content.clone(),
+            ),
+            new_ledger.content.eval_success,
+            new_ledger.content.appr_success,
+            new_ledger.content.appr_required,
+            new_ledger.content.vali_success,
+        ) {
             Ok(is_ok) => is_ok,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
         // Si el nuevo evento a registrar fue correcto.
-        if valid_new_event
-        {
+        if valid_new_event {
             match new_ledger.content.event_request.content.clone() {
                 EventRequest::Create(start_request) => {
                     // Error no se puede recibir un evento de creación si ya está creado
@@ -842,7 +864,7 @@ impl Subject {
 
         let response = if let Some(ledger_event_actor) = ledger_event_actor {
             if let Ok(response) = ledger_event_actor
-                .ask(LedgerEventCommand::GetLastEvent)
+                .ask(LedgerEventMessage::GetLastEvent)
                 .await
             {
                 response
@@ -963,7 +985,7 @@ impl From<Subject> for SubjectState {
 
 /// Subject command.
 #[derive(Debug, Clone)]
-pub enum SubjectCommand {
+pub enum SubjectMessage {
     /// Get the subject.
     GetSubjectState,
     /// Get the subject metadata.
@@ -981,7 +1003,7 @@ pub enum SubjectCommand {
     GetOwner,
 }
 
-impl Message for SubjectCommand {}
+impl Message for SubjectMessage {}
 
 /// Subject response.
 #[derive(Debug, Clone)]
@@ -1006,7 +1028,7 @@ impl Event for Signed<Ledger> {}
 #[async_trait]
 impl Actor for Subject {
     type Event = Signed<Ledger>;
-    type Message = SubjectCommand;
+    type Message = SubjectMessage;
     type Response = SubjectResponse;
 
     async fn pre_start(
@@ -1040,33 +1062,33 @@ impl Handler<Subject> for Subject {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: SubjectCommand,
+        msg: SubjectMessage,
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
-            SubjectCommand::GetLedger { last_sn } => {
+            SubjectMessage::GetLedger { last_sn } => {
                 match self.get_ledger(ctx, last_sn).await {
                     Ok(response) => Ok(SubjectResponse::Ledger(response)),
                     Err(e) => Ok(SubjectResponse::Error(e)),
                 }
             }
-            SubjectCommand::GetOwner => {
+            SubjectMessage::GetOwner => {
                 Ok(SubjectResponse::Owner(self.owner.clone()))
             }
-            SubjectCommand::GetSubjectState => {
+            SubjectMessage::GetSubjectState => {
                 Ok(SubjectResponse::SubjectState(self.state()))
             }
-            SubjectCommand::GetSubjectMetadata => {
+            SubjectMessage::GetSubjectMetadata => {
                 Ok(SubjectResponse::SubjectMetadata(self.metadata()))
             }
-            SubjectCommand::UpdateLedger { events } => {
+            SubjectMessage::UpdateLedger { events } => {
                 debug!("Emit event to update subject.");
                 match self.verify_new_ledger_events(ctx, events).await {
                     Ok(last_sn) => Ok(SubjectResponse::LastSn(last_sn)),
                     Err(e) => Ok(SubjectResponse::Error(e)),
                 }
             }
-            SubjectCommand::SignRequest(content) => {
+            SubjectMessage::SignRequest(content) => {
                 let sign = match content {
                     SignTypesSubject::Validation(validation) => {
                         self.sign(&validation)
@@ -1078,7 +1100,7 @@ impl Handler<Subject> for Subject {
                     Err(e) => Ok(SubjectResponse::Error(e)),
                 }
             }
-            SubjectCommand::GetGovernance => {
+            SubjectMessage::GetGovernance => {
                 // If is a governance
                 if self.governance_id.digest.is_empty() {
                     match Governance::try_from(self.state()) {
@@ -1111,15 +1133,18 @@ impl Handler<Subject> for Subject {
 #[async_trait]
 impl PersistentActor for Subject {
     fn apply(&mut self, event: &Signed<Ledger>) {
-
-
-        let valid_event = match Self::verify_protocols_state(EventRequestType::from(event.content.event_request.content.clone()), event.content.eval_success, event.content.appr_success, event.content.appr_required, event.content.vali_success) {
+        let valid_event = match Self::verify_protocols_state(
+            EventRequestType::from(event.content.event_request.content.clone()),
+            event.content.eval_success,
+            event.content.appr_success,
+            event.content.appr_required,
+            event.content.vali_success,
+        ) {
             Ok(is_ok) => is_ok,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
 
-        if valid_event
-        {
+        if valid_event {
             match &event.content.event_request.content {
                 EventRequest::Create(start_request) => todo!(),
                 EventRequest::Fact(fact_request) => {
@@ -1185,7 +1210,7 @@ mod tests {
                 subject_keys.get_key_derivator(),
                 &subject_keys.public_key_bytes(),
             );
-    
+
             let subject_id = Subject::subject_id(
                 start_request.namespace.clone(),
                 &start_request.schema_id,
@@ -1194,12 +1219,13 @@ mod tests {
                 governance_version,
                 derivator,
             )?;
-            let state_hash =
-                DigestIdentifier::from_serializable_borsh(init_state, derivator)
-                    .map_err(|_| {
-                        Error::Digest("Error converting state to hash".to_owned())
-                    })?;
-    
+            let state_hash = DigestIdentifier::from_serializable_borsh(
+                init_state, derivator,
+            )
+            .map_err(|_| {
+                Error::Digest("Error converting state to hash".to_owned())
+            })?;
+
             Ok(KoreEvent {
                 subject_id,
                 event_request: request.clone(),
@@ -1260,7 +1286,7 @@ mod tests {
         let path = subject_actor.path().clone();
 
         let response = subject_actor
-            .ask(SubjectCommand::GetSubjectState)
+            .ask(SubjectMessage::GetSubjectState)
             .await
             .unwrap();
         if let SubjectResponse::SubjectState(state) = response {
@@ -1269,7 +1295,7 @@ mod tests {
             panic!("Invalid response");
         }
         let response = subject_actor
-            .ask(SubjectCommand::GetSubjectMetadata)
+            .ask(SubjectMessage::GetSubjectMetadata)
             .await
             .unwrap();
         if let SubjectResponse::SubjectMetadata(metadata) = response {
@@ -1292,7 +1318,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         let response = subject_actor
-            .ask(SubjectCommand::GetSubjectState)
+            .ask(SubjectMessage::GetSubjectState)
             .await
             .unwrap();
         if let SubjectResponse::SubjectState(state) = response {
@@ -1301,7 +1327,7 @@ mod tests {
             panic!("Invalid response");
         }
         let response = subject_actor
-            .ask(SubjectCommand::GetSubjectMetadata)
+            .ask(SubjectMessage::GetSubjectMetadata)
             .await
             .unwrap();
         if let SubjectResponse::SubjectMetadata(metadata) = response {

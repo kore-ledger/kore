@@ -96,7 +96,6 @@ impl Signature {
     }
 }
 
-
 /// Represents any signed data entity
 #[derive(
     Debug,

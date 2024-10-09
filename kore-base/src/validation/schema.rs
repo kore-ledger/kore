@@ -12,7 +12,7 @@ use crate::Signed;
 
 use super::{
     request::ValidationReq,
-    validator::{Validator, ValidatorCommand},
+    validator::{Validator, ValidatorMessage},
 };
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -27,7 +27,7 @@ impl ValidationSchema {
 }
 
 #[derive(Debug, Clone)]
-pub enum ValidationSchemaCommand {
+pub enum ValidationSchemaMessage {
     NetworkRequest {
         validation_req: Signed<ValidationReq>,
         info: ComunicateInfo,
@@ -35,12 +35,12 @@ pub enum ValidationSchemaCommand {
     UpdateValidators(HashSet<KeyIdentifier>),
 }
 
-impl Message for ValidationSchemaCommand {}
+impl Message for ValidationSchemaMessage {}
 
 #[async_trait]
 impl Actor for ValidationSchema {
     type Event = ();
-    type Message = ValidationSchemaCommand;
+    type Message = ValidationSchemaMessage;
     type Response = ();
 }
 
@@ -49,11 +49,11 @@ impl Handler<ValidationSchema> for ValidationSchema {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: ValidationSchemaCommand,
+        msg: ValidationSchemaMessage,
         ctx: &mut ActorContext<ValidationSchema>,
     ) -> Result<(), ActorError> {
         match msg {
-            ValidationSchemaCommand::NetworkRequest {
+            ValidationSchemaMessage::NetworkRequest {
                 validation_req,
                 info,
             } => {
@@ -86,13 +86,13 @@ impl Handler<ValidationSchema> for ValidationSchema {
                 };
 
                 validator_actor
-                    .tell(ValidatorCommand::NetworkRequest {
+                    .tell(ValidatorMessage::NetworkRequest {
                         validation_req,
                         info,
                     })
                     .await?
             }
-            ValidationSchemaCommand::UpdateValidators(validators) => {
+            ValidationSchemaMessage::UpdateValidators(validators) => {
                 self.creators = validators;
             }
         };

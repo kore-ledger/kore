@@ -148,7 +148,7 @@ impl Compiler {
 }
 
 #[derive(Debug, Clone)]
-pub enum CompilerCommand {
+pub enum CompilerMessage {
     Compile {
         contract: String,
         schema: ValueWrapper,
@@ -163,7 +163,7 @@ pub enum CompilerCommand {
     },
 }
 
-impl Message for CompilerCommand {}
+impl Message for CompilerMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CompilerEvent {}
@@ -182,7 +182,7 @@ impl Response for CompilerResponse {}
 #[async_trait]
 impl Actor for Compiler {
     type Event = CompilerEvent;
-    type Message = CompilerCommand;
+    type Message = CompilerMessage;
     type Response = CompilerResponse;
 }
 
@@ -191,11 +191,11 @@ impl Handler<Compiler> for Compiler {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: CompilerCommand,
+        msg: CompilerMessage,
         _ctx: &mut ActorContext<Compiler>,
     ) -> Result<CompilerResponse, ActorError> {
         match msg {
-            CompilerCommand::Compile {
+            CompilerMessage::Compile {
                 contract,
                 contract_path,
                 initial_value,
@@ -259,7 +259,7 @@ impl Handler<Compiler> for Compiler {
 
                 Ok(CompilerResponse::Ok)
             }
-            CompilerCommand::CompileCheck {
+            CompilerMessage::CompileCheck {
                 contract,
                 contract_path,
                 initial_value,
