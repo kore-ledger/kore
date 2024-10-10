@@ -2,30 +2,29 @@ use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler};
 use identity::identifier::DigestIdentifier;
 
 use crate::{
-    subject::SubjectMetadata, Error, Governance, Subject, SubjectMessage,
-    SubjectResponse,
+    model::SignTypesNode, subject::SubjectMetadata, Error, Governance, Node, NodeMessage, NodeResponse, Signature, Subject, SubjectMessage, SubjectResponse
 };
 
 pub async fn get_gov<A>(
     ctx: &mut ActorContext<A>,
-    governance_id: DigestIdentifier,
+    subject_id: DigestIdentifier,
 ) -> Result<Governance, Error>
 where
     A: Actor + Handler<A>,
 {
-    // Governance path
-    let governance_path =
-        ActorPath::from(format!("/user/node/{}", governance_id));
+    // Subject path
+    let subject_path =
+        ActorPath::from(format!("/user/node/{}", subject_id));
 
-    // Governance actor.
-    let governance_actor: Option<ActorRef<Subject>> =
-        ctx.system().get_actor(&governance_path).await;
+    // Subject actor.
+    let subject_actor: Option<ActorRef<Subject>> =
+        ctx.system().get_actor(&subject_path).await;
 
     // We obtain the actor governance
-    let response = if let Some(governance_actor) = governance_actor {
+    let response = if let Some(subject_actor) = subject_actor {
         // We ask a governance
         let response =
-            governance_actor.ask(SubjectMessage::GetGovernance).await;
+        subject_actor.ask(SubjectMessage::GetGovernance).await;
         match response {
             Ok(response) => response,
             Err(e) => {
@@ -37,8 +36,8 @@ where
         }
     } else {
         return Err(Error::Actor(format!(
-            "The governance actor was not found in the expected path {}",
-            governance_path
+            "The subject actor was not found in the expected path {}",
+            subject_path
         )));
     };
 
@@ -95,5 +94,38 @@ where
             "An unexpected response has been received from subject actor"
                 .to_owned(),
         )),
+    }
+}
+
+pub async fn get_sign<A>(
+    ctx: &mut ActorContext<A>,
+    sign_type: SignTypesNode,
+) -> Result<Signature, Error>
+where
+    A: Actor + Handler<A>,
+{
+    let node_path = ActorPath::from("/user/node");
+    let node_actor: Option<ActorRef<Node>> =
+        ctx.system().get_actor(&node_path).await;
+
+    // We obtain the validator
+    let node_response = if let Some(node_actor) = node_actor {
+        match node_actor
+            .ask(NodeMessage::SignRequest(
+                sign_type,
+            ))
+            .await
+        {
+            Ok(response) => response,
+            Err(e) => todo!(),
+        }
+    } else {
+        todo!()
+    };
+
+    match node_response {
+        NodeResponse::SignRequest(signature) => Ok(signature),
+        NodeResponse::Error(_) => todo!(),
+        _ => todo!(),
     }
 }

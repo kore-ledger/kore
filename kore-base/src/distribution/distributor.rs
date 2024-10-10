@@ -327,7 +327,7 @@ impl Distributor {
             Err(e) => todo!(),
         };
 
-        let our_gov_version = gov.get_version();
+        let our_gov_version = gov.version;
 
         if let Some(gov_version) = gov_version {
             // Comprobar versión de la gobernanza, si no es la misma le digo que se actualice o me actualizo.
@@ -731,7 +731,7 @@ impl Handler<Distributor> for Distributor {
                                     Err(e) => todo!(),
                                 };
 
-                                let our_gov_version = gov.get_version();
+                                let our_gov_version = gov.version;
 
                                 let new_info = ComunicateInfo {
                                     reciver: info.sender,
@@ -983,7 +983,7 @@ impl Handler<Distributor> for Distributor {
                         message: NetworkMessage {
                             info: new_info,
                             message: ActorMessage::DistributionLedgerReq {
-                                gov_version: Some(gov.get_version()),
+                                gov_version: Some(gov.version),
                                 actual_sn: Some(last_sn),
                                 subject_id,
                             },

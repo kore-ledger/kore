@@ -12,7 +12,7 @@ use super::{
     HashId,
 };
 
-use crate::{model::Namespace, subject::Subject, Error};
+use crate::{model::Namespace, subject::Subject, validation::proof::EventProof, Error};
 
 use identity::{
     identifier::{
@@ -39,8 +39,8 @@ use std::collections::HashSet;
 pub struct ProofEvent {
     /// The identifier of the subject of the event.
     pub subject_id: DigestIdentifier,
-    /// The signed event request.
-    pub event_request: Signed<EventRequest>,
+    /// The type of event proof.
+    pub event_proof: EventProof,
     /// The sequence number of the event.
     pub sn: u64,
     /// The version of the governance contract.
@@ -56,7 +56,7 @@ pub struct ProofEvent {
     /// Whether the event has been approved.
     pub appr_success: Option<bool>,
     /// The hash of the previous event.
-    pub hash_prev_proof_event: DigestIdentifier,
+    pub hash_prev_event: DigestIdentifier,
     /// The set of evaluators who have evaluated the event.
     pub evaluators: Option<HashSet<Signature>>,
     /// The set of approvers who have approved the event.
@@ -251,52 +251,4 @@ impl HashId for Signed<Ledger> {
 pub enum LedgerValue {
     Patch(ValueWrapper),
     Error(String),
-}
-
-// TODO REVISAR ESTO, sobre todo la parte final donde se crea el evento
-impl ProofEvent {
-    pub fn from_create_request(
-        subject_keys: &KeyPair,
-        request: &Signed<EventRequest>,
-        governance_version: u64,
-        init_state: &ValueWrapper,
-        derivator: DigestDerivator,
-    ) -> Result<Self, Error> {
-        let EventRequest::Create(start_request) = &request.content else {
-            return Err(Error::Event("Invalid Event Request".to_string()));
-        };
-        let public_key = KeyIdentifier::new(
-            subject_keys.get_key_derivator(),
-            &subject_keys.public_key_bytes(),
-        );
-
-        let subject_id = Subject::subject_id(
-            start_request.namespace.clone(),
-            &start_request.schema_id,
-            public_key,
-            start_request.governance_id.clone(),
-            governance_version,
-            derivator,
-        )?;
-        let state_hash =
-            DigestIdentifier::from_serializable_borsh(init_state, derivator)
-                .map_err(|_| {
-                    Error::Digest("Error converting state to hash".to_owned())
-                })?;
-
-        Ok(ProofEvent {
-            subject_id,
-            event_request: request.clone(),
-            sn: 0,
-            gov_version: governance_version,
-            value: LedgerValue::Patch(init_state.clone()),
-            state_hash,
-            eval_success: None,
-            appr_required: false,
-            hash_prev_proof_event: DigestIdentifier::default(),
-            evaluators: None,
-            approvers: None,
-            appr_success: None,
-        })
-    }
 }

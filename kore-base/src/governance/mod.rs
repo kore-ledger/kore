@@ -14,7 +14,6 @@ mod schema;
 use crate::{
     db::{Database, Storable},
     model::{request, wrapper::ValueWrapper, Namespace},
-    subject::SubjectState,
     Error,
 };
 
@@ -449,11 +448,6 @@ impl Governance {
         false
     }
 
-    /// Governance version.
-    pub fn get_version(&self) -> u64 {
-        self.version
-    }
-
     /// Check if the key is a member.
     fn is_member(&self, id: &KeyIdentifier) -> bool {
         for member in &self.members {
@@ -465,12 +459,12 @@ impl Governance {
     }
 }
 
-impl TryFrom<SubjectState> for Governance {
+impl TryFrom<ValueWrapper> for Governance {
     type Error = Error;
 
-    fn try_from(subject: SubjectState) -> Result<Self, Self::Error> {
+    fn try_from(value: ValueWrapper) -> Result<Self, Self::Error> {
         let governance: Governance =
-            serde_json::from_value(subject.properties.0).map_err(|_| {
+            serde_json::from_value(value.0).map_err(|_| {
                 Error::Governance("Governance model not found.".to_owned())
             })?;
         Ok(governance)

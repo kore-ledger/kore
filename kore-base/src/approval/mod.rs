@@ -21,6 +21,7 @@ use tracing::{debug, error, event};
 use crate::evaluation::response::EvaluationRes;
 use crate::governance::model::Roles;
 use crate::governance::RequestStage;
+use crate::model::common::get_sign;
 use crate::model::{namespace, Namespace, SignTypesNode};
 use crate::subject::event::{
     LedgerEvent, LedgerEventMessage, LedgerEventResponse,
@@ -381,29 +382,9 @@ impl Handler<Approval> for Approval {
                 // Update quorum and validators
                 let request_id = request_id.to_string();
 
-                let node_path = ActorPath::from("/user/node");
-                let node_actor: Option<ActorRef<Node>> =
-                    ctx.system().get_actor(&node_path).await;
-
-                // We obtain the validator
-                let node_response = if let Some(node_actor) = node_actor {
-                    match node_actor
-                        .ask(NodeMessage::SignRequest(
-                            SignTypesNode::ApprovalReq(approval_req.clone()),
-                        ))
-                        .await
-                    {
-                        Ok(response) => response,
-                        Err(e) => todo!(),
-                    }
-                } else {
-                    todo!()
-                };
-
-                let signature = match node_response {
-                    NodeResponse::SignRequest(signature) => signature,
-                    NodeResponse::Error(_) => todo!(),
-                    _ => todo!(),
+                let signature = match get_sign(ctx,  SignTypesNode::ApprovalReq(approval_req.clone())).await {
+                    Ok(signature) => signature,
+                    Err(e) => todo!()
                 };
 
                 let signed_approval_req: Signed<ApprovalReq> = Signed {

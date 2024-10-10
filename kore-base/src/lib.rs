@@ -34,7 +34,7 @@ pub use model::signature::*;
 pub use model::HashId;
 pub use model::ValueWrapper;
 pub use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
-pub use subject::{Subject, SubjectMessage, SubjectResponse, SubjectState};
+pub use subject::{Subject, SubjectMessage, SubjectResponse};
 pub use validation::{
     Validation, ValidationInfo, ValidationMessage, ValidationResponse,
 };

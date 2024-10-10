@@ -171,6 +171,17 @@ impl HashId for EventRequest {
     }
 }
 
+impl HashId for Signed<EventRequest> {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |_| Error::Subject("HashId for Signed Event Fails".to_string()),
+        )
+    }
+}
+
 /// Indicates the current status of an event request.
 #[derive(
     Debug,

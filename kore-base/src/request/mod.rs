@@ -28,6 +28,7 @@ use crate::{
 };
 
 pub mod state;
+pub mod manager;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestHandler {
@@ -123,7 +124,7 @@ impl RequestHandler {
                 create_req,
                 subject_id: subject_id,
                 creator: request.signature.signer.clone(),
-                genesis_gov_version: governance.get_version(),
+                genesis_gov_version: governance.version,
                 value,
             }
         };
@@ -206,8 +207,7 @@ impl Actor for RequestHandler {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.stop_store(ctx).await?;
-        Ok(())
+        self.stop_store(ctx).await
     }
 }
 
@@ -419,9 +419,11 @@ impl Handler<RequestHandler> for RequestHandler {
                         return Ok(RequestHandlerResponse::None);
                     }
                 } else {
-                    // TODO es imposible que sea un option
+                    // TODO es imposible que no sea un option
                     todo!()
                 };
+
+
 
                 Ok(RequestHandlerResponse::None)
             }

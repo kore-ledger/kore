@@ -43,11 +43,10 @@ use serde::{Deserialize, Serialize};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{debug, error};
 
+use core::hash;
 use std::{
     collections::HashSet,
-    ops::Sub,
     str::FromStr,
-    sync::atomic::{AtomicU64, Ordering},
 };
 
 pub mod event;
@@ -96,12 +95,11 @@ pub struct Subject {
     pub genesis_gov_version: u64,
     /// The namespace of the subject.
     pub namespace: Namespace,
-    /// The name of the subject. TODO: hace falta?
-    pub name: String,
     /// The identifier of the schema used to validate the subject.
     pub schema_id: String,
     /// The identifier of the public key of the subject owner.
     pub owner: KeyIdentifier,
+    pub last_event_hash: DigestIdentifier,
     /// The identifier of the public key of the subject creator.
     pub creator: KeyIdentifier,
     /// Indicates whether the subject is active or not.
@@ -120,10 +118,10 @@ impl Subject {
             governance_id: data.create_req.governance_id,
             genesis_gov_version: data.genesis_gov_version,
             namespace: data.create_req.namespace,
-            name: data.create_req.name,
             schema_id: data.create_req.schema_id,
             owner: data.creator.clone(),
             creator: data.creator,
+            last_event_hash: DigestIdentifier::default(),
             active: true,
             sn: 0,
             properties: data.value,
@@ -168,8 +166,8 @@ impl Subject {
                 governance_id: request.governance_id.clone(),
                 genesis_gov_version: ledger.content.gov_version,
                 namespace: request.namespace.clone(),
-                name: request.name.clone(),
                 schema_id: request.schema_id.clone(),
+                last_event_hash: DigestIdentifier::default(),
                 owner: ledger.content.event_request.signature.signer.clone(),
                 creator: ledger.content.event_request.signature.signer.clone(),
                 active: true,
@@ -277,14 +275,14 @@ impl Subject {
         Ok(subject_id)
     }
 
-    /// Returns subject state.
+    /// Returns subject metadata.
     ///
     /// # Returns
     ///
-    /// The subject state.
+    /// The subject metadata.
     ///
-    pub fn state(&self) -> SubjectState {
-        let subject_key = if let Some(keys) = self.keys.clone() {
+    fn get_metadata(&self) -> SubjectMetadata {
+        let subject_public_key = if let Some(keys) = self.keys.clone() {
             KeyIdentifier::new(
                 keys.get_key_derivator(),
                 &keys.public_key_bytes(),
@@ -293,30 +291,10 @@ impl Subject {
             KeyIdentifier::default()
         };
 
-        SubjectState {
-            subject_key,
-            subject_id: self.subject_id.clone(),
-            governance_id: self.governance_id.clone(),
-            genesis_gov_version: self.genesis_gov_version,
-            namespace: self.namespace.clone(),
-            name: self.name.clone(),
-            schema_id: self.schema_id.clone(),
-            owner: self.owner.clone(),
-            creator: self.creator.clone(),
-            active: self.active,
-            sn: self.sn,
-            properties: self.properties.clone(),
-        }
-    }
-
-    /// Returns subject metadata.
-    ///
-    /// # Returns
-    ///
-    /// The subject metadata.
-    ///
-    fn metadata(&self) -> SubjectMetadata {
         SubjectMetadata {
+            subject_public_key,
+            genesis_gov_version: self.genesis_gov_version,
+            last_event_hash: self.last_event_hash.clone(),
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
             schema_id: self.schema_id.clone(),
@@ -379,7 +357,7 @@ impl Subject {
             .map_err(|e| ActorError::Create)?;
 
         // If subject is a governance
-        let gov = Governance::try_from(self.state())
+        let gov = Governance::try_from(self.properties.clone())
             .map_err(|e| ActorError::Create)?;
 
         let owner = our_key == self.owner;
@@ -777,7 +755,6 @@ impl Subject {
                 // propierties deberían ser iguales.
             }
         }
-
         Ok(())
     }
 
@@ -890,8 +867,8 @@ impl Clone for Subject {
             governance_id: self.governance_id.clone(),
             genesis_gov_version: self.genesis_gov_version,
             namespace: self.namespace.clone(),
-            name: self.name.clone(),
             schema_id: self.schema_id.clone(),
+            last_event_hash: self.last_event_hash.clone(),
             owner: self.owner.clone(),
             creator: self.creator.clone(),
             active: self.active,
@@ -901,36 +878,6 @@ impl Clone for Subject {
     }
 }
 
-/// Subject public state.
-#[derive(
-    Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
-)]
-pub struct SubjectState {
-    /// The key identifier of the subject (public key derivate).
-    pub subject_key: KeyIdentifier,
-    /// The identifier of the subject.
-    pub subject_id: DigestIdentifier,
-    /// The identifier of the governance that drives this subject.
-    pub governance_id: DigestIdentifier,
-    /// The version of the governance contract that created the subject.
-    pub genesis_gov_version: u64,
-    /// The namespace of the subject.
-    pub namespace: Namespace,
-    /// The name of the subject.
-    pub name: String,
-    /// The identifier of the schema used to validate the subject.
-    pub schema_id: String,
-    /// The identifier of the public key of the subject owner.
-    pub owner: KeyIdentifier,
-    /// The identifier of the public key of the subject creator.
-    pub creator: KeyIdentifier,
-    /// Indicates whether the subject is active or not.
-    pub active: bool,
-    /// The current sequence number of the subject.
-    pub sn: u64,
-    /// The current status of the subject.
-    pub properties: ValueWrapper,
-}
 
 /// Subject metadata.
 #[derive(
@@ -941,6 +888,9 @@ pub struct SubjectMetadata {
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance contract.
     pub governance_id: DigestIdentifier,
+    pub genesis_gov_version: u64,
+    pub last_event_hash: DigestIdentifier,
+    pub subject_public_key: KeyIdentifier,
     /// The identifier of the schema used to validate the event.
     pub schema_id: String,
     /// The namespace of the subject.
@@ -955,39 +905,9 @@ pub struct SubjectMetadata {
     pub properties: ValueWrapper,
 }
 
-impl From<Subject> for SubjectState {
-    fn from(subject: Subject) -> Self {
-        let subject_key = if let Some(keys) = subject.keys.clone() {
-            KeyIdentifier::new(
-                keys.get_key_derivator(),
-                &keys.public_key_bytes(),
-            )
-        } else {
-            KeyIdentifier::default()
-        };
-
-        Self {
-            subject_key: subject_key,
-            subject_id: subject.subject_id,
-            governance_id: subject.governance_id,
-            genesis_gov_version: subject.genesis_gov_version,
-            namespace: subject.namespace,
-            name: subject.name,
-            schema_id: subject.schema_id,
-            owner: subject.owner,
-            creator: subject.creator,
-            active: subject.active,
-            sn: subject.sn,
-            properties: subject.properties,
-        }
-    }
-}
-
 /// Subject command.
 #[derive(Debug, Clone)]
 pub enum SubjectMessage {
-    /// Get the subject.
-    GetSubjectState,
     /// Get the subject metadata.
     GetSubjectMetadata,
     GetLedger {
@@ -1008,8 +928,6 @@ impl Message for SubjectMessage {}
 /// Subject response.
 #[derive(Debug, Clone)]
 pub enum SubjectResponse {
-    /// The subject state.
-    SubjectState(SubjectState),
     /// The subject metadata.
     SubjectMetadata(SubjectMetadata),
     SignRequest(Signature),
@@ -1075,11 +993,8 @@ impl Handler<Subject> for Subject {
             SubjectMessage::GetOwner => {
                 Ok(SubjectResponse::Owner(self.owner.clone()))
             }
-            SubjectMessage::GetSubjectState => {
-                Ok(SubjectResponse::SubjectState(self.state()))
-            }
             SubjectMessage::GetSubjectMetadata => {
-                Ok(SubjectResponse::SubjectMetadata(self.metadata()))
+                Ok(SubjectResponse::SubjectMetadata(self.get_metadata()))
             }
             SubjectMessage::UpdateLedger { events } => {
                 debug!("Emit event to update subject.");
@@ -1103,7 +1018,7 @@ impl Handler<Subject> for Subject {
             SubjectMessage::GetGovernance => {
                 // If is a governance
                 if self.governance_id.digest.is_empty() {
-                    match Governance::try_from(self.state()) {
+                    match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
                         Err(e) => return Ok(SubjectResponse::Error(e)),
                     }
@@ -1174,6 +1089,13 @@ impl PersistentActor for Subject {
                 }
             }
         }
+
+        let last_event_hash = match event.content.event_request.hash_id(event.signature.content_hash.derivator) {
+            Ok(hash) => hash,
+            Err(e) => todo!()
+        };
+        
+        self.last_event_hash = last_event_hash;
 
         self.sn += 1;
     }
@@ -1286,15 +1208,6 @@ mod tests {
         let path = subject_actor.path().clone();
 
         let response = subject_actor
-            .ask(SubjectMessage::GetSubjectState)
-            .await
-            .unwrap();
-        if let SubjectResponse::SubjectState(state) = response {
-            assert_eq!(state.namespace, Namespace::from("namespace"));
-        } else {
-            panic!("Invalid response");
-        }
-        let response = subject_actor
             .ask(SubjectMessage::GetSubjectMetadata)
             .await
             .unwrap();
@@ -1317,15 +1230,7 @@ mod tests {
 
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-        let response = subject_actor
-            .ask(SubjectMessage::GetSubjectState)
-            .await
-            .unwrap();
-        if let SubjectResponse::SubjectState(state) = response {
-            assert_eq!(state.namespace, Namespace::from("namespace"));
-        } else {
-            panic!("Invalid response");
-        }
+
         let response = subject_actor
             .ask(SubjectMessage::GetSubjectMetadata)
             .await

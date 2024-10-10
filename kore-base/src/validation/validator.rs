@@ -7,7 +7,7 @@ use crate::{
     governance::{model::Roles, Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::get_gov,
+        common::{get_gov, get_sign},
         network::{RetryNetwork, TimeOutResponse},
         signature::Signature,
         SignTypesNode, TimeStamp,
@@ -151,7 +151,7 @@ impl Validator {
                     validation_req.proof.governance_id.clone()
                 };
 
-            get_gov(ctx, governance_id).await?.get_version()
+            get_gov(ctx, governance_id).await?.version
         };
 
         match actual_gov_version.cmp(&validation_req.proof.governance_version) {
@@ -188,47 +188,12 @@ impl Validator {
         )
         .await?;
 
-        // Node path.
-        let node_path = ActorPath::from("/user/node");
-        // Node actor.
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        // We obtain the actor node
-        let response = if let Some(node_actor) = node_actor {
-            // We ask a node
-            let response = node_actor
-                .ask(NodeMessage::SignRequest(SignTypesNode::Validation(
-                    validation_req.proof,
-                )))
-                .await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a node {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(
-                "The node actor was not found in the expected path /user/node"
-                    .to_owned(),
-            ));
-        };
-
-        // We handle the possible responses of node
-        match response {
-            NodeResponse::SignRequest(sign) => Ok(sign),
-            NodeResponse::Error(error) => Err(Error::Actor(format!(
-                "The node encountered problems when signing the proof: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
+        
+        match get_sign(ctx, SignTypesNode::Validation(
+            validation_req.proof,
+        )).await {
+            Ok(signature) => Ok(signature),
+            Err(e) => todo!(),
         }
     }
 
@@ -248,7 +213,6 @@ impl Validator {
                 || previous_proof.genesis_governance_version
                     != new_proof.genesis_governance_version
                 || previous_proof.namespace != new_proof.namespace
-                || previous_proof.name != new_proof.name
                 || previous_proof.subject_id != new_proof.subject_id
                 || previous_proof.schema_id != new_proof.schema_id
                 || previous_proof.governance_id != new_proof.governance_id
@@ -583,32 +547,12 @@ impl Handler<Validator> for Validator {
                     schema: info.schema.clone(),
                 };
 
-                // Aquí tiene que firmar el nodo la respuesta.
-                let node_path = ActorPath::from("/user/node");
-                let node_actor: Option<ActorRef<Node>> =
-                    ctx.system().get_actor(&node_path).await;
-
-                // We obtain the validator
-                let node_response = if let Some(node_actor) = node_actor {
-                    match node_actor
-                        .ask(NodeMessage::SignRequest(
-                            SignTypesNode::ValidationRes(validation.clone()),
-                        ))
-                        .await
-                    {
-                        Ok(response) => response,
-                        Err(e) => todo!(),
-                    }
-                } else {
-                    todo!()
+                let signature =
+                match get_sign(ctx, SignTypesNode::ValidationRes(validation.clone())).await {
+                    Ok(signature) => signature,
+                    Err(e) => todo!(),
                 };
-
-                let signature = match node_response {
-                    NodeResponse::SignRequest(signature) => signature,
-                    NodeResponse::Error(_) => todo!(),
-                    _ => todo!(),
-                };
-
+                
                 let signed_response: Signed<ValidationRes> = Signed {
                     content: validation,
                     signature,

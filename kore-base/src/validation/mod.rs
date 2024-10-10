@@ -14,12 +14,10 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Quorum, RequestStage},
     model::{
-        event::{Event as KoreEvent, ProofEvent},
-        signature::Signed,
-        Namespace, SignTypesNode, SignTypesSubject,
+        common::get_sign, event::{Event as KoreEvent, ProofEvent}, signature::Signed, Namespace, SignTypesNode, SignTypesSubject
     },
     node::{Node, NodeMessage, NodeResponse},
-    subject::{Subject, SubjectMessage, SubjectResponse, SubjectState},
+    subject::{Subject, SubjectMessage, SubjectMetadata, SubjectResponse},
     Error, DIGEST_DERIVATOR,
 };
 use actor::{
@@ -47,11 +45,8 @@ use std::{collections::HashSet, time::Duration};
 /// A struct for passing validation information.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ValidationInfo {
-    pub subject: SubjectState,
-    pub event: Signed<ProofEvent>,
-    pub prev_proof_event_hash: DigestIdentifier,
-    pub gov_version: u64,
-    pub owner: KeyIdentifier,
+    pub metadata: SubjectMetadata,
+    pub event_proof: Signed<ProofEvent>
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -67,6 +62,7 @@ pub struct Validation {
     validators_quantity: u32,
 
     actual_proof: ValidationProof,
+
 
     previous_proof: Option<ValidationProof>,
     prev_event_validation_response: Vec<SignersRes>,
@@ -89,8 +85,14 @@ impl Validation {
         ctx: &mut ActorContext<Validation>,
         validation_info: ValidationInfo,
     ) -> Result<(ValidationReq, ValidationProof), Error> {
+        let prev_evet_hash = if let Some(previous_proof) = self.previous_proof.clone() {
+            previous_proof.event_hash
+        } else {
+            DigestIdentifier::default()
+        };
+
         // Create proof from validation info
-        let proof = ValidationProof::from_info(validation_info)?;
+        let proof = ValidationProof::from_info(validation_info, prev_evet_hash)?;
 
         // Subject path.
         let subject_path = ctx.path().parent();
@@ -331,9 +333,9 @@ impl Handler<Validation> for Validation {
                 let (signers, quorum) = match self
                     .get_signers_and_quorum(
                         ctx,
-                        info.subject.subject_id.clone(),
-                        &info.subject.schema_id,
-                        info.subject.namespace,
+                        info.metadata.subject_id.clone(),
+                        &info.metadata.schema_id,
+                        info.metadata.namespace,
                     )
                     .await
                 {
@@ -350,32 +352,13 @@ impl Handler<Validation> for Validation {
                 self.validators.clone_from(&signers);
                 self.validators_quantity = signers.len() as u32;
                 let request_id = request_id.to_string();
-
-                let node_path = ActorPath::from("/user/node");
-                let node_actor: Option<ActorRef<Node>> =
-                    ctx.system().get_actor(&node_path).await;
-
-                // We obtain the validator
-                let node_response = if let Some(node_actor) = node_actor {
-                    match node_actor
-                        .ask(NodeMessage::SignRequest(
-                            SignTypesNode::ValidationReq(
-                                validation_req.clone(),
-                            ),
-                        ))
-                        .await
-                    {
-                        Ok(response) => response,
+                
+                let signature =
+                    match get_sign(ctx, SignTypesNode::ValidationReq(
+                        validation_req.clone(),
+                    )).await {
+                        Ok(signature) => signature,
                         Err(e) => todo!(),
-                    }
-                } else {
-                    todo!()
-                };
-
-                let signature = match node_response {
-                    NodeResponse::SignRequest(signature) => signature,
-                    NodeResponse::Error(_) => todo!(),
-                    _ => todo!(),
                 };
 
                 let signed_validation_req: Signed<ValidationReq> = Signed {
@@ -388,7 +371,7 @@ impl Handler<Validation> for Validation {
                         ctx,
                         &request_id,
                         signed_validation_req.clone(),
-                        &info.subject.schema_id,
+                        &info.metadata.schema_id,
                         signer,
                     )
                     .await?

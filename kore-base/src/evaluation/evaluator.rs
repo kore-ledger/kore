@@ -11,7 +11,7 @@ use crate::{
     },
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::get_gov, network::RetryNetwork, signature::Signature, HashId,
+        common::{get_gov, get_sign}, network::RetryNetwork, signature::Signature, HashId,
         SignTypesNode, TimeStamp,
     },
     node::{self, Node, NodeMessage, NodeResponse},
@@ -169,7 +169,7 @@ impl Evaluator {
         // Get governance
         let governance = get_gov(ctx, governance_id.clone()).await?;
         // Get governance version
-        let governance_version = governance.get_version();
+        let governance_version = governance.version;
 
         match governance_version.cmp(&execute_contract.gov_version) {
             std::cmp::Ordering::Equal => {
@@ -636,28 +636,10 @@ impl Handler<Evaluator> for Evaluator {
                     schema: info.schema.clone(),
                 };
 
-                let node_path = ActorPath::from("/user/node");
-                let node_actor: Option<ActorRef<Node>> =
-                    ctx.system().get_actor(&node_path).await;
-
-                let node_response = if let Some(node_actor) = node_actor {
-                    match node_actor
-                        .ask(NodeMessage::SignRequest(
-                            SignTypesNode::EvaluationRes(evaluation.clone()),
-                        ))
-                        .await
-                    {
-                        Ok(response) => response,
-                        Err(e) => todo!(),
-                    }
-                } else {
-                    todo!()
-                };
-
-                let signature = match node_response {
-                    NodeResponse::SignRequest(signature) => signature,
-                    NodeResponse::Error(_) => todo!(),
-                    _ => todo!(),
+                let signature =
+                match get_sign(ctx, SignTypesNode::EvaluationRes(evaluation.clone())).await {
+                    Ok(signature) => signature,
+                    Err(e) => todo!(),
                 };
 
                 let signed_response: Signed<EvaluationRes> = Signed {

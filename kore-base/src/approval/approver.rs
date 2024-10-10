@@ -1,7 +1,7 @@
 use crate::{
     db::Storable,
     intermediary::Intermediary,
-    model::{common::get_gov, network::RetryNetwork, signature, SignTypesNode},
+    model::{common::{get_gov, get_sign}, network::RetryNetwork, signature, SignTypesNode},
     ActorMessage, Error, EventRequest, Governance, NetworkMessage, Node,
     NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage,
     SubjectResponse, DIGEST_DERIVATOR,
@@ -92,7 +92,7 @@ impl Approver {
     ) -> Result<(), Error> {
         let governance = get_gov(ctx, subject_id).await?;
 
-        match gov_version.cmp(&governance.get_version()) {
+        match gov_version.cmp(&governance.version) {
             std::cmp::Ordering::Equal => {
                 // If it is the same it means that we have the latest version of governance, we are up to date.
             }
@@ -111,62 +111,16 @@ impl Approver {
         Ok(())
     }
 
-    async fn sign_response(
-        &self,
-        ctx: &mut ActorContext<Approver>,
-        request: ApprovalReq,
-        response: bool,
-    ) -> Result<Signature, Error> {
-        let aprov_signature = ApprovalSignature { request, response };
-
-        // Node path.
-        let node_path = ActorPath::from("/user/node");
-        // Node actor.
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        let response = if let Some(node_actor) = node_actor {
-            // We ask a node
-            let response = node_actor
-                .ask(NodeMessage::SignRequest(
-                    SignTypesNode::ApprovalSignature(aprov_signature),
-                ))
-                .await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a node: {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The node actor was not found in the expected path /user/node"
-            )));
-        };
-
-        match response {
-            NodeResponse::SignRequest(sign) => Ok(sign),
-            NodeResponse::Error(error) => Err(Error::Actor(format!(
-                "The node encountered problems when signing the proof: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(format!(
-                "An unexpected response has been received from node actor"
-            ))),
-        }
-    }
-
     async fn send_response(
         &self,
         ctx: &mut ActorContext<Approver>,
         request: ApprovalReq,
         response: bool,
     ) -> Result<(), Error> {
+        let sign_type = SignTypesNode::ApprovalSignature(ApprovalSignature { request: request.clone(), response });
+
         let signature =
-            match self.sign_response(ctx, request.clone(), response).await {
+            match get_sign(ctx, sign_type).await {
                 Ok(signature) => signature,
                 Err(e) => todo!(),
             };
@@ -202,29 +156,12 @@ impl Approver {
             schema: info.schema.clone(),
         };
 
-        // Aquí tiene que firmar el nodo la respuesta.
-        let node_path = ActorPath::from("/user/node");
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        let node_response = if let Some(node_actor) = node_actor {
-            match node_actor
-                .ask(NodeMessage::SignRequest(SignTypesNode::ApprovalRes(
-                    response.clone(),
-                )))
-                .await
-            {
-                Ok(response) => response,
+        let signature =
+            match get_sign(ctx, SignTypesNode::ApprovalRes(
+                response.clone(),
+            )).await {
+                Ok(signature) => signature,
                 Err(e) => todo!(),
-            }
-        } else {
-            todo!()
-        };
-
-        let signature = match node_response {
-            NodeResponse::SignRequest(signature) => signature,
-            NodeResponse::Error(_) => todo!(),
-            _ => todo!(),
         };
 
         let signed_response: Signed<ApprovalRes> = Signed {
@@ -398,12 +335,12 @@ impl Handler<Approver> for Approver {
                     }
 
                     if self.pass_votation == VotationType::AlwaysAccept {
-                        let signature = match self
-                            .sign_response(ctx, approval_req.clone(), true)
-                            .await
-                        {
-                            Ok(signature) => signature,
-                            Err(e) => todo!(),
+                        let sign_type = SignTypesNode::ApprovalSignature(ApprovalSignature { request: approval_req.clone(), response: true });
+
+                        let signature =
+                            match get_sign(ctx, sign_type).await {
+                                Ok(signature) => signature,
+                                Err(e) => todo!(),
                         };
 
                         // Approval Path

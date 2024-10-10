@@ -64,6 +64,8 @@ pub struct Node {
     owned_subjects: Vec<String>,
     /// The node's known subjects.
     known_subjects: Vec<String>,
+    /// The node's known subjects in creation.
+    creation_subjects: Vec<String>,
     /// The authorized governances.
     authorized_governances: Vec<String>,
 }
@@ -76,6 +78,7 @@ impl Node {
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             authorized_governances: Vec::new(),
+            creation_subjects: Vec::new()
         })
     }
 
@@ -313,6 +316,9 @@ impl Handler<Node> for Node {
                 let sign = match content {
                     SignTypesNode::Validation(validation) => {
                         self.sign(&validation)
+                    }
+                    SignTypesNode::ValidationProofEvent(proof_event) => {
+                        self.sign(&proof_event)
                     }
                     SignTypesNode::ValidationReq(validation_req) => {
                         self.sign(&validation_req)

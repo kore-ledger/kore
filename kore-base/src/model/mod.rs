@@ -15,6 +15,7 @@ pub mod request;
 pub mod signature;
 pub mod wrapper;
 
+use event::ProofEvent;
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
@@ -41,6 +42,7 @@ use std::hash::Hash;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SignTypesNode {
     Validation(ValidationProof),
+    ValidationProofEvent(ProofEvent),
     ValidationReq(ValidationReq),
     ValidationRes(ValidationRes),
     EvaluationReq(EvaluationReq),

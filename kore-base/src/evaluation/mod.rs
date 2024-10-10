@@ -16,7 +16,7 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Governance, Quorum, RequestStage},
     model::{
-        common::get_metadata,
+        common::{get_metadata, get_sign},
         event::Event as KoreEvent,
         namespace,
         request::EventRequest,
@@ -25,7 +25,7 @@ use crate::{
     },
     node::{Node, NodeMessage, NodeResponse},
     subject::{
-        Subject, SubjectMessage, SubjectMetadata, SubjectResponse, SubjectState,
+        Subject, SubjectMessage, SubjectMetadata, SubjectResponse,
     },
     Error, ValueWrapper, DIGEST_DERIVATOR,
 };
@@ -137,7 +137,7 @@ impl Evaluation {
         match response {
             SubjectResponse::Governance(gov) => {
                 match gov.get_quorum_and_signers(Roles::EVALUATOR, schema_id, namespace) {
-                    Ok((signers, quorum)) => Ok((signers, quorum, gov.get_version())),
+                    Ok((signers, quorum)) => Ok((signers, quorum, gov.version)),
                     Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
                 }
             }
@@ -326,29 +326,10 @@ impl Handler<Evaluation> for Evaluation {
                 self.evaluators_quantity = signers.len() as u32;
                 let request_id = request_id.to_string();
 
-                let node_path = ActorPath::from("/user/node");
-                let node_actor: Option<ActorRef<Node>> =
-                    ctx.system().get_actor(&node_path).await;
-
-                // We obtain the evaluator
-                let node_response = if let Some(node_actor) = node_actor {
-                    match node_actor
-                        .ask(NodeMessage::SignRequest(
-                            SignTypesNode::EvaluationReq(eval_req.clone()),
-                        ))
-                        .await
-                    {
-                        Ok(response) => response,
+                let signature =
+                    match get_sign(ctx, SignTypesNode::EvaluationReq(eval_req.clone())).await {
+                        Ok(signature) => signature,
                         Err(e) => todo!(),
-                    }
-                } else {
-                    todo!()
-                };
-
-                let signature = match node_response {
-                    NodeResponse::SignRequest(signature) => signature,
-                    NodeResponse::Error(_) => todo!(),
-                    _ => todo!(),
                 };
 
                 let signed_evaluation_req: Signed<EvaluationReq> = Signed {
