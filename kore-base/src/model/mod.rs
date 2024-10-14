@@ -15,7 +15,7 @@ pub mod request;
 pub mod signature;
 pub mod wrapper;
 
-use event::ProofEvent;
+use event::{Event as KoreEvent, Ledger, ProofEvent};
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
@@ -50,6 +50,8 @@ pub enum SignTypesNode {
     ApprovalRes(ApprovalRes),
     ApprovalReq(ApprovalReq),
     ApprovalSignature(ApprovalSignature),
+    Ledger(Ledger),
+    Event(KoreEvent)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

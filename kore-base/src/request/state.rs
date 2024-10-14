@@ -3,14 +3,10 @@
 
 use crate::{
     evaluation::response::EvaluationRes, governance::RequestStage, model::{
-        request::{CreateRequest, EventRequest},
-        signature::{Signature, Signed},
-    }, ConfirmRequest, EOLRequest, Error, TransferRequest, ValidationInfo
+        event::Ledger, request::{CreateRequest, EventRequest}, signature::{Signature, Signed}
+    }, ConfirmRequest, EOLRequest, Error, Event as KoreEvent, TransferRequest, ValidationInfo
 };
 
-use actor::{Actor, ActorContext, Event, Handler, Message, Response};
-use async_trait::async_trait;
-use identity::identifier::DigestIdentifier;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -19,7 +15,10 @@ pub enum RequestSate {
     Evaluation(),
     Approval(),
     Validation(ValidationInfo),
-    Distribution()
+    Distribution {
+        event: Signed<KoreEvent>,
+        ledger: Signed<Ledger>
+    }
 }
 
 

@@ -341,6 +341,12 @@ impl Handler<Node> for Node {
                     SignTypesNode::ApprovalSignature(approval_sign) => {
                         self.sign(&approval_sign)
                     }
+                    SignTypesNode::Ledger(ledger) => {
+                        self.sign(&ledger)
+                    }
+                    SignTypesNode::Event(event) => {
+                        self.sign(&event)
+                    }
                 };
 
                 match sign {

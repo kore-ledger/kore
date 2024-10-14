@@ -2,7 +2,7 @@ use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler};
 use identity::identifier::DigestIdentifier;
 
 use crate::{
-    model::SignTypesNode, subject::SubjectMetadata, Error, Governance, Node, NodeMessage, NodeResponse, Signature, Subject, SubjectMessage, SubjectResponse
+    model::SignTypesNode, subject::{event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, SubjectMetadata}, Error, Event as KoreEvent, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse
 };
 
 pub async fn get_gov<A>(
@@ -128,4 +128,38 @@ where
         NodeResponse::Error(_) => todo!(),
         _ => todo!(),
     }
+}
+
+
+pub async fn update_event<A>(
+    ctx: &mut ActorContext<A>,
+    event: Signed<KoreEvent>,
+) -> Result<(), Error> 
+where
+    A: Actor + Handler<A>,
+{
+    let ledger_event_path = ActorPath::from(format!(
+        "/user/node/{}/ledgerEvent",
+        event.content.subject_id
+    ));
+    let ledger_event_actor: Option<ActorRef<LedgerEvent>> =
+        ctx.system().get_actor(&ledger_event_path).await;
+
+    let response = if let Some(ledger_event_actor) = ledger_event_actor {
+        match ledger_event_actor
+            .ask(LedgerEventMessage::UpdateLastEvent { event })
+            .await
+        {
+            Ok(res) => res,
+            Err(e) => todo!(),
+        }
+    } else {
+        todo!()
+    };
+
+    if let LedgerEventResponse::Error(e) = response {
+        todo!()
+    };
+
+    Ok(())
 }

@@ -12,9 +12,7 @@ use identity::{
 };
 
 use crate::{
-    governance::model::Roles, model::event::Ledger, subject::SubjectMetadata,
-    Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage,
-    SubjectResponse,
+    governance::model::Roles, model::event::Ledger, request::manager::{RequestManager, RequestManagerMessage}, subject::SubjectMetadata, Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage, SubjectResponse
 };
 
 pub mod distributor;
@@ -22,6 +20,7 @@ pub mod distributor;
 pub struct Distribution {
     witnesses: HashSet<KeyIdentifier>,
     node_key: KeyIdentifier,
+    request_id: String,
 }
 
 impl Distribution {
@@ -152,6 +151,7 @@ impl Actor for Distribution {
 #[derive(Debug, Clone)]
 pub enum DistributionMessage {
     Create {
+        request_id: DigestIdentifier,
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
     },
@@ -171,7 +171,7 @@ impl Handler<Distribution> for Distribution {
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
         match msg {
-            DistributionMessage::Create { event, ledger } => {
+            DistributionMessage::Create { request_id, event, ledger } => {
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
                 let (governance, metadata) =
@@ -179,6 +179,8 @@ impl Handler<Distribution> for Distribution {
                         Ok(gov) => gov,
                         Err(e) => todo!(),
                     };
+
+                self.request_id = request_id.to_string();
 
                 let witnesses = if metadata.schema_id == "governance" {
                     governance.members_to_key_identifier()
@@ -203,8 +205,16 @@ impl Handler<Distribution> for Distribution {
             DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) {
                     if self.witnesses.is_empty() {
-                        // TODO todos los testigos recibieron la copia o se hicieron todos los intentos
-                        // terminar distribución.
+                        let req_path = ActorPath::from(format!("/user/request/{}", self.request_id));
+                        let req_actor: Option<ActorRef<RequestManager>> = ctx.system().get_actor(&req_path).await;
+
+                        if let Some(req_actor) = req_actor {
+                            if let Err(e) = req_actor.tell(RequestManagerMessage::FinishRequest).await {
+                                todo!()
+                            }
+                        } else {
+                            todo!()
+                        };
                     }
                 }
             }

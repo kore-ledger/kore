@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event, Handler, Message, Response
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
+    Handler, Message, Response,
 };
 use async_trait::async_trait;
 use identity::{
@@ -13,17 +14,19 @@ use identity::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::error;
 use std::collections::{HashMap, HashSet, VecDeque};
 use store::store::PersistentActor;
+use tracing::error;
 
 use crate::{
-    db::Storable, governance::model::Roles, init_state, model::{
-        common::{get_gov, get_metadata, get_sign}, event::{LedgerValue, ProofEvent}, signature, SignTypesNode
-    }, node, subject::{self, CreateSubjectData, SubjectID}, validation::{proof::EventProof, ValidationEvent}, CreateRequest, Error, Event as KoreEvent, EventRequest, FactRequest, HashId, Node, NodeMessage, NodeResponse, Signed, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
+    db::Storable, distribution::{Distribution, DistributionMessage}, governance::model::Roles, init_state, model::{
+        common::{get_gov, get_metadata, get_sign, update_event},
+        event::{Ledger, LedgerValue, ProofEvent, ProtocolsError, ProtocolsResponse},
+        signature, SignTypesNode,
+    }, node, subject::{self, CreateSubjectData, SubjectID}, validation::{proof::EventProof, ValidationEvent}, CreateRequest, Error, Event as KoreEvent, EventRequest, FactRequest, HashId, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
 };
 
-use super::state::RequestSate;
+use super::{state::RequestSate, RequestHandler, RequestHandlerMessage};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestManager {
@@ -34,12 +37,26 @@ pub struct RequestManager {
 }
 
 impl RequestManager {
-    async fn send_validation(&self, ctx: &mut ActorContext<RequestManager>, val_info: ValidationInfo) -> Result<(), Error> {
-        let validation_path = ActorPath::from(format!("/user/node/{}/validation", self.subject_id));
-        let validation_actor: Option<ActorRef<Validation>> = ctx.system().get_actor(&validation_path).await;
+    async fn send_validation(
+        &self,
+        ctx: &mut ActorContext<RequestManager>,
+        val_info: ValidationInfo,
+    ) -> Result<(), Error> {
+        let validation_path = ActorPath::from(format!(
+            "/user/node/{}/validation",
+            self.subject_id
+        ));
+        let validation_actor: Option<ActorRef<Validation>> =
+            ctx.system().get_actor(&validation_path).await;
 
         if let Some(validation_actor) = validation_actor {
-            if let Err(e) = validation_actor.tell(ValidationMessage::Create { request_id: self.id.clone(), info: val_info }).await {
+            if let Err(e) = validation_actor
+                .tell(ValidationMessage::Create {
+                    request_id: self.id.clone(),
+                    info: val_info,
+                })
+                .await
+            {
                 todo!()
             }
         } else {
@@ -49,7 +66,10 @@ impl RequestManager {
         Ok(())
     }
 
-    async fn validation(&self, ctx: &mut ActorContext<RequestManager>) -> Result<ValidationInfo, Error> {
+    async fn validation(
+        &mut self,
+        ctx: &mut ActorContext<RequestManager>,
+    ) -> Result<(), Error> {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
@@ -62,23 +82,22 @@ impl RequestManager {
             Err(e) => todo!(),
         };
 
-        let metadata =
-            match get_metadata(ctx, self.subject_id.clone()).await {
-                Ok(metadata) => metadata,
-                Err(e) => todo!(),
-            };
+        let metadata = match get_metadata(ctx, self.subject_id.clone()).await {
+            Ok(metadata) => metadata,
+            Err(e) => todo!(),
+        };
 
-        let state_hash = match self.request.hash_id(derivator) {
+        let state_hash = match metadata.properties.hash_id(derivator) {
             Ok(hash) => hash,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
 
         let event_proof = EventProof::from(self.request.content.clone());
-            
+
         let event_proof = ProofEvent {
             subject_id: metadata.subject_id.clone(),
             event_proof,
-            sn: metadata.sn.clone(),
+            sn: metadata.sn.clone() + 1,
             gov_version: gov.version,
             value: LedgerValue::Patch(ValueWrapper(json!([]))),
             state_hash,
@@ -90,27 +109,187 @@ impl RequestManager {
             approvers: None,
         };
 
-        let signature = match get_sign(ctx, SignTypesNode::ValidationProofEvent(event_proof.clone())).await {
+        let signature = match get_sign(
+            ctx,
+            SignTypesNode::ValidationProofEvent(event_proof.clone()),
+        )
+        .await
+        {
             Ok(signature) => signature,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
 
-        let event_proof = Signed { content: event_proof, signature };
+        let event_proof = Signed {
+            content: event_proof,
+            signature,
+        };
 
         let val_info = ValidationInfo {
             metadata,
             event_proof,
         };
 
+        self.on_event(
+            RequestManagerEvent::ChangeState {
+                state: RequestSate::Validation(val_info.clone()),
+            },
+            ctx,
+        )
+        .await;
+
         self.send_validation(ctx, val_info.clone()).await?;
-        Ok(val_info)
+        Ok(())
+    }
+
+    fn create_ledger_event(&self, val_info: ValidationInfo, signatures: Vec<ProtocolsResponse>, result: bool, errors: &str) -> (Ledger, KoreEvent) {
+        let value = {
+            if result {
+                val_info.event_proof.content.value
+            } else {
+                if let LedgerValue::Error(mut e) = val_info.event_proof.content.value {
+                    e.validation = Some(errors.to_owned());
+                    LedgerValue::Error(e)
+                } else {
+                    let e = ProtocolsError {
+                        evaluation: None,
+                        validation: Some(errors.to_owned())
+                    };
+                    LedgerValue::Error(e)
+                }
+            }
+        };
+
+        let event = KoreEvent {
+            subject_id: val_info.event_proof.content.subject_id,
+            event_request: self.request.clone(),
+            sn: val_info.event_proof.content.sn,
+            gov_version: val_info.event_proof.content.gov_version,
+            value,
+            state_hash: val_info.event_proof.content.state_hash,
+            eval_success: None,
+            appr_required: false,
+            appr_success: None,
+            vali_success: result,
+            hash_prev_event: val_info.event_proof.content.hash_prev_event,
+            evaluators: None,
+            approvers: None,
+            validators: HashSet::from_iter(signatures.iter().cloned()),
+        };
+
+        (Ledger::from(event.clone()), event)
+    }
+
+    async fn safe_ledger_event(&mut self, ctx: &mut ActorContext<RequestManager>, event: KoreEvent, ledger: Ledger) -> Result<(), Error> {
+        let signature_ledger = get_sign(ctx, SignTypesNode::Ledger(ledger.clone())).await;
+
+        let signature_ledger = match signature_ledger {
+            Ok(signature) => signature,
+            Err(e) => todo!()
+        };
+
+        let signed_ledger = Signed {
+            content: ledger,
+            signature: signature_ledger
+        };
+
+        if let Err(e) = RequestManager::update_ledger(ctx, signed_ledger.clone()).await {
+
+        }
+
+        let signature_event = get_sign(ctx, SignTypesNode::Event(event.clone())).await;
+
+        let signature_event = match signature_event {
+            Ok(signature) => signature,
+            Err(e) => todo!()
+        };
+
+        let signed_event = Signed {
+            content: event,
+            signature: signature_event
+        };
+
+        if let Err(e) = update_event(ctx, signed_event.clone()).await {
+            todo!()
+        };
+
+        self.on_event(
+            RequestManagerEvent::ChangeState {
+                state: RequestSate::Distribution {
+                    event: signed_event.clone(),
+                    ledger: signed_ledger.clone()
+                },
+            },
+            ctx,
+        )
+        .await;   
+
+        if let Err(e) = self.init_distribution(ctx, signed_event, signed_ledger).await {
+            todo!()
+        };
+
+        Ok(())
+    }
+
+    async fn init_distribution(&self, ctx: &mut ActorContext<RequestManager>, event: Signed<KoreEvent>, ledger: Signed<Ledger>) -> Result<(), Error>{
+        let distribution_path = ActorPath::from(format!("/user/node/{}/distribution", event.content.subject_id));
+        let distribution_actor: Option<ActorRef<Distribution>> = ctx.system().get_actor(&distribution_path).await;
+
+        if let Some(distribution_actor) = distribution_actor {
+            if let Err(e) = distribution_actor.tell(DistributionMessage::Create { request_id: self.id.clone(), event, ledger}).await {
+                todo!()
+            }
+        } else {
+            todo!()
+        };
+
+        Ok(())
+    }
+
+    async fn update_ledger(ctx: &mut ActorContext<RequestManager>, ledger: Signed<Ledger>) -> Result<(), Error> {
+        let subject_path = ActorPath::from(format!("/user/node/{}", ledger.content.subject_id));
+        let subject_actor: Option<ActorRef<Subject>> = ctx.system().get_actor(&subject_path).await;
+
+        let response = if let Some(subject_actor) = subject_actor {
+            if let Ok(res) = subject_actor.ask(SubjectMessage::UpdateLedger { events: vec![ledger] }).await {
+                res
+            } else {
+                todo!()
+            }
+        } else {
+            todo!()
+        };
+
+        match response {
+            SubjectResponse::LastSn(_) => Ok(()),
+            SubjectResponse::Error(e) => todo!(),
+            _ => todo!()
+        }
+    }
+
+    async fn end_request(&self, ctx: &mut ActorContext<RequestManager>) -> Result<(), Error>{
+        let request_path = ActorPath::from("/user/request");
+        let request_actor: Option<ActorRef<RequestHandler>> = ctx.system().get_actor(&request_path).await;
+
+        if let Some(request_actor) = request_actor {
+            if let Err(e) = request_actor.tell(RequestHandlerMessage::EndHandling { subject_id: self.subject_id.to_string() }).await {
+
+            }
+        };
+
+        Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum RequestManagerMessage {
     Fact,
-    Other
+    Other,
+    ValidationRes {
+        result: bool,
+        signatures: Vec<ProtocolsResponse>,
+        errors: String
+    },
+    FinishRequest
 }
 
 impl Message for RequestManagerMessage {}
@@ -126,9 +305,7 @@ impl Response for RequestManagerResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RequestManagerEvent {
-    ChangeState {
-        state: RequestSate
-    }
+    ChangeState { state: RequestSate },
 }
 
 impl Event for RequestManagerEvent {}
@@ -143,7 +320,9 @@ impl Actor for RequestManager {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store("request_handler", None, false, ctx).await
+        // Cuando arranque tiene que ver su estado para saber en que punto se encontraba y retomarlo. TODO
+        self.init_store("request_manager", None, false, ctx).await
+
     }
 
     async fn pre_stop(
@@ -161,7 +340,7 @@ impl PersistentActor for RequestManager {
         match event {
             RequestManagerEvent::ChangeState { state } => {
                 self.state = state.clone();
-            },
+            }
         }
     }
 }
@@ -175,14 +354,42 @@ impl Handler<RequestManager> for RequestManager {
         ctx: &mut actor::ActorContext<RequestManager>,
     ) -> Result<RequestManagerResponse, ActorError> {
         match msg {
-            RequestManagerMessage::Fact => todo!(),
-            RequestManagerMessage::Other => {
-                let val_info = match self.validation(ctx).await {
-                    Ok(val_info) => val_info,
-                    Err(e) => todo!()
+            RequestManagerMessage::FinishRequest => {
+                if let RequestSate::Distribution { .. } = self.state.clone() {
+
+                } else {
+                    todo!()
                 };
 
-                self.on_event(RequestManagerEvent::ChangeState { state: RequestSate::Validation(val_info) }, ctx).await;
+                if let Err(e) = self.end_request(ctx).await {
+                    todo!()
+                }
+
+                // TODO Limpiar la base de datos.
+                ctx.stop().await;
+            }
+            RequestManagerMessage::ValidationRes { result, signatures, errors } => {
+                let actual_state = if let RequestSate::Validation(state) = self.state.clone() {
+                    state
+                } else {
+                    todo!()
+                };
+
+                let (ledger, event) = self.create_ledger_event(actual_state, signatures, result, &errors);
+                if let Err(e) = self.safe_ledger_event(ctx, event, ledger).await {
+                    todo!()
+                }
+
+            }
+            RequestManagerMessage::Fact => todo!(),
+            RequestManagerMessage::Other => {
+                if let RequestSate::Starting = self.state {} else {
+                    todo!()
+                };
+
+                if let Err(e) = self.validation(ctx).await {
+                    todo!()
+                };
             }
         }
 

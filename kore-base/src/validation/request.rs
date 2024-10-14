@@ -5,8 +5,7 @@ use super::{proof::ValidationProof, response::ValidationRes};
 
 use crate::{
     model::{
-        network::TimeOutResponse, request::EventRequest, signature::Signature,
-        HashId, ValueWrapper,
+        event::ProtocolsResponse, network::TimeOutResponse, request::EventRequest, signature::Signature, HashId, ValueWrapper
     },
     Error,
 };
@@ -14,15 +13,6 @@ use crate::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
-
-/// Accept response of Validators, can be a Signature or a TimeOut if all trys have been made
-#[derive(
-    Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
-)]
-pub enum SignersRes {
-    Signature(Signature),
-    TimeOut(TimeOutResponse),
-}
 
 /// A struct representing a validation request.
 #[derive(
@@ -36,7 +26,7 @@ pub struct ValidationReq {
     // Hay que sacarlo de la base de datos,
     pub previous_proof: Option<ValidationProof>,
     // Hay que sacarlo de la base de datos,
-    pub prev_event_validation_response: Vec<SignersRes>,
+    pub prev_event_validation_response: Vec<ProtocolsResponse>,
 }
 
 impl HashId for ValidationReq {

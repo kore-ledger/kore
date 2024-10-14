@@ -200,7 +200,10 @@ impl Actor for RequestHandler {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store("request", None, false, ctx).await
+        // Cuando arranque tiene que levantar a todos los request que estén handling, si un request, está en starting, quiere
+        // decir que todavía no inició nada, por lo tanto tiene que lazanle de nuevo el comando, de resto
+        // Los request se manejan solo. TODO
+        self.init_store("request_handler", None, false, ctx).await
     }
 
     async fn pre_stop(

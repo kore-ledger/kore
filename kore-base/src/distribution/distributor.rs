@@ -18,7 +18,7 @@ use crate::{
     governance::model::Roles,
     intermediary::Intermediary,
     model::{
-        common::{get_gov, get_metadata},
+        common::{get_gov, get_metadata, update_event},
         event::Ledger,
         network::RetryNetwork,
         Namespace,
@@ -235,37 +235,6 @@ impl Distributor {
                     .to_owned(),
             )),
         }
-    }
-
-    async fn update_event(
-        &self,
-        ctx: &mut ActorContext<Distributor>,
-        event: Signed<KoreEvent>,
-    ) -> Result<(), Error> {
-        let ledger_event_path = ActorPath::from(format!(
-            "/user/node/{}/ledgerEvent",
-            event.content.subject_id
-        ));
-        let ledger_event_actor: Option<ActorRef<LedgerEvent>> =
-            ctx.system().get_actor(&ledger_event_path).await;
-
-        let response = if let Some(ledger_event_actor) = ledger_event_actor {
-            match ledger_event_actor
-                .ask(LedgerEventMessage::UpdateLastEvent { event })
-                .await
-            {
-                Ok(res) => res,
-                Err(e) => todo!(),
-            }
-        } else {
-            todo!()
-        };
-
-        if let LedgerEventResponse::Error(e) = response {
-            todo!()
-        };
-
-        Ok(())
     }
 
     async fn get_ledger(
@@ -780,7 +749,7 @@ impl Handler<Distributor> for Distributor {
                     };
                 }
 
-                if let Err(e) = self.update_event(ctx, event.clone()).await {
+                if let Err(e) = update_event(ctx, event.clone()).await {
                     todo!()
                 };
 
@@ -939,7 +908,7 @@ impl Handler<Distributor> for Distributor {
                         } else {
                         }
                     } else if last_sn < last_sn_events {
-                        if let Err(e) = self.update_event(ctx, event).await {
+                        if let Err(e) = update_event(ctx, event).await {
                             todo!()
                         };
                     }

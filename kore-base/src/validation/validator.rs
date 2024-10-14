@@ -7,10 +7,7 @@ use crate::{
     governance::{model::Roles, Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::{get_gov, get_sign},
-        network::{RetryNetwork, TimeOutResponse},
-        signature::Signature,
-        SignTypesNode, TimeStamp,
+        common::{get_gov, get_sign}, event::ProtocolsResponse, network::{RetryNetwork, TimeOutResponse}, signature::Signature, SignTypesNode, TimeStamp
     },
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectMessage, SubjectResponse},
@@ -19,7 +16,7 @@ use crate::{
 
 use super::{
     proof::{EventProof, ValidationProof},
-    request::{SignersRes, ValidationReq},
+    request::{ValidationReq},
     response::ValidationRes,
     Validation, ValidationMessage, ValidationResponse,
 };
@@ -130,7 +127,6 @@ impl Validator {
         Ok(())
     }
 
-    // TODO si es un nuevo validador va a necesitar la prueba anterior y las firmas.
     async fn validation(
         &self,
         ctx: &mut ActorContext<Validator>,
@@ -202,7 +198,7 @@ impl Validator {
         ctx: &mut ActorContext<Validator>,
         new_proof: &ValidationProof,
         previous_proof: Option<ValidationProof>,
-        previous_validation_signatures: Vec<SignersRes>,
+        previous_validation_signatures: Vec<ProtocolsResponse>,
     ) -> Result<(), Error> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
@@ -229,7 +225,7 @@ impl Validator {
                     .map(|signer_res| {
                         match signer_res {
                             // Signer response
-                            SignersRes::Signature(signature) => {
+                            ProtocolsResponse::Signature(signature) => {
 
                                 if let Err(error) = signature.verify(&previous_proof) {
                                     Err(Error::Signature(format!("An error occurred while validating the previous proof, {:?}", error)))
@@ -238,7 +234,7 @@ impl Validator {
                                 }
                             }
                             // TimeOut response
-                            SignersRes::TimeOut(time_out) => Ok(time_out.who),
+                            ProtocolsResponse::TimeOut(time_out) => Ok(time_out.who),
                         }
                     })
                     .collect();

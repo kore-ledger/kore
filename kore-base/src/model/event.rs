@@ -250,5 +250,20 @@ impl HashId for Signed<Ledger> {
 )]
 pub enum LedgerValue {
     Patch(ValueWrapper),
-    Error(String),
+    Error(ProtocolsError),
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+)]
+pub struct ProtocolsError {
+    pub evaluation: Option<String>,
+    pub validation: Option<String>,
 }
