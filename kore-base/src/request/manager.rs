@@ -25,7 +25,10 @@ use crate::{
     approval::{response, Approval, ApprovalMessage},
     db::Storable,
     distribution::{Distribution, DistributionMessage},
-    evaluation::{request::EvaluationReq, response::EvalLedgerResponse, Evaluation, EvaluationMessage},
+    evaluation::{
+        request::EvaluationReq, response::EvalLedgerResponse, Evaluation,
+        EvaluationMessage,
+    },
     governance::model::Roles,
     init_state,
     model::{
@@ -117,12 +120,10 @@ impl RequestManager {
         &self,
         ctx: &mut ActorContext<RequestManager>,
         eval_req: EvaluationReq,
-        eval_res: EvalLedgerResponse
+        eval_res: EvalLedgerResponse,
     ) -> Result<(), Error> {
-        let approval_path = ActorPath::from(format!(
-            "/user/node/{}/approval",
-            self.subject_id
-        ));
+        let approval_path =
+            ActorPath::from(format!("/user/node/{}/approval", self.subject_id));
         let approval_actor: Option<ActorRef<Approval>> =
             ctx.system().get_actor(&approval_path).await;
 
@@ -197,16 +198,25 @@ impl RequestManager {
         self.send_validation(ctx, val_info.clone()).await
     }
 
-    async fn approval(&mut self, ctx: &mut ActorContext<RequestManager>, eval_req: EvaluationReq, eval_res: EvalLedgerResponse, eval_signatures: HashSet<ProtocolsSignatures>) -> Result<(), Error> {
+    async fn approval(
+        &mut self,
+        ctx: &mut ActorContext<RequestManager>,
+        eval_req: EvaluationReq,
+        eval_res: EvalLedgerResponse,
+        eval_signatures: HashSet<ProtocolsSignatures>,
+    ) -> Result<(), Error> {
         self.on_event(
             RequestManagerEvent::ChangeState {
-                state: RequestSate::Approval { eval_req: eval_req.clone(), eval_res: eval_res.clone(), eval_signatures },
+                state: RequestSate::Approval {
+                    eval_req: eval_req.clone(),
+                    eval_res: eval_res.clone(),
+                    eval_signatures,
+                },
             },
             ctx,
         )
         .await;
 
-        
         self.send_approval(ctx, eval_req, eval_res).await
     }
 
@@ -556,35 +566,39 @@ impl Handler<RequestManager> for RequestManager {
     ) -> Result<RequestManagerResponse, ActorError> {
         match msg {
             RequestManagerMessage::ApprovalRes { result, signatures } => {
-                let (eval_req, eval_res, eval_signatures) = if let RequestSate::Approval { eval_req, eval_res, eval_signatures } = self.state.clone() {
-                    (eval_req, eval_res, eval_signatures)
-                } else {
-                    todo!()
-                };
-
-                let data = match self
-                        .build_data_event_proof(
-                            ctx,
-                            Some(eval_req.sn),
-                            eval_res.value,
-                            Some(eval_res.state_hash),
-                            Some(eval_res.eval_success),
-                            eval_res.appr_required,
-                            Some(result),
-                            Some(eval_signatures),
-                            Some(HashSet::from_iter(
-                                signatures.iter().cloned(),
-                            )),
-                        )
-                        .await
+                let (eval_req, eval_res, eval_signatures) =
+                    if let RequestSate::Approval {
+                        eval_req,
+                        eval_res,
+                        eval_signatures,
+                    } = self.state.clone()
                     {
-                        Ok(data) => data,
-                        Err(e) => todo!(),
+                        (eval_req, eval_res, eval_signatures)
+                    } else {
+                        todo!()
                     };
 
-                    if let Err(e) = self.validation(ctx, data).await {
-                        todo!()
-                    }
+                let data = match self
+                    .build_data_event_proof(
+                        ctx,
+                        Some(eval_req.sn),
+                        eval_res.value,
+                        Some(eval_res.state_hash),
+                        Some(eval_res.eval_success),
+                        eval_res.appr_required,
+                        Some(result),
+                        Some(eval_signatures),
+                        Some(HashSet::from_iter(signatures.iter().cloned())),
+                    )
+                    .await
+                {
+                    Ok(data) => data,
+                    Err(e) => todo!(),
+                };
+
+                if let Err(e) = self.validation(ctx, data).await {
+                    todo!()
+                }
             }
             RequestManagerMessage::EvaluationRes {
                 request,
@@ -597,9 +611,15 @@ impl Handler<RequestManager> for RequestManager {
                 };
 
                 if response.appr_required {
-                    if let Err(e) = self.approval(ctx, request, response, HashSet::from_iter(signatures.iter().cloned())).await {
-
-                    }
+                    if let Err(e) = self
+                        .approval(
+                            ctx,
+                            request,
+                            response,
+                            HashSet::from_iter(signatures.iter().cloned()),
+                        )
+                        .await
+                    {}
                 } else {
                     let data = match self
                         .build_data_event_proof(

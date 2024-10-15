@@ -78,7 +78,7 @@ impl Node {
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             authorized_governances: Vec::new(),
-            creation_subjects: Vec::new()
+            creation_subjects: Vec::new(),
         })
     }
 
@@ -341,12 +341,8 @@ impl Handler<Node> for Node {
                     SignTypesNode::ApprovalSignature(approval_sign) => {
                         self.sign(&approval_sign)
                     }
-                    SignTypesNode::Ledger(ledger) => {
-                        self.sign(&ledger)
-                    }
-                    SignTypesNode::Event(event) => {
-                        self.sign(&event)
-                    }
+                    SignTypesNode::Ledger(ledger) => self.sign(&ledger),
+                    SignTypesNode::Event(event) => self.sign(&event),
                 };
 
                 match sign {
@@ -362,10 +358,12 @@ impl Handler<Node> for Node {
             NodeMessage::RegisterSubject(subject) => {
                 match subject {
                     SubjectsTypes::KnowSubject(subj) => {
-                        ctx.publish_event(NodeEvent::KnownSubject(subj)).await?;
+                        ctx.publish_event(NodeEvent::KnownSubject(subj))
+                            .await?;
                     }
                     SubjectsTypes::OwnerSubject(subj) => {
-                        ctx.publish_event(NodeEvent::OwnedSubject(subj)).await?;
+                        ctx.publish_event(NodeEvent::OwnedSubject(subj))
+                            .await?;
                     }
                 }
                 Ok(NodeResponse::None)

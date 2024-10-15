@@ -80,7 +80,7 @@ impl Approval {
         eval_res: EvalLedgerResponse,
     ) -> Result<ApprovalReq, Error> {
         let subject_id = if let EventRequest::Fact(event) =
-        eval_req.event_request.content.clone()
+            eval_req.event_request.content.clone()
         {
             event.subject_id
         } else {
@@ -259,16 +259,22 @@ impl Approval {
         self.approvers.remove(&approver)
     }
 
-    async fn send_approval_to_req(&self, ctx: &mut ActorContext<Approval>, response: bool) -> Result<(), Error> {
+    async fn send_approval_to_req(
+        &self,
+        ctx: &mut ActorContext<Approval>,
+        response: bool,
+    ) -> Result<(), Error> {
         let req_path =
             ActorPath::from(format!("/user/request/{}", self.request_id));
         let req_actor: Option<ActorRef<RequestManager>> =
             ctx.system().get_actor(&req_path).await;
 
-
         if let Some(req_actor) = req_actor {
             if let Err(e) = req_actor
-                .tell(RequestManagerMessage::ApprovalRes { result: response, signatures: self.approvers_response.clone() })
+                .tell(RequestManagerMessage::ApprovalRes {
+                    result: response,
+                    signatures: self.approvers_response.clone(),
+                })
                 .await
             {
                 todo!()
@@ -411,9 +417,14 @@ impl Handler<Approval> for Approval {
                 // Update quorum and validators
                 let request_id = request_id.to_string();
 
-                let signature = match get_sign(ctx,  SignTypesNode::ApprovalReq(approval_req.clone())).await {
+                let signature = match get_sign(
+                    ctx,
+                    SignTypesNode::ApprovalReq(approval_req.clone()),
+                )
+                .await
+                {
                     Ok(signature) => signature,
-                    Err(e) => todo!()
+                    Err(e) => todo!(),
                 };
 
                 let signed_approval_req: Signed<ApprovalReq> = Signed {
@@ -458,11 +469,15 @@ impl Handler<Approval> for Approval {
                     match approval_res.clone() {
                         ApprovalRes::Response(sinature, response) => {
                             if response {
-                                self.approvers_response.push(ProtocolsSignatures::Signature(sinature));
+                                self.approvers_response.push(
+                                    ProtocolsSignatures::Signature(sinature),
+                                );
                             }
                         }
                         ApprovalRes::TimeOut(approval_time_out) => {
-                            self.approvers_response.push(ProtocolsSignatures::TimeOut(approval_time_out))
+                            self.approvers_response.push(
+                                ProtocolsSignatures::TimeOut(approval_time_out),
+                            )
                         }
                     };
 
@@ -485,11 +500,15 @@ impl Handler<Approval> for Approval {
                         self.approvers_quantity,
                         self.approvers_response.len() as u32,
                     ) {
-                        if let Err(e) = self.send_approval_to_req(ctx, true).await {
+                        if let Err(e) =
+                            self.send_approval_to_req(ctx, true).await
+                        {
                             todo!()
                         };
                     } else if self.approvers.is_empty() {
-                        if let Err(e) = self.send_approval_to_req(ctx, false).await {
+                        if let Err(e) =
+                            self.send_approval_to_req(ctx, false).await
+                        {
                             todo!()
                         };
                     }

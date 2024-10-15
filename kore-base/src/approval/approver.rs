@@ -1,7 +1,11 @@
 use crate::{
     db::Storable,
     intermediary::Intermediary,
-    model::{common::{get_gov, get_sign}, network::RetryNetwork, signature, SignTypesNode},
+    model::{
+        common::{get_gov, get_sign},
+        network::RetryNetwork,
+        signature, SignTypesNode,
+    },
     ActorMessage, Error, EventRequest, Governance, NetworkMessage, Node,
     NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage,
     SubjectResponse, DIGEST_DERIVATOR,
@@ -117,13 +121,15 @@ impl Approver {
         request: ApprovalReq,
         response: bool,
     ) -> Result<(), Error> {
-        let sign_type = SignTypesNode::ApprovalSignature(ApprovalSignature { request: request.clone(), response });
+        let sign_type = SignTypesNode::ApprovalSignature(ApprovalSignature {
+            request: request.clone(),
+            response,
+        });
 
-        let signature =
-            match get_sign(ctx, sign_type).await {
-                Ok(signature) => signature,
-                Err(e) => todo!(),
-            };
+        let signature = match get_sign(ctx, sign_type).await {
+            Ok(signature) => signature,
+            Err(e) => todo!(),
+        };
 
         let response = ApprovalRes::Response(signature, response);
 
@@ -157,12 +163,12 @@ impl Approver {
         };
 
         let signature =
-            match get_sign(ctx, SignTypesNode::ApprovalRes(
-                response.clone(),
-            )).await {
+            match get_sign(ctx, SignTypesNode::ApprovalRes(response.clone()))
+                .await
+            {
                 Ok(signature) => signature,
                 Err(e) => todo!(),
-        };
+            };
 
         let signed_response: Signed<ApprovalRes> = Signed {
             content: response,
@@ -335,12 +341,16 @@ impl Handler<Approver> for Approver {
                     }
 
                     if self.pass_votation == VotationType::AlwaysAccept {
-                        let sign_type = SignTypesNode::ApprovalSignature(ApprovalSignature { request: approval_req.clone(), response: true });
+                        let sign_type = SignTypesNode::ApprovalSignature(
+                            ApprovalSignature {
+                                request: approval_req.clone(),
+                                response: true,
+                            },
+                        );
 
-                        let signature =
-                            match get_sign(ctx, sign_type).await {
-                                Ok(signature) => signature,
-                                Err(e) => todo!(),
+                        let signature = match get_sign(ctx, sign_type).await {
+                            Ok(signature) => signature,
+                            Err(e) => todo!(),
                         };
 
                         // Approval Path

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    model::{event::LedgerValue, network::TimeOutResponse, HashId, ValueWrapper},
+    model::{
+        event::LedgerValue, network::TimeOutResponse, HashId, ValueWrapper,
+    },
     Error,
 };
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
@@ -78,6 +80,11 @@ pub struct EvalLedgerResponse {
 
 impl From<Response> for EvalLedgerResponse {
     fn from(value: Response) -> Self {
-        Self { value: LedgerValue::Patch(value.patch), state_hash: value.state_hash, eval_success: value.eval_success, appr_required: value.appr_required }
+        Self {
+            value: LedgerValue::Patch(value.patch),
+            state_hash: value.state_hash,
+            eval_success: value.eval_success,
+            appr_required: value.appr_required,
+        }
     }
 }

@@ -12,7 +12,12 @@ use identity::{
 };
 
 use crate::{
-    governance::model::Roles, model::event::Ledger, request::manager::{RequestManager, RequestManagerMessage}, subject::SubjectMetadata, Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage, SubjectResponse
+    governance::model::Roles,
+    model::event::Ledger,
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::SubjectMetadata,
+    Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage,
+    SubjectResponse,
 };
 
 pub mod distributor;
@@ -171,7 +176,11 @@ impl Handler<Distribution> for Distribution {
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
         match msg {
-            DistributionMessage::Create { request_id, event, ledger } => {
+            DistributionMessage::Create {
+                request_id,
+                event,
+                ledger,
+            } => {
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
                 let (governance, metadata) =
@@ -205,11 +214,18 @@ impl Handler<Distribution> for Distribution {
             DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) {
                     if self.witnesses.is_empty() {
-                        let req_path = ActorPath::from(format!("/user/request/{}", self.request_id));
-                        let req_actor: Option<ActorRef<RequestManager>> = ctx.system().get_actor(&req_path).await;
+                        let req_path = ActorPath::from(format!(
+                            "/user/request/{}",
+                            self.request_id
+                        ));
+                        let req_actor: Option<ActorRef<RequestManager>> =
+                            ctx.system().get_actor(&req_path).await;
 
                         if let Some(req_actor) = req_actor {
-                            if let Err(e) = req_actor.tell(RequestManagerMessage::FinishRequest).await {
+                            if let Err(e) = req_actor
+                                .tell(RequestManagerMessage::FinishRequest)
+                                .await
+                            {
                                 todo!()
                             }
                         } else {

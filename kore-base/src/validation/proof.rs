@@ -48,7 +48,9 @@ impl From<EventRequest> for EventProof {
         match value {
             EventRequest::Create(_create_request) => EventProof::Create,
             EventRequest::Fact(_fact_request) => EventProof::Fact,
-            EventRequest::Transfer(transfer_request) => EventProof::Transfer { new_owner: transfer_request.new_owner },
+            EventRequest::Transfer(transfer_request) => EventProof::Transfer {
+                new_owner: transfer_request.new_owner,
+            },
             EventRequest::Confirm(_confirm_request) => EventProof::Confirm,
             EventRequest::EOL(_eolrequest) => EventProof::EOL,
         }
@@ -125,7 +127,10 @@ impl HashId for ValidationProof {
 
 impl ValidationProof {
     /// Create a new validation proof from a validation command.
-    pub fn from_info(info: ValidationInfo, prev_event_hash: DigestIdentifier) -> Result<Self, Error> {
+    pub fn from_info(
+        info: ValidationInfo,
+        prev_event_hash: DigestIdentifier,
+    ) -> Result<Self, Error> {
         debug!("Creating validation proof from info");
         let request = &info.event_proof.content.event_proof;
 
@@ -154,17 +159,19 @@ impl ValidationProof {
         };
 
         match request {
-            EventProof::Create | EventProof::Fact | EventProof::EOL => Ok(validation_proof),
+            EventProof::Create | EventProof::Fact | EventProof::EOL => {
+                Ok(validation_proof)
+            }
             EventProof::Transfer { new_owner } => {
                 validation_proof.event = EventProof::Transfer {
                     new_owner: new_owner.clone(),
                 };
                 Ok(validation_proof)
-            },
+            }
             EventProof::Confirm => {
                 validation_proof.subject_public_key = info.metadata.owner;
                 Ok(validation_proof)
-            },
+            }
         }
     }
 }

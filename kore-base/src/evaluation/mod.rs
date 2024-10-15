@@ -18,7 +18,8 @@ use crate::{
     model::{
         common::{get_metadata, get_sign},
         event::{
-            Event as KoreEvent, LedgerValue, ProtocolsError, ProtocolsSignatures,
+            Event as KoreEvent, LedgerValue, ProtocolsError,
+            ProtocolsSignatures,
         },
         namespace,
         request::EventRequest,

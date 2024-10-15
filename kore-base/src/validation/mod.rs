@@ -11,9 +11,18 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    db::Storable, governance::{model::Roles, Quorum, RequestStage}, model::{
-        common::get_sign, event::{Event as KoreEvent, ProofEvent, ProtocolsSignatures}, signature::Signed, Namespace, SignTypesNode, SignTypesSubject
-    }, node::{Node, NodeMessage, NodeResponse}, request::manager::{RequestManager, RequestManagerMessage}, subject::{Subject, SubjectMessage, SubjectMetadata, SubjectResponse}, Error, DIGEST_DERIVATOR
+    db::Storable,
+    governance::{model::Roles, Quorum, RequestStage},
+    model::{
+        common::get_sign,
+        event::{Event as KoreEvent, ProofEvent, ProtocolsSignatures},
+        signature::Signed,
+        Namespace, SignTypesNode, SignTypesSubject,
+    },
+    node::{Node, NodeMessage, NodeResponse},
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::{Subject, SubjectMessage, SubjectMetadata, SubjectResponse},
+    Error, DIGEST_DERIVATOR,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
@@ -28,7 +37,7 @@ use identity::identifier::{
 };
 use jsonschema::ValidationError;
 use proof::ValidationProof;
-use request::{ValidationReq};
+use request::ValidationReq;
 use response::ValidationRes;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
@@ -41,7 +50,7 @@ use std::{collections::HashSet, time::Duration};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ValidationInfo {
     pub metadata: SubjectMetadata,
-    pub event_proof: Signed<ProofEvent>
+    pub event_proof: Signed<ProofEvent>,
 }
 
 // TODO HAy errores de la validacion que obligan a reiniciarla, ya que hay que actualizar la governanza u otra cosa,
@@ -86,14 +95,16 @@ impl Validation {
         ctx: &mut ActorContext<Validation>,
         validation_info: ValidationInfo,
     ) -> Result<(ValidationReq, ValidationProof), Error> {
-        let prev_evet_hash = if let Some(previous_proof) = self.previous_proof.clone() {
-            previous_proof.event_hash
-        } else {
-            DigestIdentifier::default()
-        };
+        let prev_evet_hash =
+            if let Some(previous_proof) = self.previous_proof.clone() {
+                previous_proof.event_hash
+            } else {
+                DigestIdentifier::default()
+            };
 
         // Create proof from validation info
-        let proof = ValidationProof::from_info(validation_info, prev_evet_hash)?;
+        let proof =
+            ValidationProof::from_info(validation_info, prev_evet_hash)?;
 
         // Subject path.
         let subject_path = ctx.path().parent();
@@ -251,18 +262,32 @@ impl Validation {
         Ok(())
     }
 
-    async fn send_validation_to_req(&self, ctx: &mut ActorContext<Validation>, result: bool) -> Result<(), Error>{
-
+    async fn send_validation_to_req(
+        &self,
+        ctx: &mut ActorContext<Validation>,
+        result: bool,
+    ) -> Result<(), Error> {
         let mut error = self.errors.clone();
         if !result && error.is_empty() {
-            error = "who: ALL, error: No validator was able to validate the event.".to_owned()
+            error =
+                "who: ALL, error: No validator was able to validate the event."
+                    .to_owned()
         }
 
-        let req_path = ActorPath::from(format!("/user/request/{}", self.request_id));
-        let req_actor: Option<ActorRef<RequestManager>> = ctx.system().get_actor(&req_path).await;
+        let req_path =
+            ActorPath::from(format!("/user/request/{}", self.request_id));
+        let req_actor: Option<ActorRef<RequestManager>> =
+            ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
-            if let Err(e) = req_actor.tell(RequestManagerMessage::ValidationRes { result, signatures: self.validators_response.clone(), errors: error }).await {
+            if let Err(e) = req_actor
+                .tell(RequestManagerMessage::ValidationRes {
+                    result,
+                    signatures: self.validators_response.clone(),
+                    errors: error,
+                })
+                .await
+            {
                 todo!()
             }
         } else {
@@ -375,13 +400,15 @@ impl Handler<Validation> for Validation {
                 self.validators.clone_from(&signers);
                 self.validators_quantity = signers.len() as u32;
                 self.request_id = request_id.to_string();
-                
-                let signature =
-                    match get_sign(ctx, SignTypesNode::ValidationReq(
-                        validation_req.clone(),
-                    )).await {
-                        Ok(signature) => signature,
-                        Err(e) => todo!(),
+
+                let signature = match get_sign(
+                    ctx,
+                    SignTypesNode::ValidationReq(validation_req.clone()),
+                )
+                .await
+                {
+                    Ok(signature) => signature,
+                    Err(e) => todo!(),
                 };
 
                 let signed_validation_req: Signed<ValidationReq> = Signed {
@@ -411,22 +438,25 @@ impl Handler<Validation> for Validation {
                     match validation_res {
                         ValidationRes::Signature(signature) => {
                             self.valid_validation = true;
-                            self
-                            .validators_response
-                            .push(ProtocolsSignatures::Signature(signature))
-                        },
+                            self.validators_response
+                                .push(ProtocolsSignatures::Signature(signature))
+                        }
                         ValidationRes::TimeOut(timeout) => self
                             .validators_response
                             .push(ProtocolsSignatures::TimeOut(timeout)),
                         ValidationRes::Error(error) => {
-                            self.errors = format!("{} who: {}, error: {}.", self.errors, sender, error);
+                            self.errors = format!(
+                                "{} who: {}, error: {}.",
+                                self.errors, sender, error
+                            );
                         }
                     };
 
                     if self.quorum.check_quorum(
                         self.validators_quantity,
                         self.validators_response.len() as u32,
-                    ) && self.valid_validation {
+                    ) && self.valid_validation
+                    {
                         // The quorum was met, we persisted, and we applied the status
                         if let Err(e) = ctx
                             .publish_event(ValidationEvent {
@@ -440,9 +470,11 @@ impl Handler<Validation> for Validation {
                             // TODO error al persistir, propagar hacia arriba
                         };
 
-                        if let Err(e) = self.send_validation_to_req(ctx, true).await {
-                            todo!()  
-                          };
+                        if let Err(e) =
+                            self.send_validation_to_req(ctx, true).await
+                        {
+                            todo!()
+                        };
                     } else if self.validators.is_empty() {
                         // we have received all the responses and the quorum has not been met
                         if let Err(e) = ctx
@@ -457,8 +489,10 @@ impl Handler<Validation> for Validation {
                             // TODO error al persistir, propagar hacia arriba
                         };
 
-                        if let Err(e) = self.send_validation_to_req(ctx, false).await {
-                          todo!()  
+                        if let Err(e) =
+                            self.send_validation_to_req(ctx, false).await
+                        {
+                            todo!()
                         };
                     }
                 } else {

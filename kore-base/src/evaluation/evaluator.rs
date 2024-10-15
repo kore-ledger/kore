@@ -11,8 +11,10 @@ use crate::{
     },
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::{get_gov, get_sign}, network::{RetryNetwork, TimeOutResponse}, signature::Signature, HashId,
-        SignTypesNode, TimeStamp,
+        common::{get_gov, get_sign},
+        network::{RetryNetwork, TimeOutResponse},
+        signature::Signature,
+        HashId, SignTypesNode, TimeStamp,
     },
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectMessage, SubjectResponse},
@@ -419,9 +421,14 @@ impl Handler<Evaluator> for Evaluator {
                     }
                 };
 
-                let signature = match get_sign(ctx, SignTypesNode::EvaluationRes(evaluation.clone())).await {
+                let signature = match get_sign(
+                    ctx,
+                    SignTypesNode::EvaluationRes(evaluation.clone()),
+                )
+                .await
+                {
                     Ok(signature) => signature,
-                    Err(e) => todo!()
+                    Err(e) => todo!(),
                 };
 
                 // Evaluatiob path.
@@ -436,7 +443,7 @@ impl Handler<Evaluator> for Evaluator {
                         .tell(EvaluationMessage::Response {
                             evaluation_res: evaluation,
                             sender: our_key,
-                            signature: Some(signature)
+                            signature: Some(signature),
                         })
                         .await?
                 } else {
@@ -531,7 +538,7 @@ impl Handler<Evaluator> for Evaluator {
                             .tell(EvaluationMessage::Response {
                                 evaluation_res: evaluation_res.content,
                                 sender: self.node.clone(),
-                                signature: Some(evaluation_res.signature)
+                                signature: Some(evaluation_res.signature),
                             })
                             .await
                         {
@@ -643,8 +650,12 @@ impl Handler<Evaluator> for Evaluator {
                     schema: info.schema.clone(),
                 };
 
-                let signature =
-                match get_sign(ctx, SignTypesNode::EvaluationRes(evaluation.clone())).await {
+                let signature = match get_sign(
+                    ctx,
+                    SignTypesNode::EvaluationRes(evaluation.clone()),
+                )
+                .await
+                {
                     Ok(signature) => signature,
                     Err(e) => todo!(),
                 };
@@ -697,7 +708,8 @@ impl Handler<Evaluator> for Evaluator {
                                     re_trys: 3,
                                     timestamp: TimeStamp::now(),
                                     who: self.node.clone(),
-                                },),
+                                },
+                            ),
                             signature: None,
                             sender: self.node.clone(),
                         })

@@ -7,7 +7,11 @@ use crate::{
     governance::{model::Roles, Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::{get_gov, get_sign}, event::ProtocolsSignatures, network::{RetryNetwork, TimeOutResponse}, signature::Signature, SignTypesNode, TimeStamp
+        common::{get_gov, get_sign},
+        event::ProtocolsSignatures,
+        network::{RetryNetwork, TimeOutResponse},
+        signature::Signature,
+        SignTypesNode, TimeStamp,
     },
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectMessage, SubjectResponse},
@@ -16,7 +20,7 @@ use crate::{
 
 use super::{
     proof::{EventProof, ValidationProof},
-    request::{ValidationReq},
+    request::ValidationReq,
     response::ValidationRes,
     Validation, ValidationMessage, ValidationResponse,
 };
@@ -184,10 +188,9 @@ impl Validator {
         )
         .await?;
 
-        
-        match get_sign(ctx, SignTypesNode::Validation(
-            validation_req.proof,
-        )).await {
+        match get_sign(ctx, SignTypesNode::Validation(validation_req.proof))
+            .await
+        {
             Ok(signature) => Ok(signature),
             Err(e) => todo!(),
         }
@@ -543,12 +546,16 @@ impl Handler<Validator> for Validator {
                     schema: info.schema.clone(),
                 };
 
-                let signature =
-                match get_sign(ctx, SignTypesNode::ValidationRes(validation.clone())).await {
+                let signature = match get_sign(
+                    ctx,
+                    SignTypesNode::ValidationRes(validation.clone()),
+                )
+                .await
+                {
                     Ok(signature) => signature,
                     Err(e) => todo!(),
                 };
-                
+
                 let signed_response: Signed<ValidationRes> = Signed {
                     content: validation,
                     signature,

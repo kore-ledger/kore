@@ -51,7 +51,7 @@ pub enum SignTypesNode {
     ApprovalReq(ApprovalReq),
     ApprovalSignature(ApprovalSignature),
     Ledger(Ledger),
-    Event(KoreEvent)
+    Event(KoreEvent),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

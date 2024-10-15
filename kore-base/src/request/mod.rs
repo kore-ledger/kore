@@ -27,8 +27,8 @@ use crate::{
     NodeMessage, NodeResponse, Signed, DIGEST_DERIVATOR,
 };
 
-pub mod state;
 pub mod manager;
+pub mod state;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestHandler {
@@ -425,8 +425,6 @@ impl Handler<RequestHandler> for RequestHandler {
                     // TODO es imposible que no sea un option
                     todo!()
                 };
-
-
 
                 Ok(RequestHandlerResponse::None)
             }

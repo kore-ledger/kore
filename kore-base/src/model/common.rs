@@ -2,7 +2,13 @@ use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler};
 use identity::identifier::DigestIdentifier;
 
 use crate::{
-    model::SignTypesNode, subject::{event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, SubjectMetadata}, Error, Event as KoreEvent, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse
+    model::SignTypesNode,
+    subject::{
+        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
+        SubjectMetadata,
+    },
+    Error, Event as KoreEvent, Governance, Node, NodeMessage, NodeResponse,
+    Signature, Signed, Subject, SubjectMessage, SubjectResponse,
 };
 
 pub async fn get_gov<A>(
@@ -13,8 +19,7 @@ where
     A: Actor + Handler<A>,
 {
     // Subject path
-    let subject_path =
-        ActorPath::from(format!("/user/node/{}", subject_id));
+    let subject_path = ActorPath::from(format!("/user/node/{}", subject_id));
 
     // Subject actor.
     let subject_actor: Option<ActorRef<Subject>> =
@@ -23,8 +28,7 @@ where
     // We obtain the actor governance
     let response = if let Some(subject_actor) = subject_actor {
         // We ask a governance
-        let response =
-        subject_actor.ask(SubjectMessage::GetGovernance).await;
+        let response = subject_actor.ask(SubjectMessage::GetGovernance).await;
         match response {
             Ok(response) => response,
             Err(e) => {
@@ -110,12 +114,7 @@ where
 
     // We obtain the validator
     let node_response = if let Some(node_actor) = node_actor {
-        match node_actor
-            .ask(NodeMessage::SignRequest(
-                sign_type,
-            ))
-            .await
-        {
+        match node_actor.ask(NodeMessage::SignRequest(sign_type)).await {
             Ok(response) => response,
             Err(e) => todo!(),
         }
@@ -130,11 +129,10 @@ where
     }
 }
 
-
 pub async fn update_event<A>(
     ctx: &mut ActorContext<A>,
     event: Signed<KoreEvent>,
-) -> Result<(), Error> 
+) -> Result<(), Error>
 where
     A: Actor + Handler<A>,
 {

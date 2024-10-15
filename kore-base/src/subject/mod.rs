@@ -44,10 +44,7 @@ use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{debug, error};
 
 use core::hash;
-use std::{
-    collections::HashSet,
-    str::FromStr,
-};
+use std::{collections::HashSet, str::FromStr};
 
 pub mod event;
 
@@ -878,7 +875,6 @@ impl Clone for Subject {
     }
 }
 
-
 /// Subject metadata.
 #[derive(
     Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
@@ -1090,11 +1086,15 @@ impl PersistentActor for Subject {
             }
         }
 
-        let last_event_hash = match event.content.event_request.hash_id(event.signature.content_hash.derivator) {
+        let last_event_hash = match event
+            .content
+            .event_request
+            .hash_id(event.signature.content_hash.derivator)
+        {
             Ok(hash) => hash,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
-        
+
         self.last_event_hash = last_event_hash;
 
         self.sn += 1;
@@ -1229,7 +1229,6 @@ mod tests {
             .unwrap();
 
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
 
         let response = subject_actor
             .ask(SubjectMessage::GetSubjectMetadata)

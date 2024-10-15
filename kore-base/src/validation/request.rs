@@ -5,7 +5,8 @@ use super::{proof::ValidationProof, response::ValidationRes};
 
 use crate::{
     model::{
-        event::ProtocolsSignatures, network::TimeOutResponse, request::EventRequest, signature::Signature, HashId, ValueWrapper
+        event::ProtocolsSignatures, network::TimeOutResponse,
+        request::EventRequest, signature::Signature, HashId, ValueWrapper,
     },
     Error,
 };
