@@ -6,6 +6,7 @@
 //! This module contains the data model for the Kore base.
 //!
 
+pub mod common;
 pub mod event;
 pub mod namespace;
 pub mod network;
@@ -13,8 +14,8 @@ pub mod patch;
 pub mod request;
 pub mod signature;
 pub mod wrapper;
-pub mod common;
 
+use event::{Event as KoreEvent, Ledger, ProofEvent};
 pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
@@ -41,6 +42,7 @@ use std::hash::Hash;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SignTypesNode {
     Validation(ValidationProof),
+    ValidationProofEvent(ProofEvent),
     ValidationReq(ValidationReq),
     ValidationRes(ValidationRes),
     EvaluationReq(EvaluationReq),
@@ -48,6 +50,8 @@ pub enum SignTypesNode {
     ApprovalRes(ApprovalRes),
     ApprovalReq(ApprovalReq),
     ApprovalSignature(ApprovalSignature),
+    Ledger(Ledger),
+    Event(KoreEvent),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

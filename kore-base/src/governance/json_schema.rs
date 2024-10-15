@@ -2,9 +2,7 @@ use std::str::FromStr;
 
 use identity::identifier::KeyIdentifier;
 use jsonschema::{Draft, Validator};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::error;
 
 use crate::Error;
 

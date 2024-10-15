@@ -34,9 +34,9 @@ pub use model::signature::*;
 pub use model::HashId;
 pub use model::ValueWrapper;
 pub use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
-pub use subject::{Subject, SubjectCommand, SubjectResponse, SubjectState};
+pub use subject::{Subject, SubjectMessage, SubjectResponse};
 pub use validation::{
-    Validation, ValidationCommand, ValidationInfo, ValidationResponse,
+    Validation, ValidationInfo, ValidationMessage, ValidationResponse,
 };
 
 use lazy_static::lazy_static;
@@ -99,8 +99,6 @@ pub async fn system(
 
 #[cfg(test)]
 pub mod tests {
-
-    use identity::identifier::derive::KeyDerivator;
 
     use super::*;
 

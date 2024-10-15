@@ -5,24 +5,30 @@
 //!
 
 use crate::{
-    db::Storable, evaluation::{
-        compiler::{Compiler, CompilerCommand},
+    db::Storable,
+    evaluation::{
+        compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
         schema::EvaluationSchema,
         Evaluation,
-    }, governance::model::Roles, model::{
+    },
+    governance::model::Roles,
+    model::{
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
-    }, node::{NodeMessage, NodeResponse}, validation::{schema::ValidationSchema, validator::Validator, Validation}, CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR
+    },
+    node::{NodeMessage, NodeResponse},
+    validation::{schema::ValidationSchema, validator::Validator, Validation},
+    CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
 };
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
     Handler, Message, Response,
 };
-use event::{LedgerEvent, LedgerEventCommand, LedgerEventResponse};
+use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
 use identity::{
     identifier::{
         derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
@@ -37,12 +43,7 @@ use serde::{Deserialize, Serialize};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{debug, error};
 
-use std::{
-    collections::HashSet,
-    ops::Sub,
-    str::FromStr,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use std::{collections::HashSet, str::FromStr};
 
 pub mod event;
 
@@ -53,7 +54,7 @@ pub struct CreateSubjectData {
     pub subject_id: DigestIdentifier,
     pub creator: KeyIdentifier,
     pub genesis_gov_version: u64,
-    pub value: ValueWrapper
+    pub value: ValueWrapper,
 }
 
 #[derive(
@@ -63,7 +64,7 @@ pub struct SubjectID {
     // La generamos nosotros
     pub request: Signed<EventRequest>,
     // La generamos nosotros, keypair, derivator (del sujeto) Lo tiene que generar el sujeto
-    pub keys: KeyPair
+    pub keys: KeyPair,
 }
 
 impl HashId for SubjectID {
@@ -76,7 +77,6 @@ impl HashId for SubjectID {
         )
     }
 }
-
 
 /// Suject header
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -91,12 +91,11 @@ pub struct Subject {
     pub genesis_gov_version: u64,
     /// The namespace of the subject.
     pub namespace: Namespace,
-    /// The name of the subject. TODO: hace falta?
-    pub name: String,
     /// The identifier of the schema used to validate the subject.
     pub schema_id: String,
     /// The identifier of the public key of the subject owner.
     pub owner: KeyIdentifier,
+    pub last_event_hash: DigestIdentifier,
     /// The identifier of the public key of the subject creator.
     pub creator: KeyIdentifier,
     /// Indicates whether the subject is active or not.
@@ -109,17 +108,16 @@ pub struct Subject {
 
 impl Subject {
     pub fn new(data: CreateSubjectData) -> Self {
-
         Subject {
             keys: Some(data.keys),
             subject_id: data.subject_id,
             governance_id: data.create_req.governance_id,
             genesis_gov_version: data.genesis_gov_version,
             namespace: data.create_req.namespace,
-            name: data.create_req.name,
             schema_id: data.create_req.schema_id,
             owner: data.creator.clone(),
             creator: data.creator,
+            last_event_hash: DigestIdentifier::default(),
             active: true,
             sn: 0,
             properties: data.value,
@@ -164,8 +162,8 @@ impl Subject {
                 governance_id: request.governance_id.clone(),
                 genesis_gov_version: ledger.content.gov_version,
                 namespace: request.namespace.clone(),
-                name: request.name.clone(),
                 schema_id: request.schema_id.clone(),
+                last_event_hash: DigestIdentifier::default(),
                 owner: ledger.content.event_request.signature.signer.clone(),
                 creator: ledger.content.event_request.signature.signer.clone(),
                 active: true,
@@ -273,14 +271,14 @@ impl Subject {
         Ok(subject_id)
     }
 
-    /// Returns subject state.
+    /// Returns subject metadata.
     ///
     /// # Returns
     ///
-    /// The subject state.
+    /// The subject metadata.
     ///
-    pub fn state(&self) -> SubjectState {
-        let subject_key = if let Some(keys) = self.keys.clone() {
+    fn get_metadata(&self) -> SubjectMetadata {
+        let subject_public_key = if let Some(keys) = self.keys.clone() {
             KeyIdentifier::new(
                 keys.get_key_derivator(),
                 &keys.public_key_bytes(),
@@ -289,30 +287,10 @@ impl Subject {
             KeyIdentifier::default()
         };
 
-        SubjectState {
-            subject_key,
-            subject_id: self.subject_id.clone(),
-            governance_id: self.governance_id.clone(),
-            genesis_gov_version: self.genesis_gov_version,
-            namespace: self.namespace.clone(),
-            name: self.name.clone(),
-            schema_id: self.schema_id.clone(),
-            owner: self.owner.clone(),
-            creator: self.creator.clone(),
-            active: self.active,
-            sn: self.sn,
-            properties: self.properties.clone(),
-        }
-    }
-
-    /// Returns subject metadata.
-    ///
-    /// # Returns
-    ///
-    /// The subject metadata.
-    ///
-    fn metadata(&self) -> SubjectMetadata {
         SubjectMetadata {
+            subject_public_key,
+            genesis_gov_version: self.genesis_gov_version,
+            last_event_hash: self.last_event_hash.clone(),
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
             schema_id: self.schema_id.clone(),
@@ -375,7 +353,7 @@ impl Subject {
             .map_err(|e| ActorError::Create)?;
 
         // If subject is a governance
-        let gov = Governance::try_from(self.state())
+        let gov = Governance::try_from(self.properties.clone())
             .map_err(|e| ActorError::Create)?;
 
         let owner = our_key == self.owner;
@@ -418,7 +396,7 @@ impl Subject {
                 .create_child(&format!("{}_compiler", schema.id), actor)
                 .await?;
             if let Err(e) = actor
-                .tell(CompilerCommand::Compile {
+                .tell(CompilerMessage::Compile {
                     contract: schema.contract.raw.clone(),
                     schema: ValueWrapper(schema.schema.clone()),
                     initial_value: schema.initial_value.clone(),
@@ -514,7 +492,7 @@ impl Subject {
         let response = if let Some(governance_actor) = governance_actor {
             // We ask a governance
             let response =
-                governance_actor.ask(SubjectCommand::GetGovernance).await;
+                governance_actor.ask(SubjectMessage::GetGovernance).await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -572,20 +550,25 @@ impl Subject {
         }
     }
 
-    fn verify_protocols_state(request: EventRequestType, eval: Option<bool>, approve: Option<bool>, approval_require: bool, val: bool) -> Result<bool, Error> {
+    fn verify_protocols_state(
+        request: EventRequestType,
+        eval: Option<bool>,
+        approve: Option<bool>,
+        approval_require: bool,
+        val: bool,
+    ) -> Result<bool, Error> {
         match request {
-            EventRequestType::Create | EventRequestType::Transfer | EventRequestType::Confirm | EventRequestType::EOL => {
+            EventRequestType::Create
+            | EventRequestType::Transfer
+            | EventRequestType::Confirm
+            | EventRequestType::EOL => {
                 if approve.is_some() || eval.is_some() || approval_require {
                     todo!()
                 }
                 Ok(val)
-            },
+            }
             EventRequestType::Fact => {
-                let eval = if let Some(eval) = eval {
-                    eval
-                } else {
-                    todo!()
-                };
+                let eval = if let Some(eval) = eval { eval } else { todo!() };
 
                 if approval_require {
                     let approve = if let Some(approve) = approve {
@@ -632,16 +615,22 @@ impl Subject {
             todo!();
         }
 
-        let valid_last_event = match Self::verify_protocols_state(EventRequestType::from(last_ledger.content.event_request.content.clone()), last_ledger.content.eval_success, last_ledger.content.appr_success, last_ledger.content.appr_required, last_ledger.content.vali_success) {
+        let valid_last_event = match Self::verify_protocols_state(
+            EventRequestType::from(
+                last_ledger.content.event_request.content.clone(),
+            ),
+            last_ledger.content.eval_success,
+            last_ledger.content.appr_success,
+            last_ledger.content.appr_required,
+            last_ledger.content.vali_success,
+        ) {
             Ok(is_ok) => is_ok,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
-
 
         // Si el último evento guardado fue correcto, por ende se aplicó lo que ese
         // evento decía.
-        if valid_last_event
-        {
+        if valid_last_event {
             // Comprobar firma,
             if let EventRequest::Transfer(transfer) =
                 last_ledger.content.event_request.content.clone()
@@ -663,13 +652,20 @@ impl Subject {
             };
         }
 
-        let valid_new_event = match Self::verify_protocols_state(EventRequestType::from(new_ledger.content.event_request.content.clone()), new_ledger.content.eval_success, new_ledger.content.appr_success, new_ledger.content.appr_required, new_ledger.content.vali_success) {
+        let valid_new_event = match Self::verify_protocols_state(
+            EventRequestType::from(
+                new_ledger.content.event_request.content.clone(),
+            ),
+            new_ledger.content.eval_success,
+            new_ledger.content.appr_success,
+            new_ledger.content.appr_required,
+            new_ledger.content.vali_success,
+        ) {
             Ok(is_ok) => is_ok,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
         // Si el nuevo evento a registrar fue correcto.
-        if valid_new_event
-        {
+        if valid_new_event {
             match new_ledger.content.event_request.content.clone() {
                 EventRequest::Create(start_request) => {
                     // Error no se puede recibir un evento de creación si ya está creado
@@ -755,7 +751,6 @@ impl Subject {
                 // propierties deberían ser iguales.
             }
         }
-
         Ok(())
     }
 
@@ -783,7 +778,7 @@ impl Subject {
                 }
             }
             // Aplicar evento.
-            if let Err(e) = ctx.event(event.clone()).await {
+            if let Err(e) = ctx.publish_event(event.clone()).await {
                 todo!()
             };
 
@@ -842,7 +837,7 @@ impl Subject {
 
         let response = if let Some(ledger_event_actor) = ledger_event_actor {
             if let Ok(response) = ledger_event_actor
-                .ask(LedgerEventCommand::GetLastEvent)
+                .ask(LedgerEventMessage::GetLastEvent)
                 .await
             {
                 response
@@ -868,8 +863,8 @@ impl Clone for Subject {
             governance_id: self.governance_id.clone(),
             genesis_gov_version: self.genesis_gov_version,
             namespace: self.namespace.clone(),
-            name: self.name.clone(),
             schema_id: self.schema_id.clone(),
+            last_event_hash: self.last_event_hash.clone(),
             owner: self.owner.clone(),
             creator: self.creator.clone(),
             active: self.active,
@@ -877,37 +872,6 @@ impl Clone for Subject {
             properties: self.properties.clone(),
         }
     }
-}
-
-/// Subject public state.
-#[derive(
-    Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
-)]
-pub struct SubjectState {
-    /// The key identifier of the subject (public key derivate).
-    pub subject_key: KeyIdentifier,
-    /// The identifier of the subject.
-    pub subject_id: DigestIdentifier,
-    /// The identifier of the governance that drives this subject.
-    pub governance_id: DigestIdentifier,
-    /// The version of the governance contract that created the subject.
-    pub genesis_gov_version: u64,
-    /// The namespace of the subject.
-    pub namespace: Namespace,
-    /// The name of the subject.
-    pub name: String,
-    /// The identifier of the schema used to validate the subject.
-    pub schema_id: String,
-    /// The identifier of the public key of the subject owner.
-    pub owner: KeyIdentifier,
-    /// The identifier of the public key of the subject creator.
-    pub creator: KeyIdentifier,
-    /// Indicates whether the subject is active or not.
-    pub active: bool,
-    /// The current sequence number of the subject.
-    pub sn: u64,
-    /// The current status of the subject.
-    pub properties: ValueWrapper,
 }
 
 /// Subject metadata.
@@ -919,6 +883,9 @@ pub struct SubjectMetadata {
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance contract.
     pub governance_id: DigestIdentifier,
+    pub genesis_gov_version: u64,
+    pub last_event_hash: DigestIdentifier,
+    pub subject_public_key: KeyIdentifier,
     /// The identifier of the schema used to validate the event.
     pub schema_id: String,
     /// The namespace of the subject.
@@ -933,39 +900,9 @@ pub struct SubjectMetadata {
     pub properties: ValueWrapper,
 }
 
-impl From<Subject> for SubjectState {
-    fn from(subject: Subject) -> Self {
-        let subject_key = if let Some(keys) = subject.keys.clone() {
-            KeyIdentifier::new(
-                keys.get_key_derivator(),
-                &keys.public_key_bytes(),
-            )
-        } else {
-            KeyIdentifier::default()
-        };
-
-        Self {
-            subject_key: subject_key,
-            subject_id: subject.subject_id,
-            governance_id: subject.governance_id,
-            genesis_gov_version: subject.genesis_gov_version,
-            namespace: subject.namespace,
-            name: subject.name,
-            schema_id: subject.schema_id,
-            owner: subject.owner,
-            creator: subject.creator,
-            active: subject.active,
-            sn: subject.sn,
-            properties: subject.properties,
-        }
-    }
-}
-
 /// Subject command.
 #[derive(Debug, Clone)]
-pub enum SubjectCommand {
-    /// Get the subject.
-    GetSubjectState,
+pub enum SubjectMessage {
     /// Get the subject metadata.
     GetSubjectMetadata,
     GetLedger {
@@ -981,13 +918,11 @@ pub enum SubjectCommand {
     GetOwner,
 }
 
-impl Message for SubjectCommand {}
+impl Message for SubjectMessage {}
 
 /// Subject response.
 #[derive(Debug, Clone)]
 pub enum SubjectResponse {
-    /// The subject state.
-    SubjectState(SubjectState),
     /// The subject metadata.
     SubjectMetadata(SubjectMetadata),
     SignRequest(Signature),
@@ -1006,7 +941,7 @@ impl Event for Signed<Ledger> {}
 #[async_trait]
 impl Actor for Subject {
     type Event = Signed<Ledger>;
-    type Message = SubjectCommand;
+    type Message = SubjectMessage;
     type Response = SubjectResponse;
 
     async fn pre_start(
@@ -1040,33 +975,30 @@ impl Handler<Subject> for Subject {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: SubjectCommand,
+        msg: SubjectMessage,
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
-            SubjectCommand::GetLedger { last_sn } => {
+            SubjectMessage::GetLedger { last_sn } => {
                 match self.get_ledger(ctx, last_sn).await {
                     Ok(response) => Ok(SubjectResponse::Ledger(response)),
                     Err(e) => Ok(SubjectResponse::Error(e)),
                 }
             }
-            SubjectCommand::GetOwner => {
+            SubjectMessage::GetOwner => {
                 Ok(SubjectResponse::Owner(self.owner.clone()))
             }
-            SubjectCommand::GetSubjectState => {
-                Ok(SubjectResponse::SubjectState(self.state()))
+            SubjectMessage::GetSubjectMetadata => {
+                Ok(SubjectResponse::SubjectMetadata(self.get_metadata()))
             }
-            SubjectCommand::GetSubjectMetadata => {
-                Ok(SubjectResponse::SubjectMetadata(self.metadata()))
-            }
-            SubjectCommand::UpdateLedger { events } => {
+            SubjectMessage::UpdateLedger { events } => {
                 debug!("Emit event to update subject.");
                 match self.verify_new_ledger_events(ctx, events).await {
                     Ok(last_sn) => Ok(SubjectResponse::LastSn(last_sn)),
                     Err(e) => Ok(SubjectResponse::Error(e)),
                 }
             }
-            SubjectCommand::SignRequest(content) => {
+            SubjectMessage::SignRequest(content) => {
                 let sign = match content {
                     SignTypesSubject::Validation(validation) => {
                         self.sign(&validation)
@@ -1078,10 +1010,10 @@ impl Handler<Subject> for Subject {
                     Err(e) => Ok(SubjectResponse::Error(e)),
                 }
             }
-            SubjectCommand::GetGovernance => {
+            SubjectMessage::GetGovernance => {
                 // If is a governance
                 if self.governance_id.digest.is_empty() {
-                    match Governance::try_from(self.state()) {
+                    match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
                         Err(e) => return Ok(SubjectResponse::Error(e)),
                     }
@@ -1111,15 +1043,18 @@ impl Handler<Subject> for Subject {
 #[async_trait]
 impl PersistentActor for Subject {
     fn apply(&mut self, event: &Signed<Ledger>) {
-
-
-        let valid_event = match Self::verify_protocols_state(EventRequestType::from(event.content.event_request.content.clone()), event.content.eval_success, event.content.appr_success, event.content.appr_required, event.content.vali_success) {
+        let valid_event = match Self::verify_protocols_state(
+            EventRequestType::from(event.content.event_request.content.clone()),
+            event.content.eval_success,
+            event.content.appr_success,
+            event.content.appr_required,
+            event.content.vali_success,
+        ) {
             Ok(is_ok) => is_ok,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
 
-        if valid_event
-        {
+        if valid_event {
             match &event.content.event_request.content {
                 EventRequest::Create(start_request) => todo!(),
                 EventRequest::Fact(fact_request) => {
@@ -1149,6 +1084,17 @@ impl PersistentActor for Subject {
                 }
             }
         }
+
+        let last_event_hash = match event
+            .content
+            .event_request
+            .hash_id(event.signature.content_hash.derivator)
+        {
+            Ok(hash) => hash,
+            Err(e) => todo!(),
+        };
+
+        self.last_event_hash = last_event_hash;
 
         self.sn += 1;
     }
@@ -1185,7 +1131,7 @@ mod tests {
                 subject_keys.get_key_derivator(),
                 &subject_keys.public_key_bytes(),
             );
-    
+
             let subject_id = Subject::subject_id(
                 start_request.namespace.clone(),
                 &start_request.schema_id,
@@ -1194,12 +1140,13 @@ mod tests {
                 governance_version,
                 derivator,
             )?;
-            let state_hash =
-                DigestIdentifier::from_serializable_borsh(init_state, derivator)
-                    .map_err(|_| {
-                        Error::Digest("Error converting state to hash".to_owned())
-                    })?;
-    
+            let state_hash = DigestIdentifier::from_serializable_borsh(
+                init_state, derivator,
+            )
+            .map_err(|_| {
+                Error::Digest("Error converting state to hash".to_owned())
+            })?;
+
             Ok(KoreEvent {
                 subject_id,
                 event_request: request.clone(),
@@ -1260,16 +1207,7 @@ mod tests {
         let path = subject_actor.path().clone();
 
         let response = subject_actor
-            .ask(SubjectCommand::GetSubjectState)
-            .await
-            .unwrap();
-        if let SubjectResponse::SubjectState(state) = response {
-            assert_eq!(state.namespace, Namespace::from("namespace"));
-        } else {
-            panic!("Invalid response");
-        }
-        let response = subject_actor
-            .ask(SubjectCommand::GetSubjectMetadata)
+            .ask(SubjectMessage::GetSubjectMetadata)
             .await
             .unwrap();
         if let SubjectResponse::SubjectMetadata(metadata) = response {
@@ -1292,16 +1230,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         let response = subject_actor
-            .ask(SubjectCommand::GetSubjectState)
-            .await
-            .unwrap();
-        if let SubjectResponse::SubjectState(state) = response {
-            assert_eq!(state.namespace, Namespace::from("namespace"));
-        } else {
-            panic!("Invalid response");
-        }
-        let response = subject_actor
-            .ask(SubjectCommand::GetSubjectMetadata)
+            .ask(SubjectMessage::GetSubjectMetadata)
             .await
             .unwrap();
         if let SubjectResponse::SubjectMetadata(metadata) = response {

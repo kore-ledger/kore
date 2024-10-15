@@ -5,15 +5,15 @@ use actor::{
     Message,
 };
 use async_trait::async_trait;
-use distributor::{Distributor, DistributorCommand};
-use identity::{
-    identifier::{DigestIdentifier, KeyIdentifier},
-    keys::KeyPair,
-};
+use distributor::{Distributor, DistributorMessage};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use crate::{
-    governance::model::Roles, model::event::Ledger, subject::SubjectMetadata,
-    Error, Event as KoreEvent, Governance, Signed, Subject, SubjectCommand,
+    governance::model::Roles,
+    model::event::Ledger,
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::SubjectMetadata,
+    Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage,
     SubjectResponse,
 };
 
@@ -22,6 +22,7 @@ pub mod distributor;
 pub struct Distribution {
     witnesses: HashSet<KeyIdentifier>,
     node_key: KeyIdentifier,
+    request_id: String,
 }
 
 impl Distribution {
@@ -54,7 +55,7 @@ impl Distribution {
 
         // We ask a governance
         let response =
-            governance_actor.ask(SubjectCommand::GetGovernance).await;
+            governance_actor.ask(SubjectMessage::GetGovernance).await;
         let response = match response {
             Ok(response) => response,
             Err(e) => {
@@ -81,7 +82,7 @@ impl Distribution {
             };
 
         let response = governance_actor
-            .ask(SubjectCommand::GetSubjectMetadata)
+            .ask(SubjectMessage::GetSubjectMetadata)
             .await;
         let response = match response {
             Ok(response) => response,
@@ -129,7 +130,7 @@ impl Distribution {
 
         if signer != our_key {
             distributor_actor
-                .tell(DistributorCommand::NetworkDistribution {
+                .tell(DistributorMessage::NetworkDistribution {
                     ledger,
                     event,
                     node_key: signer,
@@ -145,13 +146,14 @@ impl Distribution {
 #[async_trait]
 impl Actor for Distribution {
     type Event = ();
-    type Message = DistributionCommand;
+    type Message = DistributionMessage;
     type Response = ();
 }
 
 #[derive(Debug, Clone)]
-pub enum DistributionCommand {
+pub enum DistributionMessage {
     Create {
+        request_id: String,
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
     },
@@ -160,18 +162,22 @@ pub enum DistributionCommand {
     },
 }
 
-impl Message for DistributionCommand {}
+impl Message for DistributionMessage {}
 
 #[async_trait]
 impl Handler<Distribution> for Distribution {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: DistributionCommand,
+        msg: DistributionMessage,
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
         match msg {
-            DistributionCommand::Create { event, ledger } => {
+            DistributionMessage::Create {
+                request_id,
+                event,
+                ledger,
+            } => {
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
                 let (governance, metadata) =
@@ -179,6 +185,8 @@ impl Handler<Distribution> for Distribution {
                         Ok(gov) => gov,
                         Err(e) => todo!(),
                     };
+
+                self.request_id = request_id.to_string();
 
                 let witnesses = if metadata.schema_id == "governance" {
                     governance.members_to_key_identifier()
@@ -200,11 +208,26 @@ impl Handler<Distribution> for Distribution {
                     .await?
                 }
             }
-            DistributionCommand::Response { sender } => {
+            DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) {
                     if self.witnesses.is_empty() {
-                        // TODO todos los testigos recibieron la copia o se hicieron todos los intentos
-                        // terminar distribución.
+                        let req_path = ActorPath::from(format!(
+                            "/user/request/{}",
+                            self.request_id
+                        ));
+                        let req_actor: Option<ActorRef<RequestManager>> =
+                            ctx.system().get_actor(&req_path).await;
+
+                        if let Some(req_actor) = req_actor {
+                            if let Err(e) = req_actor
+                                .tell(RequestManagerMessage::FinishRequest)
+                                .await
+                            {
+                                todo!()
+                            }
+                        } else {
+                            todo!()
+                        };
                     }
                 }
             }

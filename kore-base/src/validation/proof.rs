@@ -43,6 +43,20 @@ impl PartialEq for EventProof {
     }
 }
 
+impl From<EventRequest> for EventProof {
+    fn from(value: EventRequest) -> Self {
+        match value {
+            EventRequest::Create(_create_request) => EventProof::Create,
+            EventRequest::Fact(_fact_request) => EventProof::Fact,
+            EventRequest::Transfer(transfer_request) => EventProof::Transfer {
+                new_owner: transfer_request.new_owner,
+            },
+            EventRequest::Confirm(_confirm_request) => EventProof::Confirm,
+            EventRequest::EOL(_eolrequest) => EventProof::EOL,
+        }
+    }
+}
+
 /// A struct representing a validation proof.
 #[derive(
     Debug,
@@ -61,8 +75,6 @@ pub struct ValidationProof {
     pub schema_id: String,
     /// The namespace of the subject being validated.
     pub namespace: Namespace,
-    /// The name of the subject being validated.
-    pub name: String,
     /// The identifier of the public key of the subject being validated.
     pub subject_public_key: KeyIdentifier,
     /// The identifier of the governance contract associated with the subject being validated.
@@ -93,7 +105,6 @@ impl Default for ValidationProof {
             event_hash: DigestIdentifier::default(),
             subject_public_key: KeyIdentifier::default(),
             genesis_governance_version: 0,
-            name: "name".to_string(),
             event: EventProof::Create,
         }
     }
@@ -116,9 +127,12 @@ impl HashId for ValidationProof {
 
 impl ValidationProof {
     /// Create a new validation proof from a validation command.
-    pub fn from_info(info: ValidationInfo) -> Result<Self, Error> {
+    pub fn from_info(
+        info: ValidationInfo,
+        prev_event_hash: DigestIdentifier,
+    ) -> Result<Self, Error> {
         debug!("Creating validation proof from info");
-        let request = &info.event.content.event_request.content;
+        let request = &info.event_proof.content.event_proof;
 
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
@@ -126,43 +140,36 @@ impl ValidationProof {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
-        let event_hash = info.event.hash_id(derivator).map_err(|_| {
+        let event_hash = info.event_proof.hash_id(derivator).map_err(|_| {
             Error::Validation("Error hashing event".to_string())
         })?;
 
         let mut validation_proof: ValidationProof = Self {
-            governance_id: info.subject.governance_id.clone(),
-            governance_version: info.gov_version,
-            subject_id: info.subject.subject_id.clone(),
-            sn: info.event.content.sn,
-            schema_id: info.subject.schema_id.clone(),
-            namespace: info.subject.namespace.clone(),
-            prev_event_hash: DigestIdentifier::default(),
+            governance_id: info.metadata.governance_id.clone(),
+            governance_version: info.event_proof.content.gov_version,
+            subject_id: info.metadata.subject_id.clone(),
+            sn: info.event_proof.content.sn,
+            schema_id: info.metadata.schema_id.clone(),
+            namespace: info.metadata.namespace.clone(),
+            prev_event_hash,
             event_hash,
-            subject_public_key: info.subject.subject_key.clone(),
-            genesis_governance_version: info.gov_version,
-            name: info.subject.name.clone(),
-            event: EventProof::Create,
+            subject_public_key: info.metadata.subject_public_key.clone(),
+            genesis_governance_version: info.metadata.genesis_gov_version,
+            event: info.event_proof.content.event_proof.clone(),
         };
 
         match request {
-            EventRequest::Create(_start_request) => Ok(validation_proof),
-            EventRequest::Fact(_fact_request) => {
-                validation_proof.event = EventProof::Fact;
+            EventProof::Create | EventProof::Fact | EventProof::EOL => {
                 Ok(validation_proof)
             }
-            EventRequest::Transfer(transfer_request) => {
+            EventProof::Transfer { new_owner } => {
                 validation_proof.event = EventProof::Transfer {
-                    new_owner: transfer_request.new_owner.clone(),
+                    new_owner: new_owner.clone(),
                 };
                 Ok(validation_proof)
             }
-            EventRequest::Confirm(_confirm_request) => {
-                validation_proof.event = EventProof::Confirm;
-                Ok(validation_proof)
-            }
-            EventRequest::EOL(_eol_request) => {
-                validation_proof.event = EventProof::EOL;
+            EventProof::Confirm => {
+                validation_proof.subject_public_key = info.metadata.owner;
                 Ok(validation_proof)
             }
         }

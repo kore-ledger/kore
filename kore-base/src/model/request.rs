@@ -15,13 +15,12 @@ use identity::identifier::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-
 pub enum EventRequestType {
     Create,
     Fact,
     Transfer,
     Confirm,
-    EOL
+    EOL,
 }
 
 impl From<EventRequest> for EventRequestType {
@@ -168,6 +167,17 @@ impl HashId for EventRequest {
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
             |_| Error::Signature("HashId for EventRequest Fails".to_string()),
+        )
+    }
+}
+
+impl HashId for Signed<EventRequest> {
+    fn hash_id(
+        &self,
+        derivator: DigestDerivator,
+    ) -> Result<DigestIdentifier, Error> {
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |_| Error::Subject("HashId for Signed Event Fails".to_string()),
         )
     }
 }

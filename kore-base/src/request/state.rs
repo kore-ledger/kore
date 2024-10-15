@@ -1,48 +1,45 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::collections::HashSet;
+
 use crate::{
-    evaluation::response::EvaluationRes,
-    governance::RequestStage,
+    evaluation::{request::EvaluationReq, response::EvalLedgerResponse},
     model::{
-        request::{EventRequest, CreateRequest},
-        signature::{Signature, Signed},
+        event::{Ledger, ProtocolsSignatures},
+        request::CreateRequest,
+        signature::Signed,
     },
-    Error,
+    ConfirmRequest, EOLRequest, Event as KoreEvent, TransferRequest,
+    ValidationInfo,
 };
 
-use actor::{Actor, ActorContext, Event, Handler, Message, Response};
-use async_trait::async_trait;
-use identity::identifier::DigestIdentifier;
 use serde::{Deserialize, Serialize};
 
-/// Request state actor.
-/// This actor manages the state of a request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RequestState {
-    id: DigestIdentifier,
-    request: Option<EventRequest>,
-    stage: RequestStage,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum RequestSate {
+    Starting,
+    Evaluation,
+    Approval {
+        eval_req: EvaluationReq,
+        eval_res: EvalLedgerResponse,
+        eval_signatures: HashSet<ProtocolsSignatures>,
+    },
+    Validation(ValidationInfo),
+    Distribution {
+        event: Signed<KoreEvent>,
+        ledger: Signed<Ledger>,
+    },
 }
 
-impl RequestState {
-    // Creates a new `RequestState`.
-    /*
-    pub fn from_request(id: DigestIdentifier, request: EventRequest) -> Self {
-        Self {
-            id,
-            request: Some(request),
-            stage: RequestStage::Create,
-        }
-    }
-    */
-}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ValidationProtocols {
+    /// A request to create a new subject.
+    Create(CreateRequest),
+    /// A request to transfer ownership of a subject.
+    Transfer(TransferRequest),
 
-/*
-#[derive(Clone, Debug)]
-pub enum StateCommand {
-    Evaluation(EvaluationRes),
-    Approval(ApprovalResponse),
-    Validation(Signature),
+    Confirm(ConfirmRequest),
+    /// A request to mark a subject as end-of-life.
+    EOL(EOLRequest),
 }
-*/

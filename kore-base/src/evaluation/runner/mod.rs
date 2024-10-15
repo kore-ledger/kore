@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::format};
+use std::collections::HashSet;
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
@@ -505,14 +505,14 @@ impl Runner {
 }
 
 #[derive(Debug, Clone)]
-pub struct RunnerCommand {
+pub struct RunnerMessage {
     pub state: ValueWrapper,
     pub event: ValueWrapper,
     pub compiled_contract: Contract,
     pub is_owner: bool,
 }
 
-impl Message for RunnerCommand {}
+impl Message for RunnerMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RunnerEvent {}
@@ -533,7 +533,7 @@ impl Response for RunnerResponse {}
 #[async_trait]
 impl Actor for Runner {
     type Event = RunnerEvent;
-    type Message = RunnerCommand;
+    type Message = RunnerMessage;
     type Response = RunnerResponse;
 }
 
@@ -542,7 +542,7 @@ impl Handler<Runner> for Runner {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: RunnerCommand,
+        msg: RunnerMessage,
         _ctx: &mut ActorContext<Runner>,
     ) -> Result<RunnerResponse, ActorError> {
         match Self::execute_contract(

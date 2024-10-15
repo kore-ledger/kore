@@ -14,12 +14,12 @@ pub struct LedgerEvent {
 }
 
 #[derive(Debug, Clone)]
-pub enum LedgerEventCommand {
+pub enum LedgerEventMessage {
     UpdateLastEvent { event: Signed<KoreEvent> },
     GetLastEvent,
 }
 
-impl Message for LedgerEventCommand {}
+impl Message for LedgerEventMessage {}
 
 impl Event for Signed<KoreEvent> {}
 
@@ -35,7 +35,7 @@ impl Response for LedgerEventResponse {}
 #[async_trait]
 impl Actor for LedgerEvent {
     type Event = Signed<KoreEvent>;
-    type Message = LedgerEventCommand;
+    type Message = LedgerEventMessage;
     type Response = LedgerEventResponse;
 
     async fn pre_start(
@@ -63,17 +63,17 @@ impl Handler<LedgerEvent> for LedgerEvent {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: LedgerEventCommand,
+        msg: LedgerEventMessage,
         ctx: &mut ActorContext<LedgerEvent>,
     ) -> Result<LedgerEventResponse, ActorError> {
         match msg {
-            LedgerEventCommand::UpdateLastEvent { event } => {
-                if let Err(e) = ctx.event(event).await {
+            LedgerEventMessage::UpdateLastEvent { event } => {
+                if let Err(e) = ctx.publish_event(event).await {
                     todo!()
                 };
                 Ok(LedgerEventResponse::Ok)
             }
-            LedgerEventCommand::GetLastEvent => {
+            LedgerEventMessage::GetLastEvent => {
                 Ok(LedgerEventResponse::LastEvent(self.last_event.clone()))
             }
         }

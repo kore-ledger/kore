@@ -4,42 +4,41 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{model::Roles, Governance, RequestStage},
+    governance::model::Roles,
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::get_gov, network::{RetryNetwork, TimeOutResponse}, signature::Signature, SignTypesNode, TimeStamp
+        common::{get_gov, get_sign},
+        event::ProtocolsSignatures,
+        network::{RetryNetwork, TimeOutResponse},
+        signature::Signature,
+        SignTypesNode, TimeStamp,
     },
-    node::{self, Node, NodeMessage, NodeResponse},
-    subject::{SubjectCommand, SubjectResponse},
+    subject::{SubjectMessage, SubjectResponse},
     Error, Signed, Subject,
 };
 
 use super::{
     proof::{EventProof, ValidationProof},
-    request::{SignersRes, ValidationReq},
+    request::ValidationReq,
     response::ValidationRes,
-    Validation, ValidationCommand, ValidationResponse,
+    Validation, ValidationMessage,
 };
 
 use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
-use identity::identifier::{
-    derive::digest::DigestDerivator, key_identifier, DigestIdentifier,
-    KeyIdentifier,
-};
+use identity::identifier::KeyIdentifier;
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use network::{Command, ComunicateInfo};
+use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    FixedIntervalStrategy, Handler, Message, Response, RetryActor,
-    RetryMessage, RetryStrategy, Strategy,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
+    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
+    Strategy,
 };
 
-use tracing::{debug, error};
+use tracing::error;
 
 /// A struct representing a validator actor.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -52,7 +51,6 @@ impl Validator {
     pub fn new(request_id: String, node: KeyIdentifier) -> Self {
         Validator { request_id, node }
     }
-
 
     fn check_event_proof(
         &self,
@@ -128,7 +126,6 @@ impl Validator {
         Ok(())
     }
 
-    // TODO si es un nuevo validador va a necesitar la prueba anterior y las firmas.
     async fn validation(
         &self,
         ctx: &mut ActorContext<Validator>,
@@ -142,19 +139,14 @@ impl Validator {
             0
         // ask the government for its version
         } else {
+            let governance_id =
+                if validation_req.proof.schema_id == "governance" {
+                    validation_req.proof.subject_id.clone()
+                } else {
+                    validation_req.proof.governance_id.clone()
+                };
 
-            let governance_id = if validation_req.proof.schema_id == "governance" {
-                validation_req.proof.subject_id.clone()
-            } else {
-                validation_req.proof.governance_id.clone()
-            };
-
-            get_gov(
-                ctx,
-                governance_id
-            )
-            .await?
-            .get_version()
+            get_gov(ctx, &governance_id.to_string()).await?.version
         };
 
         match actual_gov_version.cmp(&validation_req.proof.governance_version) {
@@ -191,47 +183,11 @@ impl Validator {
         )
         .await?;
 
-        // Node path.
-        let node_path = ActorPath::from("/user/node");
-        // Node actor.
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        // We obtain the actor node
-        let response = if let Some(node_actor) = node_actor {
-            // We ask a node
-            let response = node_actor
-                .ask(NodeMessage::SignRequest(SignTypesNode::Validation(
-                    validation_req.proof,
-                )))
-                .await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a node {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(
-                "The node actor was not found in the expected path /user/node"
-                    .to_owned(),
-            ));
-        };
-
-        // We handle the possible responses of node
-        match response {
-            NodeResponse::SignRequest(sign) => Ok(sign),
-            NodeResponse::Error(error) => Err(Error::Actor(format!(
-                "The node encountered problems when signing the proof: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
+        match get_sign(ctx, SignTypesNode::Validation(validation_req.proof))
+            .await
+        {
+            Ok(signature) => Ok(signature),
+            Err(e) => todo!(),
         }
     }
 
@@ -240,7 +196,7 @@ impl Validator {
         ctx: &mut ActorContext<Validator>,
         new_proof: &ValidationProof,
         previous_proof: Option<ValidationProof>,
-        previous_validation_signatures: Vec<SignersRes>,
+        previous_validation_signatures: Vec<ProtocolsSignatures>,
     ) -> Result<(), Error> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
@@ -251,7 +207,6 @@ impl Validator {
                 || previous_proof.genesis_governance_version
                     != new_proof.genesis_governance_version
                 || previous_proof.namespace != new_proof.namespace
-                || previous_proof.name != new_proof.name
                 || previous_proof.subject_id != new_proof.subject_id
                 || previous_proof.schema_id != new_proof.schema_id
                 || previous_proof.governance_id != new_proof.governance_id
@@ -268,7 +223,7 @@ impl Validator {
                     .map(|signer_res| {
                         match signer_res {
                             // Signer response
-                            SignersRes::Signature(signature) => {
+                            ProtocolsSignatures::Signature(signature) => {
 
                                 if let Err(error) = signature.verify(&previous_proof) {
                                     Err(Error::Signature(format!("An error occurred while validating the previous proof, {:?}", error)))
@@ -277,7 +232,7 @@ impl Validator {
                                 }
                             }
                             // TimeOut response
-                            SignersRes::TimeOut(time_out) => Ok(time_out.who),
+                            ProtocolsSignatures::TimeOut(time_out) => Ok(time_out.who),
                         }
                     })
                     .collect();
@@ -291,12 +246,8 @@ impl Validator {
                 new_proof.governance_id.clone()
             };
 
-            let actual_signers = get_gov(
-                    ctx,
-                    governance_id
-                )
-                .await?
-                .get_signers(
+            let actual_signers =
+                get_gov(ctx, &governance_id.to_string()).await?.get_signers(
                     Roles::VALIDATOR,
                     &new_proof.schema_id,
                     new_proof.namespace.clone(),
@@ -321,7 +272,7 @@ impl Validator {
 }
 
 #[derive(Debug, Clone)]
-pub enum ValidatorCommand {
+pub enum ValidatorMessage {
     LocalValidation {
         validation_req: ValidationReq,
         our_key: KeyIdentifier,
@@ -343,12 +294,12 @@ pub enum ValidatorCommand {
     },
 }
 
-impl Message for ValidatorCommand {}
+impl Message for ValidatorMessage {}
 
 #[async_trait]
 impl Actor for Validator {
     type Event = ();
-    type Message = ValidatorCommand;
+    type Message = ValidatorMessage;
     type Response = ();
 }
 
@@ -357,11 +308,11 @@ impl Handler<Validator> for Validator {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: ValidatorCommand,
+        msg: ValidatorMessage,
         ctx: &mut ActorContext<Validator>,
     ) -> Result<(), ActorError> {
         match msg {
-            ValidatorCommand::LocalValidation {
+            ValidatorMessage::LocalValidation {
                 validation_req,
                 our_key,
             } => {
@@ -370,13 +321,13 @@ impl Handler<Validator> for Validator {
                     .validation(ctx, validation_req)
                     .await
                 {
-                    Ok(validation) => ValidationCommand::Response {
+                    Ok(validation) => ValidationMessage::Response {
                         validation_res: ValidationRes::Signature(validation),
                         sender: our_key,
                     },
                     Err(e) => {
                         // Log con el error. TODO
-                        ValidationCommand::Response {
+                        ValidationMessage::Response {
                             validation_res: ValidationRes::Error(format!(
                                 "{}",
                                 e
@@ -403,7 +354,7 @@ impl Handler<Validator> for Validator {
 
                 ctx.stop().await;
             }
-            ValidatorCommand::NetworkValidation {
+            ValidatorMessage::NetworkValidation {
                 request_id,
                 validation_req,
                 schema,
@@ -460,7 +411,7 @@ impl Handler<Validator> for Validator {
                     todo!()
                 };
             }
-            ValidatorCommand::NetworkResponse {
+            ValidatorMessage::NetworkResponse {
                 validation_res,
                 request_id,
             } => {
@@ -484,7 +435,7 @@ impl Handler<Validator> for Validator {
 
                     if let Some(validation_actor) = validation_actor {
                         if let Err(e) = validation_actor
-                            .tell(ValidationCommand::Response {
+                            .tell(ValidationMessage::Response {
                                 validation_res: validation_res.content,
                                 sender: self.node.clone(),
                             })
@@ -512,7 +463,7 @@ impl Handler<Validator> for Validator {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
                 }
             }
-            ValidatorCommand::NetworkRequest {
+            ValidatorMessage::NetworkRequest {
                 validation_req,
                 info,
             } => {
@@ -528,7 +479,7 @@ impl Handler<Validator> for Validator {
 
                     // We obtain the validator
                     let response = if let Some(subject_actor) = subject_actor {
-                        match subject_actor.ask(SubjectCommand::GetOwner).await
+                        match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
                             Err(e) => todo!(),
@@ -590,30 +541,14 @@ impl Handler<Validator> for Validator {
                     schema: info.schema.clone(),
                 };
 
-                // Aquí tiene que firmar el nodo la respuesta.
-                let node_path = ActorPath::from("/user/node");
-                let node_actor: Option<ActorRef<Node>> =
-                    ctx.system().get_actor(&node_path).await;
-
-                // We obtain the validator
-                let node_response = if let Some(node_actor) = node_actor {
-                    match node_actor
-                        .ask(NodeMessage::SignRequest(
-                            SignTypesNode::ValidationRes(validation.clone()),
-                        ))
-                        .await
-                    {
-                        Ok(response) => response,
-                        Err(e) => todo!(),
-                    }
-                } else {
-                    todo!()
-                };
-
-                let signature = match node_response {
-                    NodeResponse::SignRequest(signature) => signature,
-                    NodeResponse::Error(_) => todo!(),
-                    _ => todo!(),
+                let signature = match get_sign(
+                    ctx,
+                    SignTypesNode::ValidationRes(validation.clone()),
+                )
+                .await
+                {
+                    Ok(signature) => signature,
+                    Err(e) => todo!(),
                 };
 
                 let signed_response: Signed<ValidationRes> = Signed {
@@ -658,7 +593,7 @@ impl Handler<Validator> for Validator {
 
                 if let Some(validation_actor) = validation_actor {
                     if let Err(e) = validation_actor
-                        .tell(ValidationCommand::Response {
+                        .tell(ValidationMessage::Response {
                             validation_res: ValidationRes::TimeOut(
                                 TimeOutResponse {
                                     re_trys: 3,

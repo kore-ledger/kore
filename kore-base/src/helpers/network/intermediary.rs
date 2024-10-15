@@ -1,13 +1,13 @@
 use crate::{
-    approval::approver::{Approver, ApproverCommand},
-    distribution::distributor::{Distributor, DistributorCommand},
+    approval::approver::{Approver, ApproverMessage},
+    distribution::distributor::{Distributor, DistributorMessage},
     evaluation::{
-        evaluator::{Evaluator, EvaluatorCommand},
-        schema::{EvaluationSchema, EvaluationSchemaCommand},
+        evaluator::{Evaluator, EvaluatorMessage},
+        schema::{EvaluationSchema, EvaluationSchemaMessage},
     },
     validation::{
-        schema::{ValidationSchema, ValidationSchemaCommand},
-        validator::{Validator, ValidatorCommand},
+        schema::{ValidationSchema, ValidationSchemaMessage},
+        validator::{Validator, ValidatorMessage},
     },
     Error,
 };
@@ -143,7 +143,7 @@ impl Intermediary {
                             // We obtain the validator
                             if let Some(validator_actor) = validator_actor {
                                 if let Err(error) = validator_actor
-                                    .tell(ValidatorCommand::NetworkRequest {
+                                    .tell(ValidatorMessage::NetworkRequest {
                                         validation_req: req,
                                         info: message.info,
                                     })
@@ -164,7 +164,7 @@ impl Intermediary {
                             // We obtain the validator
                             if let Some(validator_actor) = validator_actor {
                                 if let Err(error) = validator_actor
-                                    .tell(ValidationSchemaCommand::NetworkRequest {
+                                    .tell(ValidationSchemaMessage::NetworkRequest {
                                         validation_req: req,
                                         info: message.info,
                                     })
@@ -192,7 +192,7 @@ impl Intermediary {
                             // We obtain the validator
                             if let Some(evaluator_actor) = evaluator_actor {
                                 if let Err(error) = evaluator_actor
-                                    .tell(EvaluatorCommand::NetworkRequest {
+                                    .tell(EvaluatorMessage::NetworkRequest {
                                         evaluation_req: req,
                                         info: message.info,
                                     })
@@ -214,7 +214,7 @@ impl Intermediary {
                             // We obtain the validator
                             if let Some(evaluator_actor) = evaluator_actor {
                                 if let Err(error) = evaluator_actor
-                            .tell(EvaluationSchemaCommand::NetworkRequest {
+                            .tell(EvaluationSchemaMessage::NetworkRequest {
                                 evaluation_req: req,
                                 info: message.info,
                             })
@@ -240,7 +240,7 @@ impl Intermediary {
                         // We obtain the validator
                         if let Some(approver_actor) = approver_actor {
                             if let Err(error) = approver_actor
-                                .tell(ApproverCommand::NetworkRequest {
+                                .tell(ApproverMessage::NetworkRequest {
                                     approval_req: req,
                                     info: message.info,
                                 })
@@ -291,7 +291,7 @@ impl Intermediary {
 
                         // We obtain the validator
                         if let Err(error) = distributor_actor
-                            .tell(DistributorCommand::LastEventDistribution {
+                            .tell(DistributorMessage::LastEventDistribution {
                                 event,
                                 ledger,
                                 info: message.info,
@@ -315,10 +315,10 @@ impl Intermediary {
 
                         if let Some(distributor_actor) = distributor_actor {
                             if let Err(error) = distributor_actor
-                                .tell(DistributorCommand::SendDistribution {
+                                .tell(DistributorMessage::SendDistribution {
                                     gov_version,
                                     actual_sn,
-                                    subject_id,
+                                    subject_id: subject_id.to_string(),
                                     info: message.info,
                                 })
                                 .await
@@ -342,7 +342,7 @@ impl Intermediary {
                         // We obtain the validator
                         if let Some(validator_actor) = validator_actor {
                             if let Err(error) = validator_actor
-                                .tell(ValidatorCommand::NetworkResponse {
+                                .tell(ValidatorMessage::NetworkResponse {
                                     validation_res: res,
                                     request_id: message.info.request_id,
                                 })
@@ -367,7 +367,7 @@ impl Intermediary {
                         // We obtain the validator
                         if let Some(evaluator_actor) = evaluator_actor {
                             if let Err(error) = evaluator_actor
-                                .tell(EvaluatorCommand::NetworkResponse {
+                                .tell(EvaluatorMessage::NetworkResponse {
                                     evaluation_res: res,
                                     request_id: message.info.request_id,
                                 })
@@ -392,7 +392,7 @@ impl Intermediary {
                         // We obtain the validator
                         if let Some(approver_actor) = approver_actor {
                             if let Err(error) = approver_actor
-                                .tell(ApproverCommand::NetworkResponse {
+                                .tell(ApproverMessage::NetworkResponse {
                                     approval_res: res,
                                     request_id: message.info.request_id,
                                 })
@@ -443,7 +443,7 @@ impl Intermediary {
 
                         // We obtain the validator
                         if let Err(error) = distributor_actor
-                            .tell(DistributorCommand::LedgerDistribution {
+                            .tell(DistributorMessage::LedgerDistribution {
                                 events: ledger,
                                 last_event,
                                 info: message.info,
@@ -465,7 +465,7 @@ impl Intermediary {
                         // We obtain the validator
                         if let Some(evaluator_actor) = distributor_actor {
                             if let Err(error) = evaluator_actor
-                                .tell(DistributorCommand::NetworkResponse {
+                                .tell(DistributorMessage::NetworkResponse {
                                     signer,
                                 })
                                 .await
@@ -526,12 +526,4 @@ impl Intermediary {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use actor::ActorSystem;
-    use identity::identifier::derive::KeyDerivator;
-    use tokio::sync::mpsc;
-
-    use super::Intermediary;
-}
+mod tests {}

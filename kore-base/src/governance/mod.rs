@@ -12,31 +12,23 @@ pub mod model;
 mod schema;
 
 use crate::{
-    db::{Database, Storable},
-    model::{request, wrapper::ValueWrapper, Namespace},
-    subject::SubjectState,
+    model::{wrapper::ValueWrapper, Namespace},
     Error,
 };
 
-use json_schema::JsonSchema;
-use model::{Contract, Roles};
+use model::Roles;
 pub use schema::schema;
 
 pub use model::{Member, Policy, Quorum, RequestStage, Role, Schema, Who};
 
-use identity::{
-    identifier::{DigestIdentifier, KeyIdentifier},
-    keys::KeyPair,
-};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
-    sync::atomic::AtomicU64,
 };
 
 /// Governance struct.
@@ -60,7 +52,10 @@ pub struct Governance {
 }
 
 impl Governance {
-    pub fn get_init_state(&self, schema_id: &str) -> Result<ValueWrapper, Error> {
+    pub fn get_init_state(
+        &self,
+        schema_id: &str,
+    ) -> Result<ValueWrapper, Error> {
         for schema in &self.schemas {
             if schema.id == schema_id {
                 debug!("Schema found: {}", schema_id);
@@ -446,11 +441,6 @@ impl Governance {
         false
     }
 
-    /// Governance version.
-    pub fn get_version(&self) -> u64 {
-        self.version
-    }
-
     /// Check if the key is a member.
     fn is_member(&self, id: &KeyIdentifier) -> bool {
         for member in &self.members {
@@ -462,12 +452,12 @@ impl Governance {
     }
 }
 
-impl TryFrom<SubjectState> for Governance {
+impl TryFrom<ValueWrapper> for Governance {
     type Error = Error;
 
-    fn try_from(subject: SubjectState) -> Result<Self, Self::Error> {
+    fn try_from(value: ValueWrapper) -> Result<Self, Self::Error> {
         let governance: Governance =
-            serde_json::from_value(subject.properties.0).map_err(|_| {
+            serde_json::from_value(value.0).map_err(|_| {
                 Error::Governance("Governance model not found.".to_owned())
             })?;
         Ok(governance)

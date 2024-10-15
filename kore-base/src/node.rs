@@ -4,41 +4,31 @@
 //! Node module
 //!
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+use std::path::Path;
 
 use async_std::fs;
 
 use crate::{
-    db::{Database, Storable},
-    evaluation,
-    helpers::encrypted_pass::EncryptedPass,
+    db::Storable,
     model::{
         event::Ledger,
-        request::EventRequest,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
     },
-    subject::{self, CreateSubjectData},
-    validation::proof::ValidationProof,
-    Api, Error, Event as KoreEvent, Subject, DIGEST_DERIVATOR,
+    subject::CreateSubjectData,
+    Error, Subject, DIGEST_DERIVATOR,
 };
 
 use identity::{
     identifier::{
-        derive::{digest::DigestDerivator, KeyDerivator},
-        DigestIdentifier, KeyIdentifier,
+        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
     },
-    keys::{
-        Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair, Secp256k1KeyPair,
-    },
+    keys::{KeyGenerator, KeyPair},
 };
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorSystem, Error as ActorError, Event,
-    Handler, Message, Response, SystemRef,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -64,6 +54,8 @@ pub struct Node {
     owned_subjects: Vec<String>,
     /// The node's known subjects.
     known_subjects: Vec<String>,
+    /// The node's known subjects in creation.
+    creation_subjects: Vec<String>,
     /// The authorized governances.
     authorized_governances: Vec<String>,
 }
@@ -76,6 +68,7 @@ impl Node {
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             authorized_governances: Vec::new(),
+            creation_subjects: Vec::new(),
         })
     }
 
@@ -297,12 +290,8 @@ impl Handler<Node> for Node {
             NodeMessage::CreateNewSubjectReq(data) => {
                 let subject = Subject::new(data.clone());
 
-
                 if let Err(e) = ctx
-                    .create_child(
-                        &format!("{}", data.subject_id),
-                        subject,
-                    )
+                    .create_child(&format!("{}", data.subject_id), subject)
                     .await
                 {
                     Ok(NodeResponse::Error(Error::Actor(format!("{}", e))))
@@ -317,6 +306,9 @@ impl Handler<Node> for Node {
                 let sign = match content {
                     SignTypesNode::Validation(validation) => {
                         self.sign(&validation)
+                    }
+                    SignTypesNode::ValidationProofEvent(proof_event) => {
+                        self.sign(&proof_event)
                     }
                     SignTypesNode::ValidationReq(validation_req) => {
                         self.sign(&validation_req)
@@ -339,6 +331,8 @@ impl Handler<Node> for Node {
                     SignTypesNode::ApprovalSignature(approval_sign) => {
                         self.sign(&approval_sign)
                     }
+                    SignTypesNode::Ledger(ledger) => self.sign(&ledger),
+                    SignTypesNode::Event(event) => self.sign(&event),
                 };
 
                 match sign {
@@ -347,30 +341,30 @@ impl Handler<Node> for Node {
                 }
             }
             NodeMessage::AmISubjectOwner(subject_id) => {
-                
                 Ok(NodeResponse::AmIOwner(
-                    self.get_owned_subjects()
-                        .iter()
-                        .any(|x| **x == subject_id),
+                    self.get_owned_subjects().iter().any(|x| **x == subject_id),
                 ))
             }
             NodeMessage::RegisterSubject(subject) => {
                 match subject {
                     SubjectsTypes::KnowSubject(subj) => {
-                        ctx.event(NodeEvent::KnownSubject(subj)).await?;
+                        ctx.publish_event(NodeEvent::KnownSubject(subj))
+                            .await?;
                     }
                     SubjectsTypes::OwnerSubject(subj) => {
-                        ctx.event(NodeEvent::OwnedSubject(subj)).await?;
+                        ctx.publish_event(NodeEvent::OwnedSubject(subj))
+                            .await?;
                     }
                 }
                 Ok(NodeResponse::None)
             }
             NodeMessage::IsAuthorized(subject_id) => {
                 // TODO Esto no se puede utilizar para governanza autorizada, tiene que ir a parte
-                Ok(NodeResponse::IsAuthorized(self
-                    .authorized_governances
-                    .iter()
-                    .any(|x| x.clone() == subject_id)))
+                Ok(NodeResponse::IsAuthorized(
+                    self.authorized_governances
+                        .iter()
+                        .any(|x| x.clone() == subject_id),
+                ))
             }
         }
     }
@@ -390,7 +384,4 @@ impl Handler<Node> for Node {
 impl Storable for Node {}
 
 #[cfg(test)]
-pub mod tests {
-
-    use super::*;
-}
+pub mod tests {}

@@ -1,10 +1,13 @@
 use crate::{
     db::Storable,
     intermediary::Intermediary,
-    model::{common::get_gov, network::RetryNetwork, signature, SignTypesNode},
-    ActorMessage, Error, EventRequest, Governance, NetworkMessage, Node,
-    NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectCommand,
-    SubjectResponse, DIGEST_DERIVATOR,
+    model::{
+        common::{get_gov, get_sign},
+        network::RetryNetwork,
+        SignTypesNode,
+    },
+    ActorMessage, Error, EventRequest, NetworkMessage, Signed, Subject,
+    SubjectMessage, SubjectResponse,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
@@ -12,18 +15,15 @@ use actor::{
     RetryMessage, Strategy,
 };
 use async_trait::async_trait;
-use identity::identifier::{
-    derive::digest::DigestDerivator, Derivable, DigestIdentifier, KeyIdentifier,
-};
+use identity::identifier::KeyIdentifier;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
-use tracing::error;
 
 use super::{
     request::ApprovalReq,
-    response::{self, ApprovalRes, ApprovalSignature},
-    Approval, ApprovalCommand,
+    response::{ApprovalRes, ApprovalSignature},
+    Approval, ApprovalMessage,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -83,16 +83,16 @@ impl Approver {
             ..Default::default()
         }
     }
-    
+
     async fn check_governance(
         &self,
         ctx: &mut ActorContext<Approver>,
-        subject_id: DigestIdentifier,
+        subject_id: &str,
         gov_version: u64,
     ) -> Result<(), Error> {
         let governance = get_gov(ctx, subject_id).await?;
 
-        match gov_version.cmp(&governance.get_version()) {
+        match gov_version.cmp(&governance.version) {
             std::cmp::Ordering::Equal => {
                 // If it is the same it means that we have the latest version of governance, we are up to date.
             }
@@ -111,65 +111,21 @@ impl Approver {
         Ok(())
     }
 
-    async fn sign_response(
-        &self,
-        ctx: &mut ActorContext<Approver>,
-        request: ApprovalReq,
-        response: bool,
-    ) -> Result<Signature, Error> {
-        let aprov_signature = ApprovalSignature { request, response };
-
-        // Node path.
-        let node_path = ActorPath::from("/user/node");
-        // Node actor.
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        let response = if let Some(node_actor) = node_actor {
-            // We ask a node
-            let response = node_actor
-                .ask(NodeMessage::SignRequest(
-                    SignTypesNode::ApprovalSignature(aprov_signature),
-                ))
-                .await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a node: {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The node actor was not found in the expected path /user/node"
-            )));
-        };
-
-        match response {
-            NodeResponse::SignRequest(sign) => Ok(sign),
-            NodeResponse::Error(error) => Err(Error::Actor(format!(
-                "The node encountered problems when signing the proof: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(format!(
-                "An unexpected response has been received from node actor"
-            ))),
-        }
-    }
-
     async fn send_response(
         &self,
         ctx: &mut ActorContext<Approver>,
         request: ApprovalReq,
         response: bool,
     ) -> Result<(), Error> {
-        let signature =
-            match self.sign_response(ctx, request.clone(), response).await {
-                Ok(signature) => signature,
-                Err(e) => todo!(),
-            };
+        let sign_type = SignTypesNode::ApprovalSignature(ApprovalSignature {
+            request: request.clone(),
+            response,
+        });
+
+        let signature = match get_sign(ctx, sign_type).await {
+            Ok(signature) => signature,
+            Err(e) => todo!(),
+        };
 
         let response = ApprovalRes::Response(signature, response);
 
@@ -202,30 +158,13 @@ impl Approver {
             schema: info.schema.clone(),
         };
 
-        // Aquí tiene que firmar el nodo la respuesta.
-        let node_path = ActorPath::from("/user/node");
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        let node_response = if let Some(node_actor) = node_actor {
-            match node_actor
-                .ask(NodeMessage::SignRequest(SignTypesNode::ApprovalRes(
-                    response.clone(),
-                )))
+        let signature =
+            match get_sign(ctx, SignTypesNode::ApprovalRes(response.clone()))
                 .await
             {
-                Ok(response) => response,
+                Ok(signature) => signature,
                 Err(e) => todo!(),
-            }
-        } else {
-            todo!()
-        };
-
-        let signature = match node_response {
-            NodeResponse::SignRequest(signature) => signature,
-            NodeResponse::Error(_) => todo!(),
-            _ => todo!(),
-        };
+            };
 
         let signed_response: Signed<ApprovalRes> = Signed {
             content: response,
@@ -251,7 +190,7 @@ impl Approver {
 }
 
 #[derive(Debug, Clone)]
-pub enum ApproverCommand {
+pub enum ApproverMessage {
     // Mensaje para aprobar localmente
     LocalApproval {
         request_id: String,
@@ -280,7 +219,7 @@ pub enum ApproverCommand {
     }, // Necesito poder emitir un evento de aprobación, no solo el automático
 }
 
-impl Message for ApproverCommand {}
+impl Message for ApproverMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApproverEvent {
@@ -303,7 +242,7 @@ impl Response for ApproverResponse {}
 #[async_trait]
 impl Actor for Approver {
     type Event = ApproverEvent;
-    type Message = ApproverCommand;
+    type Message = ApproverMessage;
     type Response = ApproverResponse;
 }
 
@@ -312,11 +251,11 @@ impl Handler<Approver> for Approver {
     async fn handle_message(
         &mut self,
         sender: ActorPath,
-        msg: ApproverCommand,
+        msg: ApproverMessage,
         ctx: &mut ActorContext<Approver>,
     ) -> Result<ApproverResponse, ActorError> {
         match msg {
-            ApproverCommand::ChangeResponse { response } => {
+            ApproverMessage::ChangeResponse { response } => {
                 let state = if let Some(state) = self.state.clone() {
                     state
                 } else {
@@ -326,7 +265,7 @@ impl Handler<Approver> for Approver {
                 if state == ApprovalState::Pending {
                     if response == ApprovalStateRes::Obsolete {
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: self.request.clone(),
                                 state: ApprovalState::Obsolete,
                                 info: None,
@@ -358,7 +297,7 @@ impl Handler<Approver> for Approver {
                         };
 
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: self.request.clone(),
                                 state,
                                 info: self.info.clone(),
@@ -373,7 +312,7 @@ impl Handler<Approver> for Approver {
                 }
             }
             // aprobar si esta por defecto
-            ApproverCommand::LocalApproval {
+            ApproverMessage::LocalApproval {
                 request_id,
                 approval_req,
                 our_key,
@@ -389,7 +328,7 @@ impl Handler<Approver> for Approver {
                     if let Err(e) = self
                         .check_governance(
                             ctx,
-                            approval_req.subject_id.clone(),
+                            &approval_req.subject_id.to_string(),
                             approval_req.gov_version,
                         )
                         .await
@@ -398,10 +337,14 @@ impl Handler<Approver> for Approver {
                     }
 
                     if self.pass_votation == VotationType::AlwaysAccept {
-                        let signature = match self
-                            .sign_response(ctx, approval_req.clone(), true)
-                            .await
-                        {
+                        let sign_type = SignTypesNode::ApprovalSignature(
+                            ApprovalSignature {
+                                request: approval_req.clone(),
+                                response: true,
+                            },
+                        );
+
+                        let signature = match get_sign(ctx, sign_type).await {
                             Ok(signature) => signature,
                             Err(e) => todo!(),
                         };
@@ -414,7 +357,7 @@ impl Handler<Approver> for Approver {
                         // Send response of validation to parent
                         if let Some(approval_actor) = approval_actor {
                             if let Err(e) = approval_actor
-                                .tell(ApprovalCommand::Response {
+                                .tell(ApprovalMessage::Response {
                                     approval_res: ApprovalRes::Response(
                                         signature, true,
                                     ),
@@ -430,7 +373,7 @@ impl Handler<Approver> for Approver {
                         }
 
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: Some(approval_req),
                                 state: ApprovalState::RespondedAccepted,
                                 info: None,
@@ -441,7 +384,7 @@ impl Handler<Approver> for Approver {
                         };
                     } else {
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: Some(approval_req),
                                 state: ApprovalState::Pending,
                                 info: None,
@@ -453,7 +396,7 @@ impl Handler<Approver> for Approver {
                     }
                 }
             }
-            ApproverCommand::NetworkApproval {
+            ApproverMessage::NetworkApproval {
                 request_id,
                 approval_req,
                 node_key,
@@ -508,7 +451,7 @@ impl Handler<Approver> for Approver {
                 };
             }
             // Finaliza los retries
-            ApproverCommand::NetworkResponse {
+            ApproverMessage::NetworkResponse {
                 approval_res,
                 request_id,
             } => {
@@ -531,7 +474,7 @@ impl Handler<Approver> for Approver {
 
                     if let Some(approval_actor) = approval_actor {
                         if let Err(e) = approval_actor
-                            .tell(ApprovalCommand::Response {
+                            .tell(ApprovalMessage::Response {
                                 approval_res: approval_res.content,
                                 sender: self.node.clone(),
                             })
@@ -559,7 +502,7 @@ impl Handler<Approver> for Approver {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
                 }
             }
-            ApproverCommand::NetworkRequest { approval_req, info } => {
+            ApproverMessage::NetworkRequest { approval_req, info } => {
                 if info.request_id != self.request_id {
                     let subject_path = ActorPath::from(format!(
                         "/user/node/{}",
@@ -570,7 +513,7 @@ impl Handler<Approver> for Approver {
 
                     // We obtain the evaluator
                     let response = if let Some(subject_actor) = subject_actor {
-                        match subject_actor.ask(SubjectCommand::GetOwner).await
+                        match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
                             Err(e) => todo!(),
@@ -596,7 +539,7 @@ impl Handler<Approver> for Approver {
 
                     let helper: Option<Intermediary> =
                         ctx.system().get_helper("NetworkIntermediary").await;
-                    let mut helper = if let Some(helper) = helper {
+                    let helper = if let Some(helper) = helper {
                         helper
                     } else {
                         // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
@@ -614,7 +557,7 @@ impl Handler<Approver> for Approver {
                     if let Err(e) = self
                         .check_governance(
                             ctx,
-                            approval_req.content.subject_id.clone(),
+                            &approval_req.content.subject_id.to_string(),
                             approval_req.content.gov_version,
                         )
                         .await
@@ -635,7 +578,7 @@ impl Handler<Approver> for Approver {
                         };
 
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: Some(approval_req.content),
                                 state: ApprovalState::RespondedAccepted,
                                 info: None,
@@ -646,7 +589,7 @@ impl Handler<Approver> for Approver {
                         };
                     } else {
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: Some(approval_req.content),
                                 state: ApprovalState::Pending,
                                 info: Some(info),

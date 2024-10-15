@@ -6,15 +6,12 @@
 
 use crate::{
     model::{request::EventRequest, signature::Signed},
-    node::Node,
-    request::handler::{
-        RequestHandler, RequestHandlerCommand, RequestResponse,
-    },
+    request::{RequestHandler, RequestHandlerResponse},
     Error,
 };
 
-use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler, SystemRef};
-use identity::{identifier::KeyIdentifier, keys::KeyPair};
+use actor::ActorRef;
+use identity::keys::KeyPair;
 
 pub struct Api {
     keys: KeyPair,
@@ -31,18 +28,21 @@ impl Api {
     pub async fn external_request(
         &self,
         event: Signed<EventRequest>,
-    ) -> Result<RequestResponse, Error> {
+    ) -> Result<RequestHandlerResponse, Error> {
+        /*
         self.request
             .ask(RequestHandlerCommand::StartRequest(event))
             .await
             .map_err(|e| Error::Actor(e.to_string()))
+         */
+        todo!()
     }
 
     /// Own request.
     pub async fn own_request(
         &self,
         event: EventRequest,
-    ) -> Result<RequestResponse, Error> {
+    ) -> Result<RequestHandlerResponse, Error> {
         todo!()
     }
 }
