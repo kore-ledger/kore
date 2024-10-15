@@ -84,7 +84,7 @@ impl RequestHandler {
 
         // Emits the `RequestEvent` event.
         if ctx
-            .event(RequestHandlerEvent::Start {
+            .publish_event(RequestHandlerEvent::Start {
                 id: request_id.clone(),
                 request: msg,
             })
@@ -116,7 +116,7 @@ impl RequestHandler {
         }
 
         // Emits the `RequestEvent` event.
-        if ctx.event(RequestHandlerEvent::End { id }).await.is_err() {
+        if ctx.publish_event(RequestHandlerEvent::End { id }).await.is_err() {
             error!("failed to emit event");
             return RequestResponse::Error(Error::RequestEvent(
                 "failed to emit event".to_owned(),

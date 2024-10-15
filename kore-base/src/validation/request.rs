@@ -5,7 +5,7 @@ use super::{proof::ValidationProof, response::ValidationRes};
 
 use crate::{
     model::{
-        event::ProtocolsResponse, network::TimeOutResponse, request::EventRequest, signature::Signature, HashId, ValueWrapper
+        event::ProtocolsSignatures, network::TimeOutResponse, request::EventRequest, signature::Signature, HashId, ValueWrapper
     },
     Error,
 };
@@ -26,7 +26,7 @@ pub struct ValidationReq {
     // Hay que sacarlo de la base de datos,
     pub previous_proof: Option<ValidationProof>,
     // Hay que sacarlo de la base de datos,
-    pub prev_event_validation_response: Vec<ProtocolsResponse>,
+    pub prev_event_validation_response: Vec<ProtocolsSignatures>,
 }
 
 impl HashId for ValidationReq {

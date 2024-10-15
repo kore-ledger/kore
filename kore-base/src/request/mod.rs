@@ -116,7 +116,7 @@ impl RequestHandler {
             }
         } else {
             let governance =
-                get_gov(ctx, create_req.governance_id.clone()).await?;
+                get_gov(ctx, &create_req.governance_id.to_string()).await?;
             let value = governance.get_init_state(&create_req.schema_id)?;
 
             CreateSubjectData {
@@ -295,7 +295,7 @@ impl Handler<RequestHandler> for RequestHandler {
                                 return Ok(RequestHandlerResponse::Error(Error::RequestHandler("The creation event is for a traceability subject, the governance_id cannot be empty.".to_owned())));
                             }
 
-                            let gov = match get_gov(ctx, create_request.governance_id.clone()).await {
+                            let gov = match get_gov(ctx, &create_request.governance_id.to_string()).await {
                                 Ok(gov) => gov,
                                 Err(e) => return Ok(RequestHandlerResponse::Error(Error::RequestHandler(format!("It has not been possible to obtain governance: {}", e)))),
                             };

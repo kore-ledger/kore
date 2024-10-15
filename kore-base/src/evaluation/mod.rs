@@ -17,16 +17,17 @@ use crate::{
     governance::{model::Roles, Governance, Quorum, RequestStage},
     model::{
         common::{get_metadata, get_sign},
-        event::Event as KoreEvent,
+        event::{
+            Event as KoreEvent, LedgerValue, ProtocolsError, ProtocolsSignatures,
+        },
         namespace,
         request::EventRequest,
         signature::{self, Signature, Signed},
         HashId, Namespace, SignTypesNode,
     },
     node::{Node, NodeMessage, NodeResponse},
-    subject::{
-        Subject, SubjectMessage, SubjectMetadata, SubjectResponse,
-    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::{Subject, SubjectMessage, SubjectMetadata, SubjectResponse},
     Error, ValueWrapper, DIGEST_DERIVATOR,
 };
 use actor::{
@@ -42,7 +43,7 @@ use identity::identifier::{
     KeyIdentifier,
 };
 use request::{EvaluationReq, SubjectContext};
-use response::{EvaluationRes, Response as EvalRes};
+use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
@@ -62,7 +63,11 @@ pub struct Evaluation {
     // Evaluators quantity
     evaluators_quantity: u32,
 
-    state: ValueWrapper,
+    evaluators_signatures: Vec<ProtocolsSignatures>,
+    request_id: String,
+    errors: String,
+
+    eval_req: Option<EvaluationReq>,
 }
 
 impl Evaluation {
@@ -203,38 +208,88 @@ impl Evaluation {
         set.len() == 1
     }
 
-    fn fail_evaluation(&self) -> EvalRes {
+    fn fail_evaluation(&self) -> EvalLedgerResponse {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
+        let state = if let Some(req) = self.eval_req.clone() {
+            req.context.state
+        } else {
+            todo!()
+        };
 
-        let state_hash = match self.state.hash_id(derivator) {
+        let state_hash = match state.hash_id(derivator) {
             Ok(state_hash) => state_hash,
             Err(e) => todo!(),
         };
 
-        EvalRes {
-            patch: ValueWrapper(serde_json::Value::String("[]".to_owned())),
+        let mut error = self.errors.clone();
+        if self.errors.is_empty() {
+            error =
+                "who: ALL, error: No evaluator was able to evaluate the event."
+                    .to_owned()
+        }
+
+        EvalLedgerResponse {
+            value: LedgerValue::Error(ProtocolsError {
+                evaluation: Some(error),
+                validation: None,
+            }),
             state_hash,
             eval_success: false,
             appr_required: false,
         }
+    }
+
+    async fn send_evaluation_to_req(
+        &self,
+        ctx: &mut ActorContext<Evaluation>,
+        response: EvalLedgerResponse,
+    ) -> Result<(), Error> {
+        let req_path =
+            ActorPath::from(format!("/user/request/{}", self.request_id));
+        let req_actor: Option<ActorRef<RequestManager>> =
+            ctx.system().get_actor(&req_path).await;
+
+        let request = if let Some(req) = self.eval_req.clone() {
+            req
+        } else {
+            todo!()
+        };
+
+        if let Some(req_actor) = req_actor {
+            if let Err(e) = req_actor
+                .tell(RequestManagerMessage::EvaluationRes {
+                    request,
+                    response,
+                    signatures: self.evaluators_signatures.clone(),
+                })
+                .await
+            {
+                todo!()
+            }
+        } else {
+            todo!()
+        };
+
+        Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum EvaluationMessage {
     Create {
-        request_id: DigestIdentifier,
+        request_id: String,
         request: Signed<EventRequest>,
     },
 
     Response {
         evaluation_res: EvaluationRes,
         sender: KeyIdentifier,
+        signature: Option<Signature>,
     },
 }
 
@@ -283,13 +338,14 @@ impl Handler<Evaluation> for Evaluation {
                     todo!()
                 };
 
-                let metadata = match get_metadata(ctx, subject_id).await {
-                    Ok(metadata) => metadata,
-                    Err(e) => {
-                        // No se puede obtener la metadata
-                        todo!()
-                    }
-                };
+                let metadata =
+                    match get_metadata(ctx, &subject_id.to_string()).await {
+                        Ok(metadata) => metadata,
+                        Err(e) => {
+                            // No se puede obtener la metadata
+                            todo!()
+                        }
+                    };
 
                 let governance = if metadata.governance_id.digest.is_empty() {
                     metadata.subject_id.clone()
@@ -320,16 +376,22 @@ impl Handler<Evaluation> for Evaluation {
                 );
 
                 self.evaluators_response = vec![];
-                self.state = eval_req.context.state.clone();
+                self.eval_req = Some(eval_req.clone());
                 self.quorum = quorum;
                 self.evaluators.clone_from(&signers);
                 self.evaluators_quantity = signers.len() as u32;
-                let request_id = request_id.to_string();
+                self.request_id = request_id.to_string();
+                self.evaluators_signatures = vec![];
+                self.errors = String::default();
 
-                let signature =
-                    match get_sign(ctx, SignTypesNode::EvaluationReq(eval_req.clone())).await {
-                        Ok(signature) => signature,
-                        Err(e) => todo!(),
+                let signature = match get_sign(
+                    ctx,
+                    SignTypesNode::EvaluationReq(eval_req.clone()),
+                )
+                .await
+                {
+                    Ok(signature) => signature,
+                    Err(e) => todo!(),
                 };
 
                 let signed_evaluation_req: Signed<EvaluationReq> = Signed {
@@ -340,7 +402,7 @@ impl Handler<Evaluation> for Evaluation {
                 for signer in signers {
                     self.create_evaluators(
                         ctx,
-                        &request_id,
+                        &self.request_id,
                         signed_evaluation_req.clone(),
                         &metadata.schema_id,
                         signer,
@@ -351,18 +413,32 @@ impl Handler<Evaluation> for Evaluation {
             EvaluationMessage::Response {
                 evaluation_res,
                 sender,
+                signature,
             } => {
                 // TODO Al menos una validación tiene que ser válida, no solo errores y timeout.
 
                 // If node is in evaluator list
-                if self.check_evaluator(sender) {
+                if self.check_evaluator(sender.clone()) {
                     // Check type of validation
                     match evaluation_res {
                         EvaluationRes::Response(response) => {
-                            self.evaluators_response.push(response)
+                            if let Some(signature) = signature {
+                                self.evaluators_signatures.push(
+                                    ProtocolsSignatures::Signature(signature),
+                                );
+                            } else {
+                                todo!()
+                            }
+                            self.evaluators_response.push(response);
                         }
+                        EvaluationRes::TimeOut(timeout) => self
+                            .evaluators_signatures
+                            .push(ProtocolsSignatures::TimeOut(timeout)),
                         EvaluationRes::Error(error) => {
-                            // Mostrar el error TODO
+                            self.errors = format!(
+                                "{} who: {}, error: {}.",
+                                self.errors, sender, error
+                            );
                         }
                     };
 
@@ -372,29 +448,25 @@ impl Handler<Evaluation> for Evaluation {
                         self.evaluators_quantity,
                         self.evaluators_response.len() as u32,
                     ) {
-                        if self.check_responses() {
-                            let _ = self.evaluators_response[0];
+                        let response = if self.check_responses() {
+                            EvalLedgerResponse::from(
+                                self.evaluators_response[0].clone(),
+                            )
                         } else {
-                            let _ = self.fail_evaluation();
-                        }
-                        // Chequear que todas las respuestas que hemos recibido son las mismas TODO.
+                            self.fail_evaluation()
+                        };
+
+                        if let Err(e) =
+                            self.send_evaluation_to_req(ctx, response).await
+                        {
+                        };
                     } else {
                         if self.evaluators.is_empty() {
-                            let derivator = if let Ok(derivator) =
-                                DIGEST_DERIVATOR.lock()
+                            let response = self.fail_evaluation();
+                            if let Err(e) =
+                                self.send_evaluation_to_req(ctx, response).await
                             {
-                                *derivator
-                            } else {
-                                error!("Error getting derivator");
-                                DigestDerivator::Blake3_256
                             };
-
-                            let state_hash = match self.state.hash_id(derivator)
-                            {
-                                Ok(state_hash) => state_hash,
-                                Err(e) => todo!(),
-                            };
-                            let _ = self.fail_evaluation();
                         }
                     }
                 } else {

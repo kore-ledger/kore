@@ -318,7 +318,7 @@ impl Intermediary {
                                 .tell(DistributorMessage::SendDistribution {
                                     gov_version,
                                     actual_sn,
-                                    subject_id,
+                                    subject_id: subject_id.to_string(),
                                     info: message.info,
                                 })
                                 .await

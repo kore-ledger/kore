@@ -7,7 +7,7 @@ use crate::{
     governance::{model::Roles, Governance, RequestStage},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::{get_gov, get_sign}, event::ProtocolsResponse, network::{RetryNetwork, TimeOutResponse}, signature::Signature, SignTypesNode, TimeStamp
+        common::{get_gov, get_sign}, event::ProtocolsSignatures, network::{RetryNetwork, TimeOutResponse}, signature::Signature, SignTypesNode, TimeStamp
     },
     node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectMessage, SubjectResponse},
@@ -147,7 +147,7 @@ impl Validator {
                     validation_req.proof.governance_id.clone()
                 };
 
-            get_gov(ctx, governance_id).await?.version
+            get_gov(ctx, &governance_id.to_string()).await?.version
         };
 
         match actual_gov_version.cmp(&validation_req.proof.governance_version) {
@@ -198,7 +198,7 @@ impl Validator {
         ctx: &mut ActorContext<Validator>,
         new_proof: &ValidationProof,
         previous_proof: Option<ValidationProof>,
-        previous_validation_signatures: Vec<ProtocolsResponse>,
+        previous_validation_signatures: Vec<ProtocolsSignatures>,
     ) -> Result<(), Error> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
@@ -225,7 +225,7 @@ impl Validator {
                     .map(|signer_res| {
                         match signer_res {
                             // Signer response
-                            ProtocolsResponse::Signature(signature) => {
+                            ProtocolsSignatures::Signature(signature) => {
 
                                 if let Err(error) = signature.verify(&previous_proof) {
                                     Err(Error::Signature(format!("An error occurred while validating the previous proof, {:?}", error)))
@@ -234,7 +234,7 @@ impl Validator {
                                 }
                             }
                             // TimeOut response
-                            ProtocolsResponse::TimeOut(time_out) => Ok(time_out.who),
+                            ProtocolsSignatures::TimeOut(time_out) => Ok(time_out.who),
                         }
                     })
                     .collect();
@@ -249,7 +249,7 @@ impl Validator {
             };
 
             let actual_signers =
-                get_gov(ctx, governance_id).await?.get_signers(
+                get_gov(ctx, &governance_id.to_string()).await?.get_signers(
                     Roles::VALIDATOR,
                     &new_proof.schema_id,
                     new_proof.namespace.clone(),

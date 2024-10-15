@@ -68,7 +68,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
     ) -> Result<LedgerEventResponse, ActorError> {
         match msg {
             LedgerEventMessage::UpdateLastEvent { event } => {
-                if let Err(e) = ctx.event(event).await {
+                if let Err(e) = ctx.publish_event(event).await {
                     todo!()
                 };
                 Ok(LedgerEventResponse::Ok)

@@ -7,7 +7,7 @@ use crate::{
 
 pub async fn get_gov<A>(
     ctx: &mut ActorContext<A>,
-    subject_id: DigestIdentifier,
+    subject_id: &str,
 ) -> Result<Governance, Error>
 where
     A: Actor + Handler<A>,
@@ -59,7 +59,7 @@ where
 
 pub async fn get_metadata<A>(
     ctx: &mut ActorContext<A>,
-    subject_id: DigestIdentifier,
+    subject_id: &str,
 ) -> Result<SubjectMetadata, Error>
 where
     A: Actor + Handler<A>,

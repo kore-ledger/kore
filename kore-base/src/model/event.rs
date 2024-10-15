@@ -12,7 +12,7 @@ use super::{
     HashId,
 };
 
-use crate::{model::Namespace, subject::Subject, validation::proof::EventProof, Error};
+use crate::{model::Namespace, subject::{Subject, SubjectMetadata}, validation::proof::EventProof, Error};
 
 use identity::{
     identifier::{
@@ -24,6 +24,19 @@ use identity::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+
+pub struct DataProofEvent {
+    pub gov_version: u64,
+    pub sn: u64,
+    pub metadata: SubjectMetadata,
+    pub eval_success: Option<bool>,
+    pub appr_required: bool,
+    pub appr_success: Option<bool>,
+    pub value: LedgerValue,
+    pub state_hash: DigestIdentifier,
+    pub eval_signatures: Option<HashSet<ProtocolsSignatures>>,
+    pub appr_signatures: Option<HashSet<ProtocolsSignatures>>,
+}
 
 /// A struct representing an event.
 #[derive(
@@ -58,9 +71,9 @@ pub struct ProofEvent {
     /// The hash of the previous event.
     pub hash_prev_event: DigestIdentifier,
     /// The set of evaluators who have evaluated the event.
-    pub evaluators: Option<HashSet<Signature>>,
+    pub evaluators: Option<HashSet<ProtocolsSignatures>>,
     /// The set of approvers who have approved the event.
-    pub approvers: Option<HashSet<ProtocolsResponse>>,
+    pub approvers: Option<HashSet<ProtocolsSignatures>>,
 }
 
 #[derive(
@@ -76,7 +89,7 @@ pub struct ProofEvent {
     PartialOrd,
     Ord,
 )]
-pub enum ProtocolsResponse {
+pub enum ProtocolsSignatures {
     Signature(Signature),
     TimeOut(TimeOutResponse),
 }
@@ -137,11 +150,11 @@ pub struct Event {
     /// The hash of the previous event.
     pub hash_prev_event: DigestIdentifier,
     /// The set of evaluators who have evaluated the event.
-    pub evaluators: Option<HashSet<Signature>>,
+    pub evaluators: Option<HashSet<ProtocolsSignatures>>,
     /// The set of approvers who have approved the event.
-    pub approvers: Option<HashSet<ProtocolsResponse>>,
+    pub approvers: Option<HashSet<ProtocolsSignatures>>,
 
-    pub validators: HashSet<ProtocolsResponse>,
+    pub validators: HashSet<ProtocolsSignatures>,
 }
 
 impl HashId for Event {

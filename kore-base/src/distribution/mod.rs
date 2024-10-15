@@ -151,7 +151,7 @@ impl Actor for Distribution {
 #[derive(Debug, Clone)]
 pub enum DistributionMessage {
     Create {
-        request_id: DigestIdentifier,
+        request_id: String,
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
     },

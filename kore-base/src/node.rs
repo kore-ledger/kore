@@ -362,10 +362,10 @@ impl Handler<Node> for Node {
             NodeMessage::RegisterSubject(subject) => {
                 match subject {
                     SubjectsTypes::KnowSubject(subj) => {
-                        ctx.event(NodeEvent::KnownSubject(subj)).await?;
+                        ctx.publish_event(NodeEvent::KnownSubject(subj)).await?;
                     }
                     SubjectsTypes::OwnerSubject(subj) => {
-                        ctx.event(NodeEvent::OwnedSubject(subj)).await?;
+                        ctx.publish_event(NodeEvent::OwnedSubject(subj)).await?;
                     }
                 }
                 Ok(NodeResponse::None)

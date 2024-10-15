@@ -123,7 +123,7 @@ impl Distributor {
         }
         // si no es una gov ver si el signer es creator.
         else {
-            let gov = get_gov(ctx, subject_id.clone()).await;
+            let gov = get_gov(ctx, &subject_id.to_string()).await;
             let gov = match gov {
                 Ok(gov) => gov,
                 Err(e) => todo!(),
@@ -240,7 +240,7 @@ impl Distributor {
     async fn get_ledger(
         &self,
         ctx: &mut ActorContext<Distributor>,
-        subject_id: DigestIdentifier,
+        subject_id: &str,
         last_sn: u64,
     ) -> Result<(Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>), Error> {
         let subject_path =
@@ -282,16 +282,16 @@ impl Distributor {
     async fn check_gov_version(
         &self,
         ctx: &mut ActorContext<Distributor>,
-        subject_id: DigestIdentifier,
+        subject_id: &str,
         gov_version: Option<u64>,
         info: ComunicateInfo,
     ) -> Result<CheckGovernance, ActorError> {
-        let gov = match get_gov(ctx, subject_id.clone()).await {
+        let gov = match get_gov(ctx, subject_id).await {
             Ok(gov) => gov,
             Err(e) => todo!(),
         };
 
-        let metadata = match get_metadata(ctx, subject_id.clone()).await {
+        let metadata = match get_metadata(ctx, subject_id).await {
             Ok(metadata) => metadata,
             Err(e) => todo!(),
         };
@@ -384,7 +384,7 @@ impl Distributor {
                             .tell(DistributorMessage::SendDistribution {
                                 gov_version: Some(gov_version),
                                 actual_sn: Some(gov_version),
-                                subject_id: metadata.governance_id,
+                                subject_id: metadata.governance_id.to_string(),
                                 info: new_info,
                             })
                             .await
@@ -433,7 +433,7 @@ pub enum DistributorMessage {
     SendDistribution {
         gov_version: Option<u64>,
         actual_sn: Option<u64>,
-        subject_id: DigestIdentifier,
+        subject_id: String,
         info: ComunicateInfo,
     },
     // Enviar a un nodo la replicación.
@@ -480,7 +480,7 @@ impl Handler<Distributor> for Distributor {
                 let result = self
                     .check_gov_version(
                         ctx,
-                        subject_id.clone(),
+                        &subject_id,
                         gov_version,
                         info.clone(),
                     )
@@ -498,7 +498,7 @@ impl Handler<Distributor> for Distributor {
 
                 // Sacar eventos.
                 let (ledger, last_event) =
-                    match self.get_ledger(ctx, subject_id.clone(), sn).await {
+                    match self.get_ledger(ctx, &subject_id, sn).await {
                         Ok(res) => res,
                         Err(e) => todo!(),
                     };
@@ -631,7 +631,7 @@ impl Handler<Distributor> for Distributor {
                 let result = self
                     .check_gov_version(
                         ctx,
-                        ledger.content.subject_id.clone(),
+                        &ledger.content.subject_id.to_string(),
                         Some(ledger.content.gov_version.clone()),
                         info.clone(),
                     )
@@ -692,7 +692,7 @@ impl Handler<Distributor> for Distributor {
                             if last_sn < ledger.content.sn {
                                 let gov = match get_gov(
                                     ctx,
-                                    ledger.content.subject_id.clone(),
+                                    &ledger.content.subject_id.to_string(),
                                 )
                                 .await
                                 {
@@ -898,7 +898,7 @@ impl Handler<Distributor> for Distributor {
                                         event.content.gov_version,
                                     ),
                                     actual_sn: Some(last_sn_events),
-                                    subject_id,
+                                    subject_id: subject_id.to_string(),
                                     info,
                                 })
                                 .await
@@ -921,7 +921,7 @@ impl Handler<Distributor> for Distributor {
                     metadata.governance_id
                 };
 
-                let gov = match get_gov(ctx, gov_id).await {
+                let gov = match get_gov(ctx, &gov_id.to_string()).await {
                     Ok(gov) => gov,
                     Err(e) => todo!(),
                 };

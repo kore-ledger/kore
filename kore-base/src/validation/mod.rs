@@ -12,7 +12,7 @@ pub mod validator;
 
 use crate::{
     db::Storable, governance::{model::Roles, Quorum, RequestStage}, model::{
-        common::get_sign, event::{Event as KoreEvent, ProofEvent, ProtocolsResponse}, signature::Signed, Namespace, SignTypesNode, SignTypesSubject
+        common::get_sign, event::{Event as KoreEvent, ProofEvent, ProtocolsSignatures}, signature::Signed, Namespace, SignTypesNode, SignTypesSubject
     }, node::{Node, NodeMessage, NodeResponse}, request::manager::{RequestManager, RequestManagerMessage}, subject::{Subject, SubjectMessage, SubjectMetadata, SubjectResponse}, Error, DIGEST_DERIVATOR
 };
 use actor::{
@@ -53,7 +53,7 @@ pub struct Validation {
     // Validators
     validators: HashSet<KeyIdentifier>,
     // Actual responses
-    validators_response: Vec<ProtocolsResponse>,
+    validators_response: Vec<ProtocolsSignatures>,
     // Validators quantity
     validators_quantity: u32,
 
@@ -65,9 +65,8 @@ pub struct Validation {
 
     request_id: String,
 
-
     previous_proof: Option<ValidationProof>,
-    prev_event_validation_response: Vec<ProtocolsResponse>,
+    prev_event_validation_response: Vec<ProtocolsSignatures>,
 }
 
 impl Validation {
@@ -277,7 +276,7 @@ impl Validation {
 #[derive(Debug, Clone)]
 pub enum ValidationMessage {
     Create {
-        request_id: DigestIdentifier,
+        request_id: String,
         info: ValidationInfo,
     },
 
@@ -292,7 +291,7 @@ impl Message for ValidationMessage {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationEvent {
     pub actual_proof: ValidationProof,
-    pub actual_event_validation_response: Vec<ProtocolsResponse>,
+    pub actual_event_validation_response: Vec<ProtocolsSignatures>,
 }
 
 impl Event for ValidationEvent {}
@@ -414,11 +413,11 @@ impl Handler<Validation> for Validation {
                             self.valid_validation = true;
                             self
                             .validators_response
-                            .push(ProtocolsResponse::Signature(signature))
+                            .push(ProtocolsSignatures::Signature(signature))
                         },
                         ValidationRes::TimeOut(timeout) => self
                             .validators_response
-                            .push(ProtocolsResponse::TimeOut(timeout)),
+                            .push(ProtocolsSignatures::TimeOut(timeout)),
                         ValidationRes::Error(error) => {
                             self.errors = format!("{} who: {}, error: {}.", self.errors, sender, error);
                         }
@@ -430,7 +429,7 @@ impl Handler<Validation> for Validation {
                     ) && self.valid_validation {
                         // The quorum was met, we persisted, and we applied the status
                         if let Err(e) = ctx
-                            .event(ValidationEvent {
+                            .publish_event(ValidationEvent {
                                 actual_proof: self.actual_proof.clone(),
                                 actual_event_validation_response: self
                                     .validators_response
@@ -447,7 +446,7 @@ impl Handler<Validation> for Validation {
                     } else if self.validators.is_empty() {
                         // we have received all the responses and the quorum has not been met
                         if let Err(e) = ctx
-                            .event(ValidationEvent {
+                            .publish_event(ValidationEvent {
                                 actual_proof: self.actual_proof.clone(),
                                 actual_event_validation_response: self
                                     .validators_response

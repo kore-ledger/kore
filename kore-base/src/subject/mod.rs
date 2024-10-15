@@ -782,7 +782,7 @@ impl Subject {
                 }
             }
             // Aplicar evento.
-            if let Err(e) = ctx.event(event.clone()).await {
+            if let Err(e) = ctx.publish_event(event.clone()).await {
                 todo!()
             };
 

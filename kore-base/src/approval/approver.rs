@@ -87,7 +87,7 @@ impl Approver {
     async fn check_governance(
         &self,
         ctx: &mut ActorContext<Approver>,
-        subject_id: DigestIdentifier,
+        subject_id: &str,
         gov_version: u64,
     ) -> Result<(), Error> {
         let governance = get_gov(ctx, subject_id).await?;
@@ -263,7 +263,7 @@ impl Handler<Approver> for Approver {
                 if state == ApprovalState::Pending {
                     if response == ApprovalStateRes::Obsolete {
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: self.request.clone(),
                                 state: ApprovalState::Obsolete,
                                 info: None,
@@ -295,7 +295,7 @@ impl Handler<Approver> for Approver {
                         };
 
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: self.request.clone(),
                                 state,
                                 info: self.info.clone(),
@@ -326,7 +326,7 @@ impl Handler<Approver> for Approver {
                     if let Err(e) = self
                         .check_governance(
                             ctx,
-                            approval_req.subject_id.clone(),
+                            &approval_req.subject_id.to_string(),
                             approval_req.gov_version,
                         )
                         .await
@@ -367,7 +367,7 @@ impl Handler<Approver> for Approver {
                         }
 
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: Some(approval_req),
                                 state: ApprovalState::RespondedAccepted,
                                 info: None,
@@ -378,7 +378,7 @@ impl Handler<Approver> for Approver {
                         };
                     } else {
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: Some(approval_req),
                                 state: ApprovalState::Pending,
                                 info: None,
@@ -551,7 +551,7 @@ impl Handler<Approver> for Approver {
                     if let Err(e) = self
                         .check_governance(
                             ctx,
-                            approval_req.content.subject_id.clone(),
+                            &approval_req.content.subject_id.to_string(),
                             approval_req.content.gov_version,
                         )
                         .await
@@ -572,7 +572,7 @@ impl Handler<Approver> for Approver {
                         };
 
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: Some(approval_req.content),
                                 state: ApprovalState::RespondedAccepted,
                                 info: None,
@@ -583,7 +583,7 @@ impl Handler<Approver> for Approver {
                         };
                     } else {
                         if let Err(e) = ctx
-                            .event(ApproverEvent::SafeState {
+                            .publish_event(ApproverEvent::SafeState {
                                 request: Some(approval_req.content),
                                 state: ApprovalState::Pending,
                                 info: Some(info),

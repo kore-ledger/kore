@@ -1,9 +1,11 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::collections::HashSet;
+
 use crate::{
-    evaluation::response::EvaluationRes, governance::RequestStage, model::{
-        event::Ledger, request::{CreateRequest, EventRequest}, signature::{Signature, Signed}
+    evaluation::{request::EvaluationReq, response::{EvalLedgerResponse, EvaluationRes}}, governance::RequestStage, model::{
+        event::{Ledger, ProtocolsSignatures}, request::{CreateRequest, EventRequest}, signature::{Signature, Signed}
     }, ConfirmRequest, EOLRequest, Error, Event as KoreEvent, TransferRequest, ValidationInfo
 };
 
@@ -12,8 +14,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RequestSate {
     Starting,
-    Evaluation(),
-    Approval(),
+    Evaluation,
+    Approval {
+        eval_req: EvaluationReq,
+        eval_res: EvalLedgerResponse,
+        eval_signatures: HashSet<ProtocolsSignatures>
+    },
     Validation(ValidationInfo),
     Distribution {
         event: Signed<KoreEvent>,

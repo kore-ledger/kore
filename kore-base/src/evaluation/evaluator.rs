@@ -11,7 +11,7 @@ use crate::{
     },
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::{get_gov, get_sign}, network::RetryNetwork, signature::Signature, HashId,
+        common::{get_gov, get_sign}, network::{RetryNetwork, TimeOutResponse}, signature::Signature, HashId,
         SignTypesNode, TimeStamp,
     },
     node::{self, Node, NodeMessage, NodeResponse},
@@ -167,7 +167,7 @@ impl Evaluator {
         };
 
         // Get governance
-        let governance = get_gov(ctx, governance_id.clone()).await?;
+        let governance = get_gov(ctx, &governance_id.to_string()).await?;
         // Get governance version
         let governance_version = governance.version;
 
@@ -419,6 +419,11 @@ impl Handler<Evaluator> for Evaluator {
                     }
                 };
 
+                let signature = match get_sign(ctx, SignTypesNode::EvaluationRes(evaluation.clone())).await {
+                    Ok(signature) => signature,
+                    Err(e) => todo!()
+                };
+
                 // Evaluatiob path.
                 let evaluation_path = ctx.path().parent();
 
@@ -431,6 +436,7 @@ impl Handler<Evaluator> for Evaluator {
                         .tell(EvaluationMessage::Response {
                             evaluation_res: evaluation,
                             sender: our_key,
+                            signature: Some(signature)
                         })
                         .await?
                 } else {
@@ -525,6 +531,7 @@ impl Handler<Evaluator> for Evaluator {
                             .tell(EvaluationMessage::Response {
                                 evaluation_res: evaluation_res.content,
                                 sender: self.node.clone(),
+                                signature: Some(evaluation_res.signature)
                             })
                             .await
                         {
@@ -685,7 +692,13 @@ impl Handler<Evaluator> for Evaluator {
                 if let Some(evaluation_actor) = evaluation_actor {
                     if let Err(e) = evaluation_actor
                         .tell(EvaluationMessage::Response {
-                            evaluation_res: EvaluationRes::Error(error),
+                            evaluation_res: EvaluationRes::TimeOut(
+                                TimeOutResponse {
+                                    re_trys: 3,
+                                    timestamp: TimeStamp::now(),
+                                    who: self.node.clone(),
+                                },),
+                            signature: None,
                             sender: self.node.clone(),
                         })
                         .await

@@ -18,11 +18,13 @@ use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error, event};
 
-use crate::evaluation::response::EvaluationRes;
+use crate::evaluation::response::{EvalLedgerResponse, EvaluationRes};
 use crate::governance::model::Roles;
 use crate::governance::RequestStage;
 use crate::model::common::get_sign;
+use crate::model::event::{LedgerValue, ProtocolsSignatures};
 use crate::model::{namespace, Namespace, SignTypesNode};
+use crate::request::manager::{RequestManager, RequestManagerMessage};
 use crate::subject::event::{
     LedgerEvent, LedgerEventMessage, LedgerEventResponse,
 };
@@ -57,7 +59,7 @@ pub struct Approval {
     // approvers
     approvers: HashSet<KeyIdentifier>,
     // Actual responses
-    approvers_response: Vec<ApprovalRes>,
+    approvers_response: Vec<ProtocolsSignatures>,
     // approvers quantity
     approvers_quantity: u32,
 }
@@ -74,11 +76,11 @@ impl Approval {
     async fn create_approval_req(
         &mut self,
         ctx: &mut ActorContext<Approval>,
-        req_evaluation: EvaluationReq,
-        res_evaluation: EvalRes,
+        eval_req: EvaluationReq,
+        eval_res: EvalLedgerResponse,
     ) -> Result<ApprovalReq, Error> {
         let subject_id = if let EventRequest::Fact(event) =
-            req_evaluation.event_request.content.clone()
+        eval_req.event_request.content.clone()
         {
             event.subject_id
         } else {
@@ -124,12 +126,18 @@ impl Approval {
             Err(_) => todo!(),
         };
 
+        let patch = if let LedgerValue::Patch(value) = eval_res.value {
+            value
+        } else {
+            todo!()
+        };
+
         Ok(ApprovalReq {
-            event_request: req_evaluation.event_request,
-            sn: req_evaluation.sn,
-            gov_version: req_evaluation.gov_version,
-            patch: res_evaluation.patch,
-            state_hash: res_evaluation.state_hash,
+            event_request: eval_req.event_request,
+            sn: eval_req.sn,
+            gov_version: eval_req.gov_version,
+            patch,
+            state_hash: eval_res.state_hash,
             hash_prev_event,
             subject_id,
         })
@@ -250,14 +258,35 @@ impl Approval {
     fn check_approval(&mut self, approver: KeyIdentifier) -> bool {
         self.approvers.remove(&approver)
     }
+
+    async fn send_approval_to_req(&self, ctx: &mut ActorContext<Approval>, response: bool) -> Result<(), Error> {
+        let req_path =
+            ActorPath::from(format!("/user/request/{}", self.request_id));
+        let req_actor: Option<ActorRef<RequestManager>> =
+            ctx.system().get_actor(&req_path).await;
+
+
+        if let Some(req_actor) = req_actor {
+            if let Err(e) = req_actor
+                .tell(RequestManagerMessage::ApprovalRes { result: response, signatures: self.approvers_response.clone() })
+                .await
+            {
+                todo!()
+            }
+        } else {
+            todo!()
+        };
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum ApprovalMessage {
     Create {
-        request_id: DigestIdentifier,
-        info: EvaluationReq,
-        eval_response: EvalRes,
+        request_id: String,
+        eval_req: EvaluationReq,
+        eval_res: EvalLedgerResponse,
     },
     Response {
         approval_res: ApprovalRes,
@@ -279,7 +308,7 @@ pub enum ApprovalEvent {
         // approvers
         approvers: HashSet<KeyIdentifier>,
         // Actual responses
-        approvers_response: Vec<ApprovalRes>,
+        approvers_response: Vec<ProtocolsSignatures>,
         // approvers quantity
         approvers_quantity: u32,
     },
@@ -352,12 +381,12 @@ impl Handler<Approval> for Approval {
             }
             ApprovalMessage::Create {
                 request_id,
-                info,
-                eval_response,
+                eval_req,
+                eval_res,
             } => {
                 // Creamos una petición de aprobación, miramos quorum y lanzamos approvers
                 let approval_req = match self
-                    .create_approval_req(ctx, info.clone(), eval_response)
+                    .create_approval_req(ctx, eval_req.clone(), eval_res)
                     .await
                 {
                     Ok(approval_req) => approval_req,
@@ -367,9 +396,9 @@ impl Handler<Approval> for Approval {
                 let (signers, quorum) = match self
                     .get_signers_and_quorum(
                         ctx,
-                        &info.context.subject_id,
-                        &info.context.schema_id,
-                        Namespace::from(info.context.namespace),
+                        &eval_req.context.subject_id,
+                        &eval_req.context.schema_id,
+                        Namespace::from(eval_req.context.namespace),
                     )
                     .await
                 {
@@ -408,7 +437,7 @@ impl Handler<Approval> for Approval {
                 }
 
                 if let Err(e) = ctx
-                    .event(ApprovalEvent::SafeState {
+                    .publish_event(ApprovalEvent::SafeState {
                         request_id: self.request_id.clone(),
                         quorum: self.quorum.clone(),
                         request: self.request.clone(),
@@ -429,16 +458,16 @@ impl Handler<Approval> for Approval {
                     match approval_res.clone() {
                         ApprovalRes::Response(sinature, response) => {
                             if response {
-                                self.approvers_response.push(approval_res);
+                                self.approvers_response.push(ProtocolsSignatures::Signature(sinature));
                             }
                         }
-                        ApprovalRes::TimeOut(_approval_time_out) => {
-                            self.approvers_response.push(approval_res)
+                        ApprovalRes::TimeOut(approval_time_out) => {
+                            self.approvers_response.push(ProtocolsSignatures::TimeOut(approval_time_out))
                         }
                     };
 
                     if let Err(e) = ctx
-                        .event(ApprovalEvent::SafeState {
+                        .publish_event(ApprovalEvent::SafeState {
                             request_id: self.request_id.clone(),
                             quorum: self.quorum.clone(),
                             request: self.request.clone(),
@@ -456,9 +485,13 @@ impl Handler<Approval> for Approval {
                         self.approvers_quantity,
                         self.approvers_response.len() as u32,
                     ) {
-                        // TODO PROPAGAR CONCLUSIÖN
-                    } else {
-                        // TODO PROPAGAR CONCLUSIÖN
+                        if let Err(e) = self.send_approval_to_req(ctx, true).await {
+                            todo!()
+                        };
+                    } else if self.approvers.is_empty() {
+                        if let Err(e) = self.send_approval_to_req(ctx, false).await {
+                            todo!()
+                        };
                     }
                 } else {
                     // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
