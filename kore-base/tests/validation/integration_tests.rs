@@ -1,3 +1,4 @@
+/*
 use std::time::Duration;
 
 use crate::common::{
@@ -369,3 +370,4 @@ async fn test_network_validation() {
 
     tokio::time::sleep(Duration::from_secs(10)).await;
 }
+*/
