@@ -6,30 +6,20 @@ use actor::{
     Strategy,
 };
 use async_trait::async_trait;
-use identity::{
-    identifier::{DigestIdentifier, KeyIdentifier},
-    keys::KeyPair,
-};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
-use tracing::event;
 
 use crate::{
-    evaluation::schema,
     governance::model::Roles,
     intermediary::Intermediary,
     model::{
         common::{get_gov, get_metadata, update_event},
         event::Ledger,
         network::RetryNetwork,
-        Namespace,
     },
-    subject::{
-        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
-        SubjectMetadata,
-    },
-    ActorMessage, Error, Event as KoreEvent, EventRequest, Governance,
-    NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject,
-    SubjectMessage, SubjectResponse,
+    ActorMessage, Error, Event as KoreEvent, EventRequest, NetworkMessage,
+    Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
+    SubjectResponse,
 };
 
 use super::{Distribution, DistributionMessage};

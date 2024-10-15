@@ -12,17 +12,16 @@ pub mod validator;
 
 use crate::{
     db::Storable,
-    governance::{model::Roles, Quorum, RequestStage},
+    governance::{model::Roles, Quorum},
     model::{
         common::get_sign,
-        event::{Event as KoreEvent, ProofEvent, ProtocolsSignatures},
+        event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
         Namespace, SignTypesNode, SignTypesSubject,
     },
-    node::{Node, NodeMessage, NodeResponse},
     request::manager::{RequestManager, RequestManagerMessage},
     subject::{Subject, SubjectMessage, SubjectMetadata, SubjectResponse},
-    Error, DIGEST_DERIVATOR,
+    Error,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
@@ -30,21 +29,16 @@ use actor::{
 };
 
 use async_trait::async_trait;
-use borsh::{BorshDeserialize, BorshSerialize};
-use identity::identifier::{
-    derive::digest::DigestDerivator, key_identifier, DigestIdentifier,
-    KeyIdentifier,
-};
-use jsonschema::ValidationError;
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use proof::ValidationProof;
 use request::ValidationReq;
 use response::ValidationRes;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
-use tracing::{debug, error};
+use tracing::debug;
 use validator::{Validator, ValidatorMessage};
 
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
 
 /// A struct for passing validation information.
 #[derive(Clone, Debug, Serialize, Deserialize)]

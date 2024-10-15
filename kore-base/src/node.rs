@@ -4,41 +4,31 @@
 //! Node module
 //!
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+use std::path::Path;
 
 use async_std::fs;
 
 use crate::{
-    db::{Database, Storable},
-    evaluation,
-    helpers::encrypted_pass::EncryptedPass,
+    db::Storable,
     model::{
         event::Ledger,
-        request::EventRequest,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
     },
-    subject::{self, CreateSubjectData},
-    validation::proof::ValidationProof,
-    Api, Error, Event as KoreEvent, Subject, DIGEST_DERIVATOR,
+    subject::CreateSubjectData,
+    Error, Subject, DIGEST_DERIVATOR,
 };
 
 use identity::{
     identifier::{
-        derive::{digest::DigestDerivator, KeyDerivator},
-        DigestIdentifier, KeyIdentifier,
+        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
     },
-    keys::{
-        Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair, Secp256k1KeyPair,
-    },
+    keys::{KeyGenerator, KeyPair},
 };
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorSystem, Error as ActorError, Event,
-    Handler, Message, Response, SystemRef,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -394,7 +384,4 @@ impl Handler<Node> for Node {
 impl Storable for Node {}
 
 #[cfg(test)]
-pub mod tests {
-
-    use super::*;
-}
+pub mod tests {}

@@ -4,7 +4,7 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{model::Roles, Governance, RequestStage},
+    governance::model::Roles,
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
         common::{get_gov, get_sign},
@@ -13,7 +13,6 @@ use crate::{
         signature::Signature,
         SignTypesNode, TimeStamp,
     },
-    node::{self, Node, NodeMessage, NodeResponse},
     subject::{SubjectMessage, SubjectResponse},
     Error, Signed, Subject,
 };
@@ -22,28 +21,24 @@ use super::{
     proof::{EventProof, ValidationProof},
     request::ValidationReq,
     response::ValidationRes,
-    Validation, ValidationMessage, ValidationResponse,
+    Validation, ValidationMessage,
 };
 
 use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
-use identity::identifier::{
-    derive::digest::DigestDerivator, key_identifier, DigestIdentifier,
-    KeyIdentifier,
-};
+use identity::identifier::KeyIdentifier;
 
-use borsh::{BorshDeserialize, BorshSerialize};
-use network::{Command, ComunicateInfo};
+use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    FixedIntervalStrategy, Handler, Message, Response, RetryActor,
-    RetryMessage, RetryStrategy, Strategy,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
+    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
+    Strategy,
 };
 
-use tracing::{debug, error};
+use tracing::error;
 
 /// A struct representing a validator actor.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]

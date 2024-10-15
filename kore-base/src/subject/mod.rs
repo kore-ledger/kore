@@ -43,7 +43,6 @@ use serde::{Deserialize, Serialize};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{debug, error};
 
-use core::hash;
 use std::{collections::HashSet, str::FromStr};
 
 pub mod event;

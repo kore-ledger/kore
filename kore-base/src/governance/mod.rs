@@ -12,30 +12,23 @@ pub mod model;
 mod schema;
 
 use crate::{
-    db::{Database, Storable},
-    model::{request, wrapper::ValueWrapper, Namespace},
+    model::{wrapper::ValueWrapper, Namespace},
     Error,
 };
 
-use json_schema::JsonSchema;
-use model::{Contract, Roles};
+use model::Roles;
 pub use schema::schema;
 
 pub use model::{Member, Policy, Quorum, RequestStage, Role, Schema, Who};
 
-use identity::{
-    identifier::{DigestIdentifier, KeyIdentifier},
-    keys::KeyPair,
-};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
-    sync::atomic::AtomicU64,
 };
 
 /// Governance struct.

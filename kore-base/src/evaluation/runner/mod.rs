@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::format};
+use std::collections::HashSet;
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,

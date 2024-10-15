@@ -6,13 +6,12 @@
 
 use crate::{
     model::{request::EventRequest, signature::Signed},
-    node::Node,
     request::{RequestHandler, RequestHandlerResponse},
     Error,
 };
 
-use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler, SystemRef};
-use identity::{identifier::KeyIdentifier, keys::KeyPair};
+use actor::ActorRef;
+use identity::keys::KeyPair;
 
 pub struct Api {
     keys: KeyPair,

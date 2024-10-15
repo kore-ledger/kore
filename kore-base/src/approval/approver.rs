@@ -4,11 +4,10 @@ use crate::{
     model::{
         common::{get_gov, get_sign},
         network::RetryNetwork,
-        signature, SignTypesNode,
+        SignTypesNode,
     },
-    ActorMessage, Error, EventRequest, Governance, NetworkMessage, Node,
-    NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage,
-    SubjectResponse, DIGEST_DERIVATOR,
+    ActorMessage, Error, EventRequest, NetworkMessage, Signed, Subject,
+    SubjectMessage, SubjectResponse,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
@@ -16,17 +15,14 @@ use actor::{
     RetryMessage, Strategy,
 };
 use async_trait::async_trait;
-use identity::identifier::{
-    derive::digest::DigestDerivator, Derivable, DigestIdentifier, KeyIdentifier,
-};
+use identity::identifier::KeyIdentifier;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
-use tracing::error;
 
 use super::{
     request::ApprovalReq,
-    response::{self, ApprovalRes, ApprovalSignature},
+    response::{ApprovalRes, ApprovalSignature},
     Approval, ApprovalMessage,
 };
 
@@ -543,7 +539,7 @@ impl Handler<Approver> for Approver {
 
                     let helper: Option<Intermediary> =
                         ctx.system().get_helper("NetworkIntermediary").await;
-                    let mut helper = if let Some(helper) = helper {
+                    let helper = if let Some(helper) = helper {
                         helper
                     } else {
                         // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con

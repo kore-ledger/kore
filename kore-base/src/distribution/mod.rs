@@ -6,10 +6,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use distributor::{Distributor, DistributorMessage};
-use identity::{
-    identifier::{DigestIdentifier, KeyIdentifier},
-    keys::KeyPair,
-};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use crate::{
     governance::model::Roles,

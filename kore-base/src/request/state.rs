@@ -4,17 +4,13 @@
 use std::collections::HashSet;
 
 use crate::{
-    evaluation::{
-        request::EvaluationReq,
-        response::{EvalLedgerResponse, EvaluationRes},
-    },
-    governance::RequestStage,
+    evaluation::{request::EvaluationReq, response::EvalLedgerResponse},
     model::{
         event::{Ledger, ProtocolsSignatures},
-        request::{CreateRequest, EventRequest},
-        signature::{Signature, Signed},
+        request::CreateRequest,
+        signature::Signed,
     },
-    ConfirmRequest, EOLRequest, Error, Event as KoreEvent, TransferRequest,
+    ConfirmRequest, EOLRequest, Event as KoreEvent, TransferRequest,
     ValidationInfo,
 };
 

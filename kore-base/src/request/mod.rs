@@ -13,18 +13,17 @@ use identity::{
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use store::store::PersistentActor;
 
 use crate::{
     db::Storable,
     governance::model::Roles,
     init_state,
-    model::common::{get_gov, get_metadata},
-    node,
-    subject::{self, CreateSubjectData, SubjectID},
-    CreateRequest, Error, Event as KoreEvent, EventRequest, HashId, Node,
-    NodeMessage, NodeResponse, Signed, DIGEST_DERIVATOR,
+    model::common::get_gov,
+    subject::{CreateSubjectData, SubjectID},
+    CreateRequest, Error, EventRequest, HashId, Node, NodeMessage,
+    NodeResponse, Signed, DIGEST_DERIVATOR,
 };
 
 pub mod manager;

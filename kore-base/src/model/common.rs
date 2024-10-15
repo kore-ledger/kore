@@ -1,5 +1,4 @@
 use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler};
-use identity::identifier::DigestIdentifier;
 
 use crate::{
     model::SignTypesNode,

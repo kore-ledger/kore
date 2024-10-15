@@ -12,19 +12,9 @@ use super::{
     HashId,
 };
 
-use crate::{
-    model::Namespace,
-    subject::{Subject, SubjectMetadata},
-    validation::proof::EventProof,
-    Error,
-};
+use crate::{subject::SubjectMetadata, validation::proof::EventProof, Error};
 
-use identity::{
-    identifier::{
-        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
-    },
-    keys::{KeyMaterial, KeyPair},
-};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};

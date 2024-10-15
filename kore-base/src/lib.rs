@@ -100,8 +100,6 @@ pub async fn system(
 #[cfg(test)]
 pub mod tests {
 
-    use identity::identifier::derive::KeyDerivator;
-
     use super::*;
 
     #[derive(Debug, Clone)]

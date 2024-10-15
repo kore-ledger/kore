@@ -526,12 +526,4 @@ impl Intermediary {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use actor::ActorSystem;
-    use identity::identifier::derive::KeyDerivator;
-    use tokio::sync::mpsc;
-
-    use super::Intermediary;
-}
+mod tests {}

@@ -7,43 +7,32 @@ use actor::{
 };
 use async_trait::async_trait;
 use identity::{
-    identifier::{
-        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
-    },
-    keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
+    identifier::{derive::digest::DigestDerivator, DigestIdentifier},
+    keys::KeyGenerator,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    fs::Metadata,
-};
+use std::collections::HashSet;
 use store::store::PersistentActor;
 use tracing::error;
 
 use crate::{
-    approval::{response, Approval, ApprovalMessage},
+    approval::{Approval, ApprovalMessage},
     db::Storable,
     distribution::{Distribution, DistributionMessage},
     evaluation::{
         request::EvaluationReq, response::EvalLedgerResponse, Evaluation,
         EvaluationMessage,
     },
-    governance::model::Roles,
-    init_state,
     model::{
         common::{get_gov, get_metadata, get_sign, update_event},
         event::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
             ProtocolsSignatures,
         },
-        signature, SignTypesNode,
+        SignTypesNode,
     },
-    node,
-    subject::{self, CreateSubjectData, SubjectID, SubjectMetadata},
-    validation::{proof::EventProof, ValidationEvent},
-    CreateRequest, Error, Event as KoreEvent, EventRequest, FactRequest,
-    HashId, Node, NodeMessage, NodeResponse, Signature, Signed, Subject,
+    validation::proof::EventProof,
+    Error, Event as KoreEvent, EventRequest, HashId, Signed, Subject,
     SubjectMessage, SubjectResponse, Validation, ValidationInfo,
     ValidationMessage, ValueWrapper, DIGEST_DERIVATOR,
 };

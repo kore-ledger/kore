@@ -1,22 +1,18 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::{collections::HashSet, time::Duration};
+use std::time::Duration;
 
 use crate::{
     evaluation::response::Response as EvalRes,
-    governance::{
-        json_schema::{self, JsonSchema},
-        Governance, RequestStage, Schema,
-    },
+    governance::Schema,
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
         common::{get_gov, get_sign},
         network::{RetryNetwork, TimeOutResponse},
-        signature::Signature,
         HashId, SignTypesNode, TimeStamp,
     },
-    node::{self, Node, NodeMessage, NodeResponse},
+    node::Node,
     subject::{SubjectMessage, SubjectResponse},
     Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
     DIGEST_DERIVATOR, SCHEMAS,
@@ -25,33 +21,29 @@ use crate::{
 use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
-use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
-};
+use identity::identifier::{derive::digest::DigestDerivator, KeyIdentifier};
 
-use borsh::{BorshDeserialize, BorshSerialize};
 use json_patch::diff;
-use network::{Command, ComunicateInfo};
-use serde::{Deserialize, Serialize};
+use network::ComunicateInfo;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    FixedIntervalStrategy, Handler, Message, Response, RetryActor,
-    RetryMessage, RetryStrategy, Strategy,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
+    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
+    Strategy,
 };
 
-use serde_json::{json, Value};
-use tracing::{debug, error};
+use serde_json::Value;
+use tracing::error;
 
 use super::{
     compiler::{Compiler, CompilerMessage, CompilerResponse},
     request::EvaluationReq,
     response::EvaluationRes,
     runner::{
-        types::{Contract, ContractResult, GovernanceData, RunnerResult},
+        types::{Contract, GovernanceData, RunnerResult},
         Runner, RunnerMessage, RunnerResponse,
     },
-    Evaluation, EvaluationMessage, EvaluationResponse,
+    Evaluation, EvaluationMessage,
 };
 
 /// A struct representing a Evaluator actor.
