@@ -273,14 +273,6 @@ impl Handler<RequestHandler> for RequestHandler {
                             ));
                         }
 
-                        if create_request.name.is_empty() {
-                            return Ok(RequestHandlerResponse::Error(
-                                Error::RequestHandler(
-                                    "The name cannot be empty.".to_owned(),
-                                ),
-                            ));
-                        }
-
                         if create_request.schema_id == "governance" {
                             if !create_request.namespace.is_empty() {
                                 return Ok(RequestHandlerResponse::Error(Error::RequestHandler("The creation event is for a governance, the namespace must be empty.".to_owned())));

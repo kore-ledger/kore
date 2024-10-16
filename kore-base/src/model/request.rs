@@ -77,8 +77,6 @@ pub struct CreateRequest {
     pub schema_id: String,
     /// The namespace of the subject.
     pub namespace: Namespace,
-    /// The name of the subject.
-    pub name: String,
 }
 
 /// A struct representing a request to add a fact to a subject.
@@ -275,7 +273,6 @@ pub mod tests {
             governance_id: DigestIdentifier::default(),
             schema_id: "governance".to_string(),
             namespace: Namespace::from("namespace"),
-            name: "name".to_string(),
         };
         let content = EventRequest::Create(req);
         let signature =

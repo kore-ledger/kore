@@ -31,7 +31,7 @@ use actor::{
 use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
 use identity::{
     identifier::{
-        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+        derive::digest::DigestDerivator, key_identifier, DigestIdentifier, KeyIdentifier
     },
     keys::{KeyMaterial, KeyPair},
 };
@@ -525,7 +525,7 @@ impl Subject {
     async fn get_last_ledger_state(
         &self,
         ctx: &mut ActorContext<Subject>,
-    ) -> Result<Signed<Ledger>, Error> {
+    ) -> Result<Option<Signed<Ledger>>, Error> {
         let store: Option<ActorRef<Store<Subject>>> =
             ctx.get_child("store").await;
         let response = if let Some(store) = store {
@@ -538,13 +538,7 @@ impl Subject {
         };
 
         match response {
-            StoreResponse::LastEvent(event) => {
-                if let Some(event) = event {
-                    Ok(event)
-                } else {
-                    todo!()
-                }
-            }
+            StoreResponse::LastEvent(event) => Ok(event),
             StoreResponse::Error(e) => todo!(),
             _ => todo!(),
         }
@@ -588,18 +582,38 @@ impl Subject {
         }
     }
 
+    async fn change_node_subject(
+        ctx: &mut ActorContext<Subject>,
+        subject_id: &str,
+        new_owner: &str,
+        old_owner: &str
+    ) -> Result<(), Error> {
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> = ctx.system().get_actor(&node_path).await;
+    
+        if let Some(node_actor) = node_actor {
+            if let Err(e) = node_actor.tell(NodeMessage::ChangeSubjectOwner{new_owner: new_owner.to_owned(), old_owner: old_owner.to_owned(), subject_id: subject_id.to_owned()}).await {
+                todo!()
+            }
+        } else {
+            todo!()
+        }
+        Ok(())
+    }
+
     async fn verify_new_ledger_event(
-        subject: &mut Subject,
+        &self,
+        ctx: &mut ActorContext<Subject>,
         last_ledger: &Signed<Ledger>,
         new_ledger: &Signed<Ledger>,
     ) -> Result<(), Error> {
         // Si no sigue activo
-        if !subject.active {
+        if !self.active {
             todo!();
         }
 
         // SI no es el dueño el que firmó el evento
-        if new_ledger.signature.signer != subject.owner {
+        if new_ledger.signature.signer != self.owner {
             todo!();
         }
 
@@ -664,6 +678,8 @@ impl Subject {
             Ok(is_ok) => is_ok,
             Err(e) => todo!(),
         };
+        
+        let change_owner: bool;
         // Si el nuevo evento a registrar fue correcto.
         if valid_new_event {
             match new_ledger.content.event_request.content.clone() {
@@ -683,14 +699,14 @@ impl Subject {
                     let patch_json =
                         serde_json::from_value::<Patch>(json_patch.0)
                             .map_err(|e| todo!())?;
-                    let Ok(()) = patch(&mut subject.properties.0, &patch_json)
+                    let mut propierties = self.properties.0.clone();
+                    let Ok(()) = patch(&mut propierties, &patch_json)
                     else {
                         // No se pudo aplicar el patch, error
                         todo!()
                     };
 
-                    let hash_state_after_patch = subject
-                        .properties
+                    let hash_state_after_patch = ValueWrapper(propierties)
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                     if hash_state_after_patch != new_ledger.content.state_hash {
@@ -698,8 +714,7 @@ impl Subject {
                     }
                 }
                 EventRequest::Transfer(transfer_request) => {
-                    let hash_without_patch = subject
-                        .properties
+                    let hash_without_patch = self.properties
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                     if hash_without_patch != new_ledger.content.state_hash {
@@ -707,10 +722,12 @@ impl Subject {
                         // propierties deberían ser iguales.
                     }
 
-                    subject.owner = transfer_request.new_owner;
+                    if let Err(E) = Subject::change_node_subject(ctx, &transfer_request.subject_id.to_string(), &transfer_request.new_owner.to_string(), &self.owner.to_string()).await {
+                        todo!()
+                    }
                 }
                 EventRequest::Confirm(confirm_request) => {
-                    let hash_without_patch = subject
+                    let hash_without_patch = self
                         .properties
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
@@ -723,7 +740,7 @@ impl Subject {
                     todo!()
                 }
                 EventRequest::EOL(eolrequest) => {
-                    let hash_without_patch = subject
+                    let hash_without_patch = self
                         .properties
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
@@ -731,8 +748,6 @@ impl Subject {
                         // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
                         // propierties deberían ser iguales.
                     }
-
-                    subject.active = false;
                 }
             };
         }
@@ -742,7 +757,7 @@ impl Subject {
                 // Error hay un patch cuando debería haber un error,
             }
 
-            let hash_without_patch = subject
+            let hash_without_patch = self
                 .properties
                 .hash_id(new_ledger.signature.content_hash.derivator)?;
 
@@ -754,17 +769,75 @@ impl Subject {
         Ok(())
     }
 
-    async fn verify_new_ledger_events(
+    async fn verify_first_ledger_event(
         &self,
-        ctx: &mut ActorContext<Subject>,
-        events: Vec<Signed<Ledger>>,
-    ) -> Result<u64, Error> {
-        let mut subject = self.clone();
-        let mut last_ledger = self.get_last_ledger_state(ctx).await?;
+        event: Signed<Ledger>,
+    ) -> Result<(), Error> {
+        if let EventRequest::Create(event_req) =
+            event.content.event_request.content.clone()
+        {
+            if event_req.schema_id == "governance" {
+                if !event_req.governance_id.digest.is_empty() || !event_req.namespace.is_empty() && event.content.gov_version != 0 {
+                    todo!()
+                }
+            }
+        } else {
+            todo!()
+        };
 
+        if event.signature.signer != self.owner
+            && event.content.event_request.signature.signer != self.owner
+        {
+            todo!();
+        }
+
+        if event.content.sn != 0 {
+            todo!()
+        }
+
+        if !event.content.hash_prev_event.digest.is_empty() {}
+
+        match Self::verify_protocols_state(
+            EventRequestType::Create,
+            event.content.eval_success,
+            event.content.appr_success,
+            event.content.appr_required,
+            event.content.vali_success,
+        ) {
+            Ok(is_ok) => {
+                if is_ok {
+                    Ok(())
+                } else {
+                    todo!()
+                }
+            }
+            Err(e) => todo!(),
+        }
+    }
+
+    async fn verify_new_ledger_events(
+        &mut self,
+        ctx: &mut ActorContext<Subject>,
+        events: &[Signed<Ledger>],
+    ) -> Result<u64, Error> {
+        let mut events = events.to_vec();
+        let last_ledger = self.get_last_ledger_state(ctx).await?;
+
+        let mut last_ledger = if let Some(last_ledger) = last_ledger {
+            last_ledger
+        } else {
+            if let Err(e) = self.verify_first_ledger_event(events[0].clone()).await {
+                todo!()
+            }
+            self.on_event(events[0].clone(), ctx).await;
+            events.remove(0)
+        };
+
+        // TODO SI el evento es de Transferencia o de Confiramción y nos afecte, tenemos que
+        // Cambiar los owned subjects o know subjects del nodo.
         for event in events {
-            if let Err(e) = Subject::verify_new_ledger_event(
-                &mut subject,
+            if let Err(e) = self.verify_new_ledger_event(
+                ctx,
                 &last_ledger,
                 &event,
             )
@@ -778,12 +851,10 @@ impl Subject {
                 }
             }
             // Aplicar evento.
-            if let Err(e) = ctx.publish_event(event.clone()).await {
-                todo!()
-            };
+            self.on_event(event.clone(), ctx).await;
 
             // Acutalizar último evento.
-            last_ledger = event;
+            last_ledger = event.clone();
         }
 
         Ok(last_ledger.content.sn)
@@ -793,7 +864,7 @@ impl Subject {
         &self,
         ctx: &mut ActorContext<Subject>,
         last_sn: u64,
-    ) -> Result<(Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>), Error> {
+    ) -> Result<Vec<Signed<Ledger>>, Error> {
         let store: Option<ActorRef<Store<Subject>>> =
             ctx.get_child("store").await;
         let response = if let Some(store) = store {
@@ -812,14 +883,7 @@ impl Subject {
         };
 
         match response {
-            StoreResponse::Events(events) => {
-                if events.len() < 100 {
-                    let last_event = self.get_last_event(ctx).await?;
-                    Ok((events, Some(last_event)))
-                } else {
-                    Ok((events, None))
-                }
-            }
+            StoreResponse::Events(events) => Ok(events),
             _ => todo!(),
         }
     }
@@ -957,6 +1021,9 @@ impl Actor for Subject {
             self.build_childs_not_governance(ctx).await?;
         }
 
+        let ledger_event = LedgerEvent::default();
+        ctx.create_child("ledgerEvent", ledger_event).await?;
+
         Ok(())
     }
 
@@ -980,9 +1047,22 @@ impl Handler<Subject> for Subject {
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
             SubjectMessage::GetLedger { last_sn } => {
-                match self.get_ledger(ctx, last_sn).await {
-                    Ok(response) => Ok(SubjectResponse::Ledger(response)),
-                    Err(e) => Ok(SubjectResponse::Error(e)),
+                let ledger = match self.get_ledger(ctx, last_sn).await {
+                    Ok(response) => response,
+                    Err(e) => return Ok(SubjectResponse::Error(e)),
+                };
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                if ledger.len() < 100 {
+                    match self.get_last_event(ctx).await {
+                        Ok(last_event) => Ok(SubjectResponse::Ledger((
+                            ledger,
+                            Some(last_event),
+                        ))),
+                        Err(e) => Ok(SubjectResponse::Error(e)),
+                    }
+                } else {
+                    Ok(SubjectResponse::Ledger((ledger, None)))
                 }
             }
             SubjectMessage::GetOwner => {
@@ -993,7 +1073,7 @@ impl Handler<Subject> for Subject {
             }
             SubjectMessage::UpdateLedger { events } => {
                 debug!("Emit event to update subject.");
-                match self.verify_new_ledger_events(ctx, events).await {
+                match self.verify_new_ledger_events(ctx, events.as_slice()).await {
                     Ok(last_sn) => Ok(SubjectResponse::LastSn(last_sn)),
                     Err(e) => Ok(SubjectResponse::Error(e)),
                 }
@@ -1056,7 +1136,7 @@ impl PersistentActor for Subject {
 
         if valid_event {
             match &event.content.event_request.content {
-                EventRequest::Create(start_request) => todo!(),
+                EventRequest::Create(start_request) => {},
                 EventRequest::Fact(fact_request) => {
                     let json_patch = match event.content.value.clone() {
                         LedgerValue::Patch(value_wrapper) => value_wrapper,
@@ -1271,5 +1351,107 @@ mod tests {
 
         let subject_b = bincode::deserialize::<Subject>(&bytes).unwrap();
         assert_eq!(subject_a.subject_id, subject_b.subject_id);
+    }
+
+    #[tokio::test]
+    async fn test_get_events() {
+        let system = create_system().await;
+        let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let node = Node::new(&node_keys).unwrap();
+        let _ = system.create_root_actor("node", node).await.unwrap();
+        let request = create_start_request_mock("issuer");
+        let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let event = KoreEvent::from_create_request(
+            &keys,
+            &request,
+            0,
+            &init_state(&node_keys.key_identifier().to_string()),
+            DigestDerivator::Blake3_256,
+        )
+        .unwrap();
+        let ledger = Ledger::from(event.clone());
+        let signature_ledger =
+            Signature::new(&ledger, &keys, DigestDerivator::Blake3_256)
+                .unwrap();
+        let signed_ledger = Signed {
+            content: ledger,
+            signature: signature_ledger,
+        };
+
+        let signature_event =
+            Signature::new(&event, &keys, DigestDerivator::Blake3_256).unwrap();
+
+        let signed_event = Signed {
+            content: event,
+            signature: signature_event,
+        };
+
+        let subject = Subject::from_event(Some(keys), &signed_ledger).unwrap();
+
+        assert_eq!(subject.namespace, Namespace::from("namespace"));
+        let subject_actor = system
+            .get_or_create_actor(
+                &format!("node/{}", subject.subject_id),
+                || subject.clone(),
+            )
+            .await
+            .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        let ledger_event_actor: Option<ActorRef<LedgerEvent>> = system
+            .get_actor(&ActorPath::from(format!(
+                "user/node/{}/ledgerEvent",
+                subject.subject_id
+            )))
+            .await;
+
+        let ledger_event_actor = if let Some(actor) = ledger_event_actor {
+            actor
+        } else {
+            panic!("Actor must be in system actor")
+        };
+
+        ledger_event_actor
+            .ask(LedgerEventMessage::UpdateLastEvent {
+                event: signed_event,
+            })
+            .await
+            .unwrap();
+
+        let response = subject_actor
+            .ask(SubjectMessage::GetLedger { last_sn: 0 })
+            .await
+            .unwrap();
+        if let SubjectResponse::Ledger(ledger) = response {
+            assert!(ledger.0.len() == 0);
+            assert!(ledger.1.is_some());
+        } else {
+            panic!("Invalid response");
+        }
+
+        let response = subject_actor
+            .ask(SubjectMessage::UpdateLedger {
+                events: vec![signed_ledger],
+            })
+            .await
+            .unwrap();
+
+        if let SubjectResponse::LastSn(last_sn) = response {
+            
+        } else {
+            panic!("Invalid response");
+        }
+
+        let response = subject_actor
+            .ask(SubjectMessage::GetLedger { last_sn: 0 })
+            .await
+            .unwrap();
+        if let SubjectResponse::Ledger(ledger) = response {
+            assert!(ledger.0.len() == 1);
+            assert!(ledger.1.is_some());
+        } else {
+            panic!("Invalid response");
+        }
     }
 }

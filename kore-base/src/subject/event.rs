@@ -8,9 +8,9 @@ use store::store::PersistentActor;
 
 use crate::{db::Storable, Error, Event as KoreEvent, Signed};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LedgerEvent {
-    pub last_event: Signed<KoreEvent>,
+    pub last_event: Option<Signed<KoreEvent>>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,13 +68,17 @@ impl Handler<LedgerEvent> for LedgerEvent {
     ) -> Result<LedgerEventResponse, ActorError> {
         match msg {
             LedgerEventMessage::UpdateLastEvent { event } => {
-                if let Err(e) = ctx.publish_event(event).await {
-                    todo!()
-                };
+                self.on_event(event, ctx).await;
                 Ok(LedgerEventResponse::Ok)
             }
             LedgerEventMessage::GetLastEvent => {
-                Ok(LedgerEventResponse::LastEvent(self.last_event.clone()))
+                let last_event = if let Some(last_event) = self.last_event.clone() {
+                    last_event
+                } else {
+                    todo!()
+                };
+
+                Ok(LedgerEventResponse::LastEvent(last_event))
             }
         }
     }
@@ -93,7 +97,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
 #[async_trait]
 impl PersistentActor for LedgerEvent {
     fn apply(&mut self, event: &Signed<KoreEvent>) {
-        self.last_event = event.clone();
+        self.last_event = Some(event.clone());
     }
 }
 

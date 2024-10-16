@@ -100,6 +100,11 @@ impl Distributor {
         // SI es una gov ver si la aceptamos,
         if schema == "governance" {
             // SI nada falla
+            // TODO Esto hay que cambiarlo, también pueden ser sujetos sueltos, esto se hace
+            // Para la transferencia de un sujeto que no sea una governanza, por ejemplo un coche
+            // El nodo será no ephimeral y por lo tanto no será testigo, pero tiene que ser capaz
+            // De recibir la copia del nuevo sujeto que es suyo, por lo tanto, hay que authorizar
+            // Tanto sujetos como governanzas.
             if let Ok(know) =
                 self.authorized_gov(ctx, &subject_id.to_string()).await
             {

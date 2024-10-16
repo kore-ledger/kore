@@ -16,25 +16,17 @@ use store::store::PersistentActor;
 use tracing::error;
 
 use crate::{
-    approval::{Approval, ApprovalMessage},
-    db::Storable,
-    distribution::{Distribution, DistributionMessage},
-    evaluation::{
+    approval::{Approval, ApprovalMessage}, db::Storable, distribution::{Distribution, DistributionMessage}, evaluation::{
         request::EvaluationReq, response::EvalLedgerResponse, Evaluation,
         EvaluationMessage,
-    },
-    model::{
-        common::{get_gov, get_metadata, get_sign, update_event},
+    }, model::{
+        common::{change_temp_subj, get_gov, get_metadata, get_sign, update_event},
         event::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
             ProtocolsSignatures,
         },
         SignTypesNode,
-    },
-    validation::proof::EventProof,
-    Error, Event as KoreEvent, EventRequest, HashId, Signed, Subject,
-    SubjectMessage, SubjectResponse, Validation, ValidationInfo,
-    ValidationMessage, ValueWrapper, DIGEST_DERIVATOR,
+    }, node, validation::proof::EventProof, Error, Event as KoreEvent, EventRequest, HashId, Node, NodeMessage, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
 };
 
 use super::{state::RequestSate, RequestHandler, RequestHandlerMessage};
@@ -270,6 +262,7 @@ impl RequestManager {
         (Ledger::from(event.clone()), event)
     }
 
+
     async fn safe_ledger_event(
         &mut self,
         ctx: &mut ActorContext<RequestManager>,
@@ -292,6 +285,7 @@ impl RequestManager {
         if let Err(e) =
             RequestManager::update_ledger(ctx, signed_ledger.clone()).await
         {
+            todo!()
         }
 
         let signature_event =
@@ -310,6 +304,10 @@ impl RequestManager {
         if let Err(e) = update_event(ctx, signed_event.clone()).await {
             todo!()
         };
+
+        if let Err(e) = change_temp_subj(ctx, signed_event.content.subject_id.to_string(), signed_event.signature.signer.to_string()).await {
+            todo!()
+        }
 
         self.on_event(
             RequestManagerEvent::ChangeState {

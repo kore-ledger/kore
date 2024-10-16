@@ -7,7 +7,7 @@ use crate::{
         SubjectMetadata,
     },
     Error, Event as KoreEvent, Governance, Node, NodeMessage, NodeResponse,
-    Signature, Signed, Subject, SubjectMessage, SubjectResponse,
+    Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes,
 };
 
 pub async fn get_gov<A>(
@@ -158,5 +158,27 @@ where
         todo!()
     };
 
+    Ok(())
+}
+
+
+pub async fn change_temp_subj<A>(
+    ctx: &mut ActorContext<A>,
+    subject_id: String,
+    key_identifier: String
+) -> Result<(), Error>
+where
+    A: Actor + Handler<A>,
+{
+    let node_path = ActorPath::from("/user/node");
+    let node_actor: Option<ActorRef<Node>> = ctx.system().get_actor(&node_path).await;
+
+    if let Some(node_actor) = node_actor {
+        if let Err(e) = node_actor.tell(NodeMessage::RegisterSubject(SubjectsTypes::ChangeTemp { subject_id, key_identifier})).await {
+            todo!()
+        }
+    } else {
+        todo!()
+    }
     Ok(())
 }

@@ -264,16 +264,11 @@ impl Handler<Approver> for Approver {
 
                 if state == ApprovalState::Pending {
                     if response == ApprovalStateRes::Obsolete {
-                        if let Err(e) = ctx
-                            .publish_event(ApproverEvent::SafeState {
-                                request: self.request.clone(),
-                                state: ApprovalState::Obsolete,
-                                info: None,
-                            })
-                            .await
-                        {
-                            todo!()
-                        };
+                        self.on_event(ApproverEvent::SafeState {
+                            request: self.request.clone(),
+                            state: ApprovalState::Obsolete,
+                            info: None,
+                        }, ctx).await;
                     } else {
                         let (response, state) =
                             if ApprovalStateRes::RespondedAccepted == response {
@@ -296,16 +291,11 @@ impl Handler<Approver> for Approver {
                             todo!()
                         };
 
-                        if let Err(e) = ctx
-                            .publish_event(ApproverEvent::SafeState {
-                                request: self.request.clone(),
-                                state,
-                                info: self.info.clone(),
-                            })
-                            .await
-                        {
-                            todo!()
-                        };
+                        self.on_event(ApproverEvent::SafeState {
+                            request: self.request.clone(),
+                            state,
+                            info: self.info.clone(),
+                        }, ctx).await;
                     }
                 } else {
                     todo!()
@@ -372,27 +362,17 @@ impl Handler<Approver> for Approver {
                             return Err(ActorError::Exists(approval_path));
                         }
 
-                        if let Err(e) = ctx
-                            .publish_event(ApproverEvent::SafeState {
-                                request: Some(approval_req),
-                                state: ApprovalState::RespondedAccepted,
-                                info: None,
-                            })
-                            .await
-                        {
-                            todo!()
-                        };
+                        self.on_event(ApproverEvent::SafeState {
+                            request: Some(approval_req),
+                            state: ApprovalState::RespondedAccepted,
+                            info: None,
+                        }, ctx).await;
                     } else {
-                        if let Err(e) = ctx
-                            .publish_event(ApproverEvent::SafeState {
-                                request: Some(approval_req),
-                                state: ApprovalState::Pending,
-                                info: None,
-                            })
-                            .await
-                        {
-                            todo!()
-                        };
+                        self.on_event(ApproverEvent::SafeState {
+                            request: Some(approval_req),
+                            state: ApprovalState::Pending,
+                            info: None,
+                        }, ctx).await;
                     }
                 }
             }
@@ -576,28 +556,17 @@ impl Handler<Approver> for Approver {
                         {
                             todo!()
                         };
-
-                        if let Err(e) = ctx
-                            .publish_event(ApproverEvent::SafeState {
-                                request: Some(approval_req.content),
-                                state: ApprovalState::RespondedAccepted,
-                                info: None,
-                            })
-                            .await
-                        {
-                            todo!()
-                        };
+                        self.on_event(ApproverEvent::SafeState {
+                            request: Some(approval_req.content),
+                            state: ApprovalState::RespondedAccepted,
+                            info: None,
+                        }, ctx).await;
                     } else {
-                        if let Err(e) = ctx
-                            .publish_event(ApproverEvent::SafeState {
-                                request: Some(approval_req.content),
-                                state: ApprovalState::Pending,
-                                info: Some(info),
-                            })
-                            .await
-                        {
-                            todo!()
-                        };
+                        self.on_event(ApproverEvent::SafeState {
+                            request: Some(approval_req.content),
+                            state: ApprovalState::Pending,
+                            info: Some(info),
+                        }, ctx).await;
                     }
                 } else {
                     let state = if let Some(state) = self.state.clone() {
