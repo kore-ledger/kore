@@ -435,19 +435,16 @@ impl Handler<Approval> for Approval {
                     }
                 }
 
-                if let Err(e) = ctx
-                    .publish_event(ApprovalEvent::SafeState {
+                self
+                    .on_event(ApprovalEvent::SafeState {
                         request_id: self.request_id.clone(),
                         quorum: self.quorum.clone(),
                         request: self.request.clone(),
                         approvers: self.approvers.clone(),
                         approvers_response: self.approvers_response.clone(),
                         approvers_quantity: self.approvers_quantity.clone(),
-                    })
-                    .await
-                {
-                    // TODO error al persistir, propagar hacia arriba
-                };
+                    }, ctx)
+                    .await;
             }
             ApprovalMessage::Response {
                 approval_res,
@@ -469,19 +466,16 @@ impl Handler<Approval> for Approval {
                         }
                     };
 
-                    if let Err(e) = ctx
-                        .publish_event(ApprovalEvent::SafeState {
+                    self
+                        .on_event(ApprovalEvent::SafeState {
                             request_id: self.request_id.clone(),
                             quorum: self.quorum.clone(),
                             request: self.request.clone(),
                             approvers: self.approvers.clone(),
                             approvers_response: self.approvers_response.clone(),
                             approvers_quantity: self.approvers_quantity.clone(),
-                        })
-                        .await
-                    {
-                        // TODO error al persistir, propagar hacia arriba
-                    };
+                        }, ctx)
+                        .await;
 
                     // si hemos llegado al quorum y hay suficientes aprobaciones aprobamos...
                     if self.quorum.check_quorum(
