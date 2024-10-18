@@ -12,7 +12,7 @@ use super::{
     HashId,
 };
 
-use crate::{subject::SubjectMetadata, validation::proof::EventProof, Error};
+use crate::{subject::Metadata, validation::proof::EventProof, Error};
 
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
@@ -23,7 +23,7 @@ use std::collections::HashSet;
 pub struct DataProofEvent {
     pub gov_version: u64,
     pub sn: u64,
-    pub metadata: SubjectMetadata,
+    pub metadata: Metadata,
     pub eval_success: Option<bool>,
     pub appr_required: bool,
     pub appr_success: Option<bool>,

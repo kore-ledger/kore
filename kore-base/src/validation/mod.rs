@@ -20,7 +20,7 @@ use crate::{
         Namespace, SignTypesNode, SignTypesSubject,
     },
     request::manager::{RequestManager, RequestManagerMessage},
-    subject::{Subject, SubjectMessage, SubjectMetadata, SubjectResponse},
+    subject::{Subject, SubjectMessage, Metadata, SubjectResponse},
     Error,
 };
 use actor::{
@@ -43,7 +43,7 @@ use std::collections::HashSet;
 /// A struct for passing validation information.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ValidationInfo {
-    pub metadata: SubjectMetadata,
+    pub metadata: Metadata,
     pub event_proof: Signed<ProofEvent>,
 }
 

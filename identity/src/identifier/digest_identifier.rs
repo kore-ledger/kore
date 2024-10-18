@@ -2,6 +2,7 @@ use super::error::Error;
 use crate::identifier::derive::{digest::DigestDerivator, Derivator};
 use base64::{engine::general_purpose, Engine as _};
 use borsh::{to_vec, BorshDeserialize, BorshSerialize};
+use memsecurity::ascon_aead::aead::Buffer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -26,6 +27,10 @@ pub struct DigestIdentifier {
 }
 
 impl DigestIdentifier {
+    pub fn is_empty(&self) -> bool {
+        self.digest.is_empty()
+    }
+
     pub fn from_serializable<S: Serialize>(data: &S) -> Result<Self, Error> {
         let bytes = serde_json::to_vec(data)?;
         let bytes = DigestDerivator::Blake3_256.digest(&bytes);

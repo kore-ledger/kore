@@ -267,8 +267,7 @@ pub mod tests {
     // Mocks
 
     // Create governance request mock.
-    pub fn create_start_request_mock(issuer: &str) -> Signed<EventRequest> {
-        let (key_pair, _key_id) = issuer_identity(issuer);
+    pub fn create_start_request_mock(issuer: &str, keys: KeyPair) -> Signed<EventRequest> {
         let req = CreateRequest {
             governance_id: DigestIdentifier::default(),
             schema_id: "governance".to_string(),
@@ -276,21 +275,8 @@ pub mod tests {
         };
         let content = EventRequest::Create(req);
         let signature =
-            Signature::new(&content, &key_pair, DigestDerivator::SHA2_256)
+            Signature::new(&content, &keys, DigestDerivator::SHA2_256)
                 .unwrap();
         Signed { content, signature }
-    }
-
-    // Mokcs
-    #[allow(dead_code)]
-    pub fn issuer_identity(name: &str) -> (KeyPair, KeyIdentifier) {
-        let filler = [0u8; 32];
-        let mut value = name.as_bytes().to_vec();
-        value.extend(filler.iter());
-        value.truncate(32);
-        let kp = Ed25519KeyPair::from_secret_key(&value);
-        let id =
-            KeyIdentifier::new(KeyDerivator::Ed25519, &kp.public_key_bytes());
-        (KeyPair::Ed25519(kp), id)
     }
 }
