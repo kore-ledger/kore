@@ -112,7 +112,7 @@ impl Distribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         signer: KeyIdentifier,
-        gov_version: u64
+        gov_version: u64,
     ) -> Result<(), ActorError> {
         let child = ctx
             .create_child(

@@ -72,11 +72,12 @@ impl Handler<LedgerEvent> for LedgerEvent {
                 Ok(LedgerEventResponse::Ok)
             }
             LedgerEventMessage::GetLastEvent => {
-                let last_event = if let Some(last_event) = self.last_event.clone() {
-                    last_event
-                } else {
-                    todo!()
-                };
+                let last_event =
+                    if let Some(last_event) = self.last_event.clone() {
+                        last_event
+                    } else {
+                        todo!()
+                    };
 
                 Ok(LedgerEventResponse::LastEvent(last_event))
             }

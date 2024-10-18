@@ -452,13 +452,16 @@ impl Handler<Validation> for Validation {
                     ) && self.valid_validation
                     {
                         // The quorum was met, we persisted, and we applied the status
-                        self.on_event(ValidationEvent {
+                        self.on_event(
+                            ValidationEvent {
                                 actual_proof: self.actual_proof.clone(),
                                 actual_event_validation_response: self
                                     .validators_response
                                     .clone(),
-                            }, ctx)
-                            .await;
+                            },
+                            ctx,
+                        )
+                        .await;
 
                         if let Err(e) =
                             self.send_validation_to_req(ctx, true).await
@@ -467,14 +470,16 @@ impl Handler<Validation> for Validation {
                         };
                     } else if self.validators.is_empty() {
                         // we have received all the responses and the quorum has not been met
-                        self
-                            .on_event(ValidationEvent {
+                        self.on_event(
+                            ValidationEvent {
                                 actual_proof: self.actual_proof.clone(),
                                 actual_event_validation_response: self
                                     .validators_response
                                     .clone(),
-                            }, ctx)
-                            .await;
+                            },
+                            ctx,
+                        )
+                        .await;
 
                         if let Err(e) =
                             self.send_validation_to_req(ctx, false).await

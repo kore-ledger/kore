@@ -31,7 +31,8 @@ use actor::{
 use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
 use identity::{
     identifier::{
-        derive::digest::DigestDerivator, key_identifier, DigestIdentifier, KeyIdentifier
+        derive::digest::DigestDerivator, key_identifier, DigestIdentifier,
+        KeyIdentifier,
     },
     keys::{KeyMaterial, KeyPair},
 };
@@ -586,13 +587,21 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         subject_id: &str,
         new_owner: &str,
-        old_owner: &str
+        old_owner: &str,
     ) -> Result<(), Error> {
         let node_path = ActorPath::from("/user/node");
-        let node_actor: Option<ActorRef<Node>> = ctx.system().get_actor(&node_path).await;
-    
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+
         if let Some(node_actor) = node_actor {
-            if let Err(e) = node_actor.tell(NodeMessage::ChangeSubjectOwner{new_owner: new_owner.to_owned(), old_owner: old_owner.to_owned(), subject_id: subject_id.to_owned()}).await {
+            if let Err(e) = node_actor
+                .tell(NodeMessage::ChangeSubjectOwner {
+                    new_owner: new_owner.to_owned(),
+                    old_owner: old_owner.to_owned(),
+                    subject_id: subject_id.to_owned(),
+                })
+                .await
+            {
                 todo!()
             }
         } else {
@@ -678,7 +687,7 @@ impl Subject {
             Ok(is_ok) => is_ok,
             Err(e) => todo!(),
         };
-        
+
         let change_owner: bool;
         // Si el nuevo evento a registrar fue correcto.
         if valid_new_event {
@@ -700,8 +709,7 @@ impl Subject {
                         serde_json::from_value::<Patch>(json_patch.0)
                             .map_err(|e| todo!())?;
                     let mut propierties = self.properties.0.clone();
-                    let Ok(()) = patch(&mut propierties, &patch_json)
-                    else {
+                    let Ok(()) = patch(&mut propierties, &patch_json) else {
                         // No se pudo aplicar el patch, error
                         todo!()
                     };
@@ -714,7 +722,8 @@ impl Subject {
                     }
                 }
                 EventRequest::Transfer(transfer_request) => {
-                    let hash_without_patch = self.properties
+                    let hash_without_patch = self
+                        .properties
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                     if hash_without_patch != new_ledger.content.state_hash {
@@ -722,7 +731,14 @@ impl Subject {
                         // propierties deberían ser iguales.
                     }
 
-                    if let Err(E) = Subject::change_node_subject(ctx, &transfer_request.subject_id.to_string(), &transfer_request.new_owner.to_string(), &self.owner.to_string()).await {
+                    if let Err(E) = Subject::change_node_subject(
+                        ctx,
+                        &transfer_request.subject_id.to_string(),
+                        &transfer_request.new_owner.to_string(),
+                        &self.owner.to_string(),
+                    )
+                    .await
+                    {
                         todo!()
                     }
                 }
@@ -777,7 +793,10 @@ impl Subject {
             event.content.event_request.content.clone()
         {
             if event_req.schema_id == "governance" {
-                if !event_req.governance_id.digest.is_empty() || !event_req.namespace.is_empty() && event.content.gov_version != 0 {
+                if !event_req.governance_id.digest.is_empty()
+                    || !event_req.namespace.is_empty()
+                        && event.content.gov_version != 0
+                {
                     todo!()
                 }
             }
@@ -826,7 +845,9 @@ impl Subject {
         let mut last_ledger = if let Some(last_ledger) = last_ledger {
             last_ledger
         } else {
-            if let Err(e) = self.verify_first_ledger_event(events[0].clone()).await {
+            if let Err(e) =
+                self.verify_first_ledger_event(events[0].clone()).await
+            {
                 todo!()
             }
             self.on_event(events[0].clone(), ctx).await;
@@ -836,12 +857,9 @@ impl Subject {
         // TODO SI el evento es de Transferencia o de Confiramción y nos afecte, tenemos que
         // Cambiar los owned subjects o know subjects del nodo.
         for event in events {
-            if let Err(e) = self.verify_new_ledger_event(
-                ctx,
-                &last_ledger,
-                &event,
-            )
-            .await
+            if let Err(e) = self
+                .verify_new_ledger_event(ctx, &last_ledger, &event)
+                .await
             {
                 if let Error::Sn(_) = e {
                     // El evento que estamos aplicando no es el siguiente.
@@ -1073,7 +1091,10 @@ impl Handler<Subject> for Subject {
             }
             SubjectMessage::UpdateLedger { events } => {
                 debug!("Emit event to update subject.");
-                match self.verify_new_ledger_events(ctx, events.as_slice()).await {
+                match self
+                    .verify_new_ledger_events(ctx, events.as_slice())
+                    .await
+                {
                     Ok(last_sn) => Ok(SubjectResponse::LastSn(last_sn)),
                     Err(e) => Ok(SubjectResponse::Error(e)),
                 }
@@ -1136,7 +1157,7 @@ impl PersistentActor for Subject {
 
         if valid_event {
             match &event.content.event_request.content {
-                EventRequest::Create(start_request) => {},
+                EventRequest::Create(start_request) => {}
                 EventRequest::Fact(fact_request) => {
                     let json_patch = match event.content.value.clone() {
                         LedgerValue::Patch(value_wrapper) => value_wrapper,
@@ -1438,7 +1459,6 @@ mod tests {
             .unwrap();
 
         if let SubjectResponse::LastSn(last_sn) = response {
-            
         } else {
             panic!("Invalid response");
         }
