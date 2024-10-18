@@ -37,6 +37,7 @@ pub enum ActorMessage {
     DistributionLastEventReq {
         ledger: Signed<Ledger>,
         event: Signed<KoreEvent>,
+        gov_version: u64,
     },
     DistributionLastEventRes {
         signer: KeyIdentifier,
@@ -49,6 +50,7 @@ pub enum ActorMessage {
     DistributionLedgerRes {
         ledger: Vec<Signed<Ledger>>,
         last_event: Option<Signed<KoreEvent>>,
+        gov_version: u64,
     },
 }
 
