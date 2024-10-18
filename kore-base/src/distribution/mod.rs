@@ -9,7 +9,7 @@ use distributor::{Distributor, DistributorMessage};
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use crate::{
-    governance::model::Roles,
+    governance::{self, model::Roles},
     model::event::Ledger,
     request::manager::{RequestManager, RequestManagerMessage},
     subject::SubjectMetadata,
@@ -112,6 +112,7 @@ impl Distribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         signer: KeyIdentifier,
+        gov_version: u64
     ) -> Result<(), ActorError> {
         let child = ctx
             .create_child(
@@ -131,6 +132,7 @@ impl Distribution {
         if signer != our_key {
             distributor_actor
                 .tell(DistributorMessage::NetworkDistribution {
+                    gov_version,
                     ledger,
                     event,
                     node_key: signer,
@@ -204,6 +206,7 @@ impl Handler<Distribution> for Distribution {
                         event.clone(),
                         ledger.clone(),
                         witness,
+                        governance.version,
                     )
                     .await?
                 }

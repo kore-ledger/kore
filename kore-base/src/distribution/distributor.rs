@@ -25,29 +25,8 @@ use crate::{
 use super::{Distribution, DistributionMessage};
 
 enum CheckGovernance {
-    Continue,
+    Continue(u64),
     Finish,
-}
-
-pub enum EventTypes {
-    Ledger(Ledger),
-    Event(KoreEvent),
-}
-
-impl EventTypes {
-    pub fn get_subject_id(&self) -> DigestIdentifier {
-        match self {
-            EventTypes::Ledger(ledger) => ledger.subject_id.clone(),
-            EventTypes::Event(event) => event.subject_id.clone(),
-        }
-    }
-
-    pub fn get_event_request(&self) -> EventRequest {
-        match self {
-            EventTypes::Ledger(ledger) => ledger.event_request.content.clone(),
-            EventTypes::Event(event) => event.event_request.content.clone(),
-        }
-    }
 }
 
 pub struct Distributor {
@@ -58,11 +37,21 @@ impl Distributor {
     async fn check_first_event(
         &self,
         ctx: &mut ActorContext<Distributor>,
-        event: EventTypes,
+        ledger: Ledger,
+        our_key: KeyIdentifier,
         signer: KeyIdentifier,
         schema: &str,
     ) -> Result<bool, Error> {
-        let subject_id = event.get_subject_id();
+        let subject_id = ledger.subject_id;
+
+        let know = if let Ok(know) =
+            self.authorized_subj(ctx, &subject_id.to_string()).await
+        {
+            know
+        } else {
+            todo!()
+        };
+
         // path del sujeto
         let subject_path =
             ActorPath::from(format!("/user/node/{}", subject_id));
@@ -89,7 +78,9 @@ impl Distributor {
             // Si el sujeto no existe.
         } else {
             // El primero evento tiene que ser de creación sí o sí
-            if let EventRequest::Create(request) = event.get_event_request() {
+            if let EventRequest::Create(request) =
+                ledger.event_request.content.clone()
+            {
                 (request.namespace, true)
             } else {
                 // Error, no existe el sujeto y el primer evento no es de creación.
@@ -97,40 +88,44 @@ impl Distributor {
             }
         };
 
-        // SI es una gov ver si la aceptamos,
-        if schema == "governance" {
-            // SI nada falla
-            // TODO Esto hay que cambiarlo, también pueden ser sujetos sueltos, esto se hace
-            // Para la transferencia de un sujeto que no sea una governanza, por ejemplo un coche
-            // El nodo será no ephimeral y por lo tanto no será testigo, pero tiene que ser capaz
-            // De recibir la copia del nuevo sujeto que es suyo, por lo tanto, hay que authorizar
-            // Tanto sujetos como governanzas.
-            if let Ok(know) =
-                self.authorized_gov(ctx, &subject_id.to_string()).await
-            {
-                // SI la governanza no la conocemos, por ende no está autorizada.
-                if !know {
+        if !know {
+            if schema != "governance" {
+                let gov = if create {
+                    // El primero evento tiene que ser de creación sí o sí
+                    if let EventRequest::Create(request) =
+                        ledger.event_request.content
+                    {
+                        get_gov(ctx, &request.governance_id.to_string()).await
+                    } else {
+                        // Error, no existe el sujeto y el primer evento no es de creación.
+                        todo!()
+                    }
+                } else {
+                    get_gov(ctx, &subject_id.to_string()).await
+                };
+
+                let gov = match gov {
+                    Ok(gov) => gov,
+                    Err(e) => todo!(),
+                };
+                let creators = gov.get_signers(
+                    Roles::CREATOR { quantity: 0 },
+                    schema,
+                    namespace.clone(),
+                );
+
+                if !creators.iter().any(|x| x.clone() == signer) {
                     todo!()
-                }
-            } else {
-                todo!()
-            };
-        }
-        // si no es una gov ver si el signer es creator.
-        else {
-            let gov = get_gov(ctx, &subject_id.to_string()).await;
-            let gov = match gov {
-                Ok(gov) => gov,
-                Err(e) => todo!(),
-            };
-            let creators = gov.get_signers(
-                Roles::CREATOR { quantity: 0 },
-                schema,
-                namespace,
-            );
-            if !creators.iter().any(|x| x.clone() == signer) {
-                todo!()
-            };
+                };
+
+                let witness =
+                    gov.get_signers(Roles::WITNESS, schema, namespace);
+
+                if !witness.iter().any(|x| x.clone() == our_key) {
+                    todo!()
+                };
+                // Comprobar que soy testigo para ese schema y esa governanza.
+            }
         }
 
         Ok(create)
@@ -195,7 +190,7 @@ impl Distributor {
         }
     }
 
-    async fn authorized_gov(
+    async fn authorized_subj(
         &self,
         ctx: &mut ActorContext<Distributor>,
         subject_id: &str,
@@ -272,6 +267,124 @@ impl Distributor {
                     .to_owned(),
             )),
         }
+    }
+
+    async fn check_gov_version_ledger(
+        ctx: &mut ActorContext<Distributor>,
+        info: ComunicateInfo,
+        gov_version: u64,
+        event: EventRequest,
+        subject_id: DigestIdentifier,
+    ) -> Result<CheckGovernance, ActorError> {
+        let (gov, gov_id) = if let EventRequest::Create(event_req) = event {
+            let gov = get_gov(ctx, &event_req.governance_id.to_string()).await;
+            (gov, event_req.governance_id)
+        } else {
+            let gov = get_gov(ctx, &subject_id.to_string()).await;
+            let metadata =
+                match get_metadata(ctx, &subject_id.to_string()).await {
+                    Ok(metadata) => metadata,
+                    Err(e) => todo!(),
+                };
+
+            (gov, metadata.governance_id)
+        };
+        // SOlo a no governanzas, el sujeto puede no existir.
+
+        let gov = match gov {
+            Ok(gov) => gov,
+            Err(e) => todo!(),
+        };
+
+        let our_gov_version = gov.version;
+        match our_gov_version.cmp(&gov_version) {
+            std::cmp::Ordering::Less => {
+                // Mi version es menor, me actualizo. y no le envío nada
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver,
+                    request_id: info.request_id,
+                    reciver_actor: format!("/user/node/{}/distributor", gov_id),
+                    schema: "governance".to_owned(),
+                };
+
+                let helper: Option<Intermediary> =
+                    ctx.system().get_helper("NetworkIntermediary").await;
+
+                let mut helper = if let Some(helper) = helper {
+                    helper
+                } else {
+                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
+                    // return Err(ActorError::Get("Error".to_owned()))
+                    return Err(ActorError::NotHelper);
+                };
+
+                // TODO firmar la respuesta. Por ahora no, ya que si no tengo la gov en la última versión no puedo saber si es un testigo.
+                if let Err(e) = helper
+                    .send_command(network::CommandHelper::SendMessage {
+                        message: NetworkMessage {
+                            info: new_info,
+                            message: ActorMessage::DistributionLedgerReq {
+                                gov_version: Some(our_gov_version),
+                                actual_sn: Some(our_gov_version),
+                                subject_id: gov_id,
+                            },
+                        },
+                    })
+                    .await
+                {
+                    todo!()
+                    // error al enviar mensaje, propagar hacia arriba
+                };
+
+                return Ok(CheckGovernance::Finish);
+            }
+            std::cmp::Ordering::Equal => {}
+            std::cmp::Ordering::Greater => {
+                // Su version es menor. Traslado la solicitud de actualización
+                // a mi distributor gov.
+                if info.schema != "governance" {
+                    let new_info = ComunicateInfo {
+                        reciver: info.reciver,
+                        sender: info.sender,
+                        request_id: info.request_id,
+                        reciver_actor: format!(
+                            "/user/node/{}/distributor",
+                            gov_id
+                        ),
+                        schema: "governance".to_owned(),
+                    };
+
+                    let distributor_path = ActorPath::from(format!(
+                        "/user/node/{}/distributor",
+                        gov_id
+                    ));
+                    let distributor_actor: ActorRef<Distributor> =
+                        if let Some(distributor_actor) =
+                            ctx.system().get_actor(&distributor_path).await
+                        {
+                            distributor_actor
+                        } else {
+                            todo!()
+                        };
+
+                    if let Err(e) = distributor_actor
+                        .tell(DistributorMessage::SendDistribution {
+                            gov_version: Some(gov_version),
+                            actual_sn: Some(gov_version),
+                            subject_id: gov_id.to_string(),
+                            info: new_info,
+                        })
+                        .await
+                    {
+                        todo!()
+                    }
+                    return Ok(CheckGovernance::Finish);
+                }
+            }
+        }
+
+        return Ok(CheckGovernance::Continue(our_gov_version));
     }
 
     async fn check_gov_version(
@@ -393,9 +506,14 @@ impl Distributor {
         } else {
             if info.schema != "governance" {
                 // Error me estás pidiendo el ledger para un sujeto que no es una governanza
-                // Y no me pasas la versión de lagov
+                // Y no me pasas la versión de la gov
                 todo!()
             }
+        }
+
+        // Si el owner nos pide la copia.
+        if metadata.owner == info.sender {
+            return Ok(CheckGovernance::Continue(our_gov_version));
         }
 
         if !gov
@@ -411,7 +529,7 @@ impl Distributor {
             todo!()
         };
 
-        Ok(CheckGovernance::Continue)
+        Ok(CheckGovernance::Continue(our_gov_version))
     }
 }
 
@@ -433,6 +551,7 @@ pub enum DistributorMessage {
     },
     // Enviar a un nodo la replicación.
     NetworkDistribution {
+        gov_version: u64,
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         node_key: KeyIdentifier,
@@ -446,11 +565,13 @@ pub enum DistributorMessage {
     LastEventDistribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
+        gov_version: u64,
         info: ComunicateInfo,
     },
     LedgerDistribution {
         events: Vec<Signed<Ledger>>,
         last_event: Option<Signed<KoreEvent>>,
+        gov_version: u64,
         info: ComunicateInfo,
     },
 }
@@ -472,17 +593,17 @@ impl Handler<Distributor> for Distributor {
                 gov_version,
                 subject_id,
             } => {
-                let result = self
+                let gov_version = match self
                     .check_gov_version(
                         ctx,
                         &subject_id,
                         gov_version,
                         info.clone(),
                     )
-                    .await?;
-
-                if let CheckGovernance::Finish = result {
-                    return Ok(());
+                    .await?
+                {
+                    CheckGovernance::Continue(gov_version) => gov_version,
+                    CheckGovernance::Finish => return Ok(()),
                 };
 
                 let sn = if let Some(actual_sn) = actual_sn {
@@ -528,6 +649,7 @@ impl Handler<Distributor> for Distributor {
                             message: ActorMessage::DistributionLedgerRes {
                                 ledger,
                                 last_event,
+                                gov_version,
                             },
                         },
                     })
@@ -537,6 +659,7 @@ impl Handler<Distributor> for Distributor {
                 };
             }
             DistributorMessage::NetworkDistribution {
+                gov_version,
                 event,
                 node_key,
                 our_key,
@@ -558,6 +681,7 @@ impl Handler<Distributor> for Distributor {
                     message: ActorMessage::DistributionLastEventReq {
                         ledger,
                         event,
+                        gov_version,
                     },
                 };
 
@@ -621,26 +745,27 @@ impl Handler<Distributor> for Distributor {
             DistributorMessage::LastEventDistribution {
                 event,
                 ledger,
+                gov_version,
                 info,
             } => {
-                let result = self
-                    .check_gov_version(
+                if let Ok(CheckGovernance::Finish) =
+                    Distributor::check_gov_version_ledger(
                         ctx,
-                        &ledger.content.subject_id.to_string(),
-                        Some(ledger.content.gov_version.clone()),
                         info.clone(),
+                        gov_version,
+                        ledger.content.event_request.content.clone(),
+                        ledger.content.subject_id.clone(),
                     )
-                    .await?;
-                if let CheckGovernance::Finish = result {
+                    .await
+                {
                     return Ok(());
                 };
 
-                let event_type = EventTypes::Event(event.content.clone());
-                // TODO verificar la versión de la governanza
                 let new_subject = match self
                     .check_first_event(
                         ctx,
-                        event_type,
+                        ledger.content.clone(),
+                        info.reciver.clone(),
                         event.signature.signer.clone(),
                         &info.schema,
                     )
@@ -789,20 +914,32 @@ impl Handler<Distributor> for Distributor {
                 mut events,
                 info,
                 last_event,
+                gov_version,
             } => {
                 if events.is_empty() {
                     todo!()
                 }
-                // TODO no voy a comparar governanzas, no creo que aquí haga falta, revizar en un futuro.
 
                 let subject_id = events[0].content.subject_id.clone();
 
-                let event_type = EventTypes::Ledger(events[0].content.clone());
+                if let Ok(CheckGovernance::Finish) =
+                    Distributor::check_gov_version_ledger(
+                        ctx,
+                        info.clone(),
+                        gov_version,
+                        events[0].content.event_request.content.clone(),
+                        subject_id.clone(),
+                    )
+                    .await
+                {
+                    return Ok(());
+                };
 
                 let new_subject = match self
                     .check_first_event(
                         ctx,
-                        event_type,
+                        events[0].content.clone(),
+                        info.reciver.clone(),
                         events[0].signature.signer.clone(),
                         &info.schema,
                     )

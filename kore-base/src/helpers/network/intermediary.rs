@@ -257,6 +257,7 @@ impl Intermediary {
                     ActorMessage::DistributionLastEventReq {
                         event,
                         ledger,
+                        gov_version,
                     } => {
                         // Distributor path.
                         let distributor_path =
@@ -294,6 +295,7 @@ impl Intermediary {
                             .tell(DistributorMessage::LastEventDistribution {
                                 event,
                                 ledger,
+                                gov_version,
                                 info: message.info,
                             })
                             .await
@@ -409,6 +411,7 @@ impl Intermediary {
                     ActorMessage::DistributionLedgerRes {
                         ledger,
                         last_event,
+                        gov_version,
                     } => {
                         // Distributor path.
                         let distributor_path =
@@ -446,6 +449,7 @@ impl Intermediary {
                             .tell(DistributorMessage::LedgerDistribution {
                                 events: ledger,
                                 last_event,
+                                gov_version,
                                 info: message.info,
                             })
                             .await
