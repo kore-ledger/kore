@@ -4,7 +4,7 @@ use crate::{
     model::SignTypesNode,
     subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
-        SubjectMetadata,
+        Metadata,
     },
     Error, Event as KoreEvent, Governance, Node, NodeMessage, NodeResponse,
     Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes,
@@ -63,7 +63,7 @@ where
 pub async fn get_metadata<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
-) -> Result<SubjectMetadata, Error>
+) -> Result<Metadata, Error>
 where
     A: Actor + Handler<A>,
 {
@@ -74,7 +74,7 @@ where
     let response = if let Some(subject_actor) = subject_actor {
         // We ask a node
         let response =
-            subject_actor.ask(SubjectMessage::GetSubjectMetadata).await;
+            subject_actor.ask(SubjectMessage::GetMetadata).await;
         match response {
             Ok(response) => response,
             Err(e) => {
@@ -92,7 +92,7 @@ where
     };
 
     match response {
-        SubjectResponse::SubjectMetadata(metadata) => Ok(metadata),
+        SubjectResponse::Metadata(metadata) => Ok(metadata),
         _ => Err(Error::Actor(
             "An unexpected response has been received from subject actor"
                 .to_owned(),

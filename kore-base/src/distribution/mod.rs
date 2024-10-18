@@ -12,7 +12,7 @@ use crate::{
     governance::{self, model::Roles},
     model::event::Ledger,
     request::manager::{RequestManager, RequestManagerMessage},
-    subject::SubjectMetadata,
+    subject::Metadata,
     Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage,
     SubjectResponse,
 };
@@ -34,7 +34,7 @@ impl Distribution {
         &self,
         ctx: &mut ActorContext<Distribution>,
         subject_id: DigestIdentifier,
-    ) -> Result<(Governance, SubjectMetadata), Error> {
+    ) -> Result<(Governance, Metadata), Error> {
         // Governance path
         let governance_path =
             ActorPath::from(format!("/user/node/{}", subject_id));
@@ -82,7 +82,7 @@ impl Distribution {
             };
 
         let response = governance_actor
-            .ask(SubjectMessage::GetSubjectMetadata)
+            .ask(SubjectMessage::GetMetadata)
             .await;
         let response = match response {
             Ok(response) => response,
@@ -96,7 +96,7 @@ impl Distribution {
 
         let metadata =
             match response {
-                SubjectResponse::SubjectMetadata(metadata) => metadata,
+                SubjectResponse::Metadata(metadata) => metadata,
                 _ => return Err(Error::Actor(
                     "An unexpected response has been received from node actor"
                         .to_owned(),
@@ -112,7 +112,6 @@ impl Distribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         signer: KeyIdentifier,
-        gov_version: u64,
     ) -> Result<(), ActorError> {
         let child = ctx
             .create_child(
@@ -132,7 +131,6 @@ impl Distribution {
         if signer != our_key {
             distributor_actor
                 .tell(DistributorMessage::NetworkDistribution {
-                    gov_version,
                     ledger,
                     event,
                     node_key: signer,
@@ -206,7 +204,6 @@ impl Handler<Distribution> for Distribution {
                         event.clone(),
                         ledger.clone(),
                         witness,
-                        governance.version,
                     )
                     .await?
                 }

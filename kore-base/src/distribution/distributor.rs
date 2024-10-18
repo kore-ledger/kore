@@ -63,7 +63,7 @@ impl Distributor {
         // Si el sujeto existe.
         let (namespace, create) = if let Some(subject_actor) = subject_actor {
             let response = match subject_actor
-                .ask(SubjectMessage::GetSubjectMetadata)
+                .ask(SubjectMessage::GetMetadata)
                 .await
             {
                 Ok(response) => response,
@@ -71,7 +71,7 @@ impl Distributor {
             };
 
             let metadata = match response {
-                SubjectResponse::SubjectMetadata(metadata) => metadata,
+                SubjectResponse::Metadata(metadata) => metadata,
                 _ => todo!(),
             };
             (metadata.namespace, false)
@@ -551,7 +551,6 @@ pub enum DistributorMessage {
     },
     // Enviar a un nodo la replicación.
     NetworkDistribution {
-        gov_version: u64,
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         node_key: KeyIdentifier,
@@ -565,13 +564,11 @@ pub enum DistributorMessage {
     LastEventDistribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
-        gov_version: u64,
         info: ComunicateInfo,
     },
     LedgerDistribution {
         events: Vec<Signed<Ledger>>,
         last_event: Option<Signed<KoreEvent>>,
-        gov_version: u64,
         info: ComunicateInfo,
     },
 }
@@ -649,7 +646,6 @@ impl Handler<Distributor> for Distributor {
                             message: ActorMessage::DistributionLedgerRes {
                                 ledger,
                                 last_event,
-                                gov_version,
                             },
                         },
                     })
@@ -659,7 +655,6 @@ impl Handler<Distributor> for Distributor {
                 };
             }
             DistributorMessage::NetworkDistribution {
-                gov_version,
                 event,
                 node_key,
                 our_key,
@@ -681,7 +676,6 @@ impl Handler<Distributor> for Distributor {
                     message: ActorMessage::DistributionLastEventReq {
                         ledger,
                         event,
-                        gov_version,
                     },
                 };
 
@@ -745,14 +739,13 @@ impl Handler<Distributor> for Distributor {
             DistributorMessage::LastEventDistribution {
                 event,
                 ledger,
-                gov_version,
                 info,
             } => {
                 if let Ok(CheckGovernance::Finish) =
                     Distributor::check_gov_version_ledger(
                         ctx,
                         info.clone(),
-                        gov_version,
+                        ledger.content.gov_version.clone(),
                         ledger.content.event_request.content.clone(),
                         ledger.content.subject_id.clone(),
                     )
@@ -914,7 +907,6 @@ impl Handler<Distributor> for Distributor {
                 mut events,
                 info,
                 last_event,
-                gov_version,
             } => {
                 if events.is_empty() {
                     todo!()
@@ -926,7 +918,7 @@ impl Handler<Distributor> for Distributor {
                     Distributor::check_gov_version_ledger(
                         ctx,
                         info.clone(),
-                        gov_version,
+                        events[0].content.gov_version.clone(),
                         events[0].content.event_request.content.clone(),
                         subject_id.clone(),
                     )
@@ -974,7 +966,7 @@ impl Handler<Distributor> for Distributor {
 
                 // Obtenemos el last_sn para saber si nos vale la pena intentar actualizar el ledger
                 let response = match subject_ref
-                    .ask(SubjectMessage::GetSubjectMetadata)
+                    .ask(SubjectMessage::GetMetadata)
                     .await
                 {
                     Ok(res) => res,
@@ -982,7 +974,7 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 let metadata = match response {
-                    SubjectResponse::SubjectMetadata(data) => data,
+                    SubjectResponse::Metadata(data) => data,
                     _ => todo!(),
                 };
 

@@ -41,6 +41,7 @@ use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use json_patch::{patch, Patch};
 use serde::{Deserialize, Serialize};
+use serde_json::{to_value, Value};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{debug, error};
 
@@ -278,7 +279,7 @@ impl Subject {
     ///
     /// The subject metadata.
     ///
-    fn get_metadata(&self) -> SubjectMetadata {
+    fn get_metadata(&self) -> Metadata {
         let subject_public_key = if let Some(keys) = self.keys.clone() {
             KeyIdentifier::new(
                 keys.get_key_derivator(),
@@ -288,7 +289,7 @@ impl Subject {
             KeyIdentifier::default()
         };
 
-        SubjectMetadata {
+        Metadata {
             subject_public_key,
             genesis_gov_version: self.genesis_gov_version,
             last_event_hash: self.last_event_hash.clone(),
@@ -623,6 +624,8 @@ impl Subject {
 
         // SI no es el dueño el que firmó el evento
         if new_ledger.signature.signer != self.owner {
+            println!("{}", new_ledger.signature.signer);
+            println!("{}", self.owner);
             todo!();
         }
 
@@ -688,7 +691,6 @@ impl Subject {
             Err(e) => todo!(),
         };
 
-        let change_owner: bool;
         // Si el nuevo evento a registrar fue correcto.
         if valid_new_event {
             match new_ledger.content.event_request.content.clone() {
@@ -793,7 +795,7 @@ impl Subject {
             event.content.event_request.content.clone()
         {
             if event_req.schema_id == "governance" {
-                if !event_req.governance_id.digest.is_empty()
+                if !event_req.governance_id.is_empty()
                     || !event_req.namespace.is_empty()
                         && event.content.gov_version != 0
                 {
@@ -814,7 +816,7 @@ impl Subject {
             todo!()
         }
 
-        if !event.content.hash_prev_event.digest.is_empty() {}
+        if !event.content.hash_prev_event.is_empty() {}
 
         match Self::verify_protocols_state(
             EventRequestType::Create,
@@ -960,7 +962,7 @@ impl Clone for Subject {
 #[derive(
     Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
-pub struct SubjectMetadata {
+pub struct Metadata {
     /// The identifier of the subject of the event.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance contract.
@@ -986,7 +988,7 @@ pub struct SubjectMetadata {
 #[derive(Debug, Clone)]
 pub enum SubjectMessage {
     /// Get the subject metadata.
-    GetSubjectMetadata,
+    GetMetadata,
     GetLedger {
         last_sn: u64,
     },
@@ -1006,7 +1008,7 @@ impl Message for SubjectMessage {}
 #[derive(Debug, Clone)]
 pub enum SubjectResponse {
     /// The subject metadata.
-    SubjectMetadata(SubjectMetadata),
+    Metadata(Metadata),
     SignRequest(Signature),
     Error(Error),
     LastSn(u64),
@@ -1033,7 +1035,7 @@ impl Actor for Subject {
         debug!("Starting subject actor with init store.");
         self.init_store("subject", None, true, ctx).await?;
 
-        if self.governance_id.digest.is_empty() {
+        if self.governance_id.is_empty() {
             self.build_childs_governance(ctx).await?;
         } else {
             self.build_childs_not_governance(ctx).await?;
@@ -1086,8 +1088,8 @@ impl Handler<Subject> for Subject {
             SubjectMessage::GetOwner => {
                 Ok(SubjectResponse::Owner(self.owner.clone()))
             }
-            SubjectMessage::GetSubjectMetadata => {
-                Ok(SubjectResponse::SubjectMetadata(self.get_metadata()))
+            SubjectMessage::GetMetadata => {
+                Ok(SubjectResponse::Metadata(self.get_metadata()))
             }
             SubjectMessage::UpdateLedger { events } => {
                 debug!("Emit event to update subject.");
@@ -1113,7 +1115,7 @@ impl Handler<Subject> for Subject {
             }
             SubjectMessage::GetGovernance => {
                 // If is a governance
-                if self.governance_id.digest.is_empty() {
+                if self.governance_id.is_empty() {
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
                         Err(e) => return Ok(SubjectResponse::Error(e)),
@@ -1157,7 +1159,19 @@ impl PersistentActor for Subject {
 
         if valid_event {
             match &event.content.event_request.content {
-                EventRequest::Create(start_request) => {}
+                EventRequest::Create(start_request) => {
+                    let last_event_hash = match event
+                        .content
+                        .event_request
+                        .hash_id(event.signature.content_hash.derivator)
+                    {
+                        Ok(hash) => hash,
+                        Err(e) => todo!(),
+                    };
+
+                    self.last_event_hash = last_event_hash;
+                    return;
+                }
                 EventRequest::Fact(fact_request) => {
                     let json_patch = match event.content.value.clone() {
                         LedgerValue::Patch(value_wrapper) => value_wrapper,
@@ -1184,6 +1198,23 @@ impl PersistentActor for Subject {
                     todo!()
                 }
             }
+
+            if self.governance_id.is_empty() {
+                let mut gov =
+                    match Governance::try_from(self.properties.clone()) {
+                        Ok(gov) => gov,
+                        Err(e) => todo!(),
+                    };
+
+                gov.version += 1;
+                let gov_value = if let Ok(value) = to_value(gov) {
+                    value
+                } else {
+                    todo!()
+                };
+
+                self.properties.0 = gov_value;
+            }
         }
 
         let last_event_hash = match event
@@ -1206,6 +1237,8 @@ impl Storable for Subject {}
 #[cfg(test)]
 mod tests {
 
+    use std::time::Instant;
+
     use super::*;
 
     use crate::{
@@ -1215,7 +1248,168 @@ mod tests {
             request::tests::create_start_request_mock, signature::Signature,
         },
         tests::create_system,
+        FactRequest,
     };
+
+    async fn create_subject_and_ledger_event(system: SystemRef, node_keys: KeyPair) -> (ActorRef<Subject>, ActorRef<LedgerEvent>, Subject, Signed<Ledger>) {
+        let node = Node::new(&node_keys).unwrap();
+        let _ = system.create_root_actor("node", node).await.unwrap();
+        let request = create_start_request_mock("issuer", node_keys.clone());
+        let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let event = KoreEvent::from_create_request(
+            &keys,
+            &request,
+            0,
+            &init_state(&node_keys.key_identifier().to_string()),
+            DigestDerivator::Blake3_256,
+        )
+        .unwrap();
+        let ledger = Ledger::from(event.clone());
+        let signature_ledger = Signature::new(
+            &ledger,
+            &node_keys.clone(),
+            DigestDerivator::Blake3_256,
+        )
+        .unwrap();
+        let signed_ledger = Signed {
+            content: ledger,
+            signature: signature_ledger,
+        };
+
+        let signature_event =
+            Signature::new(&event, &node_keys, DigestDerivator::Blake3_256)
+                .unwrap();
+
+        let signed_event = Signed {
+            content: event,
+            signature: signature_event,
+        };
+
+        let subject =
+            Subject::from_event(Some(keys.clone()), &signed_ledger).unwrap();
+
+        let subject_actor = system
+            .get_or_create_actor(
+                &format!("node/{}", subject.subject_id),
+                || subject.clone(),
+            )
+            .await
+            .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        let ledger_event_actor: Option<ActorRef<LedgerEvent>> = system
+            .get_actor(&ActorPath::from(format!(
+                "user/node/{}/ledgerEvent",
+                subject.subject_id
+            )))
+            .await;
+
+        let ledger_event_actor = if let Some(actor) = ledger_event_actor {
+            actor
+        } else {
+            panic!("Actor must be in system actor")
+        };
+
+        ledger_event_actor
+            .ask(LedgerEventMessage::UpdateLastEvent {
+                event: signed_event,
+            })
+            .await
+            .unwrap();
+
+        let response = subject_actor
+            .ask(SubjectMessage::UpdateLedger {
+                events: vec![signed_ledger.clone()],
+            })
+            .await
+            .unwrap();
+
+        if let SubjectResponse::LastSn(last_sn) = response {
+            assert_eq!(last_sn, 0);
+        } else {
+            panic!("Invalid response");
+        }
+
+        (subject_actor, ledger_event_actor, subject, signed_ledger)
+    }
+
+    fn create_n_fact_events(
+        mut hash_prev_event: DigestIdentifier,
+        n: u64,
+        keys: KeyPair,
+        subject_id: DigestIdentifier,
+        mut subject_propierties: Value,
+    ) -> Vec<Signed<Ledger>> {
+        let mut vec: Vec<Signed<Ledger>> = vec![];
+
+        for i in 0..n {
+            let patch_event_req = json!(
+                    [
+                        {
+                            "op": "add",
+                            "path": "/members/0",
+                            "value": {
+                                "id": KeyIdentifier::new(KeyDerivator::Ed25519, &vec![]),
+                                "name": format!("KoreNode{}", i)
+                            }
+                        }
+                    ]
+            );
+
+            let event_req = EventRequest::Fact(FactRequest {
+                subject_id: subject_id.clone(),
+                payload: ValueWrapper(patch_event_req.clone()),
+            });
+
+            let signature_event_req =
+                Signature::new(&event_req, &keys, DigestDerivator::Blake3_256)
+                    .unwrap();
+
+            let signed_event_req = Signed {
+                content: event_req,
+                signature: signature_event_req,
+            };
+
+            let patch_json =
+                serde_json::from_value::<Patch>(patch_event_req.clone())
+                    .unwrap();
+            patch(&mut subject_propierties, &patch_json).unwrap();
+
+            let state_hash = ValueWrapper(subject_propierties.clone())
+                .hash_id(DigestDerivator::Blake3_256)
+                .unwrap();
+
+            let ledger = Ledger {
+                subject_id: subject_id.clone(),
+                event_request: signed_event_req,
+                sn: i + 1,
+                gov_version: i,
+                value: LedgerValue::Patch(ValueWrapper(patch_event_req)),
+                state_hash,
+                eval_success: Some(true),
+                appr_required: false,
+                appr_success: None,
+                vali_success: true,
+                hash_prev_event: hash_prev_event.clone(),
+            };
+
+            let signature_ledger =
+                Signature::new(&ledger, &keys, DigestDerivator::Blake3_256)
+                    .unwrap();
+
+            let signed_ledger = Signed {
+                content: ledger,
+                signature: signature_ledger,
+            };
+
+            hash_prev_event =
+                signed_ledger.hash_id(DigestDerivator::Blake3_256).unwrap();
+            vec.push(signed_ledger);
+        }
+
+        vec
+    }
 
     impl KoreEvent {
         pub fn from_create_request(
@@ -1267,7 +1461,12 @@ mod tests {
         }
     }
 
-    use identity::keys::{Ed25519KeyPair, KeyGenerator};
+    use actor::SystemRef;
+    use identity::{
+        identifier::derive::KeyDerivator,
+        keys::{Ed25519KeyPair, KeyGenerator},
+    };
+    use serde_json::{json, Value};
 
     #[tokio::test]
     async fn test_subject() {
@@ -1275,7 +1474,7 @@ mod tests {
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let node = Node::new(&node_keys).unwrap();
         let _ = system.create_root_actor("node", node).await.unwrap();
-        let request = create_start_request_mock("issuer");
+        let request = create_start_request_mock("issuer", node_keys.clone());
         let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let event = KoreEvent::from_create_request(
             &keys,
@@ -1287,7 +1486,7 @@ mod tests {
         .unwrap();
         let ledger = Ledger::from(event);
         let signature =
-            Signature::new(&ledger, &keys, DigestDerivator::Blake3_256)
+            Signature::new(&ledger, &node_keys, DigestDerivator::Blake3_256)
                 .unwrap();
         let signed_ledger = Signed {
             content: ledger,
@@ -1308,10 +1507,10 @@ mod tests {
         let path = subject_actor.path().clone();
 
         let response = subject_actor
-            .ask(SubjectMessage::GetSubjectMetadata)
+            .ask(SubjectMessage::GetMetadata)
             .await
             .unwrap();
-        if let SubjectResponse::SubjectMetadata(metadata) = response {
+        if let SubjectResponse::Metadata(metadata) = response {
             assert_eq!(metadata.namespace, Namespace::from("namespace"));
         } else {
             panic!("Invalid response");
@@ -1331,10 +1530,10 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         let response = subject_actor
-            .ask(SubjectMessage::GetSubjectMetadata)
+            .ask(SubjectMessage::GetMetadata)
             .await
             .unwrap();
-        if let SubjectResponse::SubjectMetadata(metadata) = response {
+        if let SubjectResponse::Metadata(metadata) = response {
             assert_eq!(metadata.namespace, Namespace::from("namespace"));
         } else {
             panic!("Invalid response");
@@ -1344,7 +1543,8 @@ mod tests {
     #[test]
     fn test_serialize_deserialize() {
         let value = init_state("");
-        let request = create_start_request_mock("issuer");
+        let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let request = create_start_request_mock("issuer", node_keys.clone());
         let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let event = KoreEvent::from_create_request(
             &keys,
@@ -1358,7 +1558,7 @@ mod tests {
         let ledger = Ledger::from(event);
 
         let signature =
-            Signature::new(&ledger, &keys, DigestDerivator::Blake3_256)
+            Signature::new(&ledger, &node_keys, DigestDerivator::Blake3_256)
                 .unwrap();
         let signed_ledger = Signed {
             content: ledger,
@@ -1378,90 +1578,8 @@ mod tests {
     async fn test_get_events() {
         let system = create_system().await;
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let node = Node::new(&node_keys).unwrap();
-        let _ = system.create_root_actor("node", node).await.unwrap();
-        let request = create_start_request_mock("issuer");
-        let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let event = KoreEvent::from_create_request(
-            &keys,
-            &request,
-            0,
-            &init_state(&node_keys.key_identifier().to_string()),
-            DigestDerivator::Blake3_256,
-        )
-        .unwrap();
-        let ledger = Ledger::from(event.clone());
-        let signature_ledger =
-            Signature::new(&ledger, &keys, DigestDerivator::Blake3_256)
-                .unwrap();
-        let signed_ledger = Signed {
-            content: ledger,
-            signature: signature_ledger,
-        };
-
-        let signature_event =
-            Signature::new(&event, &keys, DigestDerivator::Blake3_256).unwrap();
-
-        let signed_event = Signed {
-            content: event,
-            signature: signature_event,
-        };
-
-        let subject = Subject::from_event(Some(keys), &signed_ledger).unwrap();
-
-        assert_eq!(subject.namespace, Namespace::from("namespace"));
-        let subject_actor = system
-            .get_or_create_actor(
-                &format!("node/{}", subject.subject_id),
-                || subject.clone(),
-            )
-            .await
-            .unwrap();
-
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-        let ledger_event_actor: Option<ActorRef<LedgerEvent>> = system
-            .get_actor(&ActorPath::from(format!(
-                "user/node/{}/ledgerEvent",
-                subject.subject_id
-            )))
-            .await;
-
-        let ledger_event_actor = if let Some(actor) = ledger_event_actor {
-            actor
-        } else {
-            panic!("Actor must be in system actor")
-        };
-
-        ledger_event_actor
-            .ask(LedgerEventMessage::UpdateLastEvent {
-                event: signed_event,
-            })
-            .await
-            .unwrap();
-
-        let response = subject_actor
-            .ask(SubjectMessage::GetLedger { last_sn: 0 })
-            .await
-            .unwrap();
-        if let SubjectResponse::Ledger(ledger) = response {
-            assert!(ledger.0.len() == 0);
-            assert!(ledger.1.is_some());
-        } else {
-            panic!("Invalid response");
-        }
-
-        let response = subject_actor
-            .ask(SubjectMessage::UpdateLedger {
-                events: vec![signed_ledger],
-            })
-            .await
-            .unwrap();
-
-        if let SubjectResponse::LastSn(last_sn) = response {
-        } else {
-            panic!("Invalid response");
-        }
+        
+        let (subject_actor, _ledger_event_actor, _subject, _signed_ledger) = create_subject_and_ledger_event(system, node_keys.clone()).await;
 
         let response = subject_actor
             .ask(SubjectMessage::GetLedger { last_sn: 0 })
@@ -1470,6 +1588,72 @@ mod tests {
         if let SubjectResponse::Ledger(ledger) = response {
             assert!(ledger.0.len() == 1);
             assert!(ledger.1.is_some());
+        } else {
+            panic!("Invalid response");
+        }
+
+        let response = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap();
+
+        if let SubjectResponse::Metadata(metadata) = response {
+            assert_eq!(metadata.sn, 0);
+        } else {
+            panic!("Invalid response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_1000_events() {
+        let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let system = create_system().await;
+
+        let (subject_actor, _ledger_event_actor, subject, signed_ledger) = create_subject_and_ledger_event(system, node_keys.clone()).await;
+
+        let hash_pre_event =
+            signed_ledger.hash_id(DigestDerivator::Blake3_256).unwrap();
+
+        let inicio = Instant::now();
+        let response = subject_actor
+            .ask(SubjectMessage::UpdateLedger {
+                events: create_n_fact_events(
+                    hash_pre_event,
+                    1000,
+                    node_keys,
+                    subject.subject_id,
+                    subject.properties.0,
+                ),
+            })
+            .await
+            .unwrap();
+        let duracion = inicio.elapsed();
+        println!("El método tardó: {:.2?}", duracion);
+
+        if let SubjectResponse::LastSn(last_sn) = response {
+            assert_eq!(last_sn, 1000);
+        } else {
+            panic!("Invalid response");
+        }
+
+        let response = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap();
+
+        if let SubjectResponse::Metadata(metadata) = response {
+            assert_eq!(metadata.sn, 1000);
+        } else {
+            panic!("Invalid response");
+        }
+
+        let response = subject_actor
+            .ask(SubjectMessage::GetGovernance)
+            .await
+            .unwrap();
+
+        if let SubjectResponse::Governance(gov) = response {
+            assert_eq!(gov.version, 1000);
         } else {
             panic!("Invalid response");
         }

@@ -278,11 +278,11 @@ impl Handler<RequestHandler> for RequestHandler {
                                 return Ok(RequestHandlerResponse::Error(Error::RequestHandler("The creation event is for a governance, the namespace must be empty.".to_owned())));
                             }
 
-                            if !create_request.governance_id.digest.is_empty() {
+                            if !create_request.governance_id.is_empty() {
                                 return Ok(RequestHandlerResponse::Error(Error::RequestHandler("The creation event is for a governance, the governance_id must be empty.".to_owned())));
                             }
                         } else {
-                            if create_request.governance_id.digest.is_empty() {
+                            if create_request.governance_id.is_empty() {
                                 return Ok(RequestHandlerResponse::Error(Error::RequestHandler("The creation event is for a traceability subject, the governance_id cannot be empty.".to_owned())));
                             }
 
@@ -344,7 +344,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     EventRequest::EOL(eol_request) => eol_request.subject_id,
                 };
 
-                if subject_id.digest.is_empty() {
+                if subject_id.is_empty() {
                     return Ok(RequestHandlerResponse::Error(
                         Error::RequestHandler(
                             "Subject_id cannot be empty.".to_owned(),
@@ -414,9 +414,13 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 } else {
                     // TODO es imposible que no sea un option
+                    // TODO Cuando todo un protocolo falle y nadie responda, preguntarle al owner 
+                    // de la governanza si estamos actualizados, pueden haber cambiado todos los 
+                    // validadores o evaluadores, 
                     todo!()
                 };
 
+                // TODO Terminar esto.
                 Ok(RequestHandlerResponse::None)
             }
             RequestHandlerMessage::EndHandling { subject_id } => {

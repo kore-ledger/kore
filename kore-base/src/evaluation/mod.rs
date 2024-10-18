@@ -22,7 +22,7 @@ use crate::{
         HashId, Namespace, SignTypesNode,
     },
     request::manager::{RequestManager, RequestManagerMessage},
-    subject::{Subject, SubjectMessage, SubjectMetadata, SubjectResponse},
+    subject::{Subject, SubjectMessage, Metadata, SubjectResponse},
     Error, DIGEST_DERIVATOR,
 };
 use actor::{
@@ -76,7 +76,7 @@ impl Evaluation {
     fn create_evaluation_req(
         &self,
         event_request: Signed<EventRequest>,
-        metadata: SubjectMetadata,
+        metadata: Metadata,
         gov_version: u64,
     ) -> EvaluationReq {
         EvaluationReq {
@@ -338,7 +338,7 @@ impl Handler<Evaluation> for Evaluation {
                         }
                     };
 
-                let governance = if metadata.governance_id.digest.is_empty() {
+                let governance = if metadata.governance_id.is_empty() {
                     metadata.subject_id.clone()
                 } else {
                     metadata.governance_id.clone()
