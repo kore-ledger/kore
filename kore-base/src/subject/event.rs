@@ -1,12 +1,11 @@
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
-    Message, Response,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event, Handler, Message, Response
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 
-use crate::{db::Storable, Error, Event as KoreEvent, Signed};
+use crate::{approval::approver::{Approver, ApproverMessage}, db::Storable, Error, Event as KoreEvent, Signed};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LedgerEvent {
@@ -69,6 +68,18 @@ impl Handler<LedgerEvent> for LedgerEvent {
         match msg {
             LedgerEventMessage::UpdateLastEvent { event } => {
                 self.on_event(event, ctx).await;
+
+                let approver_path = ActorPath::from(format!("{}/approver", ctx.path().parent()));
+                let approver_actor: Option<ActorRef<Approver>> = ctx.system().get_actor(&approver_path).await;
+                
+                if let Some(approver_actor) = approver_actor {
+                    if let Err(e) = approver_actor.tell(ApproverMessage::MakeObsolete).await {
+                        todo!()
+                    }
+                } else {
+                    todo!()
+                }
+
                 Ok(LedgerEventResponse::Ok)
             }
             LedgerEventMessage::GetLastEvent => {

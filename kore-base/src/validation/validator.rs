@@ -251,7 +251,7 @@ impl Validator {
                     Roles::VALIDATOR,
                     &new_proof.schema_id,
                     new_proof.namespace.clone(),
-                );
+                ).0;
 
             // If the governance version is the same, we ask the governance for the current validators, to check that they are all part of it.
             if previous_proof.governance_version == new_proof.governance_version

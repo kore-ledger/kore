@@ -19,6 +19,7 @@ use crate::{
 
 pub mod distributor;
 
+#[derive(Default)]
 pub struct Distribution {
     witnesses: HashSet<KeyIdentifier>,
     node_key: KeyIdentifier,
@@ -26,6 +27,10 @@ pub struct Distribution {
 }
 
 impl Distribution {
+    pub fn new(node_key: KeyIdentifier) -> Self {
+        Distribution { node_key, ..Default::default() }
+    }
+
     fn check_witness(&mut self, witness: KeyIdentifier) -> bool {
         self.witnesses.remove(&witness)
     }
@@ -195,7 +200,7 @@ impl Handler<Distribution> for Distribution {
                         Roles::WITNESS,
                         &metadata.schema_id,
                         metadata.namespace,
-                    )
+                    ).0
                 };
 
                 for witness in witnesses {

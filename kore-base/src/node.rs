@@ -9,14 +9,11 @@ use std::path::Path;
 use async_std::fs;
 
 use crate::{
-    db::Storable,
-    model::{
+    db::Storable, distribution::distributor::Distributor, model::{
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    },
-    subject::{self, CreateSubjectData},
-    Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR,
+    }, subject::{self, CreateSubjectData}, Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -59,8 +56,6 @@ pub struct Node {
     owned_subjects: Vec<String>,
     /// The node's known subjects.
     known_subjects: Vec<String>,
-    /// The node's known subjects in creation.
-    creation_subjects: Vec<String>,
     /// The authorized subjects.
     authorized_subjects: Vec<String>,
 
@@ -75,7 +70,6 @@ impl Node {
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             authorized_subjects: Vec::new(),
-            creation_subjects: Vec::new(),
             temporal_subjects: Vec::new(),
         })
     }
@@ -178,6 +172,22 @@ impl Node {
         Ok(())
     }
 
+    async fn create_subjects(&self, ctx: &mut ActorContext<Self>,) -> Result<(), ActorError> {
+        for subject in self.owned_subjects.clone() {
+            ctx.create_child(&subject, Subject::default()).await?;
+        }
+
+        for subject in self.known_subjects.clone() {
+            ctx.create_child(&subject, Subject::default()).await?;
+        }
+
+        for subject in self.temporal_subjects.clone() {
+            ctx.create_child(&subject, Subject::default()).await?;
+        }
+
+        Ok(())
+    }
+
     fn compilation_toml() -> String {
         r#"
     [package]
@@ -272,9 +282,17 @@ impl Actor for Node {
         if let Err(e) = Self::build_compilation_dir().await {
             // TODO manejar este error.
         };
+
         // Start store
         debug!("Creating Node store");
-        self.init_store("node", None, false, ctx).await
+        self.init_store("node", None, false, ctx).await?;
+
+        self.create_subjects(ctx).await?;
+
+        let distributor = Distributor {node: self.owner.key_identifier()};
+        ctx.create_child("distributor", distributor).await?;
+
+        Ok(())
     }
 
     async fn pre_stop(
