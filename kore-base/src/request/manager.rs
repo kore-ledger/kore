@@ -51,6 +51,14 @@ pub struct RequestManager {
 }
 
 impl RequestManager {
+    pub fn new(id: String, subject_id: String, request: Signed<EventRequest>) -> Self {
+        RequestManager {
+            id,
+            state: RequestSate::Starting,
+            subject_id,
+            request,
+        }
+    }
     async fn send_validation(
         &self,
         ctx: &mut ActorContext<RequestManager>,

@@ -5,23 +5,17 @@
 //!
 
 use crate::{
-    db::Storable,
-    evaluation::{
+    approval::{approver::Approver, Approval}, db::Storable, distribution::{self, distributor::Distributor, Distribution}, evaluation::{
         compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
         schema::EvaluationSchema,
         Evaluation,
-    },
-    governance::model::Roles,
-    model::{
+    }, governance::model::Roles, model::{
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
-    },
-    node::{NodeMessage, NodeResponse},
-    validation::{schema::ValidationSchema, validator::Validator, Validation},
-    CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
+    }, node::{NodeMessage, NodeResponse}, validation::{schema::ValidationSchema, validator::Validator, Validation}, CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR
 };
 
 use actor::{
@@ -325,12 +319,8 @@ impl Subject {
     async fn build_childs_not_governance(
         &self,
         ctx: &mut ActorContext<Subject>,
+        our_key: KeyIdentifier
     ) -> Result<(), ActorError> {
-        // Get node key
-        let our_key = self
-            .get_node_key(ctx)
-            .await
-            .map_err(|e| ActorError::Create)?;
 
         let owner = our_key == self.owner;
 
@@ -347,13 +337,8 @@ impl Subject {
     async fn build_childs_governance(
         &self,
         ctx: &mut ActorContext<Subject>,
+        our_key: KeyIdentifier
     ) -> Result<(), ActorError> {
-        // Get node key
-        let our_key = self
-            .get_node_key(ctx)
-            .await
-            .map_err(|e| ActorError::Create)?;
-
         // If subject is a governance
         let gov = Governance::try_from(self.properties.clone())
             .map_err(|e| ActorError::Create)?;
@@ -367,27 +352,47 @@ impl Subject {
 
             let evaluation = Evaluation::new(our_key.clone());
             ctx.create_child("evaluation", evaluation).await?;
+
+            let approval = Approval::new(our_key.clone());
+            ctx.create_child("approval", approval).await?;
+
+            let approver = Approver::new("".to_owned(), our_key.clone());
+            ctx.create_child("approver", approver).await?;
+
+            let distribution = Distribution::new(our_key.clone());
+            ctx.create_child("distribution", distribution).await?;
         } else {
             if self.build_executors(
                 Roles::VALIDATOR,
-                &self.schema_id,
+                "governance",
                 our_key.clone(),
                 &gov,
             ) {
                 // If we are a validator
-                let actor = Validator::default();
-                ctx.create_child("validator", actor).await?;
+                let validator = Validator::default();
+                ctx.create_child("validator", validator).await?;
             }
 
             if self.build_executors(
                 Roles::EVALUATOR,
-                &self.schema_id,
+                "governance",
                 our_key.clone(),
                 &gov,
             ) {
                 // If we are a evaluator
-                let actor = Evaluator::default();
-                ctx.create_child("evaluator", actor).await?;
+                let evaluator = Evaluator::default();
+                ctx.create_child("evaluator", evaluator).await?;
+            }
+
+            if self.build_executors(
+                Roles::APPROVER,
+                "governance",
+                our_key.clone(),
+                &gov,
+            ) {
+                // If we are a approver
+                let approver = Approver::new("".to_owned(), our_key.clone());
+                ctx.create_child("approver", approver).await?;
             }
         }
 
@@ -441,15 +446,7 @@ impl Subject {
                 _ => {}
             }
         }
-        // Hay que tener en cuenta el namespace a la hora de obtener los Validators y Evaluators TODO, por ahora con que tenga el rol lo aceptamos
-        // YO puedo ser validador para España.Canarias y recibir una validacion de España.Ceuta, ahí no validar.
-        // En principio eso no puede pasar a no ser que haya manipulación de alguien y cambie los namespaces.
 
-        // TODO recorrer los schema de la governanza, usar build_executors para saber si tengo el rol
-        // para otros schemas que no sean la governanza y decirle al actor node lo que tiene
-        // que crear.
-
-        // Sacar los que tiene el rol de creator.
         Ok(())
     }
 
@@ -477,7 +474,7 @@ impl Subject {
         our_key: KeyIdentifier,
         gov: &Governance,
     ) -> bool {
-        gov.get_signers(role, schema, self.namespace.clone())
+        gov.get_signers(role, schema, self.namespace.clone()).0
             .contains(&our_key)
     }
 
@@ -1035,14 +1032,22 @@ impl Actor for Subject {
         debug!("Starting subject actor with init store.");
         self.init_store("subject", None, true, ctx).await?;
 
+        let our_key = self
+        .get_node_key(ctx)
+        .await
+        .map_err(|e| ActorError::Create)?;
+
         if self.governance_id.is_empty() {
-            self.build_childs_governance(ctx).await?;
+            self.build_childs_governance(ctx, our_key.clone()).await?;
         } else {
-            self.build_childs_not_governance(ctx).await?;
+            self.build_childs_not_governance(ctx, our_key.clone()).await?;
         }
 
         let ledger_event = LedgerEvent::default();
         ctx.create_child("ledgerEvent", ledger_event).await?;
+
+        let distributor = Distributor {node: our_key};
+        ctx.create_child("distributor", distributor).await?;
 
         Ok(())
     }
@@ -1072,7 +1077,6 @@ impl Handler<Subject> for Subject {
                     Err(e) => return Ok(SubjectResponse::Error(e)),
                 };
 
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 if ledger.len() < 100 {
                     match self.get_last_event(ctx).await {
                         Ok(last_event) => Ok(SubjectResponse::Ledger((

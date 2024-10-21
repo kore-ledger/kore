@@ -112,14 +112,14 @@ impl Distributor {
                     Roles::CREATOR { quantity: 0 },
                     schema,
                     namespace.clone(),
-                );
+                ).0;
 
                 if !creators.iter().any(|x| x.clone() == signer) {
                     todo!()
                 };
 
                 let witness =
-                    gov.get_signers(Roles::WITNESS, schema, namespace);
+                    gov.get_signers(Roles::WITNESS, schema, namespace).0;
 
                 if !witness.iter().any(|x| x.clone() == our_key) {
                     todo!()
@@ -521,7 +521,7 @@ impl Distributor {
                 Roles::WITNESS,
                 &metadata.schema_id.clone(),
                 metadata.namespace.clone(),
-            )
+            ).0
             .iter()
             .any(|x| x.clone() == info.sender)
         {

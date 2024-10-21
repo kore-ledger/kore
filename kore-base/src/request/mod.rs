@@ -12,15 +12,17 @@ use identity::{
     },
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
+use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use store::store::PersistentActor;
+use tracing::error;
 
 use crate::{
     db::Storable,
     governance::model::Roles,
     init_state,
-    model::common::get_gov,
+    model::common::{get_gov, get_metadata},
     subject::{CreateSubjectData, SubjectID},
     CreateRequest, Error, EventRequest, HashId, Node, NodeMessage,
     NodeResponse, Signed, DIGEST_DERIVATOR,
@@ -151,6 +153,26 @@ impl RequestHandler {
             _ => todo!(),
         }
     }
+
+    async fn error_queue_handling(
+        &mut self,
+        ctx: &mut ActorContext<RequestHandler>,
+        subject_id: &str,
+    ) -> Result<(), Error> {
+        self.on_event(
+            RequestHandlerEvent::PopQueue {
+                subject_id: subject_id.to_owned(),
+            },
+            ctx,
+        )
+        .await;
+
+        if let Err(e) = RequestHandler::queued_event(ctx, &subject_id).await {
+            todo!()
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -177,6 +199,9 @@ pub enum RequestHandlerEvent {
     EventToQueue {
         subject_id: String,
         event: Signed<EventRequest>,
+    },
+    PopQueue {
+        subject_id: String,
     },
     FinishHandling {
         subject_id: String,
@@ -210,34 +235,6 @@ impl Actor for RequestHandler {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         self.stop_store(ctx).await
-    }
-}
-
-#[async_trait]
-impl PersistentActor for RequestHandler {
-    /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
-        match event {
-            RequestHandlerEvent::EventToQueue { subject_id, event } => {
-                if let Some(vec) = self.in_queue.get_mut(subject_id) {
-                    vec.push_back(event.clone());
-                } else {
-                    self.in_queue.insert(subject_id.clone(), VecDeque::new());
-                };
-            }
-            RequestHandlerEvent::EventToHandling {
-                subject_id,
-                request_id,
-            } => {
-                self.handling.insert(subject_id.clone(), request_id.clone());
-                if let Some(vec) = self.in_queue.get_mut(subject_id) {
-                    vec.pop_front();
-                }
-            }
-            RequestHandlerEvent::FinishHandling { subject_id } => {
-                self.handling.remove(subject_id);
-            }
-        }
     }
 }
 
@@ -297,6 +294,7 @@ impl Handler<RequestHandler> for RequestHandler {
                                     &create_request.schema_id,
                                     create_request.namespace.clone(),
                                 )
+                                .0
                                 .iter()
                                 .any(|x| x.clone() == self.node_key)
                             {
@@ -317,16 +315,13 @@ impl Handler<RequestHandler> for RequestHandler {
                         )
                         .await;
 
-                        if self.handling.get(&subject_id.to_string()).is_none()
+                        if let Err(e) = RequestHandler::queued_event(
+                            ctx,
+                            &subject_id.to_string(),
+                        )
+                        .await
                         {
-                            if let Err(e) = RequestHandler::queued_event(
-                                ctx,
-                                &subject_id.to_string(),
-                            )
-                            .await
-                            {
-                                todo!()
-                            }
+                            todo!()
                         }
 
                         return Ok(RequestHandlerResponse::Ok(
@@ -336,12 +331,38 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                     EventRequest::Fact(fact_request) => fact_request.subject_id,
                     EventRequest::Transfer(transfer_request) => {
+                        if request.signature.signer != self.node_key {
+                            return Ok(RequestHandlerResponse::Error(
+                                Error::RequestHandler(
+                                    "Only the node can sign creation events."
+                                        .to_owned(),
+                                ),
+                            ));
+                        }
                         transfer_request.subject_id
                     }
                     EventRequest::Confirm(confirm_request) => {
+                        if request.signature.signer != self.node_key {
+                            return Ok(RequestHandlerResponse::Error(
+                                Error::RequestHandler(
+                                    "Only the node can sign creation events."
+                                        .to_owned(),
+                                ),
+                            ));
+                        }
                         confirm_request.subject_id
                     }
-                    EventRequest::EOL(eol_request) => eol_request.subject_id,
+                    EventRequest::EOL(eol_request) => {
+                        if request.signature.signer != self.node_key {
+                            return Ok(RequestHandlerResponse::Error(
+                                Error::RequestHandler(
+                                    "Only the node can sign creation events."
+                                        .to_owned(),
+                                ),
+                            ));
+                        }
+                        eol_request.subject_id
+                    }
                 };
 
                 if subject_id.is_empty() {
@@ -376,6 +397,20 @@ impl Handler<RequestHandler> for RequestHandler {
                     } else {
                         return Ok(RequestHandlerResponse::Error(Error::RequestHandler("An event is being sent for a subject that does not belong to us.".to_owned())));
                     }
+                }
+
+                let metadata =
+                    match get_metadata(ctx, &subject_id.to_string()).await {
+                        Ok(metadata) => metadata,
+                        Err(e) => todo!(),
+                    };
+
+                if !metadata.active {
+                    return Ok(RequestHandlerResponse::Error(
+                        Error::RequestHandler(
+                            "The subject is no longer active.".to_owned(),
+                        ),
+                    ));
                 }
 
                 self.on_event(
@@ -414,13 +449,154 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 } else {
                     // TODO es imposible que no sea un option
-                    // TODO Cuando todo un protocolo falle y nadie responda, preguntarle al owner 
-                    // de la governanza si estamos actualizados, pueden haber cambiado todos los 
-                    // validadores o evaluadores, 
+                    // TODO Cuando todo un protocolo falle y nadie responda, preguntarle al owner
+                    // de la governanza si estamos actualizados, pueden haber cambiado todos los
+                    // validadores o evaluadores,
                     todo!()
                 };
 
-                // TODO Terminar esto.
+                // TODO hacer comprobaciones.
+                let owner = match Self::subject_owner(ctx, &subject_id).await {
+                    Ok(owner) => owner,
+                    Err(e) => {
+                        return Ok(RequestHandlerResponse::Error(
+                            Error::RequestHandler(format!(
+                                "An error has occurred: {}",
+                                e
+                            )),
+                        ))
+                    }
+                };
+
+                if !owner {
+                    if let Err(e) =
+                        self.error_queue_handling(ctx, &subject_id).await
+                    {
+                        todo!()
+                    }
+
+                    return Ok(RequestHandlerResponse::None);
+                }
+
+                let metadata =
+                    match get_metadata(ctx, &subject_id.to_string()).await {
+                        Ok(metadata) => metadata,
+                        Err(e) => todo!(),
+                    };
+
+                if !metadata.active {
+                    if let Err(e) =
+                        self.error_queue_handling(ctx, &subject_id).await
+                    {
+                        todo!()
+                    }
+
+                    return Ok(RequestHandlerResponse::None);
+                }
+
+                // TODO CHECKEAR ROLES.
+                let gov = match get_gov(ctx, &subject_id).await {
+                    Ok(gov) => gov,
+                    Err(e) => {
+                        return Ok(RequestHandlerResponse::Error(
+                            Error::RequestHandler(format!(
+                            "It has not been possible to obtain governance: {}",
+                            e
+                        )),
+                        ))
+                    }
+                };
+
+                let message = match event.content.clone() {
+                    EventRequest::Create(create_request) => {
+                        if !gov
+                            .get_signers(
+                                Roles::CREATOR { quantity: 0 },
+                                &create_request.schema_id,
+                                create_request.namespace.clone(),
+                            )
+                            .0
+                            .iter()
+                            .any(|x| x.clone() == self.node_key)
+                        {
+                            if let Err(e) = self
+                                .error_queue_handling(ctx, &subject_id)
+                                .await
+                            {
+                                todo!()
+                            }
+                        };
+
+                        RequestManagerMessage::Other
+                    }
+                    EventRequest::Fact(_fact_request) => {
+                        let (signers, not_members) = gov.get_signers(
+                            Roles::ISSUER,
+                            &metadata.schema_id,
+                            metadata.namespace.clone(),
+                        );
+
+                        if !signers
+                            .iter()
+                            .any(|x| x.clone() == event.signature.signer)
+                        {
+                            if !not_members
+                                || gov.members_to_key_identifier().iter().any(
+                                    |x| x.clone() == event.signature.signer,
+                                )
+                            {
+                                if let Err(e) = self
+                                    .error_queue_handling(ctx, &subject_id)
+                                    .await
+                                {
+                                    todo!()
+                                }
+                            }
+                        }
+                        RequestManagerMessage::Fact
+                    }
+                    _ => {
+                        RequestManagerMessage::Other
+                    }
+                };
+
+                ////////
+                let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+                    *derivator
+                } else {
+                    error!("Error getting derivator");
+                    DigestDerivator::Blake3_256
+                };
+
+                let request_id = match event.hash_id(derivator) {
+                    Ok(request_id) => request_id.to_string(),
+                    Err(e) => todo!(),
+                };
+
+                let request_manager = RequestManager::new(
+                    request_id.clone(),
+                    subject_id.clone(),
+                    event,
+                );
+
+                let request_actor = match ctx.create_child(&request_id.clone(), request_manager).await {
+                    Ok(request_actor) => request_actor,
+                    Err(e) => todo!()
+                };
+                
+                if let Err(e) = request_actor.tell(message).await {
+                    todo!()
+                };
+
+                self.on_event(
+                    RequestHandlerEvent::EventToHandling {
+                        subject_id: subject_id.clone(),
+                        request_id: request_id,
+                    },
+                    ctx,
+                )
+                .await;
+
                 Ok(RequestHandlerResponse::None)
             }
             RequestHandlerMessage::EndHandling { subject_id } => {
@@ -456,3 +632,38 @@ impl Handler<RequestHandler> for RequestHandler {
 
 #[async_trait]
 impl Storable for RequestHandler {}
+
+#[async_trait]
+impl PersistentActor for RequestHandler {
+    /// Change node state.
+    fn apply(&mut self, event: &Self::Event) {
+        match event {
+            RequestHandlerEvent::EventToQueue { subject_id, event } => {
+                if let Some(vec) = self.in_queue.get_mut(subject_id) {
+                    vec.push_back(event.clone());
+                } else {
+                    let mut vec = VecDeque::new();
+                    vec.push_back(event.clone());
+                    self.in_queue.insert(subject_id.clone(), vec);
+                };
+            }
+            RequestHandlerEvent::PopQueue { subject_id } => {
+                if let Some(vec) = self.in_queue.get_mut(subject_id) {
+                    vec.pop_front();
+                }
+            }
+            RequestHandlerEvent::EventToHandling {
+                subject_id,
+                request_id,
+            } => {
+                self.handling.insert(subject_id.clone(), request_id.clone());
+                if let Some(vec) = self.in_queue.get_mut(subject_id) {
+                    vec.pop_front();
+                }
+            }
+            RequestHandlerEvent::FinishHandling { subject_id } => {
+                self.handling.remove(subject_id);
+            }
+        }
+    }
+}

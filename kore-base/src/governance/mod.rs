@@ -98,8 +98,10 @@ impl Governance {
         role: Roles,
         schema: &str,
         namespace: Namespace,
-    ) -> HashSet<KeyIdentifier> {
+    ) -> (HashSet<KeyIdentifier>, bool) {
         let mut signers = HashSet::new();
+        let mut not_members = false;
+
         for rol in &self.roles {
             // Check if the stage is for the role.
             if role == rol.role {
@@ -131,7 +133,7 @@ impl Governance {
                 match rol.who.clone() {
                     Who::MEMBERS => {
                         signers = self.members_to_key_identifier();
-                        break;
+                        return (signers, not_members)
                     }
                     Who::ID { ID } => {
                         if let Ok(id) = KeyIdentifier::from_str(&ID) {
@@ -148,13 +150,13 @@ impl Governance {
                         }
                     }
                     Who::NOT_MEMBERS => {
-                        // If it is not a member, we will not have a public key.
+                        not_members = true;
                     }
                 }
             }
         }
 
-        signers
+        (signers, not_members)
     }
 
     fn get_quorum(&self, role: Roles, schema: &str) -> Result<Quorum, Error> {
@@ -185,7 +187,7 @@ impl Governance {
         schema: &str,
         namespace: Namespace,
     ) -> Result<(HashSet<KeyIdentifier>, Quorum), Error> {
-        let signers = self.get_signers(role.clone(), schema, namespace);
+        let (signers, _not_members) = self.get_signers(role.clone(), schema, namespace);
         let quorum = self.get_quorum(role, schema);
         match quorum {
             Ok(quorum) => Ok((signers, quorum)),

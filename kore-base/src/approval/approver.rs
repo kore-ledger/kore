@@ -191,6 +191,7 @@ impl Approver {
 
 #[derive(Debug, Clone)]
 pub enum ApproverMessage {
+    MakeObsolete,
     // Mensaje para aprobar localmente
     LocalApproval {
         request_id: String,
@@ -223,6 +224,9 @@ impl Message for ApproverMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApproverEvent {
+    ChangeState {
+        state: ApprovalState,
+    },
     SafeState {
         request: Option<ApprovalReq>,
         state: ApprovalState,
@@ -255,6 +259,21 @@ impl Handler<Approver> for Approver {
         ctx: &mut ActorContext<Approver>,
     ) -> Result<ApproverResponse, ActorError> {
         match msg {
+            ApproverMessage::MakeObsolete => {
+                let state = if let Some(state) = self.state.clone() {
+                    state
+                } else {
+                    todo!()
+                };
+
+                if state == ApprovalState::Pending {
+                    self.on_event(
+                        ApproverEvent::ChangeState { state: ApprovalState::Obsolete },
+                        ctx,
+                    )
+                    .await;
+                }
+            },
             ApproverMessage::ChangeResponse { response } => {
                 let state = if let Some(state) = self.state.clone() {
                     state
@@ -265,11 +284,7 @@ impl Handler<Approver> for Approver {
                 if state == ApprovalState::Pending {
                     if response == ApprovalStateRes::Obsolete {
                         self.on_event(
-                            ApproverEvent::SafeState {
-                                request: self.request.clone(),
-                                state: ApprovalState::Obsolete,
-                                info: None,
-                            },
+                            ApproverEvent::ChangeState { state: ApprovalState::Obsolete },
                             ctx,
                         )
                         .await;
@@ -296,11 +311,7 @@ impl Handler<Approver> for Approver {
                         };
 
                         self.on_event(
-                            ApproverEvent::SafeState {
-                                request: self.request.clone(),
-                                state,
-                                info: self.info.clone(),
-                            },
+                            ApproverEvent::ChangeState { state },
                             ctx,
                         )
                         .await;
@@ -643,6 +654,9 @@ impl Handler<Approver> for Approver {
 impl PersistentActor for Approver {
     fn apply(&mut self, event: &ApproverEvent) {
         match event {
+            ApproverEvent::ChangeState { state } => {
+                self.state = Some(state.clone());
+            }
             ApproverEvent::SafeState {
                 request,
                 state,
