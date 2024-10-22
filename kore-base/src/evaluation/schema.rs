@@ -48,7 +48,7 @@ impl Actor for EvaluationSchema {
 impl Handler<EvaluationSchema> for EvaluationSchema {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: EvaluationSchemaMessage,
         ctx: &mut ActorContext<EvaluationSchema>,
     ) -> Result<(), ActorError> {
@@ -66,7 +66,7 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     todo!()
                 };
 
-                if let Err(e) = evaluation_req.verify() {
+                if let Err(_e) = evaluation_req.verify() {
                     // Hay errores criptográficos
                     todo!()
                 }
@@ -83,7 +83,7 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
 
                 let evaluator_actor = match child {
                     Ok(child) => child,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 evaluator_actor

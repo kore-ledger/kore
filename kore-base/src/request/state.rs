@@ -17,7 +17,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum RequestSate {
+pub enum RequestManagerState {
     Starting,
     Evaluation,
     Approval {
@@ -32,6 +32,7 @@ pub enum RequestSate {
     },
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ValidationProtocols {
     /// A request to create a new subject.

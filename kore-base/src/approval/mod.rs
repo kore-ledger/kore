@@ -78,7 +78,7 @@ impl Approval {
 
         // Get the derivator of the node
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-            derivator.clone()
+            *derivator
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
@@ -175,12 +175,14 @@ impl Approval {
                     Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
                 }
             }
-            SubjectResponse::Error(error) => {
-                return Err(Error::Actor(format!("The subject encountered problems when getting governance: {}",error)));
-            }
-            _ => Err(Error::Actor(format!(
-                "An unexpected response has been received from node actor"
+            SubjectResponse::Error(error) => Err(Error::Actor(format!(
+                "The subject encountered problems when getting governance: {}",
+                error
             ))),
+            _ => Err(Error::Actor(
+                "An unexpected response has been received from node actor"
+                    .to_owned(),
+            )),
         }
     }
 
@@ -202,16 +204,13 @@ impl Approval {
                 )))
                 .await;
             if let Some(approver_actor) = approver_actor {
-                if let Err(e) = approver_actor
+                approver_actor
                     .tell(ApproverMessage::LocalApproval {
                         request_id: request_id.to_owned(),
                         approval_req: approval_req.content,
                         our_key: signer,
                     })
-                    .await
-                {
-                    return Err(e);
-                }
+                    .await?
             } else {
                 todo!()
             }
@@ -225,20 +224,17 @@ impl Approval {
                 .await;
             let approver_actor = match child {
                 Ok(child) => child,
-                Err(e) => return Err(e),
+                Err(_e) => return Err(_e),
             };
 
-            if let Err(e) = approver_actor
+            approver_actor
                 .tell(ApproverMessage::NetworkApproval {
                     request_id: request_id.to_owned(),
                     approval_req: approval_req.clone(),
                     node_key: signer,
                     our_key,
                 })
-                .await
-            {
-                return Err(e);
-            }
+                .await?
         }
 
         Ok(())
@@ -258,7 +254,7 @@ impl Approval {
             ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
-            if let Err(e) = req_actor
+            if let Err(_e) = req_actor
                 .tell(RequestManagerMessage::ApprovalRes {
                     result: response,
                     signatures: self.approvers_response.clone(),
@@ -346,7 +342,7 @@ impl Actor for Approval {
 impl Handler<Approval> for Approval {
     async fn handle_message(
         &mut self,
-        _sender: ActorPath,
+        __sender: ActorPath,
         msg: ApprovalMessage,
         ctx: &mut ActorContext<Self>,
     ) -> Result<ApprovalResponse, ActorError> {
@@ -359,18 +355,13 @@ impl Handler<Approval> for Approval {
                 };
 
                 for signer in self.approvers.clone() {
-                    if let Err(error) = self
-                        .create_approvers(
-                            ctx,
-                            &self.request_id,
-                            request.clone(),
-                            signer,
-                        )
-                        .await
-                    {
-                        // Mensaje al padre de error return Err(error);
-                        return Err(error);
-                    }
+                    self.create_approvers(
+                        ctx,
+                        &self.request_id,
+                        request.clone(),
+                        signer,
+                    )
+                    .await?
                 }
             }
             ApprovalMessage::Create {
@@ -384,7 +375,7 @@ impl Handler<Approval> for Approval {
                     .await
                 {
                     Ok(approval_req) => approval_req,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
                 // Get signers and quorum
                 let (signers, quorum) = match self
@@ -397,7 +388,7 @@ impl Handler<Approval> for Approval {
                     .await
                 {
                     Ok(signers_quorum) => signers_quorum,
-                    Err(e) => {
+                    Err(_e) => {
                         // Mensaje al padre de error return Ok(ApprovalRes::Error(e))
                         todo!()
                     }
@@ -412,7 +403,7 @@ impl Handler<Approval> for Approval {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 let signed_approval_req: Signed<ApprovalReq> = Signed {
@@ -421,18 +412,13 @@ impl Handler<Approval> for Approval {
                 };
 
                 for signer in signers {
-                    if let Err(error) = self
-                        .create_approvers(
-                            ctx,
-                            &request_id,
-                            signed_approval_req.clone(),
-                            signer,
-                        )
-                        .await
-                    {
-                        // Mensaje al padre de error return Err(error);
-                        return Err(error);
-                    }
+                    self.create_approvers(
+                        ctx,
+                        &request_id,
+                        signed_approval_req.clone(),
+                        signer,
+                    )
+                    .await?
                 }
 
                 self.on_event(
@@ -442,7 +428,7 @@ impl Handler<Approval> for Approval {
                         request: self.request.clone(),
                         approvers: self.approvers.clone(),
                         approvers_response: self.approvers_response.clone(),
-                        approvers_quantity: self.approvers_quantity.clone(),
+                        approvers_quantity: self.approvers_quantity,
                     },
                     ctx,
                 )
@@ -475,7 +461,7 @@ impl Handler<Approval> for Approval {
                             request: self.request.clone(),
                             approvers: self.approvers.clone(),
                             approvers_response: self.approvers_response.clone(),
-                            approvers_quantity: self.approvers_quantity.clone(),
+                            approvers_quantity: self.approvers_quantity,
                         },
                         ctx,
                     )
@@ -486,13 +472,13 @@ impl Handler<Approval> for Approval {
                         self.approvers_quantity,
                         self.approvers_response.len() as u32,
                     ) {
-                        if let Err(e) =
+                        if let Err(_e) =
                             self.send_approval_to_req(ctx, true).await
                         {
                             todo!()
                         };
                     } else if self.approvers.is_empty() {
-                        if let Err(e) =
+                        if let Err(_e) =
                             self.send_approval_to_req(ctx, false).await
                         {
                             todo!()
@@ -511,7 +497,7 @@ impl Handler<Approval> for Approval {
         event: ApprovalEvent,
         ctx: &mut ActorContext<Approval>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(_e) = self.persist(&event, ctx).await {
             // TODO error al persistir, propagar hacia arriba
         };
     }
@@ -530,12 +516,12 @@ impl PersistentActor for Approval {
                 approvers_response,
                 approvers_quantity,
             } => {
-                self.request_id = request_id.clone();
+                self.request_id.clone_from(request_id);
                 self.quorum = quorum.clone();
-                self.request = request.clone();
-                self.approvers = approvers.clone();
-                self.approvers_response = approvers_response.clone();
-                self.approvers_quantity = approvers_quantity.clone();
+                self.request.clone_from(request);
+                self.approvers.clone_from(approvers);
+                self.approvers_response.clone_from(approvers_response);
+                self.approvers_quantity = *approvers_quantity;
             }
         }
     }

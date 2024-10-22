@@ -124,7 +124,7 @@ impl Intermediary {
                 let message: NetworkMessage =
                     match Deserialize::deserialize(&mut de) {
                         Ok(message) => message,
-                        Err(e) => {
+                        Err(_e) => {
                             todo!()
                             // return Err(Error::NetworkHelper(format!("Can not deserialize message: {}",e)));
                         }
@@ -393,7 +393,7 @@ impl Intermediary {
                         if let Some(approver_actor) = approver_actor {
                             if let Err(error) = approver_actor
                                 .tell(ApproverMessage::NetworkResponse {
-                                    approval_res: res,
+                                    approval_res: *res,
                                     request_id: message.info.request_id,
                                 })
                                 .await

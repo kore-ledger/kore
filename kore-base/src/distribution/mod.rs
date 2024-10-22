@@ -9,7 +9,7 @@ use distributor::{Distributor, DistributorMessage};
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use crate::{
-    governance::{self, model::Roles},
+    governance::model::Roles,
     model::event::Ledger,
     request::manager::{RequestManager, RequestManagerMessage},
     subject::Metadata,
@@ -28,7 +28,10 @@ pub struct Distribution {
 
 impl Distribution {
     pub fn new(node_key: KeyIdentifier) -> Self {
-        Distribution { node_key, ..Default::default() }
+        Distribution {
+            node_key,
+            ..Default::default()
+        }
     }
 
     fn check_witness(&mut self, witness: KeyIdentifier) -> bool {
@@ -86,9 +89,7 @@ impl Distribution {
                 )),
             };
 
-        let response = governance_actor
-            .ask(SubjectMessage::GetMetadata)
-            .await;
+        let response = governance_actor.ask(SubjectMessage::GetMetadata).await;
         let response = match response {
             Ok(response) => response,
             Err(e) => {
@@ -128,7 +129,7 @@ impl Distribution {
             .await;
         let distributor_actor = match child {
             Ok(child) => child,
-            Err(e) => return Err(e),
+            Err(_e) => return Err(_e),
         };
 
         let our_key = self.node_key.clone();
@@ -173,7 +174,7 @@ impl Message for DistributionMessage {}
 impl Handler<Distribution> for Distribution {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: DistributionMessage,
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
@@ -188,7 +189,7 @@ impl Handler<Distribution> for Distribution {
                 let (governance, metadata) =
                     match self.get_gov_metadata(ctx, subject_id).await {
                         Ok(gov) => gov,
-                        Err(e) => todo!(),
+                        Err(_e) => todo!(),
                     };
 
                 self.request_id = request_id.to_string();
@@ -196,11 +197,13 @@ impl Handler<Distribution> for Distribution {
                 let witnesses = if metadata.schema_id == "governance" {
                     governance.members_to_key_identifier()
                 } else {
-                    governance.get_signers(
-                        Roles::WITNESS,
-                        &metadata.schema_id,
-                        metadata.namespace,
-                    ).0
+                    governance
+                        .get_signers(
+                            Roles::WITNESS,
+                            &metadata.schema_id,
+                            metadata.namespace,
+                        )
+                        .0
                 };
 
                 for witness in witnesses {
@@ -214,26 +217,24 @@ impl Handler<Distribution> for Distribution {
                 }
             }
             DistributionMessage::Response { sender } => {
-                if self.check_witness(sender) {
-                    if self.witnesses.is_empty() {
-                        let req_path = ActorPath::from(format!(
-                            "/user/request/{}",
-                            self.request_id
-                        ));
-                        let req_actor: Option<ActorRef<RequestManager>> =
-                            ctx.system().get_actor(&req_path).await;
+                if self.check_witness(sender) && self.witnesses.is_empty() {
+                    let req_path = ActorPath::from(format!(
+                        "/user/request/{}",
+                        self.request_id
+                    ));
+                    let req_actor: Option<ActorRef<RequestManager>> =
+                        ctx.system().get_actor(&req_path).await;
 
-                        if let Some(req_actor) = req_actor {
-                            if let Err(e) = req_actor
-                                .tell(RequestManagerMessage::FinishRequest)
-                                .await
-                            {
-                                todo!()
-                            }
-                        } else {
+                    if let Some(req_actor) = req_actor {
+                        if let Err(_e) = req_actor
+                            .tell(RequestManagerMessage::FinishRequest)
+                            .await
+                        {
                             todo!()
-                        };
-                    }
+                        }
+                    } else {
+                        todo!()
+                    };
                 }
             }
         }

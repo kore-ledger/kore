@@ -22,7 +22,7 @@ use crate::{
         HashId, Namespace, SignTypesNode,
     },
     request::manager::{RequestManager, RequestManagerMessage},
-    subject::{Subject, SubjectMessage, Metadata, SubjectResponse},
+    subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
     Error, DIGEST_DERIVATOR,
 };
 use actor::{
@@ -162,7 +162,7 @@ impl Evaluation {
             .await;
         let evaluator_actor = match child {
             Ok(child) => child,
-            Err(e) => return Err(e),
+            Err(_e) => return Err(_e),
         };
 
         // Check node_key
@@ -214,14 +214,13 @@ impl Evaluation {
 
         let state_hash = match state.hash_id(derivator) {
             Ok(state_hash) => state_hash,
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         };
 
         let mut error = self.errors.clone();
         if self.errors.is_empty() {
-            error =
-                "who: ALL, error: No evaluator was able to evaluate the event."
-                    .to_owned()
+            "who: ALL, error: No evaluator was able to evaluate the event."
+                .clone_into(&mut error);
         }
 
         EvalLedgerResponse {
@@ -252,7 +251,7 @@ impl Evaluation {
         };
 
         if let Some(req_actor) = req_actor {
-            if let Err(e) = req_actor
+            if let Err(_e) = req_actor
                 .tell(RequestManagerMessage::EvaluationRes {
                     request,
                     response,
@@ -267,6 +266,21 @@ impl Evaluation {
         };
 
         Ok(())
+    }
+
+    async fn try_to_update(&self, ctx: &mut ActorContext<Evaluation>) {
+        let mut all_time_out = true;
+
+        for response in self.evaluators_signatures.clone() {
+            if let ProtocolsSignatures::Signature(_) = response {
+                all_time_out = false;
+                break;
+            }
+        }
+
+        if all_time_out {
+            todo!()
+        }
     }
 }
 
@@ -311,7 +325,7 @@ impl Actor for Evaluation {
 impl Handler<Evaluation> for Evaluation {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: EvaluationMessage,
         ctx: &mut ActorContext<Evaluation>,
     ) -> Result<EvaluationResponse, ActorError> {
@@ -332,7 +346,7 @@ impl Handler<Evaluation> for Evaluation {
                 let metadata =
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
-                        Err(e) => {
+                        Err(_e) => {
                             // No se puede obtener la metadata
                             todo!()
                         }
@@ -354,7 +368,7 @@ impl Handler<Evaluation> for Evaluation {
                     .await
                 {
                     Ok(data) => data,
-                    Err(e) => {
+                    Err(_e) => {
                         // No se puede obtener signers, quorum y gov_ver
                         todo!()
                     }
@@ -382,7 +396,7 @@ impl Handler<Evaluation> for Evaluation {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 let signed_evaluation_req: Signed<EvaluationReq> = Signed {
@@ -447,18 +461,16 @@ impl Handler<Evaluation> for Evaluation {
                             self.fail_evaluation()
                         };
 
-                        if let Err(e) =
+                        if let Err(_e) =
                             self.send_evaluation_to_req(ctx, response).await
                         {
                         };
-                    } else {
-                        if self.evaluators.is_empty() {
-                            let response = self.fail_evaluation();
-                            if let Err(e) =
-                                self.send_evaluation_to_req(ctx, response).await
-                            {
-                            };
-                        }
+                    } else if self.evaluators.is_empty() {
+                        let response = self.fail_evaluation();
+                        if let Err(_e) =
+                            self.send_evaluation_to_req(ctx, response).await
+                        {
+                        };
                     }
                 } else {
                     // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.

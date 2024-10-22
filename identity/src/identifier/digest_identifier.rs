@@ -2,7 +2,6 @@ use super::error::Error;
 use crate::identifier::derive::{digest::DigestDerivator, Derivator};
 use base64::{engine::general_purpose, Engine as _};
 use borsh::{to_vec, BorshDeserialize, BorshSerialize};
-use memsecurity::ascon_aead::aead::Buffer;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;

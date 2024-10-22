@@ -541,7 +541,7 @@ impl Actor for Runner {
 impl Handler<Runner> for Runner {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: RunnerMessage,
         _ctx: &mut ActorContext<Runner>,
     ) -> Result<RunnerResponse, ActorError> {

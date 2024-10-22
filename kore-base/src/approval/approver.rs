@@ -124,7 +124,7 @@ impl Approver {
 
         let signature = match get_sign(ctx, sign_type).await {
             Ok(signature) => signature,
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         };
 
         let response = ApprovalRes::Response(signature, response);
@@ -158,25 +158,27 @@ impl Approver {
             schema: info.schema.clone(),
         };
 
-        let signature =
-            match get_sign(ctx, SignTypesNode::ApprovalRes(response.clone()))
-                .await
-            {
-                Ok(signature) => signature,
-                Err(e) => todo!(),
-            };
+        let signature = match get_sign(
+            ctx,
+            SignTypesNode::ApprovalRes(Box::new(response.clone())),
+        )
+        .await
+        {
+            Ok(signature) => signature,
+            Err(_e) => todo!(),
+        };
 
         let signed_response: Signed<ApprovalRes> = Signed {
             content: response,
             signature,
         };
 
-        if let Err(e) = helper
+        if let Err(_e) = helper
             .send_command(network::CommandHelper::SendMessage {
                 message: NetworkMessage {
                     info: new_info,
                     message: ActorMessage::ApprovalRes {
-                        res: signed_response,
+                        res: Box::new(signed_response),
                     },
                 },
             })
@@ -254,7 +256,7 @@ impl Actor for Approver {
 impl Handler<Approver> for Approver {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: ApproverMessage,
         ctx: &mut ActorContext<Approver>,
     ) -> Result<ApproverResponse, ActorError> {
@@ -268,12 +270,14 @@ impl Handler<Approver> for Approver {
 
                 if state == ApprovalState::Pending {
                     self.on_event(
-                        ApproverEvent::ChangeState { state: ApprovalState::Obsolete },
+                        ApproverEvent::ChangeState {
+                            state: ApprovalState::Obsolete,
+                        },
                         ctx,
                     )
                     .await;
                 }
-            },
+            }
             ApproverMessage::ChangeResponse { response } => {
                 let state = if let Some(state) = self.state.clone() {
                     state
@@ -284,7 +288,9 @@ impl Handler<Approver> for Approver {
                 if state == ApprovalState::Pending {
                     if response == ApprovalStateRes::Obsolete {
                         self.on_event(
-                            ApproverEvent::ChangeState { state: ApprovalState::Obsolete },
+                            ApproverEvent::ChangeState {
+                                state: ApprovalState::Obsolete,
+                            },
                             ctx,
                         )
                         .await;
@@ -303,7 +309,7 @@ impl Handler<Approver> for Approver {
                                 todo!()
                             };
 
-                        if let Err(e) = self
+                        if let Err(_e) = self
                             .send_response(ctx, approval_req, response)
                             .await
                         {
@@ -334,7 +340,7 @@ impl Handler<Approver> for Approver {
                         todo!()
                     };
 
-                    if let Err(e) = self
+                    if let Err(_e) = self
                         .check_governance(
                             ctx,
                             &approval_req.subject_id.to_string(),
@@ -355,7 +361,7 @@ impl Handler<Approver> for Approver {
 
                         let signature = match get_sign(ctx, sign_type).await {
                             Ok(signature) => signature,
-                            Err(e) => todo!(),
+                            Err(_e) => todo!(),
                         };
 
                         // Approval Path
@@ -365,17 +371,14 @@ impl Handler<Approver> for Approver {
                             ctx.system().get_actor(&approval_path).await;
                         // Send response of validation to parent
                         if let Some(approval_actor) = approval_actor {
-                            if let Err(e) = approval_actor
+                            approval_actor
                                 .tell(ApprovalMessage::Response {
                                     approval_res: ApprovalRes::Response(
                                         signature, true,
                                     ),
                                     sender: our_key,
                                 })
-                                .await
-                            {
-                                return Err(e);
-                            }
+                                .await?
                         } else {
                             // Can not obtain parent actor
                             return Err(ActorError::Exists(approval_path));
@@ -453,7 +456,7 @@ impl Handler<Approver> for Approver {
                     todo!()
                 };
 
-                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                if let Err(_e) = retry.tell(RetryMessage::Retry).await {
                     todo!()
                 };
             }
@@ -467,7 +470,7 @@ impl Handler<Approver> for Approver {
                         // Nos llegó a una aprobación de un nodo incorrecto!
                         todo!()
                     }
-                    if let Err(e) = approval_res.verify() {
+                    if let Err(_e) = approval_res.verify() {
                         // Hay error criptográfico en la respuesta
                         todo!()
                     }
@@ -480,7 +483,7 @@ impl Handler<Approver> for Approver {
                         ctx.system().get_actor(&approval_path).await;
 
                     if let Some(approval_actor) = approval_actor {
-                        if let Err(e) = approval_actor
+                        if let Err(_e) = approval_actor
                             .tell(ApprovalMessage::Response {
                                 approval_res: approval_res.content,
                                 sender: self.node.clone(),
@@ -501,7 +504,7 @@ impl Handler<Approver> for Approver {
                     } else {
                         todo!()
                     };
-                    if let Err(e) = retry.tell(RetryMessage::End).await {
+                    if let Err(_e) = retry.tell(RetryMessage::End).await {
                         todo!()
                     };
                     ctx.stop().await;
@@ -523,7 +526,7 @@ impl Handler<Approver> for Approver {
                         match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
-                            Err(e) => todo!(),
+                            Err(_e) => todo!(),
                         }
                     } else {
                         todo!()
@@ -539,7 +542,7 @@ impl Handler<Approver> for Approver {
                         todo!()
                     }
 
-                    if let Err(e) = approval_req.verify() {
+                    if let Err(_e) = approval_req.verify() {
                         // Hay errores criptográficos
                         todo!()
                     }
@@ -561,7 +564,7 @@ impl Handler<Approver> for Approver {
                         todo!()
                     };
 
-                    if let Err(e) = self
+                    if let Err(_e) = self
                         .check_governance(
                             ctx,
                             &approval_req.content.subject_id.to_string(),
@@ -573,7 +576,7 @@ impl Handler<Approver> for Approver {
                     }
 
                     if self.pass_votation == VotationType::AlwaysAccept {
-                        if let Err(e) = self
+                        if let Err(_e) = self
                             .send_response(
                                 ctx,
                                 approval_req.content.clone(),
@@ -626,7 +629,7 @@ impl Handler<Approver> for Approver {
                             todo!()
                         };
 
-                    if let Err(e) = self
+                    if let Err(_e) = self
                         .send_response(ctx, approval_req.clone(), response)
                         .await
                     {
@@ -643,7 +646,7 @@ impl Handler<Approver> for Approver {
         event: ApproverEvent,
         ctx: &mut ActorContext<Approver>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(_e) = self.persist(&event, ctx).await {
             // TODO error al persistir, propagar hacia arriba
         };
     }
@@ -662,9 +665,9 @@ impl PersistentActor for Approver {
                 state,
                 info,
             } => {
-                self.request = request.clone();
+                self.request.clone_from(request);
                 self.state = Some(state.clone());
-                self.info = info.clone();
+                self.info.clone_from(info);
             }
         }
     }

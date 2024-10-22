@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use tracing::{debug, error};
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(
     Debug, Clone, Serialize, Deserialize, Eq, BorshSerialize, BorshDeserialize,
 )]
@@ -30,16 +31,14 @@ pub enum EventProof {
 // Implementación personalizada de PartialEq
 impl PartialEq for EventProof {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
+        matches!(
+            (self, other),
             (EventProof::Create, EventProof::Create)
-            | (EventProof::Fact, EventProof::Fact)
-            | (EventProof::Confirm, EventProof::Confirm)
-            | (EventProof::EOL, EventProof::EOL)
-            | (EventProof::Transfer { .. }, EventProof::Transfer { .. }) => {
-                true
-            }
-            _ => false,
-        }
+                | (EventProof::Fact, EventProof::Fact)
+                | (EventProof::Confirm, EventProof::Confirm)
+                | (EventProof::EOL, EventProof::EOL)
+                | (EventProof::Transfer { .. }, EventProof::Transfer { .. })
+        )
     }
 }
 

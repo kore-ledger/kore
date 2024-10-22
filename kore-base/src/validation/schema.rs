@@ -29,7 +29,7 @@ impl ValidationSchema {
 #[derive(Debug, Clone)]
 pub enum ValidationSchemaMessage {
     NetworkRequest {
-        validation_req: Signed<ValidationReq>,
+        validation_req: Box<Signed<ValidationReq>>,
         info: ComunicateInfo,
     },
     UpdateValidators(HashSet<KeyIdentifier>),
@@ -48,7 +48,7 @@ impl Actor for ValidationSchema {
 impl Handler<ValidationSchema> for ValidationSchema {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: ValidationSchemaMessage,
         ctx: &mut ActorContext<ValidationSchema>,
     ) -> Result<(), ActorError> {
@@ -65,7 +65,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     todo!()
                 };
 
-                if let Err(e) = validation_req.verify() {
+                if let Err(_e) = validation_req.verify() {
                     // Hay errores criptográficos
                     todo!()
                 }
@@ -82,7 +82,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
 
                 let validator_actor = match child {
                     Ok(child) => child,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 validator_actor

@@ -114,13 +114,11 @@ impl Validator {
             }
         };
 
-        if previous_proof.event != EventProof::Confirm {
-            if previous_proof.subject_public_key
+        if previous_proof.event != EventProof::Confirm
+            && previous_proof.subject_public_key
                 != subject_signature.signer.clone()
-            {
-                // Error,
-                todo!()
-            }
+        {
+            todo!()
         }
 
         Ok(())
@@ -183,11 +181,14 @@ impl Validator {
         )
         .await?;
 
-        match get_sign(ctx, SignTypesNode::Validation(validation_req.proof))
-            .await
+        match get_sign(
+            ctx,
+            SignTypesNode::Validation(Box::new(validation_req.proof)),
+        )
+        .await
         {
             Ok(signature) => Ok(signature),
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         }
     }
 
@@ -246,12 +247,14 @@ impl Validator {
                 new_proof.governance_id.clone()
             };
 
-            let actual_signers =
-                get_gov(ctx, &governance_id.to_string()).await?.get_signers(
+            let actual_signers = get_gov(ctx, &governance_id.to_string())
+                .await?
+                .get_signers(
                     Roles::VALIDATOR,
                     &new_proof.schema_id,
                     new_proof.namespace.clone(),
-                ).0;
+                )
+                .0;
 
             // If the governance version is the same, we ask the governance for the current validators, to check that they are all part of it.
             if previous_proof.governance_version == new_proof.governance_version
@@ -289,7 +292,7 @@ pub enum ValidatorMessage {
         request_id: String,
     },
     NetworkRequest {
-        validation_req: Signed<ValidationReq>,
+        validation_req: Box<Signed<ValidationReq>>,
         info: ComunicateInfo,
     },
 }
@@ -307,7 +310,7 @@ impl Actor for Validator {
 impl Handler<Validator> for Validator {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: ValidatorMessage,
         ctx: &mut ActorContext<Validator>,
     ) -> Result<(), ActorError> {
@@ -383,7 +386,7 @@ impl Handler<Validator> for Validator {
                         schema,
                     },
                     message: ActorMessage::ValidationReq {
-                        req: validation_req,
+                        req: Box::new(validation_req),
                     },
                 };
 
@@ -407,7 +410,7 @@ impl Handler<Validator> for Validator {
                     todo!()
                 };
 
-                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                if let Err(_e) = retry.tell(RetryMessage::Retry).await {
                     todo!()
                 };
             }
@@ -421,7 +424,7 @@ impl Handler<Validator> for Validator {
                         todo!()
                     }
 
-                    if let Err(e) = validation_res.verify() {
+                    if let Err(_e) = validation_res.verify() {
                         // Hay error criptográfico en la respuesta
                         todo!()
                     }
@@ -434,7 +437,7 @@ impl Handler<Validator> for Validator {
                         ctx.system().get_actor(&validation_path).await;
 
                     if let Some(validation_actor) = validation_actor {
-                        if let Err(e) = validation_actor
+                        if let Err(_e) = validation_actor
                             .tell(ValidationMessage::Response {
                                 validation_res: validation_res.content,
                                 sender: self.node.clone(),
@@ -455,7 +458,7 @@ impl Handler<Validator> for Validator {
                     } else {
                         todo!()
                     };
-                    if let Err(e) = retry.tell(RetryMessage::End).await {
+                    if let Err(_e) = retry.tell(RetryMessage::End).await {
                         todo!()
                     };
                     ctx.stop().await;
@@ -482,7 +485,7 @@ impl Handler<Validator> for Validator {
                         match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
-                            Err(e) => todo!(),
+                            Err(_e) => todo!(),
                         }
                     } else {
                         todo!()
@@ -498,7 +501,7 @@ impl Handler<Validator> for Validator {
                         todo!()
                     }
 
-                    if let Err(e) = validation_req.verify() {
+                    if let Err(_e) = validation_req.verify() {
                         // Hay errores criptográficos
                         todo!()
                     }
@@ -548,7 +551,7 @@ impl Handler<Validator> for Validator {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 let signed_response: Signed<ValidationRes> = Signed {
@@ -556,7 +559,7 @@ impl Handler<Validator> for Validator {
                     signature,
                 };
 
-                if let Err(e) = helper
+                if let Err(_e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
@@ -592,7 +595,7 @@ impl Handler<Validator> for Validator {
                     ctx.system().get_actor(&validation_path).await;
 
                 if let Some(validation_actor) = validation_actor {
-                    if let Err(e) = validation_actor
+                    if let Err(_e) = validation_actor
                         .tell(ValidationMessage::Response {
                             validation_res: ValidationRes::TimeOut(
                                 TimeOutResponse {
@@ -606,7 +609,7 @@ impl Handler<Validator> for Validator {
                         .await
                     {
                         // TODO error, no se puede enviar la response
-                        // return Err(e);
+                        // return Err(_e);
                     }
                 } else {
                     // TODO no se puede obtener validation! Parar.

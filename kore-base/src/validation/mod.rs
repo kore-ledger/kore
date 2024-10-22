@@ -14,13 +14,10 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Quorum},
     model::{
-        common::get_sign,
-        event::{ProofEvent, ProtocolsSignatures},
-        signature::Signed,
-        Namespace, SignTypesNode, SignTypesSubject,
+        common::get_sign, event::{ProofEvent, ProtocolsSignatures}, network::TimeOutResponse, signature::Signed, Namespace, SignTypesNode, SignTypesSubject
     },
     request::manager::{RequestManager, RequestManagerMessage},
-    subject::{Subject, SubjectMessage, Metadata, SubjectResponse},
+    subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
     Error,
 };
 use actor::{
@@ -111,8 +108,8 @@ impl Validation {
         let response = if let Some(subject_actor) = subject_actor {
             // We ask a subject
             let response = subject_actor
-                .ask(SubjectMessage::SignRequest(SignTypesSubject::Validation(
-                    proof.clone(),
+                .ask(SubjectMessage::SignRequest(Box::new(
+                    SignTypesSubject::Validation(proof.clone()),
                 )))
                 .await;
             match response {
@@ -226,7 +223,7 @@ impl Validation {
             .await;
         let validator_actor = match child {
             Ok(child) => child,
-            Err(e) => return Err(e),
+            Err(_e) => return Err(_e),
         };
 
         // Check node_key
@@ -263,9 +260,8 @@ impl Validation {
     ) -> Result<(), Error> {
         let mut error = self.errors.clone();
         if !result && error.is_empty() {
-            error =
-                "who: ALL, error: No validator was able to validate the event."
-                    .to_owned()
+            "who: ALL, error: No validator was able to validate the event."
+                .clone_into(&mut error);
         }
 
         let req_path =
@@ -274,7 +270,7 @@ impl Validation {
             ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
-            if let Err(e) = req_actor
+            if let Err(_e) = req_actor
                 .tell(RequestManagerMessage::ValidationRes {
                     result,
                     signatures: self.validators_response.clone(),
@@ -289,6 +285,21 @@ impl Validation {
         };
 
         Ok(())
+    }
+
+    async fn try_to_update(&self, ctx: &mut ActorContext<Validation>) {
+        let mut all_time_out = true;
+
+        for response in self.validators_response.clone() {
+            if let ProtocolsSignatures::Signature(_) = response {
+                all_time_out = false;
+                break;
+            }
+        }
+
+        if all_time_out {
+            todo!()
+        }
     }
 }
 
@@ -353,7 +364,7 @@ impl Actor for Validation {
 impl Handler<Validation> for Validation {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: ValidationMessage,
         ctx: &mut ActorContext<Validation>,
     ) -> Result<ValidationResponse, ActorError> {
@@ -397,12 +408,14 @@ impl Handler<Validation> for Validation {
 
                 let signature = match get_sign(
                     ctx,
-                    SignTypesNode::ValidationReq(validation_req.clone()),
+                    SignTypesNode::ValidationReq(Box::new(
+                        validation_req.clone(),
+                    )),
                 )
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 let signed_validation_req: Signed<ValidationReq> = Signed {
@@ -463,12 +476,14 @@ impl Handler<Validation> for Validation {
                         )
                         .await;
 
-                        if let Err(e) =
+                        if let Err(_e) =
                             self.send_validation_to_req(ctx, true).await
                         {
                             todo!()
                         };
                     } else if self.validators.is_empty() {
+                        self.try_to_update(ctx).await;
+
                         // we have received all the responses and the quorum has not been met
                         self.on_event(
                             ValidationEvent {
@@ -481,7 +496,7 @@ impl Handler<Validation> for Validation {
                         )
                         .await;
 
-                        if let Err(e) =
+                        if let Err(_e) =
                             self.send_validation_to_req(ctx, false).await
                         {
                             todo!()
@@ -499,7 +514,7 @@ impl Handler<Validation> for Validation {
         event: ValidationEvent,
         ctx: &mut ActorContext<Validation>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(_e) = self.persist(&event, ctx).await {
             // TODO error al persistir, propagar hacia arriba
         };
     }
