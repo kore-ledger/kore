@@ -12,7 +12,6 @@ use crate::{
         network::{RetryNetwork, TimeOutResponse},
         HashId, SignTypesNode, TimeStamp,
     },
-    node::Node,
     subject::{SubjectMessage, SubjectResponse},
     Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
     DIGEST_DERIVATOR, SCHEMAS,
@@ -70,7 +69,7 @@ impl Evaluator {
 
         let runner_actor = match child {
             Ok(child) => child,
-            Err(e) => return Err(e),
+            Err(_e) => return Err(_e),
         };
 
         let response = runner_actor
@@ -84,7 +83,7 @@ impl Evaluator {
 
         match response {
             Ok(eval) => Ok(eval),
-            Err(e) => Err(e),
+            Err(_e) => Err(_e),
         }
     }
 
@@ -181,19 +180,6 @@ impl Evaluator {
             }
         }
 
-        let node_path = ActorPath::from("/user/node");
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-        let node_actor = if let Some(node_actor) = node_actor {
-            node_actor
-        } else {
-            return Err(Error::Actor(format!(
-                "The node actor was not found in the expected path {}",
-                node_path
-            )));
-        };
-
-        // TODO: en el original sacaban el gov_version del contrato, pero tiene que ser la misma que la de la governanza, por qué se vuelve a hacer ¿?
         let contract: Contract = if is_governance {
             Contract::GovContract
         } else {
@@ -285,7 +271,7 @@ impl Evaluator {
                     ))
                 }) {
                     Ok(gov_data) => gov_data,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
             let schema = if let Some(schema) = governance_data
@@ -318,13 +304,13 @@ impl Evaluator {
             let value =
                 match serde_json::to_value(evaluation.final_state.clone()) {
                     Ok(value) => value,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
             if json_schema.validate(&value) {
                 let state_hash = match evaluation.final_state.hash_id(derivator)
                 {
                     Ok(state_hash) => state_hash,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 let patch = match Self::generate_json_patch(
@@ -332,7 +318,7 @@ impl Evaluator {
                     &evaluation.final_state.0,
                 ) {
                     Ok(patch) => patch,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 return EvaluationRes::Response(EvalRes {
@@ -384,7 +370,7 @@ impl Actor for Evaluator {
 impl Handler<Evaluator> for Evaluator {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: EvaluatorMessage,
         ctx: &mut ActorContext<Evaluator>,
     ) -> Result<(), ActorError> {
@@ -407,7 +393,7 @@ impl Handler<Evaluator> for Evaluator {
                     Ok(evaluation) => {
                         Self::build_response(evaluation, evaluation_req).await
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
                         todo!()
                     }
@@ -420,7 +406,7 @@ impl Handler<Evaluator> for Evaluator {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 // Evaluatiob path.
@@ -499,7 +485,7 @@ impl Handler<Evaluator> for Evaluator {
                     todo!()
                 };
 
-                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                if let Err(_e) = retry.tell(RetryMessage::Retry).await {
                     todo!()
                 };
             }
@@ -513,7 +499,7 @@ impl Handler<Evaluator> for Evaluator {
                         todo!()
                     }
 
-                    if let Err(e) = evaluation_res.verify() {
+                    if let Err(_e) = evaluation_res.verify() {
                         // Hay error criptográfico en la respuesta
                         todo!()
                     }
@@ -526,7 +512,7 @@ impl Handler<Evaluator> for Evaluator {
                         ctx.system().get_actor(&evaluation_path).await;
 
                     if let Some(evaluation_actor) = evaluation_actor {
-                        if let Err(e) = evaluation_actor
+                        if let Err(_e) = evaluation_actor
                             .tell(EvaluationMessage::Response {
                                 evaluation_res: evaluation_res.content,
                                 sender: self.node.clone(),
@@ -548,7 +534,7 @@ impl Handler<Evaluator> for Evaluator {
                     } else {
                         todo!()
                     };
-                    if let Err(e) = retry.tell(RetryMessage::End).await {
+                    if let Err(_e) = retry.tell(RetryMessage::End).await {
                         todo!()
                     };
                     ctx.stop().await;
@@ -574,7 +560,7 @@ impl Handler<Evaluator> for Evaluator {
                         match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
-                            Err(e) => todo!(),
+                            Err(_e) => todo!(),
                         }
                     } else {
                         todo!()
@@ -590,7 +576,7 @@ impl Handler<Evaluator> for Evaluator {
                         todo!()
                     }
 
-                    if let Err(e) = evaluation_req.verify() {
+                    if let Err(_e) = evaluation_req.verify() {
                         // Hay errores criptográficos
                         todo!()
                     }
@@ -624,7 +610,7 @@ impl Handler<Evaluator> for Evaluator {
                         )
                         .await
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
                         todo!()
                     }
@@ -649,14 +635,14 @@ impl Handler<Evaluator> for Evaluator {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 let signed_response: Signed<EvaluationRes> = Signed {
                     content: evaluation,
                     signature,
                 };
-                if let Err(e) = helper
+                if let Err(_e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
@@ -693,7 +679,7 @@ impl Handler<Evaluator> for Evaluator {
                     ctx.system().get_actor(&evaluation_path).await;
 
                 if let Some(evaluation_actor) = evaluation_actor {
-                    if let Err(e) = evaluation_actor
+                    if let Err(_e) = evaluation_actor
                         .tell(EvaluationMessage::Response {
                             evaluation_res: EvaluationRes::TimeOut(
                                 TimeOutResponse {
@@ -708,7 +694,7 @@ impl Handler<Evaluator> for Evaluator {
                         .await
                     {
                         // TODO error, no se puede enviar la response
-                        // return Err(e);
+                        // return Err(_e);
                     }
                 } else {
                     // TODO no se puede obtener evaluation! Parar.

@@ -321,15 +321,15 @@ pub enum Roles {
 // Implementación personalizada de PartialEq
 impl PartialEq for Roles {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
+        matches!(
+            (self, other),
             (Roles::APPROVER, Roles::APPROVER)
-            | (Roles::EVALUATOR, Roles::EVALUATOR)
-            | (Roles::VALIDATOR, Roles::VALIDATOR)
-            | (Roles::WITNESS, Roles::WITNESS)
-            | (Roles::ISSUER, Roles::ISSUER)
-            | (Roles::CREATOR { .. }, Roles::CREATOR { .. }) => true,
-            _ => false,
-        }
+                | (Roles::EVALUATOR, Roles::EVALUATOR)
+                | (Roles::VALIDATOR, Roles::VALIDATOR)
+                | (Roles::WITNESS, Roles::WITNESS)
+                | (Roles::ISSUER, Roles::ISSUER)
+                | (Roles::CREATOR { .. }, Roles::CREATOR { .. })
+        )
     }
 }
 

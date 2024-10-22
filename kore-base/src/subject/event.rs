@@ -1,11 +1,16 @@
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event, Handler, Message, Response
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
+    Handler, Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 
-use crate::{approval::approver::{Approver, ApproverMessage}, db::Storable, Error, Event as KoreEvent, Signed};
+use crate::{
+    approval::approver::{Approver, ApproverMessage},
+    db::Storable,
+    Error, Event as KoreEvent, Signed,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LedgerEvent {
@@ -61,7 +66,7 @@ impl Actor for LedgerEvent {
 impl Handler<LedgerEvent> for LedgerEvent {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: LedgerEventMessage,
         ctx: &mut ActorContext<LedgerEvent>,
     ) -> Result<LedgerEventResponse, ActorError> {
@@ -69,11 +74,17 @@ impl Handler<LedgerEvent> for LedgerEvent {
             LedgerEventMessage::UpdateLastEvent { event } => {
                 self.on_event(event, ctx).await;
 
-                let approver_path = ActorPath::from(format!("{}/approver", ctx.path().parent()));
-                let approver_actor: Option<ActorRef<Approver>> = ctx.system().get_actor(&approver_path).await;
-                
+                let approver_path = ActorPath::from(format!(
+                    "{}/approver",
+                    ctx.path().parent()
+                ));
+                let approver_actor: Option<ActorRef<Approver>> =
+                    ctx.system().get_actor(&approver_path).await;
+
                 if let Some(approver_actor) = approver_actor {
-                    if let Err(e) = approver_actor.tell(ApproverMessage::MakeObsolete).await {
+                    if let Err(_e) =
+                        approver_actor.tell(ApproverMessage::MakeObsolete).await
+                    {
                         todo!()
                     }
                 } else {

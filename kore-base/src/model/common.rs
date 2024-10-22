@@ -46,17 +46,14 @@ where
 
     match response {
         SubjectResponse::Governance(gov) => Ok(gov),
-        SubjectResponse::Error(error) => {
-            return Err(Error::Actor(format!(
-                "The subject encountered problems when getting governance: {}",
-                error
-            )));
-        }
-        _ => {
-            return Err(Error::Actor(format!(
-                "An unexpected response has been received from node actor"
-            )))
-        }
+        SubjectResponse::Error(error) => Err(Error::Actor(format!(
+            "The subject encountered problems when getting governance: {}",
+            error
+        ))),
+        _ => Err(Error::Actor(
+            "An unexpected response has been received from node actor"
+                .to_owned(),
+        )),
     }
 }
 
@@ -73,8 +70,7 @@ where
 
     let response = if let Some(subject_actor) = subject_actor {
         // We ask a node
-        let response =
-            subject_actor.ask(SubjectMessage::GetMetadata).await;
+        let response = subject_actor.ask(SubjectMessage::GetMetadata).await;
         match response {
             Ok(response) => response,
             Err(e) => {
@@ -115,7 +111,7 @@ where
     let node_response = if let Some(node_actor) = node_actor {
         match node_actor.ask(NodeMessage::SignRequest(sign_type)).await {
             Ok(response) => response,
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         }
     } else {
         todo!()
@@ -148,7 +144,7 @@ where
             .await
         {
             Ok(res) => res,
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         }
     } else {
         todo!()
@@ -174,7 +170,7 @@ where
         ctx.system().get_actor(&node_path).await;
 
     if let Some(node_actor) = node_actor {
-        if let Err(e) = node_actor
+        if let Err(_e) = node_actor
             .tell(NodeMessage::RegisterSubject(SubjectsTypes::ChangeTemp {
                 subject_id,
                 key_identifier,

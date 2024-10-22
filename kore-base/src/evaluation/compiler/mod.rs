@@ -190,7 +190,7 @@ impl Actor for Compiler {
 impl Handler<Compiler> for Compiler {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: CompilerMessage,
         _ctx: &mut ActorContext<Compiler>,
     ) -> Result<CompilerResponse, ActorError> {
@@ -211,7 +211,7 @@ impl Handler<Compiler> for Compiler {
                 let contract_wrapper = ValueWrapper(json!({"raw": contract}));
                 let contract_hash = match contract_wrapper.hash_id(derivator) {
                     Ok(hash) => hash,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 if contract_hash != self.contract {
@@ -237,13 +237,13 @@ impl Handler<Compiler> for Compiler {
 
                 let schema_hash = match schema.hash_id(derivator) {
                     Ok(hash) => hash,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 if schema_hash != self.schema {
                     let compilation = match JsonSchema::compile(&schema.0) {
                         Ok(compilation) => compilation,
-                        Err(e) => todo!(),
+                        Err(_e) => todo!(),
                     };
 
                     if !compilation.fast_validate(&initial_value) {
@@ -275,7 +275,7 @@ impl Handler<Compiler> for Compiler {
                 let contract_wrapper = ValueWrapper(json!({"raw": contract}));
                 let contract_hash = match contract_wrapper.hash_id(derivator) {
                     Ok(hash) => hash,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 if contract_hash != self.contract {
@@ -292,13 +292,13 @@ impl Handler<Compiler> for Compiler {
 
                 let schema_hash = match schema.hash_id(derivator) {
                     Ok(hash) => hash,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 if schema_hash != self.schema {
                     let compilation = match JsonSchema::compile(&schema.0) {
                         Ok(compilation) => compilation,
-                        Err(e) => todo!(),
+                        Err(_e) => todo!(),
                     };
 
                     if !compilation.fast_validate(&initial_value) {

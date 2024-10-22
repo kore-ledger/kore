@@ -17,7 +17,7 @@ pub mod service;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ActorMessage {
     ValidationReq {
-        req: Signed<ValidationReq>,
+        req: Box<Signed<ValidationReq>>,
     },
     ValidationRes {
         res: Signed<ValidationRes>,
@@ -32,7 +32,7 @@ pub enum ActorMessage {
         req: Signed<ApprovalReq>,
     },
     ApprovalRes {
-        res: Signed<ApprovalRes>,
+        res: Box<Signed<ApprovalRes>>,
     },
     DistributionLastEventReq {
         ledger: Signed<Ledger>,

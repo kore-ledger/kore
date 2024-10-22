@@ -41,13 +41,13 @@ use std::hash::Hash;
 // TODO: Separar los tipos de firma, que el sujeto tenga los suyos y el nodo los suyos, solo en caso de que sean muy diferentes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SignTypesNode {
-    Validation(ValidationProof),
+    Validation(Box<ValidationProof>),
     ValidationProofEvent(ProofEvent),
-    ValidationReq(ValidationReq),
+    ValidationReq(Box<ValidationReq>),
     ValidationRes(ValidationRes),
     EvaluationReq(EvaluationReq),
     EvaluationRes(EvaluationRes),
-    ApprovalRes(ApprovalRes),
+    ApprovalRes(Box<ApprovalRes>),
     ApprovalReq(ApprovalReq),
     ApprovalSignature(ApprovalSignature),
     Ledger(Ledger),

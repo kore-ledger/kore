@@ -9,11 +9,15 @@ use std::path::Path;
 use async_std::fs;
 
 use crate::{
-    db::Storable, distribution::distributor::Distributor, model::{
+    db::Storable,
+    distribution::distributor::Distributor,
+    model::{
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    }, subject::{self, CreateSubjectData}, Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
+    },
+    subject::CreateSubjectData,
+    Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR,
 };
 
 use identity::{
@@ -172,7 +176,10 @@ impl Node {
         Ok(())
     }
 
-    async fn create_subjects(&self, ctx: &mut ActorContext<Self>,) -> Result<(), ActorError> {
+    async fn create_subjects(
+        &self,
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
         for subject in self.owned_subjects.clone() {
             ctx.create_child(&subject, Subject::default()).await?;
         }
@@ -279,7 +286,7 @@ impl Actor for Node {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        if let Err(e) = Self::build_compilation_dir().await {
+        if let Err(_e) = Self::build_compilation_dir().await {
             // TODO manejar este error.
         };
 
@@ -289,7 +296,9 @@ impl Actor for Node {
 
         self.create_subjects(ctx).await?;
 
-        let distributor = Distributor {node: self.owner.key_identifier()};
+        let distributor = Distributor {
+            node: self.owner.key_identifier(),
+        };
         ctx.create_child("distributor", distributor).await?;
 
         Ok(())
@@ -335,10 +344,7 @@ impl PersistentActor for Node {
                 iam_owner,
                 subject_id,
             } => {
-                self.change_subject_owner(
-                    subject_id.clone(),
-                    iam_owner.clone(),
-                );
+                self.change_subject_owner(subject_id.clone(), *iam_owner);
             }
         }
     }
@@ -355,7 +361,7 @@ impl PersistentActor for Node {
 impl Handler<Node> for Node {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: NodeMessage,
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
@@ -426,7 +432,7 @@ impl Handler<Node> for Node {
                     .await
                 {
                     Ok(res) => res,
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 match response {
@@ -476,13 +482,13 @@ impl Handler<Node> for Node {
             NodeMessage::SignRequest(content) => {
                 let sign = match content {
                     SignTypesNode::Validation(validation) => {
-                        self.sign(&validation)
+                        self.sign(&*validation)
                     }
                     SignTypesNode::ValidationProofEvent(proof_event) => {
                         self.sign(&proof_event)
                     }
                     SignTypesNode::ValidationReq(validation_req) => {
-                        self.sign(&validation_req)
+                        self.sign(&*validation_req)
                     }
                     SignTypesNode::ValidationRes(validation_res) => {
                         self.sign(&validation_res)
@@ -497,7 +503,7 @@ impl Handler<Node> for Node {
                         self.sign(&approval_req)
                     }
                     SignTypesNode::ApprovalRes(approval_res) => {
-                        self.sign(&approval_res)
+                        self.sign(&*approval_res)
                     }
                     SignTypesNode::ApprovalSignature(approval_sign) => {
                         self.sign(&approval_sign)
@@ -573,7 +579,7 @@ impl Handler<Node> for Node {
         event: NodeEvent,
         ctx: &mut ActorContext<Node>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(_e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
     }

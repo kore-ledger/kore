@@ -75,7 +75,7 @@ impl RequestHandler {
             ctx.system().get_actor(&request_path).await;
 
         if let Some(request_actor) = request_actor {
-            if let Err(e) = request_actor
+            if let Err(_e) = request_actor
                 .tell(RequestHandlerMessage::PopQueue {
                     subject_id: subject_id.to_owned(),
                 })
@@ -167,7 +167,7 @@ impl RequestHandler {
         )
         .await;
 
-        if let Err(e) = RequestHandler::queued_event(ctx, &subject_id).await {
+        if let Err(_e) = RequestHandler::queued_event(ctx, subject_id).await {
             todo!()
         }
 
@@ -242,7 +242,7 @@ impl Actor for RequestHandler {
 impl Handler<RequestHandler> for RequestHandler {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: RequestHandlerMessage,
         ctx: &mut actor::ActorContext<RequestHandler>,
     ) -> Result<RequestHandlerResponse, ActorError> {
@@ -254,7 +254,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 //      - Si no es un evento de creación tenemos que verificar que tenemos a ese sujeto como owner. Si fuese un evento de confirmación y no somos owner nos intentamos actualizar.
                 //
                 // Si hay alguna, simplemente la encolamos.
-                if let Err(e) = request.verify() {
+                if let Err(_e) = request.verify() {
                     todo!()
                 };
 
@@ -315,7 +315,7 @@ impl Handler<RequestHandler> for RequestHandler {
                         )
                         .await;
 
-                        if let Err(e) = RequestHandler::queued_event(
+                        if let Err(_e) = RequestHandler::queued_event(
                             ctx,
                             &subject_id.to_string(),
                         )
@@ -402,7 +402,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 let metadata =
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
-                        Err(e) => todo!(),
+                        Err(_e) => todo!(),
                     };
 
                 if !metadata.active {
@@ -422,8 +422,8 @@ impl Handler<RequestHandler> for RequestHandler {
                 )
                 .await;
 
-                if self.handling.get(&subject_id.to_string()).is_none() {
-                    if let Err(e) = RequestHandler::queued_event(
+                if !self.handling.contains_key(&subject_id.to_string()) {
+                    if let Err(_e) = RequestHandler::queued_event(
                         ctx,
                         &subject_id.to_string(),
                     )
@@ -469,7 +469,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 };
 
                 if !owner {
-                    if let Err(e) =
+                    if let Err(_e) =
                         self.error_queue_handling(ctx, &subject_id).await
                     {
                         todo!()
@@ -481,11 +481,11 @@ impl Handler<RequestHandler> for RequestHandler {
                 let metadata =
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
-                        Err(e) => todo!(),
+                        Err(_e) => todo!(),
                     };
 
                 if !metadata.active {
-                    if let Err(e) =
+                    if let Err(_e) =
                         self.error_queue_handling(ctx, &subject_id).await
                     {
                         todo!()
@@ -519,7 +519,7 @@ impl Handler<RequestHandler> for RequestHandler {
                             .iter()
                             .any(|x| x.clone() == self.node_key)
                         {
-                            if let Err(e) = self
+                            if let Err(_e) = self
                                 .error_queue_handling(ctx, &subject_id)
                                 .await
                             {
@@ -539,25 +539,21 @@ impl Handler<RequestHandler> for RequestHandler {
                         if !signers
                             .iter()
                             .any(|x| x.clone() == event.signature.signer)
-                        {
-                            if !not_members
+                            && (!not_members
                                 || gov.members_to_key_identifier().iter().any(
                                     |x| x.clone() == event.signature.signer,
-                                )
+                                ))
+                        {
+                            if let Err(_e) = self
+                                .error_queue_handling(ctx, &subject_id)
+                                .await
                             {
-                                if let Err(e) = self
-                                    .error_queue_handling(ctx, &subject_id)
-                                    .await
-                                {
-                                    todo!()
-                                }
+                                todo!()
                             }
                         }
                         RequestManagerMessage::Fact
                     }
-                    _ => {
-                        RequestManagerMessage::Other
-                    }
+                    _ => RequestManagerMessage::Other,
                 };
 
                 ////////
@@ -570,7 +566,7 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 let request_id = match event.hash_id(derivator) {
                     Ok(request_id) => request_id.to_string(),
-                    Err(e) => todo!(),
+                    Err(_e) => todo!(),
                 };
 
                 let request_manager = RequestManager::new(
@@ -579,12 +575,15 @@ impl Handler<RequestHandler> for RequestHandler {
                     event,
                 );
 
-                let request_actor = match ctx.create_child(&request_id.clone(), request_manager).await {
+                let request_actor = match ctx
+                    .create_child(&request_id.clone(), request_manager)
+                    .await
+                {
                     Ok(request_actor) => request_actor,
-                    Err(e) => todo!()
+                    Err(_e) => todo!(),
                 };
-                
-                if let Err(e) = request_actor.tell(message).await {
+
+                if let Err(_e) = request_actor.tell(message).await {
                     todo!()
                 };
 
@@ -608,7 +607,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 )
                 .await;
 
-                if let Err(e) =
+                if let Err(_e) =
                     RequestHandler::queued_event(ctx, &subject_id).await
                 {
                     todo!()
@@ -624,7 +623,7 @@ impl Handler<RequestHandler> for RequestHandler {
         event: RequestHandlerEvent,
         ctx: &mut ActorContext<RequestHandler>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(_e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
     }

@@ -32,6 +32,7 @@ pub enum RequestSate {
     },
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ValidationProtocols {
     /// A request to create a new subject.

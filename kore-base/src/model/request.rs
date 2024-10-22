@@ -259,15 +259,15 @@ pub mod tests {
 
     use super::*;
 
-    use identity::{
-        identifier::{derive::KeyDerivator, KeyIdentifier},
-        keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair},
-    };
+    use identity::keys::{KeyGenerator, KeyPair};
 
     // Mocks
 
     // Create governance request mock.
-    pub fn create_start_request_mock(issuer: &str, keys: KeyPair) -> Signed<EventRequest> {
+    pub fn create_start_request_mock(
+        issuer: &str,
+        keys: KeyPair,
+    ) -> Signed<EventRequest> {
         let req = CreateRequest {
             governance_id: DigestIdentifier::default(),
             schema_id: "governance".to_string(),
@@ -275,8 +275,7 @@ pub mod tests {
         };
         let content = EventRequest::Create(req);
         let signature =
-            Signature::new(&content, &keys, DigestDerivator::SHA2_256)
-                .unwrap();
+            Signature::new(&content, &keys, DigestDerivator::SHA2_256).unwrap();
         Signed { content, signature }
     }
 }

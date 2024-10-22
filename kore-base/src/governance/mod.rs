@@ -31,6 +31,9 @@ use std::{
     str::FromStr,
 };
 
+type SchemRolNameSpace = HashMap<(String, Roles), Vec<String>>;
+type SchemaKeyNameSpace = HashMap<(String, String), Vec<String>>;
+
 /// Governance struct.
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,7 +136,7 @@ impl Governance {
                 match rol.who.clone() {
                     Who::MEMBERS => {
                         signers = self.members_to_key_identifier();
-                        return (signers, not_members)
+                        return (signers, not_members);
                     }
                     Who::ID { ID } => {
                         if let Ok(id) = KeyIdentifier::from_str(&ID) {
@@ -187,11 +190,12 @@ impl Governance {
         schema: &str,
         namespace: Namespace,
     ) -> Result<(HashSet<KeyIdentifier>, Quorum), Error> {
-        let (signers, _not_members) = self.get_signers(role.clone(), schema, namespace);
+        let (signers, _not_members) =
+            self.get_signers(role.clone(), schema, namespace);
         let quorum = self.get_quorum(role, schema);
         match quorum {
             Ok(quorum) => Ok((signers, quorum)),
-            Err(e) => Err(e),
+            Err(_e) => Err(_e),
         }
     }
 
@@ -238,7 +242,7 @@ impl Governance {
         }
 
         if all_schemas {
-            return self.schemas.clone();
+            self.schemas.clone()
         } else {
             let mut schemas: Vec<Schema> = vec![];
             for id in schemas_id {
@@ -249,21 +253,16 @@ impl Governance {
                 }
             }
 
-            return schemas;
+            schemas
         }
     }
 
     pub fn subjects_schemas_rol_namespace(
         &self,
         our_id: &str,
-    ) -> (
-        HashMap<(String, Roles), Vec<String>>,
-        HashMap<(String, String), Vec<String>>,
-    ) {
-        let mut our_roles: HashMap<(String, Roles), Vec<String>> =
-            HashMap::new();
-        let mut creators: HashMap<(String, String), Vec<String>> =
-            HashMap::new();
+    ) -> (SchemRolNameSpace, SchemaKeyNameSpace) {
+        let mut our_roles: SchemRolNameSpace = HashMap::new();
+        let mut creators: SchemaKeyNameSpace = HashMap::new();
         let all_schemas: Vec<String> =
             self.schemas.iter().map(|x| x.id.clone()).collect();
         let all_members: Vec<String> =
@@ -345,7 +344,7 @@ impl Governance {
                         }
                     }
                 }
-                Roles::CREATOR { quantity } => {
+                Roles::CREATOR { .. } => {
                     if !is_me {
                         if schema == "NOT_GOVERNANCE" {
                             for schema in all_schemas.clone() {

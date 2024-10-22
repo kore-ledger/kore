@@ -5,17 +5,25 @@
 //!
 
 use crate::{
-    approval::{approver::Approver, Approval}, db::Storable, distribution::{self, distributor::Distributor, Distribution}, evaluation::{
+    approval::{approver::Approver, Approval},
+    db::Storable,
+    distribution::{distributor::Distributor, Distribution},
+    evaluation::{
         compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
         schema::EvaluationSchema,
         Evaluation,
-    }, governance::model::Roles, model::{
+    },
+    governance::model::Roles,
+    model::{
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
-    }, node::{NodeMessage, NodeResponse}, validation::{schema::ValidationSchema, validator::Validator, Validation}, CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR
+    },
+    node::{NodeMessage, NodeResponse},
+    validation::{schema::ValidationSchema, validator::Validator, Validation},
+    CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
 };
 
 use actor::{
@@ -25,8 +33,7 @@ use actor::{
 use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
 use identity::{
     identifier::{
-        derive::digest::DigestDerivator, key_identifier, DigestIdentifier,
-        KeyIdentifier,
+        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
     },
     keys::{KeyMaterial, KeyPair},
 };
@@ -35,7 +42,7 @@ use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use json_patch::{patch, Patch};
 use serde::{Deserialize, Serialize};
-use serde_json::{to_value, Value};
+use serde_json::to_value;
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{debug, error};
 
@@ -319,9 +326,8 @@ impl Subject {
     async fn build_childs_not_governance(
         &self,
         ctx: &mut ActorContext<Subject>,
-        our_key: KeyIdentifier
+        our_key: KeyIdentifier,
     ) -> Result<(), ActorError> {
-
         let owner = our_key == self.owner;
 
         if owner {
@@ -337,7 +343,7 @@ impl Subject {
     async fn build_childs_governance(
         &self,
         ctx: &mut ActorContext<Subject>,
-        our_key: KeyIdentifier
+        our_key: KeyIdentifier,
     ) -> Result<(), ActorError> {
         // If subject is a governance
         let gov = Governance::try_from(self.properties.clone())
@@ -402,7 +408,7 @@ impl Subject {
             let actor = ctx
                 .create_child(&format!("{}_compiler", schema.id), actor)
                 .await?;
-            if let Err(e) = actor
+            if let Err(_e) = actor
                 .tell(CompilerMessage::Compile {
                     contract: schema.contract.raw.clone(),
                     schema: ValueWrapper(schema.schema.clone()),
@@ -474,7 +480,8 @@ impl Subject {
         our_key: KeyIdentifier,
         gov: &Governance,
     ) -> bool {
-        gov.get_signers(role, schema, self.namespace.clone()).0
+        gov.get_signers(role, schema, self.namespace.clone())
+            .0
             .contains(&our_key)
     }
 
@@ -530,7 +537,7 @@ impl Subject {
         let response = if let Some(store) = store {
             match store.ask(StoreCommand::LastEvent).await {
                 Ok(response) => response,
-                Err(e) => todo!(),
+                Err(_e) => todo!(),
             }
         } else {
             todo!()
@@ -569,7 +576,7 @@ impl Subject {
                     } else {
                         todo!()
                     };
-                    Ok(eval && approve && eval)
+                    Ok(eval && approve && val)
                 } else {
                     if let Some(_approve) = approve {
                         todo!()
@@ -592,7 +599,7 @@ impl Subject {
             ctx.system().get_actor(&node_path).await;
 
         if let Some(node_actor) = node_actor {
-            if let Err(e) = node_actor
+            if let Err(_e) = node_actor
                 .tell(NodeMessage::ChangeSubjectOwner {
                     new_owner: new_owner.to_owned(),
                     old_owner: old_owner.to_owned(),
@@ -608,6 +615,8 @@ impl Subject {
         Ok(())
     }
 
+    // TODO ARREGLAR EL HASH CUANDO ES UNA GOV, ya que la versión de la gov cambia
+    // y siendo un evento que no modifica estdo sí lo modifica al cambiar la gov_version +1
     async fn verify_new_ledger_event(
         &self,
         ctx: &mut ActorContext<Subject>,
@@ -621,9 +630,11 @@ impl Subject {
 
         // SI no es el dueño el que firmó el evento
         if new_ledger.signature.signer != self.owner {
-            println!("{}", new_ledger.signature.signer);
-            println!("{}", self.owner);
             todo!();
+        }
+
+        if let Err(_e) = new_ledger.verify() {
+            todo!()
         }
 
         // Mirar que sea el siguiente sn
@@ -648,7 +659,7 @@ impl Subject {
             last_ledger.content.vali_success,
         ) {
             Ok(is_ok) => is_ok,
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         };
 
         // Si el último evento guardado fue correcto, por ende se aplicó lo que ese
@@ -661,18 +672,16 @@ impl Subject {
                 if transfer.new_owner != new_ledger.signature.signer {
                     todo!();
                 }
-                // verifY TODO
             } else if let EventRequest::EOL(end) =
                 last_ledger.content.event_request.content.clone()
             {
                 // Error, la vida del sujeto terminó y se está registrando un nuevo evento.
                 todo!();
-            } else {
-                if last_ledger.signature.signer != new_ledger.signature.signer {
-                    todo!();
-                }
-                // verifY TODO
-            };
+            } else if last_ledger.signature.signer
+                != new_ledger.signature.signer
+            {
+                todo!();
+            }
         }
 
         let valid_new_event = match Self::verify_protocols_state(
@@ -685,7 +694,7 @@ impl Subject {
             new_ledger.content.vali_success,
         ) {
             Ok(is_ok) => is_ok,
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         };
 
         // Si el nuevo evento a registrar fue correcto.
@@ -730,7 +739,7 @@ impl Subject {
                         // propierties deberían ser iguales.
                     }
 
-                    if let Err(E) = Subject::change_node_subject(
+                    if let Err(_e) = Subject::change_node_subject(
                         ctx,
                         &transfer_request.subject_id.to_string(),
                         &transfer_request.new_owner.to_string(),
@@ -751,7 +760,7 @@ impl Subject {
                         // propierties deberían ser iguales.
                     }
 
-                    // tenemos que guardar las nuevas claves,
+                    // TODO tenemos que guardar las nuevas claves,
                     todo!()
                 }
                 EventRequest::EOL(eolrequest) => {
@@ -791,29 +800,34 @@ impl Subject {
         if let EventRequest::Create(event_req) =
             event.content.event_request.content.clone()
         {
-            if event_req.schema_id == "governance" {
-                if !event_req.governance_id.is_empty()
+            if event_req.schema_id == "governance"
+                && (!event_req.governance_id.is_empty()
                     || !event_req.namespace.is_empty()
-                        && event.content.gov_version != 0
-                {
-                    todo!()
-                }
+                        && event.content.gov_version != 0)
+            {
+                todo!()
             }
         } else {
             todo!()
         };
 
         if event.signature.signer != self.owner
-            && event.content.event_request.signature.signer != self.owner
+            || event.content.event_request.signature.signer != self.owner
         {
             todo!();
+        }
+
+        if let Err(_e) = event.verify() {
+            todo!()
         }
 
         if event.content.sn != 0 {
             todo!()
         }
 
-        if !event.content.hash_prev_event.is_empty() {}
+        if !event.content.hash_prev_event.is_empty() {
+            todo!()
+        }
 
         match Self::verify_protocols_state(
             EventRequestType::Create,
@@ -829,7 +843,7 @@ impl Subject {
                     todo!()
                 }
             }
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         }
     }
 
@@ -844,7 +858,7 @@ impl Subject {
         let mut last_ledger = if let Some(last_ledger) = last_ledger {
             last_ledger
         } else {
-            if let Err(e) =
+            if let Err(_e) =
                 self.verify_first_ledger_event(events[0].clone()).await
             {
                 todo!()
@@ -893,7 +907,7 @@ impl Subject {
                 .await
             {
                 Ok(response) => response,
-                Err(e) => todo!(),
+                Err(_e) => todo!(),
             }
         } else {
             todo!()
@@ -993,7 +1007,7 @@ pub enum SubjectMessage {
         events: Vec<Signed<Ledger>>,
     },
     /// Sign request
-    SignRequest(SignTypesSubject),
+    SignRequest(Box<SignTypesSubject>),
     /// Get governance if subject is a governance
     GetGovernance,
     GetOwner,
@@ -1033,20 +1047,21 @@ impl Actor for Subject {
         self.init_store("subject", None, true, ctx).await?;
 
         let our_key = self
-        .get_node_key(ctx)
-        .await
-        .map_err(|e| ActorError::Create)?;
+            .get_node_key(ctx)
+            .await
+            .map_err(|e| ActorError::Create)?;
 
         if self.governance_id.is_empty() {
             self.build_childs_governance(ctx, our_key.clone()).await?;
         } else {
-            self.build_childs_not_governance(ctx, our_key.clone()).await?;
+            self.build_childs_not_governance(ctx, our_key.clone())
+                .await?;
         }
 
         let ledger_event = LedgerEvent::default();
         ctx.create_child("ledgerEvent", ledger_event).await?;
 
-        let distributor = Distributor {node: our_key};
+        let distributor = Distributor { node: our_key };
         ctx.create_child("distributor", distributor).await?;
 
         Ok(())
@@ -1066,7 +1081,7 @@ impl Actor for Subject {
 impl Handler<Subject> for Subject {
     async fn handle_message(
         &mut self,
-        sender: ActorPath,
+        _sender: ActorPath,
         msg: SubjectMessage,
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
@@ -1106,7 +1121,7 @@ impl Handler<Subject> for Subject {
                 }
             }
             SubjectMessage::SignRequest(content) => {
-                let sign = match content {
+                let sign = match *content {
                     SignTypesSubject::Validation(validation) => {
                         self.sign(&validation)
                     }
@@ -1158,7 +1173,7 @@ impl PersistentActor for Subject {
             event.content.vali_success,
         ) {
             Ok(is_ok) => is_ok,
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         };
 
         if valid_event {
@@ -1170,7 +1185,7 @@ impl PersistentActor for Subject {
                         .hash_id(event.signature.content_hash.derivator)
                     {
                         Ok(hash) => hash,
-                        Err(e) => todo!(),
+                        Err(_e) => todo!(),
                     };
 
                     self.last_event_hash = last_event_hash;
@@ -1185,10 +1200,11 @@ impl PersistentActor for Subject {
                     let patch_json =
                         match serde_json::from_value::<Patch>(json_patch.0) {
                             Ok(patch) => patch,
-                            Err(e) => todo!(),
+                            Err(_e) => todo!(),
                         };
 
-                    if let Err(e) = patch(&mut self.properties.0, &patch_json) {
+                    if let Err(_e) = patch(&mut self.properties.0, &patch_json)
+                    {
                         // No se pudo aplicar el patch, error
                         todo!()
                     };
@@ -1207,7 +1223,7 @@ impl PersistentActor for Subject {
                 let mut gov =
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => gov,
-                        Err(e) => todo!(),
+                        Err(_e) => todo!(),
                     };
 
                 gov.version += 1;
@@ -1227,7 +1243,7 @@ impl PersistentActor for Subject {
             .hash_id(event.signature.content_hash.derivator)
         {
             Ok(hash) => hash,
-            Err(e) => todo!(),
+            Err(_e) => todo!(),
         };
 
         self.last_event_hash = last_event_hash;
@@ -1255,7 +1271,15 @@ mod tests {
         FactRequest,
     };
 
-    async fn create_subject_and_ledger_event(system: SystemRef, node_keys: KeyPair) -> (ActorRef<Subject>, ActorRef<LedgerEvent>, Subject, Signed<Ledger>) {
+    async fn create_subject_and_ledger_event(
+        system: SystemRef,
+        node_keys: KeyPair,
+    ) -> (
+        ActorRef<Subject>,
+        ActorRef<LedgerEvent>,
+        Subject,
+        Signed<Ledger>,
+    ) {
         let node = Node::new(&node_keys).unwrap();
         let _ = system.create_root_actor("node", node).await.unwrap();
         let request = create_start_request_mock("issuer", node_keys.clone());
@@ -1582,8 +1606,9 @@ mod tests {
     async fn test_get_events() {
         let system = create_system().await;
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
-        
-        let (subject_actor, _ledger_event_actor, _subject, _signed_ledger) = create_subject_and_ledger_event(system, node_keys.clone()).await;
+
+        let (subject_actor, _ledger_event_actor, _subject, _signed_ledger) =
+            create_subject_and_ledger_event(system, node_keys.clone()).await;
 
         let response = subject_actor
             .ask(SubjectMessage::GetLedger { last_sn: 0 })
@@ -1613,7 +1638,8 @@ mod tests {
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let system = create_system().await;
 
-        let (subject_actor, _ledger_event_actor, subject, signed_ledger) = create_subject_and_ledger_event(system, node_keys.clone()).await;
+        let (subject_actor, _ledger_event_actor, subject, signed_ledger) =
+            create_subject_and_ledger_event(system, node_keys.clone()).await;
 
         let hash_pre_event =
             signed_ledger.hash_id(DigestDerivator::Blake3_256).unwrap();
