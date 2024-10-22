@@ -551,7 +551,6 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::None)
             }
             NodeMessage::IsAuthorized(subject_id) => {
-                // TODO Esto no se puede utilizar para governanza autorizada, tiene que ir a parte
                 let auth_subj = self
                     .authorized_subjects
                     .iter()

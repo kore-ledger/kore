@@ -267,6 +267,21 @@ impl Evaluation {
 
         Ok(())
     }
+
+    async fn try_to_update(&self, ctx: &mut ActorContext<Evaluation>) {
+        let mut all_time_out = true;
+
+        for response in self.evaluators_signatures.clone() {
+            if let ProtocolsSignatures::Signature(_) = response {
+                all_time_out = false;
+                break;
+            }
+        }
+
+        if all_time_out {
+            todo!()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -14,10 +14,7 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Quorum},
     model::{
-        common::get_sign,
-        event::{ProofEvent, ProtocolsSignatures},
-        signature::Signed,
-        Namespace, SignTypesNode, SignTypesSubject,
+        common::get_sign, event::{ProofEvent, ProtocolsSignatures}, network::TimeOutResponse, signature::Signed, Namespace, SignTypesNode, SignTypesSubject
     },
     request::manager::{RequestManager, RequestManagerMessage},
     subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
@@ -289,6 +286,21 @@ impl Validation {
 
         Ok(())
     }
+
+    async fn try_to_update(&self, ctx: &mut ActorContext<Validation>) {
+        let mut all_time_out = true;
+
+        for response in self.validators_response.clone() {
+            if let ProtocolsSignatures::Signature(_) = response {
+                all_time_out = false;
+                break;
+            }
+        }
+
+        if all_time_out {
+            todo!()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -470,6 +482,8 @@ impl Handler<Validation> for Validation {
                             todo!()
                         };
                     } else if self.validators.is_empty() {
+                        self.try_to_update(ctx).await;
+
                         // we have received all the responses and the quorum has not been met
                         self.on_event(
                             ValidationEvent {

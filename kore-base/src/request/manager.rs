@@ -6,10 +6,7 @@ use actor::{
     Handler, Message, Response,
 };
 use async_trait::async_trait;
-use identity::{
-    identifier::{derive::digest::DigestDerivator, DigestIdentifier},
-    keys::KeyGenerator,
-};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use store::store::PersistentActor;
@@ -39,7 +36,9 @@ use crate::{
     ValidationMessage, ValueWrapper, DIGEST_DERIVATOR,
 };
 
-use super::{state::RequestSate, RequestHandler, RequestHandlerMessage};
+use super::{
+    state::RequestManagerState, RequestHandler, RequestHandlerMessage,
+};
 
 #[derive(Default)]
 pub struct ProtocolsResult {
@@ -53,7 +52,7 @@ pub struct ProtocolsResult {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestManager {
     id: String,
-    state: RequestSate,
+    state: RequestManagerState,
     subject_id: String,
     request: Signed<EventRequest>,
 }
@@ -66,7 +65,7 @@ impl RequestManager {
     ) -> Self {
         RequestManager {
             id,
-            state: RequestSate::Starting,
+            state: RequestManagerState::Starting,
             subject_id,
             request,
         }
@@ -201,7 +200,7 @@ impl RequestManager {
 
         self.on_event(
             RequestManagerEvent::ChangeState {
-                state: RequestSate::Validation(val_info.clone()),
+                state: RequestManagerState::Validation(val_info.clone()),
             },
             ctx,
         )
@@ -219,7 +218,7 @@ impl RequestManager {
     ) -> Result<(), Error> {
         self.on_event(
             RequestManagerEvent::ChangeState {
-                state: RequestSate::Approval {
+                state: RequestManagerState::Approval {
                     eval_req: eval_req.clone(),
                     eval_res: eval_res.clone(),
                     eval_signatures,
@@ -238,7 +237,7 @@ impl RequestManager {
     ) -> Result<(), Error> {
         self.on_event(
             RequestManagerEvent::ChangeState {
-                state: RequestSate::Evaluation,
+                state: RequestManagerState::Evaluation,
             },
             ctx,
         )
@@ -345,7 +344,7 @@ impl RequestManager {
 
         self.on_event(
             RequestManagerEvent::ChangeState {
-                state: RequestSate::Distribution {
+                state: RequestManagerState::Distribution {
                     event: signed_event.clone(),
                     ledger: signed_ledger.clone(),
                 },
@@ -502,6 +501,7 @@ impl RequestManager {
 
 #[derive(Debug, Clone)]
 pub enum RequestManagerMessage {
+    Run,
     Fact,
     Other,
     ApprovalRes {
@@ -534,7 +534,7 @@ impl Response for RequestManagerResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RequestManagerEvent {
-    ChangeState { state: RequestSate },
+    ChangeState { state: RequestManagerState },
 }
 
 impl Event for RequestManagerEvent {}
@@ -562,18 +562,6 @@ impl Actor for RequestManager {
 }
 
 #[async_trait]
-impl PersistentActor for RequestManager {
-    /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
-        match event {
-            RequestManagerEvent::ChangeState { state } => {
-                self.state = state.clone();
-            }
-        }
-    }
-}
-
-#[async_trait]
 impl Handler<RequestManager> for RequestManager {
     async fn handle_message(
         &mut self,
@@ -582,9 +570,77 @@ impl Handler<RequestManager> for RequestManager {
         ctx: &mut actor::ActorContext<RequestManager>,
     ) -> Result<RequestManagerResponse, ActorError> {
         match msg {
+            RequestManagerMessage::Run => {
+                match self.state.clone() {
+                    RequestManagerState::Starting => {
+                        match self.request.content {
+                            EventRequest::Fact(_) => {
+                                if let Err(_e) = self.evaluation(ctx).await {
+                                    todo!()
+                                };
+                            }
+                            _ => {
+                                let data = match self
+                                    .build_data_event_proof(
+                                        ctx,
+                                        None,
+                                        LedgerValue::Patch(ValueWrapper(
+                                            serde_json::Value::String(
+                                                "[]".to_owned(),
+                                            ),
+                                        )),
+                                        None,
+                                        ProtocolsResult::default(),
+                                    )
+                                    .await
+                                {
+                                    Ok(data) => data,
+                                    Err(_e) => todo!(),
+                                };
+
+                                if let Err(_e) =
+                                    self.validation(ctx, data).await
+                                {
+                                    todo!()
+                                };
+                            }
+                        };
+                    }
+                    RequestManagerState::Evaluation => {
+                        if let Err(e) = self.send_evaluation(ctx).await {
+                            todo!()
+                        }
+                    }
+                    RequestManagerState::Approval {
+                        eval_req,
+                        eval_res,
+                        eval_signatures,
+                    } => {
+                        if let Err(e) =
+                            self.send_approval(ctx, eval_req, eval_res).await
+                        {
+                            todo!()
+                        }
+                    }
+                    RequestManagerState::Validation(val_info) => {
+                        if let Err(e) =
+                            self.send_validation(ctx, val_info).await
+                        {
+                            todo!()
+                        }
+                    }
+                    RequestManagerState::Distribution { event, ledger } => {
+                        if let Err(e) =
+                            self.init_distribution(ctx, event, ledger).await
+                        {
+                            todo!()
+                        }
+                    }
+                };
+            }
             RequestManagerMessage::ApprovalRes { result, signatures } => {
                 let (eval_req, eval_res, eval_signatures) =
-                    if let RequestSate::Approval {
+                    if let RequestManagerState::Approval {
                         eval_req,
                         eval_res,
                         eval_signatures,
@@ -626,7 +682,7 @@ impl Handler<RequestManager> for RequestManager {
                 response,
                 signatures,
             } => {
-                if let RequestSate::Evaluation = self.state.clone() {
+                if let RequestManagerState::Evaluation = self.state.clone() {
                 } else {
                     todo!()
                 };
@@ -670,7 +726,9 @@ impl Handler<RequestManager> for RequestManager {
                 }
             }
             RequestManagerMessage::FinishRequest => {
-                if let RequestSate::Distribution { .. } = self.state.clone() {
+                if let RequestManagerState::Distribution { .. } =
+                    self.state.clone()
+                {
                 } else {
                     todo!()
                 };
@@ -687,13 +745,14 @@ impl Handler<RequestManager> for RequestManager {
                 signatures,
                 errors,
             } => {
-                let actual_state = if let RequestSate::Validation(state) =
-                    self.state.clone()
-                {
-                    state
-                } else {
-                    todo!()
-                };
+                let actual_state =
+                    if let RequestManagerState::Validation(state) =
+                        self.state.clone()
+                    {
+                        state
+                    } else {
+                        todo!()
+                    };
 
                 let (ledger, event) = self.create_ledger_event(
                     actual_state,
@@ -708,7 +767,7 @@ impl Handler<RequestManager> for RequestManager {
                 }
             }
             RequestManagerMessage::Fact => {
-                if let RequestSate::Starting = self.state {
+                if let RequestManagerState::Starting = self.state {
                 } else {
                     todo!()
                 };
@@ -718,7 +777,7 @@ impl Handler<RequestManager> for RequestManager {
                 };
             }
             RequestManagerMessage::Other => {
-                if let RequestSate::Starting = self.state {
+                if let RequestManagerState::Starting = self.state {
                 } else {
                     todo!()
                 };
@@ -756,6 +815,18 @@ impl Handler<RequestManager> for RequestManager {
         if let Err(_e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
+    }
+}
+
+#[async_trait]
+impl PersistentActor for RequestManager {
+    /// Change node state.
+    fn apply(&mut self, event: &Self::Event) {
+        match event {
+            RequestManagerEvent::ChangeState { state } => {
+                self.state = state.clone();
+            }
+        }
     }
 }
 

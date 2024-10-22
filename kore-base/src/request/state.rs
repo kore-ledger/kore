@@ -17,7 +17,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum RequestSate {
+pub enum RequestManagerState {
     Starting,
     Evaluation,
     Approval {

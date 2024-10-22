@@ -34,7 +34,7 @@ pub mod state;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestHandler {
     node_key: KeyIdentifier,
-    handling: HashMap<String, String>,
+    handling: HashMap<String, (String,Signed<EventRequest>)>,
     in_queue: HashMap<String, VecDeque<Signed<EventRequest>>>,
 }
 
@@ -209,6 +209,7 @@ pub enum RequestHandlerEvent {
     EventToHandling {
         subject_id: String,
         request_id: String,
+        event: Signed<EventRequest>
     },
 }
 
@@ -227,7 +228,23 @@ impl Actor for RequestHandler {
         // Cuando arranque tiene que levantar a todos los request que estén handling, si un request, está en starting, quiere
         // decir que todavía no inició nada, por lo tanto tiene que lazanle de nuevo el comando, de resto
         // Los request se manejan solo. TODO
-        self.init_store("request_handler", None, false, ctx).await
+        if let Err(_e) = self.init_store("request_handler", None, false, ctx).await {
+            todo!()
+        };
+
+        for (subject_id, (request_id, request)) in self.handling.clone() {
+            let request_manager = RequestManager::new(request_id.clone(), subject_id, request);
+            let request_manager_actor = match ctx.create_child(&request_id, request_manager).await {
+                Ok(actor) => actor,
+                Err(e) => todo!()
+            };
+
+            if let Err(e) = request_manager_actor.tell(RequestManagerMessage::Run).await {
+                todo!()
+            };
+        }
+
+        Ok(())
     }
 
     async fn pre_stop(
@@ -572,7 +589,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 let request_manager = RequestManager::new(
                     request_id.clone(),
                     subject_id.clone(),
-                    event,
+                    event.clone(),
                 );
 
                 let request_actor = match ctx
@@ -591,6 +608,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     RequestHandlerEvent::EventToHandling {
                         subject_id: subject_id.clone(),
                         request_id: request_id,
+                        event
                     },
                     ctx,
                 )
@@ -654,8 +672,9 @@ impl PersistentActor for RequestHandler {
             RequestHandlerEvent::EventToHandling {
                 subject_id,
                 request_id,
+                event
             } => {
-                self.handling.insert(subject_id.clone(), request_id.clone());
+                self.handling.insert(subject_id.clone(), (request_id.clone(), event.clone()));
                 if let Some(vec) = self.in_queue.get_mut(subject_id) {
                     vec.pop_front();
                 }

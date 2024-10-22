@@ -759,7 +759,7 @@ impl Subject {
                         // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
                         // propierties deberían ser iguales.
                     }
-
+                    
                     // TODO tenemos que guardar las nuevas claves,
                     todo!()
                 }
