@@ -536,14 +536,15 @@ impl Storable for Validation {}
 #[cfg(test)]
 mod tests {
     use core::panic;
-    use std::time::Duration;
+    use std::{collections::HashSet, time::Duration};
+    use identity::identifier::derive::digest::DigestDerivator;
 
-    use identity::{identifier::DigestIdentifier, keys::{Ed25519KeyPair, KeyGenerator, KeyPair}};
+    use actor::{ActorPath, ActorRef};
+    use identity::{identifier::{DigestIdentifier, KeyIdentifier}, keys::{Ed25519KeyPair, KeyGenerator, KeyPair}};
 
-    use crate::{model::{Namespace, SignTypesNode}, request::{RequestHandler, RequestHandlerMessage, RequestHandlerResponse}, tests::create_system, CreateRequest, EventRequest, Node, NodeMessage, NodeResponse, Signed};
+    use crate::{model::{Namespace, SignTypesNode}, request::{RequestHandler, RequestHandlerMessage, RequestHandlerResponse}, tests::create_system, CreateRequest, EventRequest, Governance, HashId, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse};
 
-    #[tokio::test]
-    async fn test_create_req() {
+    async fn create_subject_gov() -> (ActorRef<Node>, ActorRef<RequestHandler>, ActorRef<Subject>) {
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let system = create_system().await;
 
@@ -567,23 +568,58 @@ mod tests {
             signature
         };
 
-        let RequestHandlerResponse::Ok(response) = request_actor.ask(RequestHandlerMessage::NewRequest { request: signed_event_req }).await.unwrap() else {
+        let RequestHandlerResponse::Ok(_response) = request_actor.ask(RequestHandlerMessage::NewRequest { request: signed_event_req.clone() }).await.unwrap() else {
             panic!("Invalid response")
         };
 
-        println!("{response}");
 
         let NodeResponse::Subjects(subjects) = node_actor.ask(NodeMessage::GetSubjects).await.unwrap() else {
             panic!("Invalid response")
         };
 
-        println!("{subjects}");
+        let temporal_subj = subjects.temporal_subjects[0].clone();
 
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
         let NodeResponse::Subjects(subjects) = node_actor.ask(NodeMessage::GetSubjects).await.unwrap() else {
             panic!("Invalid response")
         };
 
-        println!("{subjects}");
+        let owned_subj = subjects.owned_subjects[0].clone();
+
+        assert_eq!(temporal_subj, owned_subj);
+
+        let subject_actor:ActorRef<Subject> = system.get_actor(&ActorPath::from(format!("/user/node/{}", temporal_subj))).await.unwrap();
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let SubjectResponse::Metadata(metadata) = subject_actor.ask(SubjectMessage::GetMetadata).await.unwrap() else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(metadata.subject_id.to_string(), owned_subj);
+        assert_eq!(metadata.governance_id.to_string(), "");
+        assert_eq!(metadata.genesis_gov_version, 0);
+        assert_eq!(metadata.last_event_hash, signed_event_req.hash_id(DigestDerivator::Blake3_256).unwrap());
+        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.schema_id, "governance");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 0);
+        assert_eq!(metadata.owner, node_keys.key_identifier());
+        assert!(metadata.active);
+
+        let gov = Governance::try_from(metadata.properties).unwrap();
+        assert_eq!(gov.version, 0);
+        assert!(!gov.members.is_empty());
+        assert!(!gov.roles.is_empty());
+        assert!(gov.schemas.is_empty());
+        assert!(gov.subjects_id.is_empty());
+        assert!(!gov.policies.is_empty());
+
+        (node_actor, request_actor, subject_actor)
+    }
+
+    #[tokio::test]
+    async fn test_create_req() {
+        let _ = create_subject_gov().await;
     }
 }

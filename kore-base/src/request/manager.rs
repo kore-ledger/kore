@@ -481,7 +481,11 @@ impl RequestManager {
         let sn = if let Some(sn) = sn {
             sn
         } else {
-            metadata.sn + 1
+            if metadata.sn == 0 {
+                metadata.sn
+            } else {
+                metadata.sn + 1
+            }
         };
 
         Ok(DataProofEvent {
@@ -550,7 +554,7 @@ impl Actor for RequestManager {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        // Cuando arranque tiene que ver su estado para saber en que punto se encontraba y retomarlo. TODO
+        
         self.init_store("request_manager", None, false, ctx).await
     }
 

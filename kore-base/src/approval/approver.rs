@@ -265,7 +265,7 @@ impl Handler<Approver> for Approver {
                 let state = if let Some(state) = self.state.clone() {
                     state
                 } else {
-                    todo!()
+                    return Ok(ApproverResponse::None);
                 };
 
                 if state == ApprovalState::Pending {

@@ -50,6 +50,17 @@ pub enum SubjectsTypes {
     },
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubjectsVectors {
+    pub owned_subjects: Vec<String>,
+    /// The node's known subjects.
+    pub known_subjects: Vec<String>,
+    /// The authorized subjects.
+    pub authorized_subjects: Vec<String>,
+
+    pub temporal_subjects: Vec<String>,
+}
+
 /// Node struct.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
@@ -244,7 +255,7 @@ impl Message for NodeMessage {}
 /// Node response.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeResponse {
-    Subjects(String),
+    Subjects(SubjectsVectors),
     RequestIdentifier(DigestIdentifier),
     SignRequest(Signature),
     SonWasCreated,
@@ -369,7 +380,12 @@ impl Handler<Node> for Node {
     ) -> Result<NodeResponse, ActorError> {
         match msg {
             NodeMessage::GetSubjects => {
-                Ok(NodeResponse::Subjects(format!("Owned subjects: {:?}\nKnow subjects: {:?}\nAuthorized subjects: {:?}\nTemporal subjects: {:?}", self.owned_subjects, self.known_subjects, self.authorized_subjects, self.temporal_subjects)))
+                Ok(NodeResponse::Subjects(SubjectsVectors {
+                    owned_subjects: self.owned_subjects.clone(),
+                    known_subjects: self.known_subjects.clone(),
+                    authorized_subjects: self.authorized_subjects.clone(),
+                    temporal_subjects: self.temporal_subjects.clone(),
+                }))
             }
             NodeMessage::ChangeSubjectOwner {
                 subject_id,
