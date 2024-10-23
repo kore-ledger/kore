@@ -223,6 +223,7 @@ impl Node {
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessage {
+    GetSubjects,
     CreateNewSubjectLedger(Signed<Ledger>),
     CreateNewSubjectReq(CreateSubjectData),
     RegisterSubject(SubjectsTypes),
@@ -243,6 +244,7 @@ impl Message for NodeMessage {}
 /// Node response.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeResponse {
+    Subjects(String),
     RequestIdentifier(DigestIdentifier),
     SignRequest(Signature),
     SonWasCreated,
@@ -366,6 +368,9 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
+            NodeMessage::GetSubjects => {
+                Ok(NodeResponse::Subjects(format!("Owned subjects: {:?}\nKnow subjects: {:?}\nAuthorized subjects: {:?}\nTemporal subjects: {:?}", self.owned_subjects, self.known_subjects, self.authorized_subjects, self.temporal_subjects)))
+            }
             NodeMessage::ChangeSubjectOwner {
                 subject_id,
                 old_owner,
@@ -481,6 +486,9 @@ impl Handler<Node> for Node {
             }
             NodeMessage::SignRequest(content) => {
                 let sign = match content {
+                    SignTypesNode::EventRequest(event_req) => {
+                        self.sign(&event_req)
+                    }
                     SignTypesNode::Validation(validation) => {
                         self.sign(&*validation)
                     }

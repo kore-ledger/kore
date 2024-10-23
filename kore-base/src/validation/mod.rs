@@ -532,3 +532,58 @@ impl PersistentActor for Validation {
 }
 
 impl Storable for Validation {}
+
+#[cfg(test)]
+mod tests {
+    use core::panic;
+    use std::time::Duration;
+
+    use identity::{identifier::DigestIdentifier, keys::{Ed25519KeyPair, KeyGenerator, KeyPair}};
+
+    use crate::{model::{Namespace, SignTypesNode}, request::{RequestHandler, RequestHandlerMessage, RequestHandlerResponse}, tests::create_system, CreateRequest, EventRequest, Node, NodeMessage, NodeResponse, Signed};
+
+    #[tokio::test]
+    async fn test_create_req() {
+        let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let system = create_system().await;
+
+        let node = Node::new(&node_keys).unwrap();
+        let node_actor = system.create_root_actor("node", node).await.unwrap();
+
+        let request = RequestHandler::new(node_keys.key_identifier());
+        let request_actor = system.create_root_actor("request", request).await.unwrap();
+        
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let create_req = EventRequest::Create(CreateRequest { governance_id: DigestIdentifier::default(), schema_id: "governance".to_owned(), namespace: Namespace::new() });
+        
+        let response = node_actor.ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(create_req.clone()))).await.unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: create_req,
+            signature
+        };
+
+        let RequestHandlerResponse::Ok(response) = request_actor.ask(RequestHandlerMessage::NewRequest { request: signed_event_req }).await.unwrap() else {
+            panic!("Invalid response")
+        };
+
+        println!("{response}");
+
+        let NodeResponse::Subjects(subjects) = node_actor.ask(NodeMessage::GetSubjects).await.unwrap() else {
+            panic!("Invalid response")
+        };
+
+        println!("{subjects}");
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        let NodeResponse::Subjects(subjects) = node_actor.ask(NodeMessage::GetSubjects).await.unwrap() else {
+            panic!("Invalid response")
+        };
+
+        println!("{subjects}");
+    }
+}

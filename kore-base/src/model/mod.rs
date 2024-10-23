@@ -28,7 +28,7 @@ use crate::{
     validation::{
         proof::ValidationProof, request::ValidationReq, response::ValidationRes,
     },
-    Error,
+    Error, EventRequest,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -41,6 +41,7 @@ use std::hash::Hash;
 // TODO: Separar los tipos de firma, que el sujeto tenga los suyos y el nodo los suyos, solo en caso de que sean muy diferentes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SignTypesNode {
+    EventRequest(EventRequest),
     Validation(Box<ValidationProof>),
     ValidationProofEvent(ProofEvent),
     ValidationReq(Box<ValidationReq>),

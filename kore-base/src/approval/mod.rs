@@ -282,7 +282,6 @@ pub enum ApprovalMessage {
         approval_res: ApprovalRes,
         sender: KeyIdentifier,
     },
-    ReLaunch,
 }
 
 impl Message for ApprovalMessage {}
@@ -347,92 +346,93 @@ impl Handler<Approval> for Approval {
         ctx: &mut ActorContext<Self>,
     ) -> Result<ApprovalResponse, ActorError> {
         match msg {
-            ApprovalMessage::ReLaunch => {
-                let request = if let Some(request) = self.request.clone() {
-                    request
-                } else {
-                    todo!()
-                };
-
-                for signer in self.approvers.clone() {
-                    self.create_approvers(
-                        ctx,
-                        &self.request_id,
-                        request.clone(),
-                        signer,
-                    )
-                    .await?
-                }
-            }
             ApprovalMessage::Create {
                 request_id,
                 eval_req,
                 eval_res,
             } => {
-                // Creamos una petición de aprobación, miramos quorum y lanzamos approvers
-                let approval_req = match self
-                    .create_approval_req(ctx, eval_req.clone(), eval_res)
-                    .await
-                {
-                    Ok(approval_req) => approval_req,
-                    Err(_e) => todo!(),
-                };
-                // Get signers and quorum
-                let (signers, quorum) = match self
-                    .get_signers_and_quorum(
-                        ctx,
-                        &eval_req.context.subject_id,
-                        &eval_req.context.schema_id,
-                        Namespace::from(eval_req.context.namespace),
-                    )
-                    .await
-                {
-                    Ok(signers_quorum) => signers_quorum,
-                    Err(_e) => {
-                        // Mensaje al padre de error return Ok(ApprovalRes::Error(e))
+                if request_id == self.request_id {
+                    let request = if let Some(request) = self.request.clone() {
+                        request
+                    } else {
                         todo!()
+                    };
+
+                    for signer in self.approvers.clone() {
+                        self.create_approvers(
+                            ctx,
+                            &self.request_id,
+                            request.clone(),
+                            signer,
+                        )
+                        .await?
                     }
-                };
-                // Update quorum and validators
-                let request_id = request_id.to_string();
+                } else {
+                    // Creamos una petición de aprobación, miramos quorum y lanzamos approvers
+                    let approval_req = match self
+                        .create_approval_req(ctx, eval_req.clone(), eval_res)
+                        .await
+                    {
+                        Ok(approval_req) => approval_req,
+                        Err(_e) => todo!(),
+                    };
+                    // Get signers and quorum
+                    let (signers, quorum) = match self
+                        .get_signers_and_quorum(
+                            ctx,
+                            &eval_req.context.subject_id,
+                            &eval_req.context.schema_id,
+                            Namespace::from(eval_req.context.namespace),
+                        )
+                        .await
+                    {
+                        Ok(signers_quorum) => signers_quorum,
+                        Err(_e) => {
+                            // Mensaje al padre de error return Ok(ApprovalRes::Error(e))
+                            todo!()
+                        }
+                    };
+                    // Update quorum and validators
+                    let request_id = request_id.to_string();
 
-                let signature = match get_sign(
-                    ctx,
-                    SignTypesNode::ApprovalReq(approval_req.clone()),
-                )
-                .await
-                {
-                    Ok(signature) => signature,
-                    Err(_e) => todo!(),
-                };
-
-                let signed_approval_req: Signed<ApprovalReq> = Signed {
-                    content: approval_req,
-                    signature,
-                };
-
-                for signer in signers {
-                    self.create_approvers(
+                    let signature = match get_sign(
                         ctx,
-                        &request_id,
-                        signed_approval_req.clone(),
-                        signer,
+                        SignTypesNode::ApprovalReq(approval_req.clone()),
                     )
-                    .await?
-                }
+                    .await
+                    {
+                        Ok(signature) => signature,
+                        Err(_e) => todo!(),
+                    };
 
-                self.on_event(
-                    ApprovalEvent::SafeState {
-                        request_id: self.request_id.clone(),
-                        quorum: self.quorum.clone(),
-                        request: self.request.clone(),
-                        approvers: self.approvers.clone(),
-                        approvers_response: self.approvers_response.clone(),
-                        approvers_quantity: self.approvers_quantity,
-                    },
-                    ctx,
-                )
-                .await;
+                    let signed_approval_req: Signed<ApprovalReq> = Signed {
+                        content: approval_req,
+                        signature,
+                    };
+
+                    for signer in signers {
+                        self.create_approvers(
+                            ctx,
+                            &request_id,
+                            signed_approval_req.clone(),
+                            signer,
+                        )
+                        .await?
+                    }
+
+                    self.on_event(
+                        ApprovalEvent::SafeState {
+                            request_id: self.request_id.clone(),
+                            quorum: self.quorum.clone(),
+                            request: self.request.clone(),
+                            approvers: self.approvers.clone(),
+                            approvers_response: self.approvers_response.clone(),
+                            approvers_quantity: self.approvers_quantity,
+                        },
+                        ctx,
+                    )
+                    .await;
+                }
             }
             ApprovalMessage::Response {
                 approval_res,

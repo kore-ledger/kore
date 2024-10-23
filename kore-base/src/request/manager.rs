@@ -502,6 +502,7 @@ impl RequestManager {
 #[derive(Debug, Clone)]
 pub enum RequestManagerMessage {
     Run,
+    Reboot,
     Fact,
     Other,
     ApprovalRes {
@@ -570,6 +571,40 @@ impl Handler<RequestManager> for RequestManager {
         ctx: &mut actor::ActorContext<RequestManager>,
     ) -> Result<RequestManagerResponse, ActorError> {
         match msg {
+            RequestManagerMessage::Reboot => {
+                match self.request.content {
+                    EventRequest::Fact(_) => {
+                        if let Err(_e) = self.evaluation(ctx).await {
+                            todo!()
+                        };
+                    }
+                    _ => {
+                        let data = match self
+                            .build_data_event_proof(
+                                ctx,
+                                None,
+                                LedgerValue::Patch(ValueWrapper(
+                                    serde_json::Value::String(
+                                        "[]".to_owned(),
+                                    ),
+                                )),
+                                None,
+                                ProtocolsResult::default(),
+                            )
+                            .await
+                        {
+                            Ok(data) => data,
+                            Err(_e) => todo!(),
+                        };
+
+                        if let Err(_e) =
+                            self.validation(ctx, data).await
+                        {
+                            todo!()
+                        };
+                    }
+                };
+            }
             RequestManagerMessage::Run => {
                 match self.state.clone() {
                     RequestManagerState::Starting => {

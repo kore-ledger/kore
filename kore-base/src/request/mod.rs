@@ -39,6 +39,14 @@ pub struct RequestHandler {
 }
 
 impl RequestHandler {
+    pub fn new(node_key: KeyIdentifier) -> Self {
+        RequestHandler {
+            node_key,
+            handling: HashMap::new(),
+            in_queue: HashMap::new(),
+        }
+    }
+
     async fn subject_owner(
         ctx: &mut ActorContext<RequestHandler>,
         subject_id: &str,
@@ -265,12 +273,7 @@ impl Handler<RequestHandler> for RequestHandler {
     ) -> Result<RequestHandlerResponse, ActorError> {
         match msg {
             RequestHandlerMessage::NewRequest { request } => {
-                // Comprobamos que la firma sea correcta.
-                // Si no hay ninguna actualmente para ese sujeto:
-                //      - Verificamos el tipo de eventos y permisos para ese evento.
-                //      - Si no es un evento de creación tenemos que verificar que tenemos a ese sujeto como owner. Si fuese un evento de confirmación y no somos owner nos intentamos actualizar.
-                //
-                // Si hay alguna, simplemente la encolamos.
+
                 if let Err(_e) = request.verify() {
                     todo!()
                 };
