@@ -417,7 +417,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     };
 
                 if !owner {
-                    if let EventRequest::Confirm(confirm_request) =
+                    if let EventRequest::Confirm(_confirm_request) =
                         request.content.clone()
                     {
                         // TODO VAMOS A Intentar actualizarnos, a lo mejor se ha hecho un evento de transferencia pero no lo hemos recibido.

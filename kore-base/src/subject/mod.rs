@@ -645,6 +645,7 @@ impl Subject {
         //Comprobar que el hash del actual event sea el mismo que el pre_event_hash,
         let last_ledger_hash = last_ledger
             .hash_id(last_ledger.signature.content_hash.derivator)?;
+
         if last_ledger_hash != new_ledger.content.hash_prev_event {
             todo!();
         }
@@ -759,7 +760,7 @@ impl Subject {
                         // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
                         // propierties deberían ser iguales.
                     }
-                    
+
                     // TODO tenemos que guardar las nuevas claves,
                     todo!()
                 }
@@ -863,6 +864,7 @@ impl Subject {
             {
                 todo!()
             }
+
             self.on_event(events[0].clone(), ctx).await;
             events.remove(0)
         };
@@ -1180,8 +1182,6 @@ impl PersistentActor for Subject {
             match &event.content.event_request.content {
                 EventRequest::Create(start_request) => {
                     let last_event_hash = match event
-                        .content
-                        .event_request
                         .hash_id(event.signature.content_hash.derivator)
                     {
                         Ok(hash) => hash,
@@ -1237,14 +1237,11 @@ impl PersistentActor for Subject {
             }
         }
 
-        let last_event_hash = match event
-            .content
-            .event_request
-            .hash_id(event.signature.content_hash.derivator)
-        {
-            Ok(hash) => hash,
-            Err(_e) => todo!(),
-        };
+        let last_event_hash =
+            match event.hash_id(event.signature.content_hash.derivator) {
+                Ok(hash) => hash,
+                Err(_e) => todo!(),
+            };
 
         self.last_event_hash = last_event_hash;
 

@@ -270,6 +270,7 @@ impl RequestManager {
             }
         };
 
+
         let event = KoreEvent {
             subject_id: val_info.event_proof.content.subject_id,
             event_request: self.request.clone(),
@@ -482,7 +483,11 @@ impl RequestManager {
             sn
         } else {
             if metadata.sn == 0 {
-                metadata.sn
+                if let EventRequest::Create(_) = self.request.content {
+                    metadata.sn
+                } else {
+                    metadata.sn + 1   
+                }
             } else {
                 metadata.sn + 1
             }
@@ -799,6 +804,7 @@ impl Handler<RequestManager> for RequestManager {
                     result,
                     &errors,
                 );
+
                 if let Err(_e) =
                     self.safe_ledger_event(ctx, event, ledger).await
                 {
