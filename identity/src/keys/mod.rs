@@ -402,7 +402,6 @@ mod tests {
         let message = b"secret message";
         let signature =
             key_pair.sign(Payload::Buffer(message.to_vec())).unwrap();
-        println!("Tamaño: {}", signature.len());
         let valid =
             key_pair.verify(Payload::Buffer(message.to_vec()), &signature);
         matches!(valid, Ok(()));
@@ -415,7 +414,6 @@ mod tests {
         let message = b"secret message";
         let signature =
             key_pair.sign(Payload::Buffer(message.to_vec())).unwrap();
-        println!("Tamaño: {}", signature.len());
         let valid =
             key_pair.verify(Payload::Buffer(message.to_vec()), &signature);
         matches!(valid, Ok(()));

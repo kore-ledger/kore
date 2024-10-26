@@ -333,14 +333,16 @@ impl RequestManager {
             todo!()
         };
 
-        if let Err(_e) = change_temp_subj(
-            ctx,
-            signed_event.content.subject_id.to_string(),
-            signed_event.signature.signer.to_string(),
-        )
-        .await
-        {
-            todo!()
+        if let EventRequest::Create(_) = self.request.content {
+            if let Err(_e) = change_temp_subj(
+                ctx,
+                signed_event.content.subject_id.to_string(),
+                signed_event.signature.signer.to_string(),
+            )
+            .await
+            {
+                todo!()
+            }
         }
 
         self.on_event(

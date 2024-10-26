@@ -415,6 +415,7 @@ impl Handler<RequestHandler> for RequestHandler {
                             ))
                         }
                     };
+                println!("{owner}");
 
                 if !owner {
                     if let EventRequest::Confirm(_confirm_request) =

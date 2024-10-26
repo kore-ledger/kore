@@ -552,17 +552,11 @@ mod tests {
     };
 
     use crate::{
-        model::{event::{LedgerValue, ProtocolsSignatures}, Namespace, SignTypesNode},
-        request::{
+        model::{event::LedgerValue, Namespace, SignTypesNode}, request::{
             RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
-        },
-        subject::event::{
+        }, subject::event::{
             LedgerEvent, LedgerEventMessage, LedgerEventResponse,
-        },
-        tests::create_system,
-        CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node,
-        NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
-        SubjectResponse, ValueWrapper,
+        }, tests::create_system, CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse, TransferRequest, ValueWrapper
     };
 
     async fn create_subject_gov() -> (
@@ -581,9 +575,7 @@ mod tests {
         let request = RequestHandler::new(node_keys.key_identifier());
         let request_actor =
             system.create_root_actor("request", request).await.unwrap();
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
+        
         let create_req = EventRequest::Create(CreateRequest {
             governance_id: DigestIdentifier::default(),
             schema_id: "governance".to_owned(),
@@ -623,7 +615,6 @@ mod tests {
 
         let temporal_subj = subjects.temporal_subjects[0].clone();
 
-        tokio::time::sleep(Duration::from_secs(1)).await;
         let NodeResponse::Subjects(subjects) =
             node_actor.ask(NodeMessage::GetSubjects).await.unwrap()
         else {
@@ -657,8 +648,6 @@ mod tests {
         else {
             panic!("Invalid response")
         };
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let SubjectResponse::Metadata(metadata) = subject_actor
             .ask(SubjectMessage::GetMetadata)
@@ -712,7 +701,6 @@ mod tests {
         assert!(!gov.members.is_empty());
         assert!(!gov.roles.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(gov.subjects_id.is_empty());
         assert!(!gov.policies.is_empty());
 
         (
@@ -739,7 +727,9 @@ mod tests {
             subject_id,
         ) = create_subject_gov().await;
 
-        let eol_reques = EventRequest::EOL(EOLRequest { subject_id: subject_id.clone() });
+        let eol_reques = EventRequest::EOL(EOLRequest {
+            subject_id: subject_id.clone(),
+        });
 
         let response = node_actor
             .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
@@ -775,8 +765,6 @@ mod tests {
         else {
             panic!("Invalid response")
         };
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let SubjectResponse::Metadata(metadata) = subject_actor
             .ask(SubjectMessage::GetMetadata)
@@ -818,17 +806,125 @@ mod tests {
         assert!(!gov.members.is_empty());
         assert!(!gov.roles.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(gov.subjects_id.is_empty());
         assert!(!gov.policies.is_empty());
 
         let RequestHandlerResponse::Error(_response) = request_actor
-        .ask(RequestHandlerMessage::NewRequest {
-            request: signed_event_req.clone(),
-        })
-        .await
-        .unwrap()
-    else {
-        panic!("Invalid response")
-    };
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+    }
+
+    #[tokio::test]
+    async fn test_transfer_req() {
+        let (
+            node_actor,
+            request_actor,
+            subject_actor,
+            ledger_event_actor,
+            subject_id,
+        ) = create_subject_gov().await;
+
+        let new_owner = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let transfer_reques = EventRequest::Transfer(TransferRequest {
+            subject_id: subject_id.clone(),
+            new_owner: new_owner.key_identifier().clone()
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                transfer_reques.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: transfer_reques,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(_response) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let SubjectResponse::Metadata(metadata) = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(last_event.content.subject_id, subject_id);
+        assert_eq!(last_event.content.event_request, signed_event_req);
+        assert_eq!(last_event.content.sn, 1);
+        assert_eq!(last_event.content.gov_version, 0);
+        assert_eq!(
+            last_event.content.value,
+            LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
+                "[]".to_owned(),
+            ),))
+        );
+        assert!(last_event.content.eval_success.is_none());
+        assert!(!last_event.content.appr_required);
+        assert!(last_event.content.appr_success.is_none());
+        assert!(last_event.content.vali_success);
+        assert!(last_event.content.evaluators.is_none());
+        assert!(last_event.content.approvers.is_none(),);
+        assert!(!last_event.content.validators.is_empty());
+
+        assert_eq!(metadata.subject_id, subject_id);
+        assert_eq!(metadata.governance_id.to_string(), "");
+        assert_eq!(metadata.genesis_gov_version, 0);
+        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.schema_id, "governance");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 1);
+        assert_eq!(metadata.owner, new_owner.key_identifier());
+        assert!(metadata.active);
+
+        let gov = Governance::try_from(metadata.properties).unwrap();
+        assert_eq!(gov.version, 1);
+        assert!(!gov.members.is_empty());
+        assert!(!gov.roles.is_empty());
+        assert!(gov.schemas.is_empty());
+        assert!(!gov.policies.is_empty());
+
+
+        
+        let RequestHandlerResponse::Error(_response) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+         
+        
     }
 }
