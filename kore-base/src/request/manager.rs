@@ -270,6 +270,7 @@ impl RequestManager {
             }
         };
 
+
         let event = KoreEvent {
             subject_id: val_info.event_proof.content.subject_id,
             event_request: self.request.clone(),
@@ -332,14 +333,16 @@ impl RequestManager {
             todo!()
         };
 
-        if let Err(_e) = change_temp_subj(
-            ctx,
-            signed_event.content.subject_id.to_string(),
-            signed_event.signature.signer.to_string(),
-        )
-        .await
-        {
-            todo!()
+        if let EventRequest::Create(_) = self.request.content {
+            if let Err(_e) = change_temp_subj(
+                ctx,
+                signed_event.content.subject_id.to_string(),
+                signed_event.signature.signer.to_string(),
+            )
+            .await
+            {
+                todo!()
+            }
         }
 
         self.on_event(
@@ -481,7 +484,15 @@ impl RequestManager {
         let sn = if let Some(sn) = sn {
             sn
         } else {
-            metadata.sn + 1
+            if metadata.sn == 0 {
+                if let EventRequest::Create(_) = self.request.content {
+                    metadata.sn
+                } else {
+                    metadata.sn + 1   
+                }
+            } else {
+                metadata.sn + 1
+            }
         };
 
         Ok(DataProofEvent {
@@ -502,6 +513,7 @@ impl RequestManager {
 #[derive(Debug, Clone)]
 pub enum RequestManagerMessage {
     Run,
+    Reboot,
     Fact,
     Other,
     ApprovalRes {
@@ -549,7 +561,7 @@ impl Actor for RequestManager {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        // Cuando arranque tiene que ver su estado para saber en que punto se encontraba y retomarlo. TODO
+        
         self.init_store("request_manager", None, false, ctx).await
     }
 
@@ -570,6 +582,40 @@ impl Handler<RequestManager> for RequestManager {
         ctx: &mut actor::ActorContext<RequestManager>,
     ) -> Result<RequestManagerResponse, ActorError> {
         match msg {
+            RequestManagerMessage::Reboot => {
+                match self.request.content {
+                    EventRequest::Fact(_) => {
+                        if let Err(_e) = self.evaluation(ctx).await {
+                            todo!()
+                        };
+                    }
+                    _ => {
+                        let data = match self
+                            .build_data_event_proof(
+                                ctx,
+                                None,
+                                LedgerValue::Patch(ValueWrapper(
+                                    serde_json::Value::String(
+                                        "[]".to_owned(),
+                                    ),
+                                )),
+                                None,
+                                ProtocolsResult::default(),
+                            )
+                            .await
+                        {
+                            Ok(data) => data,
+                            Err(_e) => todo!(),
+                        };
+
+                        if let Err(_e) =
+                            self.validation(ctx, data).await
+                        {
+                            todo!()
+                        };
+                    }
+                };
+            }
             RequestManagerMessage::Run => {
                 match self.state.clone() {
                     RequestManagerState::Starting => {
@@ -760,6 +806,7 @@ impl Handler<RequestManager> for RequestManager {
                     result,
                     &errors,
                 );
+
                 if let Err(_e) =
                     self.safe_ledger_event(ctx, event, ledger).await
                 {

@@ -50,6 +50,17 @@ pub enum SubjectsTypes {
     },
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubjectsVectors {
+    pub owned_subjects: Vec<String>,
+    /// The node's known subjects.
+    pub known_subjects: Vec<String>,
+    /// The authorized subjects.
+    pub authorized_subjects: Vec<String>,
+
+    pub temporal_subjects: Vec<String>,
+}
+
 /// Node struct.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
@@ -223,6 +234,7 @@ impl Node {
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessage {
+    GetSubjects,
     CreateNewSubjectLedger(Signed<Ledger>),
     CreateNewSubjectReq(CreateSubjectData),
     RegisterSubject(SubjectsTypes),
@@ -235,7 +247,6 @@ pub enum NodeMessage {
         old_owner: String,
         new_owner: String,
     },
-    GetOwnerIdentifier,
 }
 
 impl Message for NodeMessage {}
@@ -243,6 +254,7 @@ impl Message for NodeMessage {}
 /// Node response.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeResponse {
+    Subjects(SubjectsVectors),
     RequestIdentifier(DigestIdentifier),
     SignRequest(Signature),
     SonWasCreated,
@@ -293,6 +305,9 @@ impl Actor for Node {
         // Start store
         debug!("Creating Node store");
         self.init_store("node", None, false, ctx).await?;
+
+        let node_key = NodeKey::new(self.owner());
+        ctx.create_child("key", node_key).await?;
 
         self.create_subjects(ctx).await?;
 
@@ -348,12 +363,6 @@ impl PersistentActor for Node {
             }
         }
     }
-
-    /// Override the update method.
-    fn update(&mut self, state: Self) {
-        self.owned_subjects = state.owned_subjects;
-        self.known_subjects = state.known_subjects;
-    }
 }
 
 // TODO: SI algo falla cuando un sujeto es temporal hay que eliminarlo y limpiar la base de datos.
@@ -366,6 +375,14 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
+            NodeMessage::GetSubjects => {
+                Ok(NodeResponse::Subjects(SubjectsVectors {
+                    owned_subjects: self.owned_subjects.clone(),
+                    known_subjects: self.known_subjects.clone(),
+                    authorized_subjects: self.authorized_subjects.clone(),
+                    temporal_subjects: self.temporal_subjects.clone(),
+                }))
+            }
             NodeMessage::ChangeSubjectOwner {
                 subject_id,
                 old_owner,
@@ -476,11 +493,11 @@ impl Handler<Node> for Node {
                     Ok(NodeResponse::SonWasCreated)
                 }
             }
-            NodeMessage::GetOwnerIdentifier => {
-                Ok(NodeResponse::OwnerIdentifier(self.owner()))
-            }
             NodeMessage::SignRequest(content) => {
                 let sign = match content {
+                    SignTypesNode::EventRequest(event_req) => {
+                        self.sign(&event_req)
+                    }
                     SignTypesNode::Validation(validation) => {
                         self.sign(&*validation)
                     }
@@ -589,3 +606,66 @@ impl Storable for Node {}
 
 #[cfg(test)]
 pub mod tests {}
+
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NodeKey {
+    key: KeyIdentifier
+}
+
+impl NodeKey {
+    fn new(key: KeyIdentifier) -> Self {
+        Self { key }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NodeKeyMessage {
+    GetKeyIdentifier,
+}
+
+impl Message for NodeKeyMessage {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum NodeKeyResponse {
+    KeyIdentifier(KeyIdentifier),
+}
+
+impl Response for NodeKeyResponse {}
+
+#[async_trait]
+impl Actor for NodeKey {
+    type Message = NodeKeyMessage;
+    type Event = ();
+    type Response = NodeKeyResponse;
+
+    async fn pre_start(
+        &mut self,
+        _ctx: &mut actor::ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        Ok(())
+    }
+
+    async fn pre_stop(
+        &mut self,
+        _ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Handler<NodeKey> for NodeKey {
+    async fn handle_message(
+        &mut self,
+        _sender: ActorPath,
+        msg: NodeKeyMessage,
+        ctx: &mut actor::ActorContext<NodeKey>,
+    ) -> Result<NodeKeyResponse, ActorError> {
+        match msg {
+            NodeKeyMessage::GetKeyIdentifier => {
+                Ok(NodeKeyResponse::KeyIdentifier(self.key.clone()))
+            },
+        }
+    }
+}

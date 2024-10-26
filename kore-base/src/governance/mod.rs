@@ -41,9 +41,6 @@ pub struct Governance {
     /// The version of the governance
     #[serde(default)]
     pub version: u64,
-    /// The set of subjects identifiers directed by this governance.
-    #[serde(default)]
-    pub subjects_id: HashSet<DigestIdentifier>,
     /// The set of members.
     pub members: Vec<Member>,
     /// The set of roles.

@@ -5,25 +5,19 @@
 //!
 
 use crate::{
-    approval::{approver::Approver, Approval},
-    db::Storable,
-    distribution::{distributor::Distributor, Distribution},
-    evaluation::{
+    approval::{approver::Approver, Approval}, db::Storable, distribution::{distributor::Distributor, Distribution}, evaluation::{
         compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
         schema::EvaluationSchema,
         Evaluation,
-    },
-    governance::model::Roles,
-    model::{
+    }, governance::model::Roles, model::{
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
-    },
-    node::{NodeMessage, NodeResponse},
-    validation::{schema::ValidationSchema, validator::Validator, Validation},
-    CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
+    }, node::{
+        NodeKey, NodeKeyMessage, NodeKeyResponse, NodeMessage, NodeResponse,
+    }, validation::{schema::ValidationSchema, validator::Validator, Validation}, CreateRequest, Error, EventRequestType, Governance, Node, TransferRequest, DIGEST_DERIVATOR
 };
 
 use actor::{
@@ -185,16 +179,16 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
     ) -> Result<KeyIdentifier, Error> {
         // Node path.
-        let node_path = ActorPath::from("/user/node");
+        let node_key_path = ActorPath::from("/user/node/key");
         // Node actor.
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
+        let node_key_actor: Option<ActorRef<NodeKey>> =
+            ctx.system().get_actor(&node_key_path).await;
 
         // We obtain the actor node
-        let response = if let Some(node_actor) = node_actor {
+        let response = if let Some(node_key_actor) = node_key_actor {
             // We ask a node
             let response =
-                node_actor.ask(NodeMessage::GetOwnerIdentifier).await;
+                node_key_actor.ask(NodeKeyMessage::GetKeyIdentifier).await;
             match response {
                 Ok(response) => response,
                 Err(e) => {
@@ -206,14 +200,14 @@ impl Subject {
             }
         } else {
             return Err(Error::Actor(
-                "The node actor was not found in the expected path /user/node"
+                "The node actor was not found in the expected path /user/node/key"
                     .to_owned(),
             ));
         };
 
         // We handle the possible responses of node
         match response {
-            NodeResponse::OwnerIdentifier(key) => Ok(key),
+            NodeKeyResponse::KeyIdentifier(key) => Ok(key),
             _ => Err(Error::Actor(
                 "An unexpected response has been received from node actor"
                     .to_owned(),
@@ -645,6 +639,7 @@ impl Subject {
         //Comprobar que el hash del actual event sea el mismo que el pre_event_hash,
         let last_ledger_hash = last_ledger
             .hash_id(last_ledger.signature.content_hash.derivator)?;
+
         if last_ledger_hash != new_ledger.content.hash_prev_event {
             todo!();
         }
@@ -759,7 +754,7 @@ impl Subject {
                         // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
                         // propierties deberían ser iguales.
                     }
-                    
+
                     // TODO tenemos que guardar las nuevas claves,
                     todo!()
                 }
@@ -847,6 +842,7 @@ impl Subject {
         }
     }
 
+
     async fn verify_new_ledger_events(
         &mut self,
         ctx: &mut ActorContext<Subject>,
@@ -863,12 +859,11 @@ impl Subject {
             {
                 todo!()
             }
+
             self.on_event(events[0].clone(), ctx).await;
             events.remove(0)
         };
 
-        // TODO SI el evento es de Transferencia o de Confiramción y nos afecte, tenemos que
-        // Cambiar los owned subjects o know subjects del nodo.
         for event in events {
             if let Err(e) = self
                 .verify_new_ledger_event(ctx, &last_ledger, &event)
@@ -880,7 +875,8 @@ impl Subject {
                 } else {
                     todo!()
                 }
-            }
+            }  
+
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
 
@@ -1180,8 +1176,6 @@ impl PersistentActor for Subject {
             match &event.content.event_request.content {
                 EventRequest::Create(start_request) => {
                     let last_event_hash = match event
-                        .content
-                        .event_request
                         .hash_id(event.signature.content_hash.derivator)
                     {
                         Ok(hash) => hash,
@@ -1237,14 +1231,11 @@ impl PersistentActor for Subject {
             }
         }
 
-        let last_event_hash = match event
-            .content
-            .event_request
-            .hash_id(event.signature.content_hash.derivator)
-        {
-            Ok(hash) => hash,
-            Err(_e) => todo!(),
-        };
+        let last_event_hash =
+            match event.hash_id(event.signature.content_hash.derivator) {
+                Ok(hash) => hash,
+                Err(_e) => todo!(),
+            };
 
         self.last_event_hash = last_event_hash;
 
@@ -1257,7 +1248,7 @@ impl Storable for Subject {}
 #[cfg(test)]
 mod tests {
 
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     use super::*;
 
@@ -1323,8 +1314,6 @@ mod tests {
             )
             .await
             .unwrap();
-
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         let ledger_event_actor: Option<ActorRef<LedgerEvent>> = system
             .get_actor(&ActorPath::from(format!(
@@ -1545,7 +1534,7 @@ mod tests {
         }
 
         subject_actor.stop().await;
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
         let subject_actor = system.get_actor::<Subject>(&path).await;
         assert!(subject_actor.is_none());
@@ -1554,8 +1543,6 @@ mod tests {
             .create_root_actor(&actor_id, Subject::default())
             .await
             .unwrap();
-
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         let response = subject_actor
             .ask(SubjectMessage::GetMetadata)

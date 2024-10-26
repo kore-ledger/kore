@@ -147,6 +147,28 @@ impl Distribution {
 
         Ok(())
     }
+
+    async fn end_request(&self, ctx: &mut ActorContext<Distribution>) -> Result<(), Error>{
+        let req_path = ActorPath::from(format!(
+            "/user/request/{}",
+            self.request_id
+        ));
+        let req_actor: Option<ActorRef<RequestManager>> =
+            ctx.system().get_actor(&req_path).await;
+
+        if let Some(req_actor) = req_actor {
+            if let Err(_e) = req_actor
+                .tell(RequestManagerMessage::FinishRequest)
+                .await
+            {
+                todo!()
+            }
+        } else {
+            todo!()
+        };
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -206,6 +228,12 @@ impl Handler<Distribution> for Distribution {
                         .0
                 };
 
+                if witnesses.len() == 1 && witnesses.contains(&self.node_key) {
+                    if let Err(e) = self.end_request(ctx).await {
+                        todo!()
+                    };
+                }
+
                 for witness in witnesses {
                     self.create_distributors(
                         ctx,
@@ -218,21 +246,7 @@ impl Handler<Distribution> for Distribution {
             }
             DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) && self.witnesses.is_empty() {
-                    let req_path = ActorPath::from(format!(
-                        "/user/request/{}",
-                        self.request_id
-                    ));
-                    let req_actor: Option<ActorRef<RequestManager>> =
-                        ctx.system().get_actor(&req_path).await;
-
-                    if let Some(req_actor) = req_actor {
-                        if let Err(_e) = req_actor
-                            .tell(RequestManagerMessage::FinishRequest)
-                            .await
-                        {
-                            todo!()
-                        }
-                    } else {
+                    if let Err(e) = self.end_request(ctx).await {
                         todo!()
                     };
                 }

@@ -14,7 +14,11 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Quorum},
     model::{
-        common::get_sign, event::{ProofEvent, ProtocolsSignatures}, network::TimeOutResponse, signature::Signed, Namespace, SignTypesNode, SignTypesSubject
+        common::get_sign,
+        event::{ProofEvent, ProtocolsSignatures},
+        network::TimeOutResponse,
+        signature::Signed,
+        Namespace, SignTypesNode, SignTypesSubject,
     },
     request::manager::{RequestManager, RequestManagerMessage},
     subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
@@ -482,7 +486,8 @@ impl Handler<Validation> for Validation {
                             todo!()
                         };
                     } else if self.validators.is_empty() {
-                        self.try_to_update(ctx).await;
+                        // TODO
+                        // self.try_to_update(ctx).await;
 
                         // we have received all the responses and the quorum has not been met
                         self.on_event(
@@ -532,3 +537,394 @@ impl PersistentActor for Validation {
 }
 
 impl Storable for Validation {}
+
+#[cfg(test)]
+mod tests {
+    use core::panic;
+    use identity::identifier::derive::digest::DigestDerivator;
+    use serde_json::to_value;
+    use std::time::Duration;
+
+    use actor::{ActorPath, ActorRef};
+    use identity::{
+        identifier::{DigestIdentifier, KeyIdentifier},
+        keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
+    };
+
+    use crate::{
+        model::{event::LedgerValue, Namespace, SignTypesNode}, request::{
+            RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
+        }, subject::event::{
+            LedgerEvent, LedgerEventMessage, LedgerEventResponse,
+        }, tests::create_system, CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse, TransferRequest, ValueWrapper
+    };
+
+    async fn create_subject_gov() -> (
+        ActorRef<Node>,
+        ActorRef<RequestHandler>,
+        ActorRef<Subject>,
+        ActorRef<LedgerEvent>,
+        DigestIdentifier,
+    ) {
+        let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let system = create_system().await;
+
+        let node = Node::new(&node_keys).unwrap();
+        let node_actor = system.create_root_actor("node", node).await.unwrap();
+
+        let request = RequestHandler::new(node_keys.key_identifier());
+        let request_actor =
+            system.create_root_actor("request", request).await.unwrap();
+        
+        let create_req = EventRequest::Create(CreateRequest {
+            governance_id: DigestIdentifier::default(),
+            schema_id: "governance".to_owned(),
+            namespace: Namespace::new(),
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                create_req.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: create_req,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(_response) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let NodeResponse::Subjects(subjects) =
+            node_actor.ask(NodeMessage::GetSubjects).await.unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let temporal_subj = subjects.temporal_subjects[0].clone();
+
+        let NodeResponse::Subjects(subjects) =
+            node_actor.ask(NodeMessage::GetSubjects).await.unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let owned_subj = subjects.owned_subjects[0].clone();
+
+        assert_eq!(temporal_subj, owned_subj);
+
+        let subject_actor: ActorRef<Subject> = system
+            .get_actor(&ActorPath::from(format!(
+                "/user/node/{}",
+                temporal_subj
+            )))
+            .await
+            .unwrap();
+
+        let ledger_event_actor: ActorRef<LedgerEvent> = system
+            .get_actor(&ActorPath::from(format!(
+                "/user/node/{}/ledgerEvent",
+                temporal_subj
+            )))
+            .await
+            .unwrap();
+
+        let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let SubjectResponse::Metadata(metadata) = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(last_event.content.subject_id.to_string(), owned_subj);
+        assert_eq!(last_event.content.event_request, signed_event_req);
+        assert_eq!(last_event.content.sn, 0);
+        assert_eq!(last_event.content.gov_version, 0);
+        assert_eq!(
+            last_event.content.value,
+            LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
+                "[]".to_owned(),
+            ),))
+        );
+        assert_eq!(
+            last_event.content.state_hash,
+            metadata
+                .properties
+                .hash_id(DigestDerivator::Blake3_256)
+                .unwrap()
+        );
+        assert!(last_event.content.eval_success.is_none());
+        assert!(!last_event.content.appr_required);
+        assert!(last_event.content.appr_success.is_none());
+        assert!(last_event.content.vali_success);
+        assert_eq!(
+            last_event.content.hash_prev_event,
+            DigestIdentifier::default()
+        );
+        assert!(last_event.content.evaluators.is_none());
+        assert!(last_event.content.approvers.is_none(),);
+        assert!(!last_event.content.validators.is_empty());
+
+        assert_eq!(metadata.subject_id.to_string(), owned_subj);
+        assert_eq!(metadata.governance_id.to_string(), "");
+        assert_eq!(metadata.genesis_gov_version, 0);
+        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.schema_id, "governance");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 0);
+        assert_eq!(metadata.owner, node_keys.key_identifier());
+        assert!(metadata.active);
+
+        let gov = Governance::try_from(metadata.properties).unwrap();
+        assert_eq!(gov.version, 0);
+        assert!(!gov.members.is_empty());
+        assert!(!gov.roles.is_empty());
+        assert!(gov.schemas.is_empty());
+        assert!(!gov.policies.is_empty());
+
+        (
+            node_actor,
+            request_actor,
+            subject_actor,
+            ledger_event_actor,
+            metadata.subject_id,
+        )
+    }
+
+    #[tokio::test]
+    async fn test_create_req() {
+        let _ = create_subject_gov().await;
+    }
+
+    #[tokio::test]
+    async fn test_eol_req() {
+        let (
+            node_actor,
+            request_actor,
+            subject_actor,
+            ledger_event_actor,
+            subject_id,
+        ) = create_subject_gov().await;
+
+        let eol_reques = EventRequest::EOL(EOLRequest {
+            subject_id: subject_id.clone(),
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                eol_reques.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: eol_reques,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(_response) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let SubjectResponse::Metadata(metadata) = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(last_event.content.subject_id, subject_id);
+        assert_eq!(last_event.content.event_request, signed_event_req);
+        assert_eq!(last_event.content.sn, 1);
+        assert_eq!(last_event.content.gov_version, 0);
+        assert_eq!(
+            last_event.content.value,
+            LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
+                "[]".to_owned(),
+            ),))
+        );
+        assert!(last_event.content.eval_success.is_none());
+        assert!(!last_event.content.appr_required);
+        assert!(last_event.content.appr_success.is_none());
+        assert!(last_event.content.vali_success);
+        assert!(last_event.content.evaluators.is_none());
+        assert!(last_event.content.approvers.is_none(),);
+        assert!(!last_event.content.validators.is_empty());
+
+        assert_eq!(metadata.subject_id, subject_id);
+        assert_eq!(metadata.governance_id.to_string(), "");
+        assert_eq!(metadata.genesis_gov_version, 0);
+        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.schema_id, "governance");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 1);
+        assert!(!metadata.active);
+
+        let gov = Governance::try_from(metadata.properties).unwrap();
+        assert_eq!(gov.version, 1);
+        assert!(!gov.members.is_empty());
+        assert!(!gov.roles.is_empty());
+        assert!(gov.schemas.is_empty());
+        assert!(!gov.policies.is_empty());
+
+        let RequestHandlerResponse::Error(_response) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+    }
+
+    #[tokio::test]
+    async fn test_transfer_req() {
+        let (
+            node_actor,
+            request_actor,
+            subject_actor,
+            ledger_event_actor,
+            subject_id,
+        ) = create_subject_gov().await;
+
+        let new_owner = KeyPair::Ed25519(Ed25519KeyPair::new());
+        let transfer_reques = EventRequest::Transfer(TransferRequest {
+            subject_id: subject_id.clone(),
+            new_owner: new_owner.key_identifier().clone()
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                transfer_reques.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: transfer_reques,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(_response) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let SubjectResponse::Metadata(metadata) = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(last_event.content.subject_id, subject_id);
+        assert_eq!(last_event.content.event_request, signed_event_req);
+        assert_eq!(last_event.content.sn, 1);
+        assert_eq!(last_event.content.gov_version, 0);
+        assert_eq!(
+            last_event.content.value,
+            LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
+                "[]".to_owned(),
+            ),))
+        );
+        assert!(last_event.content.eval_success.is_none());
+        assert!(!last_event.content.appr_required);
+        assert!(last_event.content.appr_success.is_none());
+        assert!(last_event.content.vali_success);
+        assert!(last_event.content.evaluators.is_none());
+        assert!(last_event.content.approvers.is_none(),);
+        assert!(!last_event.content.validators.is_empty());
+
+        assert_eq!(metadata.subject_id, subject_id);
+        assert_eq!(metadata.governance_id.to_string(), "");
+        assert_eq!(metadata.genesis_gov_version, 0);
+        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.schema_id, "governance");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 1);
+        assert_eq!(metadata.owner, new_owner.key_identifier());
+        assert!(metadata.active);
+
+        let gov = Governance::try_from(metadata.properties).unwrap();
+        assert_eq!(gov.version, 1);
+        assert!(!gov.members.is_empty());
+        assert!(!gov.roles.is_empty());
+        assert!(gov.schemas.is_empty());
+        assert!(!gov.policies.is_empty());
+
+
+        
+        let RequestHandlerResponse::Error(_response) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+         
+        
+    }
+}
