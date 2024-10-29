@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{
     governance::{Member, Policy, Role, Schema},
@@ -94,5 +95,5 @@ pub struct GovernanceData {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum GovernanceEvent {
-    Patch { data: ValueWrapper },
+    Patch { data: Value },
 }

@@ -49,10 +49,11 @@ pub enum ApprovalState {
     Obsolete,
 }
 
+// TODO CAMBIAR A POR DEFECTO MANUAL, ALWaysaccept
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum VotationType {
-    #[default]
     Manual,
+    #[default]
     AlwaysAccept,
 }
 
@@ -365,7 +366,7 @@ impl Handler<Approver> for Approver {
                         };
 
                         // Approval Path
-                        let approval_path = ctx.path().parent();
+                        let approval_path = ActorPath::from(format!("/user/node/{}/approval", approval_req.subject_id));
                         // Approval actor.
                         let approval_actor: Option<ActorRef<Approval>> =
                             ctx.system().get_actor(&approval_path).await;

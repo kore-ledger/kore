@@ -145,16 +145,6 @@ impl Node {
         self.authorized_subjects.push(subject_id);
     }
 
-    /// Gets the node's owned subjects.
-    pub fn get_owned_subjects(&self) -> &Vec<String> {
-        &self.owned_subjects
-    }
-
-    /// Gets the node's known subjects.
-    pub fn get_known_subjects(&self) -> &Vec<String> {
-        &self.known_subjects
-    }
-
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
@@ -536,7 +526,7 @@ impl Handler<Node> for Node {
             }
             NodeMessage::AmISubjectOwner(subject_id) => {
                 Ok(NodeResponse::AmIOwner(
-                    self.get_owned_subjects().iter().any(|x| **x == subject_id),
+                    self.owned_subjects.iter().any(|x| **x == subject_id),
                 ))
             }
             NodeMessage::RegisterSubject(subject) => {

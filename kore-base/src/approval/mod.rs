@@ -76,42 +76,24 @@ impl Approval {
             todo!()
         };
 
-        // Get the derivator of the node
-        let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-            *derivator
-        } else {
-            error!("Error getting derivator");
-            DigestDerivator::Blake3_256
-        };
         // Obtain the last event of subject actor
-        let subject_event_path = ctx.path().parent();
-        let subject_event_actor: Option<ActorRef<LedgerEvent>> =
-            ctx.system().get_actor(&subject_event_path).await;
+        let subject_path = ctx.path().parent();
+        let subject_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&subject_path).await;
 
-        let subject_event_actor =
-            if let Some(subject_event_actor) = subject_event_actor {
-                subject_event_actor
+        let response = if let Some(subject_actor) = subject_actor {
+            if let Ok(response) = subject_actor.ask(SubjectMessage::GetMetadata).await {
+                response
             } else {
-                return Err(Error::Actor(format!(
-                    "The subject actor was not found in the expected path {}",
-                    subject_event_path
-                )));
-            };
-
-        let response = subject_event_actor
-            .ask(LedgerEventMessage::GetLastEvent)
-            .await;
-        let prev_event = match response {
-            Ok(LedgerEventResponse::LastEvent(event)) => event,
-            _ => todo!(),
+                todo!()
+            }
+        } else {
+            todo!()
         };
 
-        // Hash of the previous event to add to the approval request
-        let hash_prev_event = match DigestIdentifier::from_serializable_borsh(
-            prev_event, derivator,
-        ) {
-            Ok(hash) => hash,
-            Err(_) => todo!(),
+        let prev_hash = match response {
+            SubjectResponse::Metadata(metadata) => metadata.last_event_hash,
+            _ => todo!()
         };
 
         let patch = if let LedgerValue::Patch(value) = eval_res.value {
@@ -126,7 +108,7 @@ impl Approval {
             gov_version: eval_req.gov_version,
             patch,
             state_hash: eval_res.state_hash,
-            hash_prev_event,
+            hash_prev_event: prev_hash,
             subject_id,
         })
     }
@@ -301,6 +283,7 @@ pub enum ApprovalEvent {
         // approvers quantity
         approvers_quantity: u32,
     },
+    Response(ProtocolsSignatures)
 }
 
 impl Event for ApprovalEvent {}
@@ -374,7 +357,8 @@ impl Handler<Approval> for Approval {
                         .await
                     {
                         Ok(approval_req) => approval_req,
-                        Err(_e) => todo!(),
+                        Err(e) => { 
+                            todo!()},
                     };
                     // Get signers and quorum
                     let (signers, quorum) = match self
@@ -410,7 +394,7 @@ impl Handler<Approval> for Approval {
                         signature,
                     };
 
-                    for signer in signers {
+                    for signer in signers.clone() {
                         self.create_approvers(
                             ctx,
                             &request_id,
@@ -422,12 +406,12 @@ impl Handler<Approval> for Approval {
 
                     self.on_event(
                         ApprovalEvent::SafeState {
-                            request_id: self.request_id.clone(),
-                            quorum: self.quorum.clone(),
-                            request: self.request.clone(),
-                            approvers: self.approvers.clone(),
-                            approvers_response: self.approvers_response.clone(),
-                            approvers_quantity: self.approvers_quantity,
+                            request_id: request_id.clone(),
+                            quorum: quorum.clone(),
+                            request: Some(signed_approval_req.clone()),
+                            approvers: signers.clone(),
+                            approvers_response: vec![].clone(),
+                            approvers_quantity: signers.len() as u32,
                         },
                         ctx,
                     )
@@ -442,30 +426,21 @@ impl Handler<Approval> for Approval {
                     match approval_res.clone() {
                         ApprovalRes::Response(sinature, response) => {
                             if response {
-                                self.approvers_response.push(
-                                    ProtocolsSignatures::Signature(sinature),
-                                );
+                                self.on_event(
+                                    ApprovalEvent::Response(ProtocolsSignatures::Signature(sinature)),
+                                    ctx,
+                                )
+                                .await;
                             }
                         }
                         ApprovalRes::TimeOut(approval_time_out) => {
-                            self.approvers_response.push(
-                                ProtocolsSignatures::TimeOut(approval_time_out),
+                            self.on_event(
+                                ApprovalEvent::Response(ProtocolsSignatures::TimeOut(approval_time_out)),
+                                ctx,
                             )
+                            .await;
                         }
                     };
-
-                    self.on_event(
-                        ApprovalEvent::SafeState {
-                            request_id: self.request_id.clone(),
-                            quorum: self.quorum.clone(),
-                            request: self.request.clone(),
-                            approvers: self.approvers.clone(),
-                            approvers_response: self.approvers_response.clone(),
-                            approvers_quantity: self.approvers_quantity,
-                        },
-                        ctx,
-                    )
-                    .await;
 
                     // si hemos llegado al quorum y hay suficientes aprobaciones aprobamos...
                     if self.quorum.check_quorum(
@@ -522,6 +497,9 @@ impl PersistentActor for Approval {
                 self.approvers.clone_from(approvers);
                 self.approvers_response.clone_from(approvers_response);
                 self.approvers_quantity = *approvers_quantity;
+            }
+            ApprovalEvent::Response(response) => {
+                self.approvers_response.push(response.clone());
             }
         }
     }

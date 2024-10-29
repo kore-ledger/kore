@@ -278,13 +278,13 @@ impl RequestManager {
             gov_version: val_info.event_proof.content.gov_version,
             value,
             state_hash: val_info.event_proof.content.state_hash,
-            eval_success: None,
-            appr_required: false,
-            appr_success: None,
+            eval_success: val_info.event_proof.content.eval_success,
+            appr_required: val_info.event_proof.content.appr_required,
+            appr_success: val_info.event_proof.content.appr_success,
             vali_success: result,
             hash_prev_event: val_info.event_proof.content.hash_prev_event,
-            evaluators: None,
-            approvers: None,
+            evaluators: val_info.event_proof.content.evaluators,
+            approvers: val_info.event_proof.content.approvers,
             validators: HashSet::from_iter(signatures.iter().cloned()),
         };
 
