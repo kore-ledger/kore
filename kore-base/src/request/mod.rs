@@ -415,7 +415,6 @@ impl Handler<RequestHandler> for RequestHandler {
                             ))
                         }
                     };
-                println!("{owner}");
 
                 if !owner {
                     if let EventRequest::Confirm(_confirm_request) =
@@ -467,7 +466,6 @@ impl Handler<RequestHandler> for RequestHandler {
             }
             RequestHandlerMessage::GetState { request_id } => todo!(),
             RequestHandlerMessage::PopQueue { subject_id } => {
-
                 let event = if let Some(events) = self.in_queue.get(&subject_id)
                 {
                     if let Some(event) = events.clone().pop_front() {

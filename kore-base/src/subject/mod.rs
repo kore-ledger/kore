@@ -1253,13 +1253,10 @@ mod tests {
     use super::*;
 
     use crate::{
-        governance::init::init_state,
-        model::{
+        governance::init::init_state, model::{
             event::Event as KoreEvent,
             request::tests::create_start_request_mock, signature::Signature,
-        },
-        tests::create_system,
-        FactRequest,
+        }, system::tests::create_system, FactRequest
     };
 
     async fn create_subject_and_ledger_event(

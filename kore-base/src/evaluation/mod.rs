@@ -481,3 +481,128 @@ impl Handler<Evaluation> for Evaluation {
         Ok(EvaluationResponse::None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use identity::identifier::KeyIdentifier;
+    use serde_json::json;
+
+    use crate::{
+        model::{event::LedgerValue, Namespace, SignTypesNode},
+        request::{RequestHandlerMessage, RequestHandlerResponse},
+        subject::event::{LedgerEventMessage, LedgerEventResponse},
+        validation::tests::create_subject_gov,
+        EventRequest, FactRequest, Governance, NodeMessage, NodeResponse,
+        Signed, SubjectMessage, SubjectResponse, ValueWrapper,
+    };
+
+    #[tokio::test]
+    async fn test_fact_gov() {
+        let (
+            node_actor,
+            request_actor,
+            subject_actor,
+            ledger_event_actor,
+            subject_id,
+        ) = create_subject_gov().await;
+
+        let fact_request = EventRequest::Fact(FactRequest {
+            subject_id: subject_id.clone(),
+            payload: ValueWrapper(json!({"Patch": {
+                    "data": [
+            {
+                "op": "add",
+                "path": "/members/1",
+                "value": {
+                    "id": "EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE",
+                    "name": "KoreNode1"
+                }
+            }]}})),
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                fact_request.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: fact_request,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(_response) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let SubjectResponse::Metadata(metadata) = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(last_event.content.subject_id, subject_id);
+        assert_eq!(last_event.content.event_request, signed_event_req);
+        assert_eq!(last_event.content.sn, 1);
+        assert_eq!(last_event.content.gov_version, 0);
+        assert_eq!(
+            last_event.content.value,
+            LedgerValue::Patch(ValueWrapper(json!([
+            {
+                "op": "add",
+                "path": "/members/1",
+                "value": {
+                    "id": "EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE",
+                    "name": "KoreNode1"
+                }
+            }])))
+        );
+        assert!(last_event.content.eval_success.unwrap());
+        assert!(last_event.content.appr_required);
+        assert!(last_event.content.appr_success.unwrap());
+        assert!(last_event.content.vali_success);
+        assert!(!last_event.content.evaluators.unwrap().is_empty());
+        assert!(!last_event.content.approvers.unwrap().is_empty());
+        assert!(!last_event.content.validators.is_empty());
+
+        assert_eq!(metadata.subject_id, subject_id);
+        assert_eq!(metadata.governance_id.to_string(), "");
+        assert_eq!(metadata.genesis_gov_version, 0);
+        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.schema_id, "governance");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 1);
+        assert!(metadata.active);
+
+        let gov = Governance::try_from(metadata.properties).unwrap();
+        assert_eq!(gov.version, 1);
+        assert!(!gov.members.is_empty());
+        assert!(!gov.roles.is_empty());
+        assert!(gov.schemas.is_empty());
+        assert!(!gov.policies.is_empty());
+    }
+}

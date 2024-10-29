@@ -35,8 +35,20 @@ pub fn init_state(owner_key: &str) -> ValueWrapper {
           },
           {
             "namespace": "",
+            "role": "ISSUER",
+            "schema": {
+              "ID": "governance"
+            },
+            "who": {
+              "NAME": "Owner"
+            }
+          },
+          {
+            "namespace": "",
             "role": "APPROVER",
-            "schema": "ALL",
+            "schema": {
+              "ID": "governance"
+            },
             "who": {
               "NAME": "Owner"
             }

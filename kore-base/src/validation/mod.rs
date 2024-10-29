@@ -539,7 +539,7 @@ impl PersistentActor for Validation {
 impl Storable for Validation {}
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use core::panic;
     use identity::identifier::derive::digest::DigestDerivator;
     use serde_json::to_value;
@@ -556,10 +556,10 @@ mod tests {
             RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
         }, subject::event::{
             LedgerEvent, LedgerEventMessage, LedgerEventResponse,
-        }, tests::create_system, CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse, TransferRequest, ValueWrapper
+        }, system::tests::create_system, CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse, TransferRequest, ValueWrapper
     };
 
-    async fn create_subject_gov() -> (
+    pub async fn create_subject_gov() -> (
         ActorRef<Node>,
         ActorRef<RequestHandler>,
         ActorRef<Subject>,

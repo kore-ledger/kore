@@ -116,12 +116,14 @@ impl Runner {
                 // TODO estudiar todas las operaciones de jsonpatch, qué pasa si eliminamos un schema del cual hay sujetos?
                 // o si hacemos un copy o move. Deberíamos permitirlos?
                 let patched_state =
-                    apply_patch(data.0.clone(), state.0.clone()).map_err(
+                    apply_patch(data.clone(), state.0.clone()).map_err(
                         |e| Error::Runner(format!("Can not apply patch {}", e)),
                     )?;
 
-                if Self::check_governance_state(&patched_state).is_ok() {
-                    let compilations = Self::check_compilation(data.0.clone())?;
+                if let Err(e) = Self::check_governance_state(&patched_state) {
+                    todo!()
+                } else {
+                    let compilations = Self::check_compilation(data.clone())?;
                     // TODO QUITAR TODOS LOS unwrap()
                     Ok((
                         RunnerResult {
@@ -133,8 +135,6 @@ impl Runner {
                         },
                         compilations,
                     ))
-                } else {
-                    todo!()
                 }
             }
         }
@@ -314,6 +314,7 @@ impl Runner {
         let mut owner_appr = false;
         let mut owner_val = false;
         let mut owner_witness = false;
+        let mut owner_issuer = false;
         let mut members_witness = false;
 
         for role in roles {
@@ -362,15 +363,23 @@ impl Runner {
                         )));
                     }
                     if NAME == "Owner" && role.namespace.is_empty() {
-                        if let SchemaEnum::ALL = role.schema {
-                            match role.role {
-                                Roles::APPROVER => owner_appr = true,
+                        match role.schema.clone() {
+                            SchemaEnum::ID { ID } => if ID == "governance" {
+                                match role.role {
+                                    Roles::APPROVER => owner_appr = true,
+                                    Roles::ISSUER => owner_issuer = true,
+                                    _ => {}
+                                };
+                            },
+                            SchemaEnum::NOT_GOVERNANCE => todo!(),
+                            SchemaEnum::ALL => match role.role {
+                                
                                 Roles::EVALUATOR => owner_eval = true,
                                 Roles::VALIDATOR => owner_val = true,
                                 Roles::WITNESS => owner_witness = true,
                                 _ => {}
-                            };
-                        }
+                            },
+                        };
                     }
                 }
                 _ => {}
@@ -381,6 +390,7 @@ impl Runner {
             || !owner_val
             || !owner_witness
             || !members_witness
+            || !owner_issuer
         {
             return Err(Error::Runner(
                 "Basic metagovernance roles have been modified".to_owned(),
@@ -553,11 +563,14 @@ impl Handler<Runner> for Runner {
         )
         .await
         {
-            Ok((result, compilations)) => Ok(RunnerResponse::Response {
+            Ok((result, compilations)) => {
+                Ok(RunnerResponse::Response {
                 result,
                 compilations,
-            }),
-            Err(e) => Ok(RunnerResponse::Error(e)),
+            })},
+            Err(e) => {
+                Ok(RunnerResponse::Error(e))
+            },
         }
     }
 }

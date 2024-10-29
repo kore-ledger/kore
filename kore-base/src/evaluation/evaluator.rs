@@ -274,39 +274,35 @@ impl Evaluator {
                     Err(_e) => todo!(),
                 };
 
-            let schema = if let Some(schema) = governance_data
-                .schemas
-                .iter()
-                .find(|x| x.id.clone() == evaluation_req.context.schema_id)
-            {
-                schema
+            let schema = if evaluation_req.context.schema_id == "governance" {
+                "governance".to_owned()
             } else {
-                todo!()
-            };
-
-            // Get governance id
-            let governance_id =
-                if evaluation_req.context.schema_id == "governance" {
-                    evaluation_req.context.subject_id.clone()
+                let schema = if let Some(schema) = governance_data
+                    .schemas
+                    .iter()
+                    .find(|x| x.id.clone() == evaluation_req.context.schema_id)
+                {
+                    schema
                 } else {
-                    evaluation_req.context.governance_id.clone()
+                    todo!()
                 };
 
+                format!(
+                    "{}_{}",
+                    evaluation_req.context.governance_id.clone(),
+                    schema.id
+                )
+            };
+
             let schemas = SCHEMAS.read().await;
-            let json_schema = if let Some(json_schema) =
-                schemas.get(&format!("{}_{}", governance_id, schema.id))
-            {
+            let json_schema = if let Some(json_schema) = schemas.get(&schema) {
                 json_schema
             } else {
                 todo!()
             };
 
-            let value =
-                match serde_json::to_value(evaluation.final_state.clone()) {
-                    Ok(value) => value,
-                    Err(_e) => todo!(),
-                };
-            if json_schema.validate(&value) {
+            // TODO CAMBIAR POR EL FAST, este y todos.
+            if json_schema.validate(&evaluation.final_state.0) {
                 let state_hash = match evaluation.final_state.hash_id(derivator)
                 {
                     Ok(state_hash) => state_hash,

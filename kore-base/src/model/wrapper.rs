@@ -222,6 +222,6 @@ mod tests {
         //let wrapper = ValueWrapper(value.clone());
         let bytes = bincode::serialize(&value).unwrap();
         let wrapper = bincode::deserialize::<ValueWrapper>(&bytes);
-        println!("Result: {:?}", wrapper);
+        wrapper.unwrap();
     }
 }
