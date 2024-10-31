@@ -3,7 +3,7 @@
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
-    Message, Response,
+    Message, Response, Sink,
 };
 use async_trait::async_trait;
 use identity::{
@@ -14,22 +14,21 @@ use identity::{
 };
 use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::{collections::{HashMap, VecDeque}, fmt::format};
 use store::store::PersistentActor;
 use tracing::error;
 
 use crate::{
-    db::Storable,
-    governance::model::Roles,
-    init_state,
-    model::common::{get_gov, get_metadata},
-    subject::{CreateSubjectData, SubjectID},
-    CreateRequest, Error, EventRequest, HashId, Node, NodeMessage,
-    NodeResponse, Signed, DIGEST_DERIVATOR,
+    db::Storable, governance::model::Roles, helpers::db::LocalDB, init_state, model::common::{get_gov, get_metadata}, subject::{CreateSubjectData, SubjectID}, CreateRequest, Error, EventRequest, HashId, Node, NodeMessage, NodeResponse, Signed, DIGEST_DERIVATOR
 };
 
 pub mod manager;
 pub mod state;
+
+#[derive(Debug, Clone)]
+pub struct RequestID {
+    pub request_id: String
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestHandler {
@@ -167,10 +166,12 @@ impl RequestHandler {
     async fn error_queue_handling(
         &mut self,
         ctx: &mut ActorContext<RequestHandler>,
+        id: &str,
         subject_id: &str,
     ) -> Result<(), Error> {
         self.on_event(
-            RequestHandlerEvent::PopQueue {
+            RequestHandlerEvent::Invalid {
+                id: id.to_owned(),
                 subject_id: subject_id.to_owned(),
             },
             ctx,
@@ -189,7 +190,7 @@ impl RequestHandler {
 pub enum RequestHandlerMessage {
     NewRequest { request: Signed<EventRequest> },
     PopQueue { subject_id: String },
-    EndHandling { subject_id: String },
+    EndHandling { subject_id: String, id: String },
     GetState { request_id: String },
 }
 
@@ -197,7 +198,7 @@ impl Message for RequestHandlerMessage {}
 
 #[derive(Debug, Clone)]
 pub enum RequestHandlerResponse {
-    Ok(String),
+    Ok(RequestID),
     Error(Error),
     None,
 }
@@ -207,13 +208,17 @@ impl Response for RequestHandlerResponse {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RequestHandlerEvent {
     EventToQueue {
+        id: String,
         subject_id: String,
         event: Signed<EventRequest>,
     },
-    PopQueue {
+    
+    Invalid {
+        id: String,
         subject_id: String,
     },
     FinishHandling {
+        id: String,
         subject_id: String,
     },
     EventToHandling {
@@ -243,6 +248,9 @@ impl Actor for RequestHandler {
         {
             todo!()
         };
+        let Some(local_db): Option<LocalDB> = ctx.system().get_helper("local_db").await else {
+            todo!()
+        };
 
         for (subject_id, (request_id, request)) in self.handling.clone() {
             let request_manager =
@@ -252,6 +260,8 @@ impl Actor for RequestHandler {
                     Ok(actor) => actor,
                     Err(e) => todo!(),
                 };
+                let sink = Sink::new(request_manager_actor.subscribe(), local_db.get_request_manager());
+                ctx.system().run_sink(sink).await;
 
             if let Err(e) =
                 request_manager_actor.tell(RequestManagerMessage::Run).await
@@ -283,6 +293,13 @@ impl Handler<RequestHandler> for RequestHandler {
             RequestHandlerMessage::NewRequest { request } => {
                 if let Err(_e) = request.verify() {
                     todo!()
+                };
+
+                let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+                    *derivator
+                } else {
+                    error!("Error getting derivator");
+                    DigestDerivator::Blake3_256
                 };
 
                 let subject_id = match request.content.clone() {
@@ -333,8 +350,14 @@ impl Handler<RequestHandler> for RequestHandler {
                             Err(e) => return Ok(RequestHandlerResponse::Error(Error::RequestHandler(format!("An error has occurred and the subject could not be created: {}", e))))
                         };
 
+                        let request_id = match request.hash_id(derivator) {
+                            Ok(request_id) => request_id.to_string(),
+                            Err(_e) => todo!(),
+                        };
+
                         self.on_event(
                             RequestHandlerEvent::EventToQueue {
+                                id: request_id.clone(),
                                 subject_id: subject_id.to_string(),
                                 event: request,
                             },
@@ -352,8 +375,7 @@ impl Handler<RequestHandler> for RequestHandler {
                         }
 
                         return Ok(RequestHandlerResponse::Ok(
-                            "The event has been successfully queued."
-                                .to_owned(),
+                           RequestID { request_id }
                         ));
                     }
                     EventRequest::Fact(fact_request) => fact_request.subject_id,
@@ -440,8 +462,14 @@ impl Handler<RequestHandler> for RequestHandler {
                     ));
                 }
 
+                let request_id = match request.hash_id(derivator) {
+                    Ok(request_id) => request_id.to_string(),
+                    Err(_e) => todo!(),
+                };
+
                 self.on_event(
                     RequestHandlerEvent::EventToQueue {
+                        id: request_id.clone(),
                         subject_id: subject_id.to_string(),
                         event: request,
                     },
@@ -461,11 +489,20 @@ impl Handler<RequestHandler> for RequestHandler {
                 }
 
                 Ok(RequestHandlerResponse::Ok(
-                    "The event has been successfully queued.".to_owned(),
+                    RequestID { request_id }
                 ))
             }
             RequestHandlerMessage::GetState { request_id } => todo!(),
             RequestHandlerMessage::PopQueue { subject_id } => {
+                // TODO, Ver si los que usan derivator nos renta que lo tengan directamente en memoria,
+                // Para no estar pidiendolo a cada rato.
+                let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+                    *derivator
+                } else {
+                    error!("Error getting derivator");
+                    DigestDerivator::Blake3_256
+                };
+
                 let event = if let Some(events) = self.in_queue.get(&subject_id)
                 {
                     if let Some(event) = events.clone().pop_front() {
@@ -478,8 +515,13 @@ impl Handler<RequestHandler> for RequestHandler {
                     // TODO es imposible que no sea un option
                     // TODO Cuando todo un protocolo falle y nadie responda, preguntarle al owner
                     // de la governanza si estamos actualizados, pueden haber cambiado todos los
-                    // validadores o evaluadores,
+                    // validadores o evaluadores, lo apunté aquí pero no va aquí
                     todo!()
+                };
+
+                let request_id = match event.hash_id(derivator) {
+                    Ok(request_id) => request_id.to_string(),
+                    Err(_e) => todo!(),
                 };
 
                 let metadata =
@@ -489,22 +531,25 @@ impl Handler<RequestHandler> for RequestHandler {
                     };
 
                 if metadata.owner != event.signature.signer {
+                    // TDO EVENTO DE FALLO
                     if let Err(_e) =
-                    self.error_queue_handling(ctx, &subject_id).await
+                    self.error_queue_handling(ctx, &request_id,&subject_id).await
                 {
                     todo!()
                 }
 
+                // TDO EVENTO DE FALLO
                 return Ok(RequestHandlerResponse::None);
                 }
 
                 if !metadata.active {
                     if let Err(_e) =
-                        self.error_queue_handling(ctx, &subject_id).await
+                        // TDO EVENTO DE FALLO
+                        self.error_queue_handling(ctx, &request_id,&subject_id).await
                     {
                         todo!()
                     }
-
+                    
                     return Ok(RequestHandlerResponse::None);
                 }
 
@@ -533,8 +578,9 @@ impl Handler<RequestHandler> for RequestHandler {
                                 .iter()
                                 .any(|x| x.clone() == self.node_key)
                             {
+                                // TDO EVENTO DE FALLO
                                 if let Err(_e) = self
-                                    .error_queue_handling(ctx, &subject_id)
+                                    .error_queue_handling(ctx, &request_id,&subject_id)
                                     .await
                                 {
                                     todo!()
@@ -560,8 +606,9 @@ impl Handler<RequestHandler> for RequestHandler {
                                     |x| x.clone() == event.signature.signer,
                                 ))
                         {
+                            // TDO EVENTO DE FALLO
                             if let Err(_e) = self
-                                .error_queue_handling(ctx, &subject_id)
+                                .error_queue_handling(ctx, &request_id,&subject_id)
                                 .await
                             {
                                 todo!()
@@ -572,19 +619,6 @@ impl Handler<RequestHandler> for RequestHandler {
                         RequestManagerMessage::Fact
                     }
                     _ => RequestManagerMessage::Other,
-                };
-
-                ////////
-                let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-                    *derivator
-                } else {
-                    error!("Error getting derivator");
-                    DigestDerivator::Blake3_256
-                };
-
-                let request_id = match event.hash_id(derivator) {
-                    Ok(request_id) => request_id.to_string(),
-                    Err(_e) => todo!(),
                 };
 
                 let request_manager = RequestManager::new(
@@ -600,6 +634,13 @@ impl Handler<RequestHandler> for RequestHandler {
                     Ok(request_actor) => request_actor,
                     Err(_e) => todo!(),
                 };
+
+                let Some(local_db): Option<LocalDB> = ctx.system().get_helper("local_db").await else {
+                    todo!()
+                };
+
+                let sink = Sink::new(request_actor.subscribe(), local_db.get_request_manager());
+                ctx.system().run_sink(sink).await;
 
                 if let Err(_e) = request_actor.tell(message).await {
                     todo!()
@@ -617,9 +658,10 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 Ok(RequestHandlerResponse::None)
             }
-            RequestHandlerMessage::EndHandling { subject_id } => {
+            RequestHandlerMessage::EndHandling { subject_id, id } => {
                 self.on_event(
                     RequestHandlerEvent::FinishHandling {
+                        id,
                         subject_id: subject_id.clone(),
                     },
                     ctx,
@@ -645,6 +687,10 @@ impl Handler<RequestHandler> for RequestHandler {
         if let Err(_e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
+
+        if let Err(e) = ctx.publish_event(event).await {
+
+        }
     }
 }
 
@@ -656,7 +702,7 @@ impl PersistentActor for RequestHandler {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) {
         match event {
-            RequestHandlerEvent::EventToQueue { subject_id, event } => {
+            RequestHandlerEvent::EventToQueue { subject_id, event, .. } => {
                 if let Some(vec) = self.in_queue.get_mut(subject_id) {
                     vec.push_back(event.clone());
                 } else {
@@ -665,7 +711,7 @@ impl PersistentActor for RequestHandler {
                     self.in_queue.insert(subject_id.clone(), vec);
                 };
             }
-            RequestHandlerEvent::PopQueue { subject_id } => {
+            RequestHandlerEvent::Invalid { subject_id, .. } => {
                 if let Some(vec) = self.in_queue.get_mut(subject_id) {
                     vec.pop_front();
                 }
@@ -674,6 +720,7 @@ impl PersistentActor for RequestHandler {
                 subject_id,
                 request_id,
                 event,
+                ..
             } => {
                 self.handling.insert(
                     subject_id.clone(),
@@ -683,7 +730,7 @@ impl PersistentActor for RequestHandler {
                     vec.pop_front();
                 }
             }
-            RequestHandlerEvent::FinishHandling { subject_id } => {
+            RequestHandlerEvent::FinishHandling { subject_id, .. } => {
                 self.handling.remove(subject_id);
             }
         }

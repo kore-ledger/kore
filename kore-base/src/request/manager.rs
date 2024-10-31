@@ -199,7 +199,8 @@ impl RequestManager {
         };
 
         self.on_event(
-            RequestManagerEvent::ChangeState {
+            RequestManagerEvent {
+                id: self.id.clone(),
                 state: RequestManagerState::Validation(val_info.clone()),
             },
             ctx,
@@ -217,7 +218,8 @@ impl RequestManager {
         eval_signatures: HashSet<ProtocolsSignatures>,
     ) -> Result<(), Error> {
         self.on_event(
-            RequestManagerEvent::ChangeState {
+            RequestManagerEvent {
+                id: self.id.clone(),
                 state: RequestManagerState::Approval {
                     eval_req: eval_req.clone(),
                     eval_res: eval_res.clone(),
@@ -236,7 +238,8 @@ impl RequestManager {
         ctx: &mut ActorContext<RequestManager>,
     ) -> Result<(), Error> {
         self.on_event(
-            RequestManagerEvent::ChangeState {
+            RequestManagerEvent {
+                id: self.id.clone(),
                 state: RequestManagerState::Evaluation,
             },
             ctx,
@@ -346,7 +349,8 @@ impl RequestManager {
         }
 
         self.on_event(
-            RequestManagerEvent::ChangeState {
+            RequestManagerEvent {
+                id: self.id.clone(),
                 state: RequestManagerState::Distribution {
                     event: signed_event.clone(),
                     ledger: signed_ledger.clone(),
@@ -441,6 +445,7 @@ impl RequestManager {
         if let Some(request_actor) = request_actor {
             if let Err(_e) = request_actor
                 .tell(RequestHandlerMessage::EndHandling {
+                    id: self.id.clone(),
                     subject_id: self.subject_id.to_string(),
                 })
                 .await
@@ -545,8 +550,9 @@ pub enum RequestManagerResponse {
 impl Response for RequestManagerResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum RequestManagerEvent {
-    ChangeState { state: RequestManagerState },
+pub struct RequestManagerEvent {
+    pub id: String,
+    pub state: RequestManagerState
 }
 
 impl Event for RequestManagerEvent {}
@@ -862,6 +868,10 @@ impl Handler<RequestManager> for RequestManager {
         if let Err(_e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
+
+        if let Err(e) = ctx.publish_event(event).await {
+
+        };
     }
 }
 
@@ -869,11 +879,7 @@ impl Handler<RequestManager> for RequestManager {
 impl PersistentActor for RequestManager {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) {
-        match event {
-            RequestManagerEvent::ChangeState { state } => {
-                self.state = state.clone();
-            }
-        }
+        self.state = event.state.clone();
     }
 }
 

@@ -1,6 +1,6 @@
 use actor::{ActorSystem, SystemRef};
 
-use crate::{db::Database, helpers::encrypted_pass::EncryptedPass, Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR};
+use crate::{db::Database, helpers::{db::LocalDB, encrypted_pass::EncryptedPass}, Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR};
 
 pub async fn system(
     config: KoreBaseConfig,
@@ -18,7 +18,7 @@ pub async fn system(
     let (system, mut runner) = ActorSystem::create();
 
     // Build database manager.
-    let db_manager = Database::open(&config.database)?;
+    let db_manager = Database::open(&config.kore_db)?;
     system.add_helper("store", db_manager).await;
 
     // Helper memory encryption for passwords to be used in secure stores.
@@ -35,6 +35,8 @@ pub async fn system(
 
 #[cfg(test)]
 pub mod tests {
+
+    use std::fs;
 
     use super::*;
 
@@ -53,11 +55,33 @@ pub mod tests {
         assert!(any.is_none());
     }
 
+    pub fn create_temp_dir() -> String {
+        let path = temp_dir();
+
+        if fs::metadata(&path).is_err() {
+            fs::create_dir_all(&path).unwrap();
+        }
+        path
+    }
+
+    fn temp_dir() -> String {
+        let dir = tempfile::tempdir().expect("Can not create temporal directory.");
+        dir.path().to_str().unwrap().to_owned()
+    }
+
+
     pub async fn create_system() -> SystemRef {
         let dir =
             tempfile::tempdir().expect("Can not create temporal directory.");
-        let path = dir.path().to_str().unwrap().to_owned();
-        let config = KoreBaseConfig::new(&path);
-        system(config, "password").await.unwrap()
+        let path = dir.path().to_str().unwrap();
+
+        let config = KoreBaseConfig::new(path, "");
+
+        let sys = system(config, "password").await.unwrap();
+
+        let local_db = LocalDB::sqlite(&format!("{}/database.db", create_temp_dir())).await.unwrap();
+        sys.add_helper("local_db", local_db).await;
+
+        sys
     }
 }

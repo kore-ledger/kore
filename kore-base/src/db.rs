@@ -118,9 +118,12 @@ impl Collection for DbCollection {
         }
     }
 
-    // TODO, implementar
     fn purge(&mut self) -> Result<(), StoreError> {
-        todo!()
+        match self {
+            DbCollection::RocksDb(store) => store.purge(),
+            #[cfg(feature = "sqlite")]
+            DbCollection::SQLite(store) => store.purge()
+        }
     }
 }
 

@@ -14,18 +14,21 @@ pub struct Config {
     /// Digest derivator.
     pub digest_derivator: DigestDerivator,
     /// Database configuration.
-    pub database: DbConfig,
+    pub kore_db: DbConfig,
+
+    pub external_db: String
 }
 
 impl Config {
     /// Creates a new `Config`.
-    pub fn new(path: &str) -> Self {
+    pub fn new(kore_db_path: &str, external_db_path: &str) -> Self {
         Self {
             key_derivator: KeyDerivator::Ed25519,
             digest_derivator: DigestDerivator::Blake3_256,
-            database: DbConfig::Rocksdb {
-                path: path.to_owned(),
+            kore_db: DbConfig::Rocksdb {
+                path: kore_db_path.to_owned(),
             },
+            external_db: external_db_path.to_owned()
         }
     }
 }
