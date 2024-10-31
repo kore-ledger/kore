@@ -545,14 +545,14 @@ pub mod tests {
     use serde_json::to_value;
     use std::time::Duration;
 
-    use actor::{ActorPath, ActorRef};
+    use actor::{ActorPath, ActorRef, Sink};
     use identity::{
         identifier::{DigestIdentifier, KeyIdentifier},
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
 
     use crate::{
-        model::{event::LedgerValue, Namespace, SignTypesNode}, request::{
+        helpers::db::LocalDB, model::{event::LedgerValue, Namespace, SignTypesNode}, query::Query, request::{
             RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
         }, subject::event::{
             LedgerEvent, LedgerEventMessage, LedgerEventResponse,
@@ -562,6 +562,7 @@ pub mod tests {
     pub async fn create_subject_gov() -> (
         ActorRef<Node>,
         ActorRef<RequestHandler>,
+        ActorRef<Query>,
         ActorRef<Subject>,
         ActorRef<LedgerEvent>,
         DigestIdentifier,
@@ -575,6 +576,13 @@ pub mod tests {
         let request = RequestHandler::new(node_keys.key_identifier());
         let request_actor =
             system.create_root_actor("request", request).await.unwrap();
+
+        let query_actor = system.create_root_actor("query", Query).await.unwrap();
+        
+        let local_db: LocalDB = system.get_helper("local_db").await.unwrap();
+
+        let sink = Sink::new(request_actor.subscribe(), local_db.get_request_handler());
+        system.run_sink(sink).await;
         
         let create_req = EventRequest::Create(CreateRequest {
             governance_id: DigestIdentifier::default(),
@@ -706,6 +714,7 @@ pub mod tests {
         (
             node_actor,
             request_actor,
+            query_actor,
             subject_actor,
             ledger_event_actor,
             metadata.subject_id,
@@ -722,6 +731,7 @@ pub mod tests {
         let (
             node_actor,
             request_actor,
+            _query_actor,
             subject_actor,
             ledger_event_actor,
             subject_id,
@@ -824,6 +834,7 @@ pub mod tests {
         let (
             node_actor,
             request_actor,
+            _query_actor,
             subject_actor,
             ledger_event_actor,
             subject_id,

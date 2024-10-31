@@ -13,3 +13,6 @@ kore-base/contracts
 
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
+
+# Macs files
+.DS_Store

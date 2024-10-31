@@ -14,6 +14,9 @@ pub enum Error {
     /// Node error.
     #[error("Node error: {0}")]
     Node(String),
+    /// Database error.
+    #[error("Database error: {0}")]
+    Database(String),
     /// Actor error.
     #[error("Actor error: {0}")]
     Actor(String),

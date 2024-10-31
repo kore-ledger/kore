@@ -52,8 +52,8 @@ pub enum ApprovalState {
 // TODO CAMBIAR A POR DEFECTO MANUAL, ALWaysaccept
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum VotationType {
-    Manual,
     #[default]
+    Manual,
     AlwaysAccept,
 }
 

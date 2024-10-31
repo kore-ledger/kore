@@ -490,12 +490,7 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        model::{event::LedgerValue, Namespace, SignTypesNode},
-        request::{RequestHandlerMessage, RequestHandlerResponse},
-        subject::event::{LedgerEventMessage, LedgerEventResponse},
-        validation::tests::create_subject_gov,
-        EventRequest, FactRequest, Governance, NodeMessage, NodeResponse,
-        Signed, SubjectMessage, SubjectResponse, ValueWrapper,
+        model::{event::LedgerValue, Namespace, SignTypesNode}, query::{QueryMessage, QueryResponse}, request::{RequestHandlerMessage, RequestHandlerResponse}, subject::event::{LedgerEventMessage, LedgerEventResponse}, validation::tests::create_subject_gov, EventRequest, FactRequest, Governance, NodeMessage, NodeResponse, Signed, SubjectMessage, SubjectResponse, ValueWrapper
     };
 
     #[tokio::test]
@@ -503,6 +498,7 @@ mod tests {
         let (
             node_actor,
             request_actor,
+            query_actor,
             subject_actor,
             ledger_event_actor,
             subject_id,
@@ -537,7 +533,7 @@ mod tests {
             signature,
         };
 
-        let RequestHandlerResponse::Ok(_response) = request_actor
+        let RequestHandlerResponse::Ok(request_id) = request_actor
             .ask(RequestHandlerMessage::NewRequest {
                 request: signed_event_req.clone(),
             })
@@ -549,6 +545,16 @@ mod tests {
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
+        let QueryResponse::RequestState(state) = query_actor
+            .ask(QueryMessage::GetRequestState { request_id: request_id.request_id})
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!("In Approval", state);
+        /*
         let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
             .ask(LedgerEventMessage::GetLastEvent)
             .await
@@ -604,5 +610,7 @@ mod tests {
         assert!(!gov.roles.is_empty());
         assert!(gov.schemas.is_empty());
         assert!(!gov.policies.is_empty());
+        */
+
     }
 }
