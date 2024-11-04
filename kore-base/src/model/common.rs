@@ -132,7 +132,7 @@ where
     A: Actor + Handler<A>,
 {
     let ledger_event_path = ActorPath::from(format!(
-        "/user/node/{}/ledgerEvent",
+        "/user/node/{}/ledger_event",
         event.content.subject_id
     ));
     let ledger_event_actor: Option<ActorRef<LedgerEvent>> =

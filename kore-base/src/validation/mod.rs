@@ -552,7 +552,7 @@ pub mod tests {
     };
 
     use crate::{
-        helpers::db::LocalDB, model::{event::LedgerValue, Namespace, SignTypesNode}, query::Query, request::{
+        helpers::db::{LocalDB}, model::{event::LedgerValue, Namespace, SignTypesNode}, query::Query, request::{
             RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
         }, subject::event::{
             LedgerEvent, LedgerEventMessage, LedgerEventResponse,
@@ -643,7 +643,7 @@ pub mod tests {
 
         let ledger_event_actor: ActorRef<LedgerEvent> = system
             .get_actor(&ActorPath::from(format!(
-                "/user/node/{}/ledgerEvent",
+                "/user/node/{}/ledger_event",
                 temporal_subj
             )))
             .await
