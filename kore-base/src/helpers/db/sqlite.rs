@@ -1,11 +1,12 @@
 use std::sync::{Arc, RwLock};
 
-use actor::Subscriber;
+use actor::{ActorRef, Subscriber};
 use async_std::sync::Mutex;
 use async_trait::async_trait;
 use tokio_rusqlite::{params, Connection, OpenFlags, Result as SqliteError};
 
 use crate::error::Error;
+use crate::local_db::{DBManager, DBManagerMessage, DeleteTypes};
 use crate::model::event;
 use crate::request::manager::RequestManagerEvent;
 use crate::request::state::RequestManagerState;
@@ -15,12 +16,13 @@ use super::Querys;
 
 #[derive(Clone)]
 pub struct SqliteLocal {
+    manager: ActorRef<DBManager>,
     conn: Connection,
 }
 
 #[async_trait]
 impl Querys for SqliteLocal {
-    async fn get_request_id_status(&self, request_id: &str) -> String {
+    async fn get_request_id_status(&self, request_id: &str) -> Result<String, Error> {
 
         let request_id = request_id.to_owned();
         let state: String = match self
@@ -38,12 +40,26 @@ impl Querys for SqliteLocal {
             Err(e) => todo!()
         };
 
-        state
+        Ok(state)
+    }
+
+    async fn del_request(&self, request_id: &str) -> Result<(), Error> {
+        let request_id = request_id.to_owned();
+
+        if let Err(e) = self.conn.call(move |conn| {
+            let sql = "DELETE FROM request WHERE id = ?1";
+            let _ = conn.execute(sql, params![request_id])?;
+            Ok(())
+        }).await {
+            todo!()
+        };
+
+        Ok(())
     }
 }
 
 impl SqliteLocal {
-    pub async fn new(path: &str) -> Result<Self, Error> {
+    pub async fn new(path: &str, manager: ActorRef<DBManager>) -> Result<Self, Error> {
         let flags = OpenFlags::default();
         let conn =
             Connection::open_with_flags(path, flags)
@@ -61,7 +77,7 @@ impl SqliteLocal {
             Ok(())
         }).await.map_err(|e| Error::Database(format!("Can not create request table: {}",e)))?;
 
-        Ok(SqliteLocal { conn })
+        Ok(SqliteLocal { conn, manager })
     }
 }
 
@@ -127,7 +143,7 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
         if let Err(e) = self
             .conn
             .call(move |conn| {
-                let _ = conn.execute(&sql, params![id, state])?;
+                let _ = conn.execute(&sql, params![id_clone, state_clone])?;
 
                 Ok(())
             })
@@ -135,12 +151,18 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
             .map_err(|e| {
                 Error::Database(format!(
                     "Update request_id {} state {}: {}",
-                    id_clone, state_clone, e
+                    id, state, e
                 ))
             })
         {
             println!("{}", e);
             todo!()
         };
+
+        if state == "Finish" {
+            if let Err(e) = self.manager.tell(DBManagerMessage::Delete(DeleteTypes::Request { id })).await {
+                todo!()
+            }
+        }
     }
 }

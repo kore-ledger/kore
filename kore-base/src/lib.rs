@@ -16,6 +16,7 @@ mod request;
 mod subject;
 mod validation;
 mod query;
+mod local_db;
 pub(crate) mod system;
 
 use actor::{ActorRef, ActorSystem, SystemRef};

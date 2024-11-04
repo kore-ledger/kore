@@ -36,7 +36,9 @@ pub async fn system(
 #[cfg(test)]
 pub mod tests {
 
-    use std::fs;
+    use std::{fs, time::Duration};
+
+    use crate::{helpers::db::LocalDB, local_db::DBManager};
 
     use super::*;
 
@@ -79,7 +81,10 @@ pub mod tests {
 
         let sys = system(config, "password").await.unwrap();
 
-        let local_db = LocalDB::sqlite(&format!("{}/database.db", create_temp_dir())).await.unwrap();
+        let db_manager = DBManager::new(Duration::from_secs(5));
+        let db_manager_actor = sys.create_root_actor("db_manager", db_manager).await.unwrap();
+
+        let local_db = LocalDB::sqlite(&format!("{}/database.db", create_temp_dir()), db_manager_actor).await.unwrap();
         sys.add_helper("local_db", local_db).await;
 
         sys

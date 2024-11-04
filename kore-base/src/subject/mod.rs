@@ -920,7 +920,7 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
     ) -> Result<Signed<KoreEvent>, Error> {
         let ledger_event_path = ActorPath::from(format!(
-            "/user/node/{}/ledgerEvent",
+            "/user/node/{}/ledger_event",
             self.subject_id
         ));
         let ledger_event_actor: Option<ActorRef<LedgerEvent>> =
@@ -1055,7 +1055,7 @@ impl Actor for Subject {
         }
 
         let ledger_event = LedgerEvent::default();
-        ctx.create_child("ledgerEvent", ledger_event).await?;
+        ctx.create_child("ledger_event", ledger_event).await?;
 
         let distributor = Distributor { node: our_key };
         ctx.create_child("distributor", distributor).await?;
@@ -1314,7 +1314,7 @@ mod tests {
 
         let ledger_event_actor: Option<ActorRef<LedgerEvent>> = system
             .get_actor(&ActorPath::from(format!(
-                "user/node/{}/ledgerEvent",
+                "user/node/{}/ledger_event",
                 subject.subject_id
             )))
             .await;
