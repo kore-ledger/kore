@@ -115,10 +115,10 @@ impl Runner {
             GovernanceEvent::Patch { data } => {
                 // TODO estudiar todas las operaciones de jsonpatch, qué pasa si eliminamos un schema del cual hay sujetos?
                 // o si hacemos un copy o move. Deberíamos permitirlos?
-                let patched_state =
-                    apply_patch(data.clone(), state.0.clone()).map_err(
-                        |e| Error::Runner(format!("Can not apply patch {}", e)),
-                    )?;
+                let patched_state = apply_patch(data.clone(), state.0.clone())
+                    .map_err(|e| {
+                        Error::Runner(format!("Can not apply patch {}", e))
+                    })?;
 
                 if let Err(e) = Self::check_governance_state(&patched_state) {
                     todo!()
@@ -364,16 +364,17 @@ impl Runner {
                     }
                     if NAME == "Owner" && role.namespace.is_empty() {
                         match role.schema.clone() {
-                            SchemaEnum::ID { ID } => if ID == "governance" {
-                                match role.role {
-                                    Roles::APPROVER => owner_appr = true,
-                                    Roles::ISSUER => owner_issuer = true,
-                                    _ => {}
-                                };
-                            },
+                            SchemaEnum::ID { ID } => {
+                                if ID == "governance" {
+                                    match role.role {
+                                        Roles::APPROVER => owner_appr = true,
+                                        Roles::ISSUER => owner_issuer = true,
+                                        _ => {}
+                                    };
+                                }
+                            }
                             SchemaEnum::NOT_GOVERNANCE => todo!(),
                             SchemaEnum::ALL => match role.role {
-                                
                                 Roles::EVALUATOR => owner_eval = true,
                                 Roles::VALIDATOR => owner_val = true,
                                 Roles::WITNESS => owner_witness = true,
@@ -563,14 +564,11 @@ impl Handler<Runner> for Runner {
         )
         .await
         {
-            Ok((result, compilations)) => {
-                Ok(RunnerResponse::Response {
+            Ok((result, compilations)) => Ok(RunnerResponse::Response {
                 result,
                 compilations,
-            })},
-            Err(e) => {
-                Ok(RunnerResponse::Error(e))
-            },
+            }),
+            Err(e) => Ok(RunnerResponse::Error(e)),
         }
     }
 }

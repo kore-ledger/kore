@@ -148,18 +148,18 @@ impl Distribution {
         Ok(())
     }
 
-    async fn end_request(&self, ctx: &mut ActorContext<Distribution>) -> Result<(), Error>{
-        let req_path = ActorPath::from(format!(
-            "/user/request/{}",
-            self.request_id
-        ));
+    async fn end_request(
+        &self,
+        ctx: &mut ActorContext<Distribution>,
+    ) -> Result<(), Error> {
+        let req_path =
+            ActorPath::from(format!("/user/request/{}", self.request_id));
         let req_actor: Option<ActorRef<RequestManager>> =
             ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
-            if let Err(_e) = req_actor
-                .tell(RequestManagerMessage::FinishRequest)
-                .await
+            if let Err(_e) =
+                req_actor.tell(RequestManagerMessage::FinishRequest).await
             {
                 todo!()
             }

@@ -490,7 +490,14 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        model::{event::LedgerValue, Namespace, SignTypesNode}, query::{QueryMessage, QueryResponse}, request::{RequestHandlerMessage, RequestHandlerResponse}, subject::event::{LedgerEventMessage, LedgerEventResponse}, validation::tests::create_subject_gov, EventRequest, FactRequest, Governance, NodeMessage, NodeResponse, Signed, SubjectMessage, SubjectResponse, ValueWrapper
+        approval::approver::ApprovalStateRes,
+        model::{event::LedgerValue, Namespace, SignTypesNode},
+        query::{QueryMessage, QueryResponse},
+        request::{RequestHandlerMessage, RequestHandlerResponse},
+        subject::event::{LedgerEventMessage, LedgerEventResponse},
+        validation::tests::create_subject_gov,
+        EventRequest, FactRequest, Governance, NodeMessage, NodeResponse,
+        Signed, SubjectMessage, SubjectResponse, ValueWrapper,
     };
 
     #[tokio::test]
@@ -546,7 +553,9 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let QueryResponse::RequestState(state) = query_actor
-            .ask(QueryMessage::GetRequestState { request_id: request_id.request_id})
+            .ask(QueryMessage::GetRequestState {
+                request_id: request_id.request_id.clone(),
+            })
             .await
             .unwrap()
         else {
@@ -554,7 +563,45 @@ mod tests {
         };
 
         assert_eq!("In Approval", state);
-        /*
+        let QueryResponse::ApprovalState { request, state } = query_actor
+            .ask(QueryMessage::GetApproval {
+                request_id: subject_id.to_string(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(state, "Pending");
+        assert!(!request.is_empty());
+
+        let QueryResponse::Response(res) = query_actor
+            .ask(QueryMessage::ChangeApprovalState {
+                subject_id: subject_id.to_string(),
+                state: ApprovalStateRes::RespondedAccepted,
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(res, format!("The approval request for subject {} has changed to RespondedAccepted", subject_id.to_string()));
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let QueryResponse::ApprovalState { state, .. } = query_actor
+            .ask(QueryMessage::GetApproval {
+                request_id: subject_id.to_string(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(state, "RespondedAccepted");
+
         let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
             .ask(LedgerEventMessage::GetLastEvent)
             .await
@@ -610,7 +657,5 @@ mod tests {
         assert!(!gov.roles.is_empty());
         assert!(gov.schemas.is_empty());
         assert!(!gov.policies.is_empty());
-        */
-
     }
 }

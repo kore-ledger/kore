@@ -122,7 +122,7 @@ impl Collection for DbCollection {
         match self {
             DbCollection::RocksDb(store) => store.purge(),
             #[cfg(feature = "sqlite")]
-            DbCollection::SQLite(store) => store.purge()
+            DbCollection::SQLite(store) => store.purge(),
         }
     }
 }

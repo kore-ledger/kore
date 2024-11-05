@@ -14,12 +14,22 @@ use identity::{
 };
 use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
-use std::{collections::{HashMap, VecDeque}, fmt::format};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt::format,
+};
 use store::store::PersistentActor;
 use tracing::error;
 
 use crate::{
-    db::Storable, governance::model::Roles, helpers::db::{LocalDB}, init_state, model::common::{get_gov, get_metadata}, subject::{CreateSubjectData, SubjectID}, CreateRequest, Error, EventRequest, HashId, Node, NodeMessage, NodeResponse, Signed, DIGEST_DERIVATOR
+    db::Storable,
+    governance::model::Roles,
+    helpers::db::LocalDB,
+    init_state,
+    model::common::{get_gov, get_metadata},
+    subject::{CreateSubjectData, SubjectID},
+    CreateRequest, Error, EventRequest, HashId, Node, NodeMessage,
+    NodeResponse, Signed, DIGEST_DERIVATOR,
 };
 
 pub mod manager;
@@ -27,7 +37,7 @@ pub mod state;
 
 #[derive(Debug, Clone)]
 pub struct RequestID {
-    pub request_id: String
+    pub request_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -212,7 +222,7 @@ pub enum RequestHandlerEvent {
         subject_id: String,
         event: Signed<EventRequest>,
     },
-    
+
     Invalid {
         id: String,
         subject_id: String,
@@ -248,7 +258,9 @@ impl Actor for RequestHandler {
         {
             todo!()
         };
-        let Some(local_db): Option<LocalDB> = ctx.system().get_helper("local_db").await else {
+        let Some(local_db): Option<LocalDB> =
+            ctx.system().get_helper("local_db").await
+        else {
             todo!()
         };
 
@@ -260,8 +272,11 @@ impl Actor for RequestHandler {
                     Ok(actor) => actor,
                     Err(e) => todo!(),
                 };
-                let sink = Sink::new(request_manager_actor.subscribe(), local_db.get_request_manager());
-                ctx.system().run_sink(sink).await;
+            let sink = Sink::new(
+                request_manager_actor.subscribe(),
+                local_db.get_request_manager(),
+            );
+            ctx.system().run_sink(sink).await;
 
             if let Err(e) =
                 request_manager_actor.tell(RequestManagerMessage::Run).await
@@ -374,9 +389,9 @@ impl Handler<RequestHandler> for RequestHandler {
                             todo!()
                         }
 
-                        return Ok(RequestHandlerResponse::Ok(
-                           RequestID { request_id }
-                        ));
+                        return Ok(RequestHandlerResponse::Ok(RequestID {
+                            request_id,
+                        }));
                     }
                     EventRequest::Fact(fact_request) => fact_request.subject_id,
                     EventRequest::Transfer(transfer_request) => {
@@ -488,9 +503,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 }
 
-                Ok(RequestHandlerResponse::Ok(
-                    RequestID { request_id }
-                ))
+                Ok(RequestHandlerResponse::Ok(RequestID { request_id }))
             }
             RequestHandlerMessage::GetState { request_id } => todo!(),
             RequestHandlerMessage::PopQueue { subject_id } => {
@@ -532,24 +545,27 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 if metadata.owner != event.signature.signer {
                     // TDO EVENTO DE FALLO
-                    if let Err(_e) =
-                    self.error_queue_handling(ctx, &request_id,&subject_id).await
-                {
-                    todo!()
-                }
+                    if let Err(_e) = self
+                        .error_queue_handling(ctx, &request_id, &subject_id)
+                        .await
+                    {
+                        todo!()
+                    }
 
-                // TDO EVENTO DE FALLO
-                return Ok(RequestHandlerResponse::None);
+                    // TDO EVENTO DE FALLO
+                    return Ok(RequestHandlerResponse::None);
                 }
 
                 if !metadata.active {
                     if let Err(_e) =
                         // TDO EVENTO DE FALLO
-                        self.error_queue_handling(ctx, &request_id,&subject_id).await
+                        self
+                            .error_queue_handling(ctx, &request_id, &subject_id)
+                            .await
                     {
                         todo!()
                     }
-                    
+
                     return Ok(RequestHandlerResponse::None);
                 }
 
@@ -580,7 +596,11 @@ impl Handler<RequestHandler> for RequestHandler {
                             {
                                 // TDO EVENTO DE FALLO
                                 if let Err(_e) = self
-                                    .error_queue_handling(ctx, &request_id,&subject_id)
+                                    .error_queue_handling(
+                                        ctx,
+                                        &request_id,
+                                        &subject_id,
+                                    )
                                     .await
                                 {
                                     todo!()
@@ -608,7 +628,11 @@ impl Handler<RequestHandler> for RequestHandler {
                         {
                             // TDO EVENTO DE FALLO
                             if let Err(_e) = self
-                                .error_queue_handling(ctx, &request_id,&subject_id)
+                                .error_queue_handling(
+                                    ctx,
+                                    &request_id,
+                                    &subject_id,
+                                )
                                 .await
                             {
                                 todo!()
@@ -635,11 +659,16 @@ impl Handler<RequestHandler> for RequestHandler {
                     Err(_e) => todo!(),
                 };
 
-                let Some(local_db): Option<LocalDB> = ctx.system().get_helper("local_db").await else {
+                let Some(local_db): Option<LocalDB> =
+                    ctx.system().get_helper("local_db").await
+                else {
                     todo!()
                 };
 
-                let sink = Sink::new(request_actor.subscribe(), local_db.get_request_manager());
+                let sink = Sink::new(
+                    request_actor.subscribe(),
+                    local_db.get_request_manager(),
+                );
                 ctx.system().run_sink(sink).await;
 
                 if let Err(_e) = request_actor.tell(message).await {
@@ -688,9 +717,7 @@ impl Handler<RequestHandler> for RequestHandler {
             // TODO Propagar error.
         };
 
-        if let Err(e) = ctx.publish_event(event).await {
-
-        }
+        if let Err(e) = ctx.publish_event(event).await {}
     }
 }
 
@@ -702,7 +729,9 @@ impl PersistentActor for RequestHandler {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) {
         match event {
-            RequestHandlerEvent::EventToQueue { subject_id, event, .. } => {
+            RequestHandlerEvent::EventToQueue {
+                subject_id, event, ..
+            } => {
                 if let Some(vec) = self.in_queue.get_mut(subject_id) {
                     vec.push_back(event.clone());
                 } else {

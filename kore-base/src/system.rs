@@ -1,6 +1,10 @@
 use actor::{ActorSystem, SystemRef};
 
-use crate::{db::Database, helpers::{db::LocalDB, encrypted_pass::EncryptedPass}, Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR};
+use crate::{
+    db::Database,
+    helpers::{db::LocalDB, encrypted_pass::EncryptedPass},
+    Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR,
+};
 
 pub async fn system(
     config: KoreBaseConfig,
@@ -67,10 +71,10 @@ pub mod tests {
     }
 
     fn temp_dir() -> String {
-        let dir = tempfile::tempdir().expect("Can not create temporal directory.");
+        let dir =
+            tempfile::tempdir().expect("Can not create temporal directory.");
         dir.path().to_str().unwrap().to_owned()
     }
-
 
     pub async fn create_system() -> SystemRef {
         let dir =
@@ -82,9 +86,17 @@ pub mod tests {
         let sys = system(config, "password").await.unwrap();
 
         let db_manager = DBManager::new(Duration::from_secs(5));
-        let db_manager_actor = sys.create_root_actor("db_manager", db_manager).await.unwrap();
+        let db_manager_actor = sys
+            .create_root_actor("db_manager", db_manager)
+            .await
+            .unwrap();
 
-        let local_db = LocalDB::sqlite(&format!("{}/database.db", create_temp_dir()), db_manager_actor).await.unwrap();
+        let local_db = LocalDB::sqlite(
+            &format!("{}/database.db", create_temp_dir()),
+            db_manager_actor,
+        )
+        .await
+        .unwrap();
         sys.add_helper("local_db", local_db).await;
 
         sys
