@@ -5,7 +5,9 @@ use async_std::sync::Mutex;
 use async_trait::async_trait;
 use tokio_rusqlite::{params, Connection, OpenFlags, Result as SqliteError};
 
-use crate::approval::approver::{ApprovalState, ApprovalStateRes, ApproverEvent};
+use crate::approval::approver::{
+    ApprovalState, ApprovalStateRes, ApproverEvent,
+};
 use crate::error::Error;
 use crate::local_db::{DBManager, DBManagerMessage, DeleteTypes};
 use crate::model::event;
@@ -87,8 +89,10 @@ impl Querys for SqliteLocal {
             .await
         {
             Ok(state) => state,
-            Err(e) => {println!("{}", e);
-        todo!()},
+            Err(e) => {
+                println!("{}", e);
+                todo!()
+            }
         };
 
         Ok(state)
@@ -220,13 +224,15 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
         match event {
             ApproverEvent::ChangeState { subject_id, state } => {
                 let response = state.to_string();
-                
+
                 if let Err(e) = self
                     .conn
                     .call(move |conn| {
-                        let sql = "UPDATE approval SET state = ?1 WHERE id = ?2";
-                        let _ = conn.execute(sql, params![response, subject_id])?;
-        
+                        let sql =
+                            "UPDATE approval SET state = ?1 WHERE id = ?2";
+                        let _ =
+                            conn.execute(sql, params![response, subject_id])?;
+
                         Ok(())
                     })
                     .await
@@ -234,7 +240,6 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                 {
                     todo!()
                 };
-
             }
             ApproverEvent::SafeState {
                 subject_id,
@@ -242,9 +247,8 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                 state,
                 ..
             } => {
-
                 let request_text = format!("{:?}", request);
-                
+
                 if let Err(e) = self
                     .conn
                     .call(move |conn| {

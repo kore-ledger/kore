@@ -82,7 +82,9 @@ impl Approval {
             ctx.system().get_actor(&subject_path).await;
 
         let response = if let Some(subject_actor) = subject_actor {
-            if let Ok(response) = subject_actor.ask(SubjectMessage::GetMetadata).await {
+            if let Ok(response) =
+                subject_actor.ask(SubjectMessage::GetMetadata).await
+            {
                 response
             } else {
                 todo!()
@@ -93,7 +95,7 @@ impl Approval {
 
         let prev_hash = match response {
             SubjectResponse::Metadata(metadata) => metadata.last_event_hash,
-            _ => todo!()
+            _ => todo!(),
         };
 
         let patch = if let LedgerValue::Patch(value) = eval_res.value {
@@ -201,7 +203,11 @@ impl Approval {
             let child = ctx
                 .create_child(
                     &format!("{}", signer),
-                    Approver::new(request_id.to_owned(), signer.clone(), approval_req.content.subject_id.to_string()),
+                    Approver::new(
+                        request_id.to_owned(),
+                        signer.clone(),
+                        approval_req.content.subject_id.to_string(),
+                    ),
                 )
                 .await;
             let approver_actor = match child {
@@ -283,7 +289,7 @@ pub enum ApprovalEvent {
         // approvers quantity
         approvers_quantity: u32,
     },
-    Response(ProtocolsSignatures)
+    Response(ProtocolsSignatures),
 }
 
 impl Event for ApprovalEvent {}
@@ -357,8 +363,9 @@ impl Handler<Approval> for Approval {
                         .await
                     {
                         Ok(approval_req) => approval_req,
-                        Err(e) => { 
-                            todo!()},
+                        Err(e) => {
+                            todo!()
+                        }
                     };
                     // Get signers and quorum
                     let (signers, quorum) = match self
@@ -427,7 +434,11 @@ impl Handler<Approval> for Approval {
                         ApprovalRes::Response(sinature, response) => {
                             if response {
                                 self.on_event(
-                                    ApprovalEvent::Response(ProtocolsSignatures::Signature(sinature)),
+                                    ApprovalEvent::Response(
+                                        ProtocolsSignatures::Signature(
+                                            sinature,
+                                        ),
+                                    ),
                                     ctx,
                                 )
                                 .await;
@@ -435,7 +446,11 @@ impl Handler<Approval> for Approval {
                         }
                         ApprovalRes::TimeOut(approval_time_out) => {
                             self.on_event(
-                                ApprovalEvent::Response(ProtocolsSignatures::TimeOut(approval_time_out)),
+                                ApprovalEvent::Response(
+                                    ProtocolsSignatures::TimeOut(
+                                        approval_time_out,
+                                    ),
+                                ),
                                 ctx,
                             )
                             .await;

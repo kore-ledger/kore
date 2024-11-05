@@ -5,19 +5,29 @@
 //!
 
 use crate::{
-    approval::{approver::Approver, Approval}, db::Storable, distribution::{distributor::Distributor, Distribution}, evaluation::{
+    approval::{approver::Approver, Approval},
+    db::Storable,
+    distribution::{distributor::Distributor, Distribution},
+    evaluation::{
         compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
         schema::EvaluationSchema,
         Evaluation,
-    }, governance::model::Roles, helpers::db::LocalDB, model::{
+    },
+    governance::model::Roles,
+    helpers::db::LocalDB,
+    model::{
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
-    }, node::{
+    },
+    node::{
         NodeKey, NodeKeyMessage, NodeKeyResponse, NodeMessage, NodeResponse,
-    }, validation::{schema::ValidationSchema, validator::Validator, Validation}, CreateRequest, Error, EventRequestType, Governance, Node, TransferRequest, DIGEST_DERIVATOR
+    },
+    validation::{schema::ValidationSchema, validator::Validator, Validation},
+    CreateRequest, Error, EventRequestType, Governance, Node, TransferRequest,
+    DIGEST_DERIVATOR,
 };
 
 use actor::{
@@ -339,8 +349,9 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
     ) -> Result<(), ActorError> {
-
-        let Some(local_db): Option<LocalDB> = ctx.system().get_helper("local_db").await else {
+        let Some(local_db): Option<LocalDB> =
+            ctx.system().get_helper("local_db").await
+        else {
             todo!()
         };
 
@@ -361,10 +372,15 @@ impl Subject {
             let approval = Approval::new(our_key.clone());
             ctx.create_child("approval", approval).await?;
 
-            let approver = Approver::new("".to_owned(), our_key.clone(), self.subject_id.to_string());
+            let approver = Approver::new(
+                "".to_owned(),
+                our_key.clone(),
+                self.subject_id.to_string(),
+            );
             let approver_actor = ctx.create_child("approver", approver).await?;
 
-            let sink = Sink::new(approver_actor.subscribe(), local_db.get_approver());
+            let sink =
+                Sink::new(approver_actor.subscribe(), local_db.get_approver());
             ctx.system().run_sink(sink).await;
 
             let distribution = Distribution::new(our_key.clone());
@@ -399,10 +415,18 @@ impl Subject {
                 &gov,
             ) {
                 // If we are a approver
-                let approver = Approver::new("".to_owned(), our_key.clone(),self.subject_id.to_string());
-                let approver_actor = ctx.create_child("approver", approver).await?;
+                let approver = Approver::new(
+                    "".to_owned(),
+                    our_key.clone(),
+                    self.subject_id.to_string(),
+                );
+                let approver_actor =
+                    ctx.create_child("approver", approver).await?;
 
-                let sink = Sink::new(approver_actor.subscribe(), local_db.get_approver());
+                let sink = Sink::new(
+                    approver_actor.subscribe(),
+                    local_db.get_approver(),
+                );
                 ctx.system().run_sink(sink).await;
             }
         }
@@ -853,7 +877,6 @@ impl Subject {
         }
     }
 
-
     async fn verify_new_ledger_events(
         &mut self,
         ctx: &mut ActorContext<Subject>,
@@ -886,7 +909,7 @@ impl Subject {
                 } else {
                     todo!()
                 }
-            }  
+            }
 
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
@@ -1264,10 +1287,13 @@ mod tests {
     use super::*;
 
     use crate::{
-        governance::init::init_state, model::{
+        governance::init::init_state,
+        model::{
             event::Event as KoreEvent,
             request::tests::create_start_request_mock, signature::Signature,
-        }, system::tests::create_system, FactRequest
+        },
+        system::tests::create_system,
+        FactRequest,
     };
 
     async fn create_subject_and_ledger_event(

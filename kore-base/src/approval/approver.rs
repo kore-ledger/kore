@@ -39,9 +39,13 @@ pub enum ApprovalStateRes {
 impl ApprovalStateRes {
     pub fn to_string(&self) -> String {
         match self {
-            ApprovalStateRes::RespondedAccepted => "RespondedAccepted".to_owned(),
-            ApprovalStateRes::RespondedRejected => "RespondedRejected".to_owned(),
-            ApprovalStateRes::Obsolete => "Obsolete".to_owned()
+            ApprovalStateRes::RespondedAccepted => {
+                "RespondedAccepted".to_owned()
+            }
+            ApprovalStateRes::RespondedRejected => {
+                "RespondedRejected".to_owned()
+            }
+            ApprovalStateRes::Obsolete => "Obsolete".to_owned(),
         }
     }
 }
@@ -99,7 +103,11 @@ pub struct Approver {
 }
 
 impl Approver {
-    pub fn new(request_id: String, node: KeyIdentifier, subject_id: String) -> Self {
+    pub fn new(
+        request_id: String,
+        node: KeyIdentifier,
+        subject_id: String,
+    ) -> Self {
         Approver {
             node,
             request_id,
@@ -300,7 +308,6 @@ impl Actor for Approver {
     ) -> Result<(), ActorError> {
         let prefix = ctx.path().parent().key();
         self.init_store("approver", Some(prefix), false, ctx).await
-        
     }
     async fn pre_stop(
         &mut self,
@@ -737,7 +744,7 @@ impl Handler<Approver> for Approver {
 impl PersistentActor for Approver {
     fn apply(&mut self, event: &ApproverEvent) {
         match event {
-            ApproverEvent::ChangeState { state, ..} => {
+            ApproverEvent::ChangeState { state, .. } => {
                 self.state = Some(state.clone());
             }
             ApproverEvent::SafeState {

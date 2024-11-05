@@ -552,11 +552,19 @@ pub mod tests {
     };
 
     use crate::{
-        helpers::db::{LocalDB}, model::{event::LedgerValue, Namespace, SignTypesNode}, query::Query, request::{
+        helpers::db::LocalDB,
+        model::{event::LedgerValue, Namespace, SignTypesNode},
+        query::Query,
+        request::{
             RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
-        }, subject::event::{
+        },
+        subject::event::{
             LedgerEvent, LedgerEventMessage, LedgerEventResponse,
-        }, system::tests::create_system, CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse, TransferRequest, ValueWrapper
+        },
+        system::tests::create_system,
+        CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node,
+        NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
+        SubjectResponse, TransferRequest, ValueWrapper,
     };
 
     pub async fn create_subject_gov() -> (
@@ -577,13 +585,17 @@ pub mod tests {
         let request_actor =
             system.create_root_actor("request", request).await.unwrap();
 
-        let query_actor = system.create_root_actor("query", Query).await.unwrap();
-        
+        let query_actor =
+            system.create_root_actor("query", Query).await.unwrap();
+
         let local_db: LocalDB = system.get_helper("local_db").await.unwrap();
 
-        let sink = Sink::new(request_actor.subscribe(), local_db.get_request_handler());
+        let sink = Sink::new(
+            request_actor.subscribe(),
+            local_db.get_request_handler(),
+        );
         system.run_sink(sink).await;
-        
+
         let create_req = EventRequest::Create(CreateRequest {
             governance_id: DigestIdentifier::default(),
             schema_id: "governance".to_owned(),
@@ -843,7 +855,7 @@ pub mod tests {
         let new_owner = KeyPair::Ed25519(Ed25519KeyPair::new());
         let transfer_reques = EventRequest::Transfer(TransferRequest {
             subject_id: subject_id.clone(),
-            new_owner: new_owner.key_identifier().clone()
+            new_owner: new_owner.key_identifier().clone(),
         });
 
         let response = node_actor
@@ -924,8 +936,6 @@ pub mod tests {
         assert!(gov.schemas.is_empty());
         assert!(!gov.policies.is_empty());
 
-
-        
         let RequestHandlerResponse::Error(_response) = request_actor
             .ask(RequestHandlerMessage::NewRequest {
                 request: signed_event_req.clone(),
@@ -935,7 +945,5 @@ pub mod tests {
         else {
             panic!("Invalid response")
         };
-         
-        
     }
 }

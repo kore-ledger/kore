@@ -273,7 +273,6 @@ impl RequestManager {
             }
         };
 
-
         let event = KoreEvent {
             subject_id: val_info.event_proof.content.subject_id,
             event_request: self.request.clone(),
@@ -493,7 +492,7 @@ impl RequestManager {
                 if let EventRequest::Create(_) = self.request.content {
                     metadata.sn
                 } else {
-                    metadata.sn + 1   
+                    metadata.sn + 1
                 }
             } else {
                 metadata.sn + 1
@@ -552,7 +551,7 @@ impl Response for RequestManagerResponse {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestManagerEvent {
     pub id: String,
-    pub state: RequestManagerState
+    pub state: RequestManagerState,
 }
 
 impl Event for RequestManagerEvent {}
@@ -567,7 +566,6 @@ impl Actor for RequestManager {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        
         self.init_store("request_manager", None, false, ctx).await
     }
 
@@ -601,9 +599,7 @@ impl Handler<RequestManager> for RequestManager {
                                 ctx,
                                 None,
                                 LedgerValue::Patch(ValueWrapper(
-                                    serde_json::Value::String(
-                                        "[]".to_owned(),
-                                    ),
+                                    serde_json::Value::String("[]".to_owned()),
                                 )),
                                 None,
                                 ProtocolsResult::default(),
@@ -614,9 +610,7 @@ impl Handler<RequestManager> for RequestManager {
                             Err(_e) => todo!(),
                         };
 
-                        if let Err(_e) =
-                            self.validation(ctx, data).await
-                        {
+                        if let Err(_e) = self.validation(ctx, data).await {
                             todo!()
                         };
                     }
@@ -869,9 +863,7 @@ impl Handler<RequestManager> for RequestManager {
             // TODO Propagar error.
         };
 
-        if let Err(e) = ctx.publish_event(event).await {
-
-        };
+        if let Err(e) = ctx.publish_event(event).await {};
     }
 }
 

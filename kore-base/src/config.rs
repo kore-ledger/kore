@@ -16,7 +16,7 @@ pub struct Config {
     /// Database configuration.
     pub kore_db: DbConfig,
 
-    pub external_db: String
+    pub external_db: String,
 }
 
 impl Config {
@@ -28,7 +28,7 @@ impl Config {
             kore_db: DbConfig::Rocksdb {
                 path: kore_db_path.to_owned(),
             },
-            external_db: external_db_path.to_owned()
+            external_db: external_db_path.to_owned(),
         }
     }
 }

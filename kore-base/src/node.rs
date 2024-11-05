@@ -597,10 +597,9 @@ impl Storable for Node {}
 #[cfg(test)]
 pub mod tests {}
 
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeKey {
-    key: KeyIdentifier
+    key: KeyIdentifier,
 }
 
 impl NodeKey {
@@ -655,7 +654,7 @@ impl Handler<NodeKey> for NodeKey {
         match msg {
             NodeKeyMessage::GetKeyIdentifier => {
                 Ok(NodeKeyResponse::KeyIdentifier(self.key.clone()))
-            },
+            }
         }
     }
 }

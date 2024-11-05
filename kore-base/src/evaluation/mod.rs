@@ -490,7 +490,7 @@ mod tests {
     use serde_json::json;
 
     use crate::{
-        approval::approver::{ApprovalState, ApprovalStateRes},
+        approval::approver::ApprovalStateRes,
         model::{event::LedgerValue, Namespace, SignTypesNode},
         query::{QueryMessage, QueryResponse},
         request::{RequestHandlerMessage, RequestHandlerResponse},
@@ -601,8 +601,7 @@ mod tests {
         };
 
         assert_eq!(state, "RespondedAccepted");
-        
-        
+
         let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
             .ask(LedgerEventMessage::GetLastEvent)
             .await
