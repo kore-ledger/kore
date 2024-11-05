@@ -201,7 +201,7 @@ impl Approval {
             let child = ctx
                 .create_child(
                     &format!("{}", signer),
-                    Approver::new(request_id.to_owned(), signer.clone()),
+                    Approver::new(request_id.to_owned(), signer.clone(), approval_req.content.subject_id.to_string()),
                 )
                 .await;
             let approver_actor = match child {

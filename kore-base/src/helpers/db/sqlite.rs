@@ -5,6 +5,7 @@ use async_std::sync::Mutex;
 use async_trait::async_trait;
 use tokio_rusqlite::{params, Connection, OpenFlags, Result as SqliteError};
 
+use crate::approval::approver::{ApprovalState, ApprovalStateRes, ApproverEvent};
 use crate::error::Error;
 use crate::local_db::{DBManager, DBManagerMessage, DeleteTypes};
 use crate::model::event;
@@ -22,22 +23,27 @@ pub struct SqliteLocal {
 
 #[async_trait]
 impl Querys for SqliteLocal {
-    async fn get_request_id_status(&self, request_id: &str) -> Result<String, Error> {
-
+    async fn get_request_id_status(
+        &self,
+        request_id: &str,
+    ) -> Result<String, Error> {
         let request_id = request_id.to_owned();
         let state: String = match self
-        .conn
-        .call(move |conn| {
-            let sql = "SELECT state FROM request WHERE id = ?1";
+            .conn
+            .call(move |conn| {
+                let sql = "SELECT state FROM request WHERE id = ?1";
 
-            match conn.query_row(&sql, params![request_id], |row| row.get(0)) {
-                Ok(result) => Ok(result),
-                Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e))
-            }
-        })
-        .await {
+                match conn
+                    .query_row(&sql, params![request_id], |row| row.get(0))
+                {
+                    Ok(result) => Ok(result),
+                    Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
+                }
+            })
+            .await
+        {
             Ok(state) => state,
-            Err(e) => todo!()
+            Err(e) => todo!(),
         };
 
         Ok(state)
@@ -46,20 +52,54 @@ impl Querys for SqliteLocal {
     async fn del_request(&self, request_id: &str) -> Result<(), Error> {
         let request_id = request_id.to_owned();
 
-        if let Err(e) = self.conn.call(move |conn| {
-            let sql = "DELETE FROM request WHERE id = ?1";
-            let _ = conn.execute(sql, params![request_id])?;
-            Ok(())
-        }).await {
+        if let Err(e) = self
+            .conn
+            .call(move |conn| {
+                let sql = "DELETE FROM request WHERE id = ?1";
+                let _ = conn.execute(sql, params![request_id])?;
+                Ok(())
+            })
+            .await
+        {
             todo!()
         };
 
         Ok(())
     }
+
+    async fn get_approve_req(
+        &self,
+        request_id: &str,
+    ) -> Result<(String, String), Error> {
+        let request_id = request_id.to_owned();
+        let state = match self
+            .conn
+            .call(move |conn| {
+                let sql = "SELECT data, state FROM approval WHERE id = ?1";
+
+                match conn.query_row(&sql, params![request_id], |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                }) {
+                    Ok(result) => Ok(result),
+                    Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
+                }
+            })
+            .await
+        {
+            Ok(state) => state,
+            Err(e) => {println!("{}", e);
+        todo!()},
+        };
+
+        Ok(state)
+    }
 }
 
 impl SqliteLocal {
-    pub async fn new(path: &str, manager: ActorRef<DBManager>) -> Result<Self, Error> {
+    pub async fn new(
+        path: &str,
+        manager: ActorRef<DBManager>,
+    ) -> Result<Self, Error> {
         let flags = OpenFlags::default();
         let conn =
             Connection::open_with_flags(path, flags)
@@ -72,7 +112,10 @@ impl SqliteLocal {
                 })?;
 
         conn.call(|conn| {
-            let sql = "CREATE TABLE IF NOT EXISTS request (id TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY (id, state))";
+            let sql = "CREATE TABLE IF NOT EXISTS request (id TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY (id))";
+            let _ = conn.execute(sql, ())?;
+
+            let sql = "CREATE TABLE IF NOT EXISTS approval (id TEXT NOT NULL, data TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY (id, data))";
             let _ = conn.execute(sql, ())?;
             Ok(())
         }).await.map_err(|e| Error::Database(format!("Can not create request table: {}",e)))?;
@@ -160,8 +203,64 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
         };
 
         if state == "Finish" {
-            if let Err(e) = self.manager.tell(DBManagerMessage::Delete(DeleteTypes::Request { id })).await {
+            if let Err(e) = self
+                .manager
+                .tell(DBManagerMessage::Delete(DeleteTypes::Request { id }))
+                .await
+            {
                 todo!()
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl Subscriber<ApproverEvent> for SqliteLocal {
+    async fn notify(&self, event: ApproverEvent) {
+        match event {
+            ApproverEvent::ChangeState { subject_id, state } => {
+                let response = state.to_string();
+                
+                if let Err(e) = self
+                    .conn
+                    .call(move |conn| {
+                        let sql = "UPDATE approval SET state = ?1 WHERE id = ?2";
+                        let _ = conn.execute(sql, params![response, subject_id])?;
+        
+                        Ok(())
+                    })
+                    .await
+                    .map_err(|e| Error::Database(format!(": {}", e)))
+                {
+                    todo!()
+                };
+
+            }
+            ApproverEvent::SafeState {
+                subject_id,
+                request,
+                state,
+                ..
+            } => {
+
+                let request_text = format!("{:?}", request);
+                
+                if let Err(e) = self
+                    .conn
+                    .call(move |conn| {
+                        let _ =
+                            conn.execute("INSERT INTO approval (id, data, state) VALUES (?1, ?2, ?3)", params![subject_id, request_text, state.to_string()])?;
+
+                        Ok(())
+                    })
+                    .await
+                    .map_err(|e| {
+                        Error::Database(format!(": {}", e))
+                    })
+                {
+                    println!("{}", e);
+                    todo!()
+                };
             }
         }
     }

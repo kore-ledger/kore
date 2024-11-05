@@ -1,12 +1,12 @@
 // Copyright 2024 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message, Response};
+use actor::{Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler, Message, Response};
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 
-use crate::helpers::db::{LocalDB, Querys};
+use crate::{approval::approver::{ApprovalState, ApprovalStateRes, Approver, ApproverMessage}, helpers::db::{LocalDB, Querys}, request::state};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Query;
@@ -16,6 +16,14 @@ pub enum QueryMessage {
     GetRequestState {
         request_id: String
     },
+    ChangeApprovalState {
+        subject_id: String,
+        state: ApprovalStateRes
+    },
+    GetApproval {
+        request_id: String
+    }
+
 }
 
 impl Message for QueryMessage {}
@@ -23,6 +31,11 @@ impl Message for QueryMessage {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryResponse {
     RequestState(String),
+    ApprovalState {
+        request: String,
+        state: String
+    },
+    Response(String),
     Error(String)
 }
 
@@ -64,8 +77,35 @@ impl Handler<Query> for Query {
 
         match msg {
             QueryMessage::GetRequestState { request_id} => {
-                Ok(QueryResponse::RequestState(helper.get_request_id_status(&request_id).await))
+                match helper.get_request_id_status(&request_id).await {
+                    Ok(res) => Ok(QueryResponse::RequestState(res)),
+                    Err(e) => Ok(QueryResponse::Error(e.to_string()))
+                }
             },
+            QueryMessage::ChangeApprovalState { subject_id, state } => {
+                match state.to_string().as_str() {
+                  "RespondedAccepted" | "RespondedRejected" => {},
+                  _ => return Ok(QueryResponse::Error("Invalid Response".to_owned()))
+                };
+
+                let approver_actor: Option<ActorRef<Approver>> = ctx.system().get_actor(&ActorPath::from(format!("/user/node/{}/approver", subject_id))).await;
+
+                if let Some(approver_actor) = approver_actor {
+                    if let Err(e) = approver_actor.tell(ApproverMessage::ChangeResponse { response: state.clone() }).await {
+                        todo!()
+                    }
+                } else {
+                    todo!()
+                };
+
+                Ok(QueryResponse::Response(format!("The approval request for subject {} has changed to {}", subject_id, state.to_string())))
+            },
+            QueryMessage::GetApproval { request_id } => {
+                match helper.get_approve_req(&request_id).await {
+                    Ok((request, state)) => Ok(QueryResponse::ApprovalState { request, state }),
+                    Err(e) => Ok(QueryResponse::Error(e.to_string()))
+                }
+            }
         }
     }
 }

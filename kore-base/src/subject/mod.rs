@@ -10,7 +10,7 @@ use crate::{
         evaluator::Evaluator,
         schema::EvaluationSchema,
         Evaluation,
-    }, governance::model::Roles, model::{
+    }, governance::model::Roles, helpers::db::LocalDB, model::{
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
@@ -22,7 +22,7 @@ use crate::{
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Handler, Message, Response, Sink,
 };
 use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
 use identity::{
@@ -339,6 +339,11 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
     ) -> Result<(), ActorError> {
+
+        let Some(local_db): Option<LocalDB> = ctx.system().get_helper("local_db").await else {
+            todo!()
+        };
+
         // If subject is a governance
         let gov = Governance::try_from(self.properties.clone())
             .map_err(|e| ActorError::Create)?;
@@ -356,8 +361,11 @@ impl Subject {
             let approval = Approval::new(our_key.clone());
             ctx.create_child("approval", approval).await?;
 
-            let approver = Approver::new("".to_owned(), our_key.clone());
-            ctx.create_child("approver", approver).await?;
+            let approver = Approver::new("".to_owned(), our_key.clone(), self.subject_id.to_string());
+            let approver_actor = ctx.create_child("approver", approver).await?;
+
+            let sink = Sink::new(approver_actor.subscribe(), local_db.get_approver());
+            ctx.system().run_sink(sink).await;
 
             let distribution = Distribution::new(our_key.clone());
             ctx.create_child("distribution", distribution).await?;
@@ -391,8 +399,11 @@ impl Subject {
                 &gov,
             ) {
                 // If we are a approver
-                let approver = Approver::new("".to_owned(), our_key.clone());
-                ctx.create_child("approver", approver).await?;
+                let approver = Approver::new("".to_owned(), our_key.clone(),self.subject_id.to_string());
+                let approver_actor = ctx.create_child("approver", approver).await?;
+
+                let sink = Sink::new(approver_actor.subscribe(), local_db.get_approver());
+                ctx.system().run_sink(sink).await;
             }
         }
 

@@ -34,7 +34,7 @@ impl DBManager {
             tokio::time::sleep(time).await;
             match delete.clone() {
                 DeleteTypes::Request { id } => {
-                    helper.del_request(&id).await;
+                    let _ = helper.del_request(&id).await;
                 }
             };
 
