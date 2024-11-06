@@ -17,17 +17,18 @@ use crate::{
     governance::model::Roles,
     helpers::db::LocalDB,
     model::{
+        common::{delete_relation, get_gov, get_quantity, register_relation},
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
     },
     node::{
-        NodeKey, NodeKeyMessage, NodeKeyResponse, NodeMessage, NodeResponse,
+        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
+        NodeMessage,
     },
     validation::{schema::ValidationSchema, validator::Validator, Validation},
-    CreateRequest, Error, EventRequestType, Governance, Node, TransferRequest,
-    DIGEST_DERIVATOR,
+    CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
 };
 
 use actor::{
@@ -386,33 +387,33 @@ impl Subject {
             let distribution = Distribution::new(our_key.clone());
             ctx.create_child("distribution", distribution).await?;
         } else {
-            if self.build_executors(
+            if gov.has_this_role(
+                &our_key.to_string(),
                 Roles::VALIDATOR,
                 "governance",
-                our_key.clone(),
-                &gov,
+                self.namespace.clone(),
             ) {
                 // If we are a validator
                 let validator = Validator::default();
                 ctx.create_child("validator", validator).await?;
             }
 
-            if self.build_executors(
+            if gov.has_this_role(
+                &our_key.to_string(),
                 Roles::EVALUATOR,
                 "governance",
-                our_key.clone(),
-                &gov,
+                self.namespace.clone(),
             ) {
                 // If we are a evaluator
                 let evaluator = Evaluator::default();
                 ctx.create_child("evaluator", evaluator).await?;
             }
 
-            if self.build_executors(
+            if gov.has_this_role(
+                &our_key.to_string(),
                 Roles::APPROVER,
                 "governance",
-                our_key.clone(),
-                &gov,
+                self.namespace.clone(),
             ) {
                 // If we are a approver
                 let approver = Approver::new(
@@ -500,18 +501,6 @@ impl Subject {
             }
         }
         false
-    }
-
-    fn build_executors(
-        &self,
-        role: Roles,
-        schema: &str,
-        our_key: KeyIdentifier,
-        gov: &Governance,
-    ) -> bool {
-        gov.get_signers(role, schema, self.namespace.clone())
-            .0
-            .contains(&our_key)
     }
 
     async fn get_governance_from_other_subject(
@@ -768,17 +757,6 @@ impl Subject {
                         // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
                         // propierties deberían ser iguales.
                     }
-
-                    if let Err(_e) = Subject::change_node_subject(
-                        ctx,
-                        &transfer_request.subject_id.to_string(),
-                        &transfer_request.new_owner.to_string(),
-                        &self.owner.to_string(),
-                    )
-                    .await
-                    {
-                        todo!()
-                    }
                 }
                 EventRequest::Confirm(confirm_request) => {
                     let hash_without_patch = self
@@ -877,7 +855,7 @@ impl Subject {
         }
     }
 
-    async fn verify_new_ledger_events(
+    async fn verify_new_ledger_events_gov(
         &mut self,
         ctx: &mut ActorContext<Subject>,
         events: &[Signed<Ledger>],
@@ -888,6 +866,7 @@ impl Subject {
         let mut last_ledger = if let Some(last_ledger) = last_ledger {
             last_ledger
         } else {
+            // TODO Hay errores que obligan a borrar el sujeto, como el número máximo de sujetos o un error en la validación del evento de creación.
             if let Err(_e) =
                 self.verify_first_ledger_event(events[0].clone()).await
             {
@@ -911,6 +890,21 @@ impl Subject {
                 }
             }
 
+            if let EventRequest::Transfer(transfer_request) =
+                event.content.event_request.content.clone()
+            {
+                if let Err(_e) = Subject::change_node_subject(
+                    ctx,
+                    &transfer_request.subject_id.to_string(),
+                    &transfer_request.new_owner.to_string(),
+                    &self.owner.to_string(),
+                )
+                .await
+                {
+                    todo!()
+                }
+            };
+
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
 
@@ -919,6 +913,167 @@ impl Subject {
         }
 
         Ok(last_ledger.content.sn)
+    }
+
+    async fn register_relation(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        signer: String,
+        max_quantity: usize,
+    ) -> Result<(), Error> {
+        let quantity = match get_quantity(
+            ctx,
+            self.governance_id.to_string(),
+            self.schema_id.clone(),
+            signer.clone(),
+            self.namespace.to_string()
+        )
+        .await
+        {
+            Ok(quantity) => quantity,
+            Err(e) => todo!(),
+        };
+
+        if quantity < max_quantity {
+            if let Err(e) = register_relation(
+                ctx,
+                self.governance_id.to_string(),
+                self.schema_id.clone(),
+                signer,
+                self.subject_id.to_string(),
+                self.namespace.to_string()
+            )
+            .await
+            {
+                todo!()
+            }
+        } else {
+            todo!()
+        }
+
+        Ok(())
+    }
+
+    async fn verify_new_ledger_events_not_gov(
+        &mut self,
+        ctx: &mut ActorContext<Subject>,
+        events: &[Signed<Ledger>],
+    ) -> Result<u64, Error> {
+        let mut events = events.to_vec();
+        let last_ledger = self.get_last_ledger_state(ctx).await?;
+
+        let Ok(gov) = get_gov(ctx, &self.governance_id.to_string()).await
+        else {
+            todo!()
+        };
+
+        let Some(max_quantity) = gov.max_creations(
+            &events[0].signature.signer.to_string(),
+            &self.schema_id,
+            self.namespace.clone(),
+        ) else {
+            todo!()
+        };
+
+        let mut last_ledger = if let Some(last_ledger) = last_ledger {
+            last_ledger
+        } else {
+            // TODO Hay errores que obligan a borrar el sujeto, como el número máximo de sujetos o un error en la validación del evento de creación.
+            if let Err(e) = self
+                .register_relation(
+                    ctx,
+                    events[0].signature.signer.to_string(),
+                    max_quantity,
+                )
+                .await
+            {
+                todo!()
+            }
+
+            if let Err(_e) =
+                self.verify_first_ledger_event(events[0].clone()).await
+            {
+                todo!()
+            }
+
+            self.on_event(events[0].clone(), ctx).await;
+            events.remove(0)
+        };
+
+        for event in events {
+            if let Err(e) = self
+                .verify_new_ledger_event(ctx, &last_ledger, &event)
+                .await
+            {
+                if let Error::Sn(_) = e {
+                    // El evento que estamos aplicando no es el siguiente.
+                    continue;
+                } else {
+                    todo!()
+                }
+            }
+
+            if let EventRequest::Transfer(transfer_request) =
+                event.content.event_request.content.clone()
+            {
+                if let Err(e) = delete_relation(
+                    ctx,
+                    self.governance_id.to_string(),
+                    self.schema_id.clone(),
+                    event.signature.signer.to_string(),
+                    self.subject_id.to_string(),
+                    self.namespace.to_string()
+                )
+                .await
+                {
+                    todo!()
+                }
+
+                if let Err(_e) = Subject::change_node_subject(
+                    ctx,
+                    &transfer_request.subject_id.to_string(),
+                    &transfer_request.new_owner.to_string(),
+                    &self.owner.to_string(),
+                )
+                .await
+                {
+                    todo!()
+                }
+            } else if let EventRequest::Confirm(confirm_request) =
+                event.content.event_request.content.clone()
+            {
+                if let Err(e) = self
+                    .register_relation(
+                        ctx,
+                        event.signature.signer.to_string(),
+                        max_quantity,
+                    )
+                    .await
+                {
+                    todo!()
+                }
+            };
+
+            // Aplicar evento.
+            self.on_event(event.clone(), ctx).await;
+
+            // Acutalizar último evento.
+            last_ledger = event.clone();
+        }
+
+        Ok(last_ledger.content.sn)
+    }
+
+    async fn verify_new_ledger_events(
+        &mut self,
+        ctx: &mut ActorContext<Subject>,
+        events: &[Signed<Ledger>],
+    ) -> Result<u64, Error> {
+        if self.governance_id.is_empty() {
+            self.verify_new_ledger_events_gov(ctx, events).await
+        } else {
+            self.verify_new_ledger_events_not_gov(ctx, events).await
+        }
     }
 
     async fn get_ledger(

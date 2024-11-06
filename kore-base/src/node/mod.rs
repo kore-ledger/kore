@@ -7,6 +7,8 @@
 use std::path::Path;
 
 use async_std::fs;
+use nodekey::NodeKey;
+use relationship::RelationShip;
 
 use crate::{
     db::Storable,
@@ -24,7 +26,7 @@ use identity::{
     identifier::{
         derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
     },
-    keys::{KeyGenerator, KeyPair},
+    keys::KeyPair,
 };
 
 use actor::{
@@ -35,6 +37,9 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{debug, error};
+
+pub mod nodekey;
+pub mod relationship;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct CompiledContract(Vec<u8>);
@@ -305,6 +310,8 @@ impl Actor for Node {
             node: self.owner.key_identifier(),
         };
         ctx.create_child("distributor", distributor).await?;
+
+        ctx.create_child("relation_ship", RelationShip::default()).await?;
 
         Ok(())
     }
@@ -596,65 +603,3 @@ impl Storable for Node {}
 
 #[cfg(test)]
 pub mod tests {}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NodeKey {
-    key: KeyIdentifier,
-}
-
-impl NodeKey {
-    fn new(key: KeyIdentifier) -> Self {
-        Self { key }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum NodeKeyMessage {
-    GetKeyIdentifier,
-}
-
-impl Message for NodeKeyMessage {}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum NodeKeyResponse {
-    KeyIdentifier(KeyIdentifier),
-}
-
-impl Response for NodeKeyResponse {}
-
-#[async_trait]
-impl Actor for NodeKey {
-    type Message = NodeKeyMessage;
-    type Event = ();
-    type Response = NodeKeyResponse;
-
-    async fn pre_start(
-        &mut self,
-        _ctx: &mut actor::ActorContext<Self>,
-    ) -> Result<(), ActorError> {
-        Ok(())
-    }
-
-    async fn pre_stop(
-        &mut self,
-        _ctx: &mut ActorContext<Self>,
-    ) -> Result<(), ActorError> {
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl Handler<NodeKey> for NodeKey {
-    async fn handle_message(
-        &mut self,
-        _sender: ActorPath,
-        msg: NodeKeyMessage,
-        ctx: &mut actor::ActorContext<NodeKey>,
-    ) -> Result<NodeKeyResponse, ActorError> {
-        match msg {
-            NodeKeyMessage::GetKeyIdentifier => {
-                Ok(NodeKeyResponse::KeyIdentifier(self.key.clone()))
-            }
-        }
-    }
-}

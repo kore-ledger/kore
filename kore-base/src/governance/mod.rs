@@ -92,6 +92,128 @@ impl Governance {
         member.map(|member| member.id.clone())
     }
 
+    pub fn has_this_role(
+        &self,
+        user: &str,
+        role: Roles,
+        schema: &str,
+        namespace: Namespace,
+    ) -> bool {
+        for rol in &self.roles {
+            if role == rol.role {
+                let namespace_role = Namespace::from(rol.namespace.to_string());
+                if !namespace_role.is_ancestor_of(&namespace)
+                    && namespace_role != namespace
+                    && !namespace_role.is_empty()
+                {
+                    continue;
+                }
+
+                match rol.schema.clone() {
+                    // Check rol for schema
+                    model::SchemaEnum::ALL => {
+                        // We do nothing, the role applies to all schemes.
+                    }
+                    model::SchemaEnum::ID { ID } => {
+                        if schema != ID {
+                            continue;
+                        }
+                    }
+                    model::SchemaEnum::NOT_GOVERNANCE => {
+                        if schema == "governance" {
+                            continue;
+                        }
+                    }
+                }
+
+                match rol.who.clone() {
+                    Who::MEMBERS => {
+                        return true;
+                    }
+                    Who::ID { ID } => {
+                        if user.to_string() == ID {
+                            return true;
+                        }
+                    }
+
+                    Who::NAME { NAME } => {
+                        let id_string = self.id_by_name(&NAME);
+                        if let Some(id) = id_string {
+                            if user == id {
+                                return true;
+                            }
+                        }
+                    }
+                    Who::NOT_MEMBERS => {
+                        // TODO Imposible llegar aquí not members es solo para issuers.
+                        todo!()
+                    }
+                }
+
+            }
+        }
+        false
+    }
+
+    pub fn max_creations(
+        &self,
+        user: &str,
+        schema: &str,
+        namespace: Namespace,
+    ) -> Option<usize> {
+        for rol in &self.roles {
+            if let Roles::CREATOR { quantity } = rol.role {
+                let namespace_role = Namespace::from(rol.namespace.to_string());
+                if namespace_role != namespace {
+                    continue;
+                }
+
+                match rol.schema.clone() {
+                    // Check rol for schema
+                    model::SchemaEnum::ALL => {
+                        // We do nothing, the role applies to all schemes.
+                    }
+                    model::SchemaEnum::ID { ID } => {
+                        if schema != ID {
+                            continue;
+                        }
+                    }
+                    model::SchemaEnum::NOT_GOVERNANCE => {
+                        if schema == "governance" {
+                            continue;
+                        }
+                    }
+                }
+
+                match rol.who.clone() {
+                    Who::MEMBERS => {
+                        return Some(quantity as usize);
+                    }
+                    Who::ID { ID } => {
+                        if user.to_string() == ID {
+                            return Some(quantity as usize);
+                        }
+                    }
+
+                    Who::NAME { NAME } => {
+                        let id_string = self.id_by_name(&NAME);
+                        if let Some(id) = id_string {
+                            if user == id {
+                                return Some(quantity as usize);
+                            }
+                        }
+                    }
+                    Who::NOT_MEMBERS => {
+                        // TODO Imposible llegar aquí not members es solo para issuers.
+                        todo!()
+                    }
+                }
+
+            }
+        }
+        None
+    }
+
     /// Gets the signers for the request stage.
     pub fn get_signers(
         &self,

@@ -16,7 +16,6 @@ use crate::{
     model::{
         common::get_sign,
         event::{ProofEvent, ProtocolsSignatures},
-        network::TimeOutResponse,
         signature::Signed,
         Namespace, SignTypesNode, SignTypesSubject,
     },
@@ -542,7 +541,6 @@ impl Storable for Validation {}
 pub mod tests {
     use core::panic;
     use identity::identifier::derive::digest::DigestDerivator;
-    use serde_json::to_value;
     use std::time::Duration;
 
     use actor::{ActorPath, ActorRef, Sink};
