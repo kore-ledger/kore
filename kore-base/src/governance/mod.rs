@@ -429,7 +429,7 @@ impl Governance {
             }
 
             match rol.role {
-                Roles::APPROVER | Roles::EVALUATOR | Roles::VALIDATOR => {
+                Roles::EVALUATOR | Roles::VALIDATOR => {
                     if is_me || is_all {
                         if schema == "NOT_GOVERNANCE" {
                             for schema in all_schemas.clone() {

@@ -14,7 +14,7 @@ use crate::{
     },
     subject::{SubjectMessage, SubjectResponse},
     Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
-    DIGEST_DERIVATOR, SCHEMAS,
+    DIGEST_DERIVATOR,
 };
 
 use crate::helpers::network::ActorMessage;
@@ -122,7 +122,6 @@ impl Evaluator {
             let response = compiler_actor
                 .ask(CompilerMessage::CompileCheck {
                     contract: schema.contract.raw.clone(),
-                    schema: ValueWrapper(schema.schema.clone()),
                     initial_value: schema.initial_value.clone(),
                     contract_path: format!("{}_{}", governance_id, id),
                 })
@@ -294,15 +293,6 @@ impl Evaluator {
                 )
             };
 
-            let schemas = SCHEMAS.read().await;
-            let json_schema = if let Some(json_schema) = schemas.get(&schema) {
-                json_schema
-            } else {
-                todo!()
-            };
-
-            // TODO CAMBIAR POR EL FAST, este y todos.
-            if json_schema.validate(&evaluation.final_state.0) {
                 let state_hash = match evaluation.final_state.hash_id(derivator)
                 {
                     Ok(state_hash) => state_hash,
@@ -323,7 +313,6 @@ impl Evaluator {
                     eval_success: evaluation.success,
                     appr_required: evaluation.approval_required,
                 });
-            }
         }
         // Retornar error.
         todo!()

@@ -19,15 +19,13 @@ mod subject;
 pub(crate) mod system;
 mod validation;
 
-use actor::{ActorRef, ActorSystem, SystemRef};
+use actor::ActorRef;
 use async_std::sync::RwLock;
 use config::{Config as KoreBaseConfig, DbConfig};
-use db::Database;
 use error::Error;
 use governance::json_schema::JsonSchema;
 use governance::schema;
 use governance::{init::init_state, Governance};
-use helpers::encrypted_pass::EncryptedPass;
 use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use identity::keys::KeyPair;
@@ -37,6 +35,7 @@ use model::signature::*;
 use model::HashId;
 use model::ValueWrapper;
 use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
+use once_cell::sync::OnceCell;
 use request::{RequestHandler, RequestHandlerResponse};
 use subject::{Subject, SubjectMessage, SubjectResponse};
 use system::system;
@@ -53,21 +52,14 @@ lazy_static! {
     /// The key derivator for the system.
     pub static ref KEY_DERIVATOR: Mutex<KeyDerivator> = Mutex::new(KeyDerivator::Ed25519);
 
-    pub static ref SCHEMAS: RwLock<HashMap<String, JsonSchema>> = {
-        let mut schemas = HashMap::new();
-        if let Ok(json_schema) = JsonSchema::compile(&schema()) {
-            schemas.insert("governance".to_owned(), json_schema);
-        };
-
-        RwLock::new(schemas)
-    };
-
     pub static ref CONTRACTS: RwLock<HashMap<String, Vec<u8>>> = {
         let contracts = HashMap::new();
 
         RwLock::new(contracts)
     };
 }
+
+static GOVERNANCE: OnceCell<RwLock<JsonSchema>> = OnceCell::new();
 
 pub struct Api {
     keys: KeyPair,
@@ -82,6 +74,13 @@ impl Api {
         config: KoreBaseConfig,
         password: &str,
     ) -> Result<Self, Error> {
+        
+        let schema = JsonSchema::compile(&schema())?;
+
+        if let Err(_e) = GOVERNANCE.set(RwLock::new(schema)) {
+            return Err(Error::JSONSChema("An error occurred with the governance schema, it could not be initialized globally".to_owned()));
+        };
+
         let system = match system(config, password).await {
             Ok(sys) => sys,
             Err(e) => todo!(),

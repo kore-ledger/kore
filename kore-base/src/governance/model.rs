@@ -288,12 +288,17 @@ impl<'de> Deserialize<'de> for SchemaEnum {
 }
 
 /// Governance schema.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug )]
 pub struct Schema {
     pub id: String,
-    pub schema: serde_json::Value,
     pub initial_value: serde_json::Value,
     pub contract: Contract,
+}
+
+impl PartialEq for Schema {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 /// Governance role.

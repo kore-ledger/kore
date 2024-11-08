@@ -18,7 +18,15 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Query;
+pub struct Query {
+    key: KeyIdentifier,
+}
+
+impl Query {
+   pub fn new(key: KeyIdentifier,) -> Self {
+     Self { key }
+   }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryMessage {

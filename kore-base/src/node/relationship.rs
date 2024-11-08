@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 
-use crate::db::Storable;
+use crate::{db::Storable, error::Error};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct OwnerSchema {
@@ -33,7 +33,7 @@ impl RelationShip {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RelationShipMessage {
     GetSubjectsCount(OwnerSchema),
-    RegisterNewSubject { data: OwnerSchema, subject: String },
+    RegisterNewSubject { data: OwnerSchema, subject: String, max_quantity: usize },
     DeleteSubject { data: OwnerSchema, subject: String }
 }
 
@@ -43,6 +43,7 @@ impl Message for RelationShipMessage {}
 pub enum RelationShipResponse {
     Count(usize),
     None,
+    Error(Error)
 }
 
 impl Response for RelationShipResponse {}
@@ -92,13 +93,23 @@ impl Handler<RelationShip> for RelationShip {
                     Ok(RelationShipResponse::Count(0))
                 }
             }
-            RelationShipMessage::RegisterNewSubject { data, subject } => {
-                self.on_event(
-                    RelationShipEvent::NewRegister { data, subject },
-                    ctx,
-                )
-                .await;
-                Ok(RelationShipResponse::None)
+            RelationShipMessage::RegisterNewSubject { data, subject, max_quantity } => {
+                let quantity = if let Some(vec) = self.owner_subjects.get(&data) {
+                    vec.len()
+                } else {
+                    0
+                };
+
+                if quantity < max_quantity {
+                    self.on_event(
+                        RelationShipEvent::NewRegister { data, subject },
+                        ctx,
+                    )
+                    .await;
+                    Ok(RelationShipResponse::None)
+                } else {
+                    Ok(RelationShipResponse::Error(Error::RelationShip("Maximum number of subjects reached".to_owned())))
+                }
             },
             RelationShipMessage::DeleteSubject { data, subject } => {
                 self.on_event(

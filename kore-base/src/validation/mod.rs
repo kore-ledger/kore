@@ -584,7 +584,7 @@ pub mod tests {
             system.create_root_actor("request", request).await.unwrap();
 
         let query_actor =
-            system.create_root_actor("query", Query).await.unwrap();
+            system.create_root_actor("query", Query::new(node_keys.key_identifier())).await.unwrap();
 
         let local_db: LocalDB = system.get_helper("local_db").await.unwrap();
 

@@ -225,6 +225,7 @@ pub async fn register_relation<A>(
     owner: String,
     subject: String,
     namespace: String,
+    max_quantity: usize
 ) -> Result<(), Error>
 where
     A: Actor + Handler<A>,
@@ -239,7 +240,8 @@ where
             gov,
             schema,
             namespace
-        }, subject }).await else {
+        }, subject,
+            max_quantity }).await else {
             todo!()
         };
         result
@@ -247,11 +249,11 @@ where
         todo!()
     };
 
-    if let RelationShipResponse::None= response {
-        return Ok(())
-    } else {
-        todo!()
-    };
+    match response {
+        RelationShipResponse::None => Ok(()),
+        RelationShipResponse::Error(e) => Err(e),
+        _ => todo!()
+    }
 }
 
 pub async fn delete_relation<A>(

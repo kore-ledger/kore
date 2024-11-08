@@ -5,11 +5,10 @@ use actor::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
+use tracing::event;
 
 use crate::{
-    approval::approver::{Approver, ApproverMessage},
-    db::Storable,
-    Error, Event as KoreEvent, Signed,
+    approval::approver::{Approver, ApproverMessage}, db::Storable, Error, Event as KoreEvent, EventRequest, Signed
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -72,7 +71,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
     ) -> Result<LedgerEventResponse, ActorError> {
         match msg {
             LedgerEventMessage::UpdateLastEvent { event } => {
-                self.on_event(event, ctx).await;
+                self.on_event(event.clone(), ctx).await;
 
                 let approver_path = ActorPath::from(format!(
                     "{}/approver",
@@ -81,15 +80,24 @@ impl Handler<LedgerEvent> for LedgerEvent {
                 let approver_actor: Option<ActorRef<Approver>> =
                     ctx.system().get_actor(&approver_path).await;
 
-                if let Some(approver_actor) = approver_actor {
-                    if let Err(_e) =
-                        approver_actor.tell(ApproverMessage::MakeObsolete).await
-                    {
+                if let EventRequest::EOL(_) = event.content.event_request.content {
+                        // LLEga un evento de EOL, todo funciona bien, el sujeto va a bajar al approver,
+                        // Por lo tanto este no se va a poder marcar como obsoleta el último mensaje.
+                        // A no ser que como exección el approver lo baje este actor
+                        // TODO.
+                } else {
+                    if let Some(approver_actor) = approver_actor {
+                        if let Err(_e) =
+                            approver_actor.tell(ApproverMessage::MakeObsolete).await
+                        {
+                            todo!()
+                        }
+                    } else {
+                        // LLEga un evento de EOL, todo funciona bien, el sujeto va a bajar al approver,
+                        // Por lo tanto este m
                         todo!()
                     }
-                } else {
-                    todo!()
-                }
+                };
 
                 Ok(LedgerEventResponse::Ok)
             }
