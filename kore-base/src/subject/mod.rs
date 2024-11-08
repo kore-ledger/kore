@@ -11,23 +11,28 @@ use crate::{
     evaluation::{
         compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
-        schema::EvaluationSchema,
+        schema::{EvaluationSchema, EvaluationSchemaMessage},
         Evaluation,
     },
-    governance::model::Roles,
+    governance::{model::Roles, Schema},
     helpers::db::LocalDB,
     model::{
+        common::{delete_relation, get_gov, get_quantity, register_relation},
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
     },
     node::{
-        NodeKey, NodeKeyMessage, NodeKeyResponse, NodeMessage, NodeResponse,
+        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
+        NodeMessage,
     },
-    validation::{schema::ValidationSchema, validator::Validator, Validation},
-    CreateRequest, Error, EventRequestType, Governance, Node, TransferRequest,
-    DIGEST_DERIVATOR,
+    validation::{
+        schema::{ValidationSchema, ValidationSchemaMessage},
+        validator::Validator,
+        Validation,
+    },
+    CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
 };
 
 use actor::{
@@ -335,12 +340,49 @@ impl Subject {
         let owner = our_key == self.owner;
 
         if owner {
-            let validation = Validation::new(our_key.clone());
-            ctx.create_child("validation", validation).await?;
-
-            let evaluation = Evaluation::new(our_key);
-            ctx.create_child("evaluation", evaluation).await?;
+            Self::up_owner_not_gov(ctx, our_key)
+                .await
+                .map_err(|e| ActorError::Custom(e.to_string()))?;
         }
+        Ok(())
+    }
+
+    async fn up_owner_not_gov(
+        ctx: &mut ActorContext<Subject>,
+        our_key: KeyIdentifier,
+    ) -> Result<(), Error> {
+        let validation = Validation::new(our_key.clone());
+        ctx.create_child("validation", validation)
+            .await
+            .map_err(|e| Error::Actor(e.to_string()))?;
+
+        let evaluation = Evaluation::new(our_key);
+        ctx.create_child("evaluation", evaluation)
+            .await
+            .map_err(|e| Error::Actor(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn down_owner_not_gov(
+        ctx: &mut ActorContext<Subject>,
+    ) -> Result<(), Error> {
+        let actor: Option<ActorRef<Validation>> =
+            ctx.get_child("validation").await;
+        if let Some(actor) = actor {
+            actor.stop().await;
+        } else {
+            todo!()
+        }
+
+        let actor: Option<ActorRef<Evaluation>> =
+            ctx.get_child("evaluation").await;
+        if let Some(actor) = actor {
+            actor.stop().await;
+        } else {
+            todo!()
+        }
+
         Ok(())
     }
 
@@ -363,92 +405,31 @@ impl Subject {
 
         // If we are owner of subject
         if owner {
-            let validation = Validation::new(our_key.clone());
-            ctx.create_child("validation", validation).await?;
-
-            let evaluation = Evaluation::new(our_key.clone());
-            ctx.create_child("evaluation", evaluation).await?;
-
-            let approval = Approval::new(our_key.clone());
-            ctx.create_child("approval", approval).await?;
-
-            let approver = Approver::new(
-                "".to_owned(),
+            Self::up_owner(
+                ctx,
                 our_key.clone(),
-                self.subject_id.to_string(),
-            );
-            let approver_actor = ctx.create_child("approver", approver).await?;
-
-            let sink =
-                Sink::new(approver_actor.subscribe(), local_db.get_approver());
-            ctx.system().run_sink(sink).await;
-
-            let distribution = Distribution::new(our_key.clone());
-            ctx.create_child("distribution", distribution).await?;
+                self.subject_id.clone(),
+                local_db,
+            )
+            .await
+            .map_err(|e| ActorError::Custom(e.to_string()))?;
         } else {
-            if self.build_executors(
-                Roles::VALIDATOR,
-                "governance",
+            Self::up_not_owner(
+                ctx,
+                gov.clone(),
                 our_key.clone(),
-                &gov,
-            ) {
-                // If we are a validator
-                let validator = Validator::default();
-                ctx.create_child("validator", validator).await?;
-            }
-
-            if self.build_executors(
-                Roles::EVALUATOR,
-                "governance",
-                our_key.clone(),
-                &gov,
-            ) {
-                // If we are a evaluator
-                let evaluator = Evaluator::default();
-                ctx.create_child("evaluator", evaluator).await?;
-            }
-
-            if self.build_executors(
-                Roles::APPROVER,
-                "governance",
-                our_key.clone(),
-                &gov,
-            ) {
-                // If we are a approver
-                let approver = Approver::new(
-                    "".to_owned(),
-                    our_key.clone(),
-                    self.subject_id.to_string(),
-                );
-                let approver_actor =
-                    ctx.create_child("approver", approver).await?;
-
-                let sink = Sink::new(
-                    approver_actor.subscribe(),
-                    local_db.get_approver(),
-                );
-                ctx.system().run_sink(sink).await;
-            }
+                self.namespace.clone(),
+                local_db,
+                self.subject_id.clone(),
+            )
+            .await
+            .map_err(|e| ActorError::Custom(e.to_string()))?;
         }
 
         let schemas = gov.schemas(Roles::EVALUATOR, &our_key.to_string());
-        for schema in schemas {
-            let actor = Compiler::default();
-            let actor = ctx
-                .create_child(&format!("{}_compiler", schema.id), actor)
-                .await?;
-            if let Err(_e) = actor
-                .tell(CompilerMessage::Compile {
-                    contract: schema.contract.raw.clone(),
-                    schema: ValueWrapper(schema.schema.clone()),
-                    initial_value: schema.initial_value.clone(),
-                    contract_path: format!("{}_{}", self.subject_id, schema.id),
-                })
-                .await
-            {
-                todo!()
-            };
-        }
+        Self::up_schemas(ctx, schemas, self.subject_id.clone())
+            .await
+            .map_err(|e| ActorError::Custom(e.to_string()))?;
 
         let (our_roles, creators) =
             gov.subjects_schemas_rol_namespace(&our_key.to_string());
@@ -464,7 +445,6 @@ impl Subject {
                 }
             }
             match rol {
-                crate::governance::model::Roles::APPROVER => {}
                 crate::governance::model::Roles::EVALUATOR => {
                     let eval_actor = EvaluationSchema::new(valid_users);
                     ctx.create_child(
@@ -479,6 +459,274 @@ impl Subject {
                         .await?;
                 }
                 _ => {}
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn up_not_owner(
+        ctx: &mut ActorContext<Subject>,
+        gov: Governance,
+        our_key: KeyIdentifier,
+        namespace: Namespace,
+        local_db: LocalDB,
+        subject_id: DigestIdentifier,
+    ) -> Result<(), Error> {
+        if gov.has_this_role(
+            &our_key.to_string(),
+            Roles::VALIDATOR,
+            "governance",
+            namespace.clone(),
+        ) {
+            // If we are a validator
+            let validator = Validator::default();
+            ctx.create_child("validator", validator)
+                .await
+                .map_err(|e| Error::Actor(format!("{}", e)))?;
+        }
+
+        if gov.has_this_role(
+            &our_key.to_string(),
+            Roles::EVALUATOR,
+            "governance",
+            namespace.clone(),
+        ) {
+            // If we are a evaluator
+            let evaluator = Evaluator::default();
+            ctx.create_child("evaluator", evaluator)
+                .await
+                .map_err(|e| Error::Actor(format!("{}", e)))?;
+        }
+
+        if gov.has_this_role(
+            &our_key.to_string(),
+            Roles::APPROVER,
+            "governance",
+            namespace.clone(),
+        ) {
+            // If we are a approver
+            let approver = Approver::new(
+                "".to_owned(),
+                our_key.clone(),
+                subject_id.to_string(),
+            );
+            let approver_actor = ctx
+                .create_child("approver", approver)
+                .await
+                .map_err(|e| Error::Actor(format!("{}", e)))?;
+
+            let sink =
+                Sink::new(approver_actor.subscribe(), local_db.get_approver());
+            ctx.system().run_sink(sink).await;
+        }
+
+        Ok(())
+    }
+
+    async fn down_not_owner(
+        ctx: &mut ActorContext<Subject>,
+        gov: Governance,
+        our_key: KeyIdentifier,
+        namespace: Namespace,
+    ) -> Result<(), Error> {
+        if gov.has_this_role(
+            &our_key.to_string(),
+            Roles::VALIDATOR,
+            "governance",
+            namespace.clone(),
+        ) {
+            let actor: Option<ActorRef<Validator>> =
+                ctx.get_child("validator").await;
+            if let Some(actor) = actor {
+                actor.stop().await;
+            } else {
+                todo!()
+            }
+        }
+
+        if gov.has_this_role(
+            &our_key.to_string(),
+            Roles::EVALUATOR,
+            "governance",
+            namespace.clone(),
+        ) {
+            let actor: Option<ActorRef<Evaluator>> =
+                ctx.get_child("evaluator").await;
+            if let Some(actor) = actor {
+                actor.stop().await;
+            } else {
+                todo!()
+            }
+        }
+
+        if gov.has_this_role(
+            &our_key.to_string(),
+            Roles::APPROVER,
+            "governance",
+            namespace.clone(),
+        ) {
+            let actor: Option<ActorRef<Approver>> =
+                ctx.get_child("approver").await;
+            if let Some(actor) = actor {
+                actor.stop().await;
+            } else {
+                todo!()
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn up_owner(
+        ctx: &mut ActorContext<Subject>,
+        our_key: KeyIdentifier,
+        subject_id: DigestIdentifier,
+        local_db: LocalDB,
+    ) -> Result<(), Error> {
+        let validation = Validation::new(our_key.clone());
+        ctx.create_child("validation", validation)
+            .await
+            .map_err(|e| Error::Actor(format!("{}", e)))?;
+
+        let evaluation = Evaluation::new(our_key.clone());
+        ctx.create_child("evaluation", evaluation)
+            .await
+            .map_err(|e| Error::Actor(format!("{}", e)))?;
+
+        let approval = Approval::new(our_key.clone());
+        ctx.create_child("approval", approval)
+            .await
+            .map_err(|e| Error::Actor(format!("{}", e)))?;
+
+        let approver = Approver::new(
+            "".to_owned(),
+            our_key.clone(),
+            subject_id.to_string(),
+        );
+        let approver_actor = ctx
+            .create_child("approver", approver)
+            .await
+            .map_err(|e| Error::Actor(format!("{}", e)))?;
+
+        let sink =
+            Sink::new(approver_actor.subscribe(), local_db.get_approver());
+        ctx.system().run_sink(sink).await;
+
+        let distribution = Distribution::new(our_key.clone());
+        ctx.create_child("distribution", distribution)
+            .await
+            .map_err(|e| Error::Actor(format!("{}", e)))?;
+
+        Ok(())
+    }
+
+    async fn down_owner(ctx: &mut ActorContext<Subject>) -> Result<(), Error> {
+        let actor: Option<ActorRef<Validation>> =
+            ctx.get_child("validation").await;
+        if let Some(actor) = actor {
+            actor.stop().await;
+        } else {
+            todo!()
+        }
+
+        let actor: Option<ActorRef<Evaluation>> =
+            ctx.get_child("evaluation").await;
+        if let Some(actor) = actor {
+            actor.stop().await;
+        } else {
+            todo!()
+        }
+
+        let actor: Option<ActorRef<Approval>> = ctx.get_child("approval").await;
+        if let Some(actor) = actor {
+            actor.stop().await;
+        } else {
+            todo!()
+        }
+
+        let actor: Option<ActorRef<Approver>> = ctx.get_child("approver").await;
+        if let Some(actor) = actor {
+            actor.stop().await;
+        } else {
+            todo!()
+        }
+
+        let actor: Option<ActorRef<Distribution>> =
+            ctx.get_child("distribution").await;
+        if let Some(actor) = actor {
+            actor.stop().await;
+        } else {
+            todo!()
+        }
+
+        Ok(())
+    }
+
+    async fn up_schemas(
+        ctx: &mut ActorContext<Subject>,
+        schemas: Vec<Schema>,
+        subject_id: DigestIdentifier,
+    ) -> Result<(), Error> {
+        for schema in schemas {
+            let actor = Compiler::default();
+            let actor = ctx
+                .create_child(&format!("{}_compiler", schema.id), actor)
+                .await
+                .map_err(|e| Error::Actor(format!("{}", e)))?;
+            if let Err(_e) = actor
+                .tell(CompilerMessage::Compile {
+                    contract: schema.contract.raw.clone(),
+                    initial_value: schema.initial_value.clone(),
+                    contract_path: format!("{}_{}", subject_id, schema.id),
+                })
+                .await
+            {
+                todo!()
+            };
+        }
+
+        Ok(())
+    }
+
+    async fn down_schemas(
+        ctx: &mut ActorContext<Subject>,
+        schemas: Vec<Schema>,
+    ) -> Result<(), Error> {
+        for schema in schemas {
+            let actor: Option<ActorRef<Compiler>> =
+                ctx.get_child(&format!("{}_compiler", schema.id)).await;
+            if let Some(actor) = actor {
+                actor.stop().await;
+            } else {
+                todo!()
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn compile_schemas(
+        ctx: &mut ActorContext<Subject>,
+        schemas: Vec<Schema>,
+        subject_id: DigestIdentifier,
+    ) -> Result<(), Error> {
+        for schema in schemas {
+            let actor: Option<ActorRef<Compiler>> =
+                ctx.get_child(&format!("{}_compiler", schema.id)).await;
+            if let Some(actor) = actor {
+                if let Err(_e) = actor
+                    .tell(CompilerMessage::Compile {
+                        contract: schema.contract.raw.clone(),
+                        initial_value: schema.initial_value.clone(),
+                        contract_path: format!("{}_{}", subject_id, schema.id),
+                    })
+                    .await
+                {
+                    todo!()
+                };
+            } else {
+                todo!()
             }
         }
 
@@ -500,18 +748,6 @@ impl Subject {
             }
         }
         false
-    }
-
-    fn build_executors(
-        &self,
-        role: Roles,
-        schema: &str,
-        our_key: KeyIdentifier,
-        gov: &Governance,
-    ) -> bool {
-        gov.get_signers(role, schema, self.namespace.clone())
-            .0
-            .contains(&our_key)
     }
 
     async fn get_governance_from_other_subject(
@@ -768,17 +1004,6 @@ impl Subject {
                         // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
                         // propierties deberían ser iguales.
                     }
-
-                    if let Err(_e) = Subject::change_node_subject(
-                        ctx,
-                        &transfer_request.subject_id.to_string(),
-                        &transfer_request.new_owner.to_string(),
-                        &self.owner.to_string(),
-                    )
-                    .await
-                    {
-                        todo!()
-                    }
                 }
                 EventRequest::Confirm(confirm_request) => {
                     let hash_without_patch = self
@@ -877,17 +1102,18 @@ impl Subject {
         }
     }
 
-    async fn verify_new_ledger_events(
+    async fn verify_new_ledger_events_gov(
         &mut self,
         ctx: &mut ActorContext<Subject>,
         events: &[Signed<Ledger>],
-    ) -> Result<u64, Error> {
+    ) -> Result<(), Error> {
         let mut events = events.to_vec();
         let last_ledger = self.get_last_ledger_state(ctx).await?;
 
         let mut last_ledger = if let Some(last_ledger) = last_ledger {
             last_ledger
         } else {
+            // TODO Hay errores que obligan a borrar el sujeto, como el número máximo de sujetos o un error en la validación del evento de creación.
             if let Err(_e) =
                 self.verify_first_ledger_event(events[0].clone()).await
             {
@@ -911,6 +1137,21 @@ impl Subject {
                 }
             }
 
+            if let EventRequest::Transfer(transfer_request) =
+                event.content.event_request.content.clone()
+            {
+                if let Err(_e) = Subject::change_node_subject(
+                    ctx,
+                    &transfer_request.subject_id.to_string(),
+                    &transfer_request.new_owner.to_string(),
+                    &self.owner.to_string(),
+                )
+                .await
+                {
+                    todo!()
+                }
+            };
+
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
 
@@ -918,7 +1159,421 @@ impl Subject {
             last_ledger = event.clone();
         }
 
-        Ok(last_ledger.content.sn)
+        Ok(())
+    }
+
+    async fn register_relation(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        signer: String,
+        max_quantity: usize,
+    ) -> Result<(), Error> {
+        if let Err(e) = register_relation(
+            ctx,
+            self.governance_id.to_string(),
+            self.schema_id.clone(),
+            signer,
+            self.subject_id.to_string(),
+            self.namespace.to_string(),
+            max_quantity,
+        )
+        .await
+        {
+            todo!()
+        };
+
+        Ok(())
+    }
+
+    async fn verify_new_ledger_events_not_gov(
+        &mut self,
+        ctx: &mut ActorContext<Subject>,
+        events: &[Signed<Ledger>],
+    ) -> Result<(), Error> {
+        let mut events = events.to_vec();
+        let last_ledger = self.get_last_ledger_state(ctx).await?;
+
+        let Ok(gov) = get_gov(ctx, &self.governance_id.to_string()).await
+        else {
+            todo!()
+        };
+
+        let Some(max_quantity) = gov.max_creations(
+            &events[0].signature.signer.to_string(),
+            &self.schema_id,
+            self.namespace.clone(),
+        ) else {
+            todo!()
+        };
+
+        let mut last_ledger = if let Some(last_ledger) = last_ledger {
+            last_ledger
+        } else {
+            // TODO Hay errores que obligan a borrar el sujeto, como el número máximo de sujetos o un error en la validación del evento de creación.
+            if let Err(e) = self
+                .register_relation(
+                    ctx,
+                    events[0].signature.signer.to_string(),
+                    max_quantity,
+                )
+                .await
+            {
+                todo!()
+            }
+
+            if let Err(_e) =
+                self.verify_first_ledger_event(events[0].clone()).await
+            {
+                todo!()
+            }
+
+            self.on_event(events[0].clone(), ctx).await;
+            events.remove(0)
+        };
+
+        for event in events {
+            if let Err(e) = self
+                .verify_new_ledger_event(ctx, &last_ledger, &event)
+                .await
+            {
+                if let Error::Sn(_) = e {
+                    // El evento que estamos aplicando no es el siguiente.
+                    continue;
+                } else {
+                    todo!()
+                }
+            }
+
+            if let EventRequest::Transfer(transfer_request) =
+                event.content.event_request.content.clone()
+            {
+                if let Err(e) = delete_relation(
+                    ctx,
+                    self.governance_id.to_string(),
+                    self.schema_id.clone(),
+                    event.signature.signer.to_string(),
+                    self.subject_id.to_string(),
+                    self.namespace.to_string(),
+                )
+                .await
+                {
+                    todo!()
+                }
+
+                if let Err(_e) = Subject::change_node_subject(
+                    ctx,
+                    &transfer_request.subject_id.to_string(),
+                    &transfer_request.new_owner.to_string(),
+                    &self.owner.to_string(),
+                )
+                .await
+                {
+                    todo!()
+                }
+            } else if let EventRequest::Confirm(confirm_request) =
+                event.content.event_request.content.clone()
+            {
+                if let Err(e) = self
+                    .register_relation(
+                        ctx,
+                        event.signature.signer.to_string(),
+                        max_quantity,
+                    )
+                    .await
+                {
+                    todo!()
+                }
+            };
+
+            // Aplicar evento.
+            self.on_event(event.clone(), ctx).await;
+
+            // Acutalizar último evento.
+            last_ledger = event.clone();
+        }
+
+        Ok(())
+    }
+
+    async fn verify_new_ledger_events(
+        &mut self,
+        ctx: &mut ActorContext<Subject>,
+        events: &[Signed<Ledger>],
+    ) -> Result<(), Error> {
+        let our_key = self.get_node_key(ctx).await?;
+
+        if self.governance_id.is_empty() {
+            let current_owner = self.owner.clone();
+            let current_sn = self.sn;
+            let current_properties = self.properties.clone();
+
+            if let Err(e) = self.verify_new_ledger_events_gov(ctx, events).await
+            {
+                // Hay que ver el fallo TODO, porque se pudieron aplicar X eventos y hay que realizar acutalizaciones.
+            };
+
+            if current_sn < self.sn {
+                let old_gov = Governance::try_from(current_properties)?;
+                if !self.active {
+                    if current_owner == our_key {
+                        Self::down_owner(ctx).await?;
+                    } else {
+                        Self::down_not_owner(
+                            ctx,
+                            old_gov.clone(),
+                            our_key.clone(),
+                            self.namespace.clone(),
+                        )
+                        .await?;
+                    }
+
+                    let old_schemas =
+                        old_gov.schemas(Roles::EVALUATOR, &our_key.to_string());
+                    Self::down_schemas(ctx, old_schemas.clone()).await?;
+
+                    let old_schemas_val = old_gov
+                        .schemas(Roles::VALIDATOR, &our_key.to_string())
+                        .iter()
+                        .map(|x| x.id.clone())
+                        .collect::<Vec<String>>();
+                    let old_schemas_eval = old_schemas
+                        .iter()
+                        .map(|x| x.id.clone())
+                        .collect::<Vec<String>>();
+
+                    for schema in old_schemas_eval {
+                        let actor: Option<ActorRef<EvaluationSchema>> = ctx
+                            .get_child(&format!("{}_evaluation", schema))
+                            .await;
+                        if let Some(actor) = actor {
+                            actor.stop().await;
+                        } else {
+                            todo!()
+                        }
+                    }
+
+                    for schema in old_schemas_val {
+                        let actor: Option<ActorRef<ValidationSchema>> = ctx
+                            .get_child(&format!("{}_validation", schema))
+                            .await;
+                        if let Some(actor) = actor {
+                            actor.stop().await;
+                        } else {
+                            todo!()
+                        }
+                    }
+                } else {
+                    let new_gov =
+                        Governance::try_from(self.properties.clone())?;
+
+                    // Si cambió el dueño
+                    if current_owner != self.owner {
+                        let Some(local_db): Option<LocalDB> =
+                            ctx.system().get_helper("local_db").await
+                        else {
+                            todo!()
+                        };
+
+                        if self.owner == our_key {
+                            // Ahora somos el dueño
+                            Self::down_not_owner(
+                                ctx,
+                                old_gov.clone(),
+                                our_key.clone(),
+                                self.namespace.clone(),
+                            )
+                            .await?;
+                            Self::up_owner(
+                                ctx,
+                                our_key.clone(),
+                                self.subject_id.clone(),
+                                local_db,
+                            )
+                            .await?;
+                        } else if current_owner == our_key {
+                            // Antes era el dueño y ahora no.
+                            Self::down_owner(ctx).await?;
+                            Self::up_not_owner(
+                                ctx,
+                                new_gov.clone(),
+                                our_key.clone(),
+                                self.namespace.clone(),
+                                local_db,
+                                self.subject_id.clone(),
+                            )
+                            .await?;
+                        }
+                    }
+
+                    let old_schemas =
+                        old_gov.schemas(Roles::EVALUATOR, &our_key.to_string());
+                    let new_schemas =
+                        new_gov.schemas(Roles::EVALUATOR, &our_key.to_string());
+
+                    // Bajamos los compilers que ya no soy evaluador
+                    let mut down = old_schemas.clone();
+                    down.retain(|x| !new_schemas.contains(x));
+                    Self::down_schemas(ctx, down).await?;
+
+                    // Subimos los compilers que soy nuevo evaluador
+                    let mut up = new_schemas.clone();
+                    up.retain(|x| !old_schemas.contains(x));
+                    Self::up_schemas(ctx, up, self.subject_id.clone()).await?;
+
+                    // Compilo los nuevos contratos en el caso de que hayan sido modificados, sino no afecta.
+                    let mut current = old_schemas.clone();
+                    current.retain(|x| new_schemas.contains(x));
+                    Self::compile_schemas(
+                        ctx,
+                        current,
+                        self.subject_id.clone(),
+                    )
+                    .await?;
+
+                    let mut old_schemas_val = old_gov
+                        .schemas(Roles::VALIDATOR, &our_key.to_string())
+                        .iter()
+                        .map(|x| x.id.clone())
+                        .collect::<Vec<String>>();
+                    let mut old_schemas_eval = old_schemas
+                        .iter()
+                        .map(|x| x.id.clone())
+                        .collect::<Vec<String>>();
+
+                    let (our_roles, creators) = new_gov
+                        .subjects_schemas_rol_namespace(&our_key.to_string());
+                    for ((schema, rol), namespaces) in our_roles {
+                        let mut valid_users = HashSet::new();
+                        for ((schema_creator, id), namespaces_creator) in
+                            creators.clone()
+                        {
+                            if schema == schema_creator
+                                && self.check_namespaces(
+                                    &namespaces,
+                                    &namespaces_creator,
+                                )
+                            {
+                                if let Ok(id) = KeyIdentifier::from_str(&id) {
+                                    valid_users.insert(id);
+                                }
+                            }
+                        }
+                        match rol {
+                            crate::governance::model::Roles::EVALUATOR => {
+                                let pos = old_schemas_eval
+                                    .iter()
+                                    .position(|x| *x == schema);
+                                if let Some(pos) = pos {
+                                    old_schemas_eval.remove(pos);
+                                    let actor: Option<
+                                        ActorRef<EvaluationSchema>,
+                                    > = ctx
+                                        .get_child(&format!(
+                                            "{}_evaluation",
+                                            schema
+                                        ))
+                                        .await;
+                                    if let Some(actor) = actor {
+                                        if let Err(e) = actor.tell(EvaluationSchemaMessage::UpdateEvaluators(valid_users)).await {todo!()}
+                                    } else {
+                                        todo!()
+                                    }
+                                } else {
+                                    let eval_actor =
+                                        EvaluationSchema::new(valid_users);
+                                    ctx.create_child(
+                                        &format!("{}_evaluation", schema),
+                                        eval_actor,
+                                    )
+                                    .await
+                                    .map_err(|e| Error::Actor(e.to_string()))?;
+                                }
+                            }
+                            crate::governance::model::Roles::VALIDATOR => {
+                                let pos = old_schemas_val
+                                    .iter()
+                                    .position(|x| *x == schema);
+                                if let Some(pos) = pos {
+                                    old_schemas_val.remove(pos);
+                                    let actor: Option<
+                                        ActorRef<ValidationSchema>,
+                                    > = ctx
+                                        .get_child(&format!(
+                                            "{}_validation",
+                                            schema
+                                        ))
+                                        .await;
+                                    if let Some(actor) = actor {
+                                        if let Err(e) = actor.tell(ValidationSchemaMessage::UpdateValidators(valid_users)).await {todo!()}
+                                    } else {
+                                        todo!()
+                                    }
+                                } else {
+                                    let actor =
+                                        ValidationSchema::new(valid_users);
+                                    ctx.create_child(
+                                        &format!("{}_validation", schema),
+                                        actor,
+                                    )
+                                    .await
+                                    .map_err(|e| Error::Actor(e.to_string()))?;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    for schema in old_schemas_eval {
+                        let actor: Option<ActorRef<EvaluationSchema>> = ctx
+                            .get_child(&format!("{}_evaluation", schema))
+                            .await;
+                        if let Some(actor) = actor {
+                            actor.stop().await;
+                        } else {
+                            todo!()
+                        }
+                    }
+
+                    for schema in old_schemas_val {
+                        let actor: Option<ActorRef<ValidationSchema>> = ctx
+                            .get_child(&format!("{}_validation", schema))
+                            .await;
+                        if let Some(actor) = actor {
+                            actor.stop().await;
+                        } else {
+                            todo!()
+                        }
+                    }
+                }
+            }
+        } else {
+            let current_owner = self.owner.clone();
+            let current_sn = self.sn;
+
+            if let Err(e) =
+                self.verify_new_ledger_events_not_gov(ctx, events).await
+            {
+                // Hay que ver el fallo TODO, porque se pudieron aplicar X eventos y hay que realizar acutalizaciones.
+            };
+
+            if current_sn < self.sn {
+                if !self.active {
+                    if current_owner == our_key {
+                        Self::down_owner_not_gov(ctx).await?;
+                    }
+                }
+
+                if current_owner != self.owner {
+                    if self.owner == our_key {
+                        Self::up_owner_not_gov(ctx, our_key).await?;
+                    } else if current_owner == our_key {
+                        Self::down_owner_not_gov(ctx).await?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     async fn get_ledger(
@@ -1081,15 +1736,17 @@ impl Actor for Subject {
             .await
             .map_err(|e| ActorError::Create)?;
 
-        if self.governance_id.is_empty() {
-            self.build_childs_governance(ctx, our_key.clone()).await?;
-        } else {
-            self.build_childs_not_governance(ctx, our_key.clone())
-                .await?;
-        }
-
         let ledger_event = LedgerEvent::default();
         ctx.create_child("ledger_event", ledger_event).await?;
+
+        if self.active {
+            if self.governance_id.is_empty() {
+                self.build_childs_governance(ctx, our_key.clone()).await?;
+            } else {
+                self.build_childs_not_governance(ctx, our_key.clone())
+                    .await?;
+            }
+        }
 
         let distributor = Distributor { node: our_key };
         ctx.create_child("distributor", distributor).await?;
@@ -1142,12 +1799,12 @@ impl Handler<Subject> for Subject {
             }
             SubjectMessage::UpdateLedger { events } => {
                 debug!("Emit event to update subject.");
-                match self
-                    .verify_new_ledger_events(ctx, events.as_slice())
-                    .await
+                if let Err(e) =
+                    self.verify_new_ledger_events(ctx, events.as_slice()).await
                 {
-                    Ok(last_sn) => Ok(SubjectResponse::LastSn(last_sn)),
-                    Err(e) => Ok(SubjectResponse::Error(e)),
+                    Ok(SubjectResponse::Error(e))
+                } else {
+                    Ok(SubjectResponse::LastSn(self.sn))
                 }
             }
             SubjectMessage::SignRequest(content) => {

@@ -6,20 +6,15 @@ use actor::{
     Strategy,
 };
 use async_trait::async_trait;
-use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use identity::identifier::{Derivable, DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
-    governance::model::Roles,
-    intermediary::Intermediary,
-    model::{
-        common::{get_gov, get_metadata, update_event},
+    governance::model::Roles, intermediary::Intermediary, model::{
+        common::{get_gov, get_metadata, get_quantity, update_event},
         event::Ledger,
         network::RetryNetwork,
-    },
-    ActorMessage, Error, Event as KoreEvent, EventRequest, NetworkMessage,
-    Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
-    SubjectResponse,
+    }, ActorMessage, CreateRequest, Error, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
 };
 
 use super::{Distribution, DistributionMessage};
@@ -105,24 +100,27 @@ impl Distributor {
                 Ok(gov) => gov,
                 Err(_e) => todo!(),
             };
-            let creators = gov
-                .get_signers(
-                    Roles::CREATOR { quantity: 0 },
-                    schema,
-                    namespace.clone(),
-                )
-                .0;
-
-            if !creators.iter().any(|x| x.clone() == signer) {
+            if !gov.has_this_role(
+                &signer.to_string(),
+                Roles::CREATOR { quantity: 0 },
+                schema,
+                namespace.clone(),
+            ) {
                 todo!()
-            };
+            }
 
-            let witness = gov.get_signers(Roles::WITNESS, schema, namespace).0;
-
-            if !witness.iter().any(|x| x.clone() == our_key) {
+            if !gov.has_this_role(
+                &our_key.to_string(),
+                Roles::WITNESS,
+                schema,
+                namespace,
+            ) {
                 todo!()
-            };
+            }
             // Comprobar que soy testigo para ese schema y esa governanza.
+        } else if !know && schema == "governance" {
+            // No hay que guardarla
+            todo!()
         }
 
         Ok(create)
@@ -154,6 +152,34 @@ impl Distributor {
         ctx: &mut ActorContext<Distributor>,
         ledger: Signed<Ledger>,
     ) -> Result<(), Error> {
+        
+        // TODO refactorizar.
+        if let EventRequest::Create(request) = ledger.content.event_request.content.clone()
+        {
+            if request.schema_id != "governance" {
+                let Ok(gov) = get_gov(ctx, &request.governance_id.to_string()).await else {
+                    todo!()
+                };
+
+                if let Some(max_quantity) = gov.max_creations(
+                    &ledger.signature.signer.to_string(),
+                    &request.schema_id,
+                    request.namespace.clone(),
+                ) {
+                    let quantity = match get_quantity(ctx, request.governance_id.to_string(), request.schema_id.clone(), ledger.signature.signer.to_string(), request.namespace.to_string()).await {
+                        Ok(quantity) => quantity,
+                        Err(e) => todo!()
+                    };
+
+                    if quantity >= max_quantity {
+                        todo!()
+                    }
+                } else {
+                    todo!()
+                };
+            }
+        }
+
         let node_path = ActorPath::from("/user/node");
         let node_actor: Option<ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
@@ -511,16 +537,12 @@ impl Distributor {
             return Ok(CheckGovernance::Continue(our_gov_version));
         }
 
-        if !gov
-            .get_signers(
-                Roles::WITNESS,
-                &metadata.schema_id.clone(),
-                metadata.namespace.clone(),
-            )
-            .0
-            .iter()
-            .any(|x| x.clone() == info.sender)
-        {
+        if !gov.has_this_role(
+            &info.sender.to_string(),
+            Roles::WITNESS,
+            &metadata.schema_id.clone(),
+            metadata.namespace.clone(),
+        ) {
             // Se podría dar que sí sea testigo pero que yo no tenga la última versión.
             todo!()
         };
@@ -938,6 +960,7 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 if new_subject {
+                    
                     // Creamos el sujeto.
                     if let Err(_e) =
                         self.create_subject(ctx, events[0].clone()).await

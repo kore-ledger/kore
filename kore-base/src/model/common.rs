@@ -1,13 +1,10 @@
 use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler};
 
 use crate::{
-    model::SignTypesNode,
-    subject::{
+    model::SignTypesNode, node::relationship::{OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse}, subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
         Metadata,
-    },
-    Error, Event as KoreEvent, Governance, Node, NodeMessage, NodeResponse,
-    Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes,
+    }, Error, Event as KoreEvent, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
 };
 
 pub async fn get_gov<A>(
@@ -183,4 +180,114 @@ where
         todo!()
     }
     Ok(())
+}
+
+pub async fn get_quantity<A>(
+    ctx: &mut ActorContext<A>,
+    gov: String,
+    schema: String,
+    owner: String,
+    namespace: String
+) -> Result<usize, Error>
+where
+    A: Actor + Handler<A>,
+{
+    let relation_path = ActorPath::from("/user/node/relation_ship");
+    let relation_actor: Option<ActorRef<RelationShip>> =
+        ctx.system().get_actor(&relation_path).await;
+
+    let response = if let Some(relation_actor) = relation_actor {
+        let Ok(result) = relation_actor.ask(RelationShipMessage::GetSubjectsCount(OwnerSchema {
+            owner,
+            gov,
+            schema,
+            namespace
+        })).await else {
+            todo!()
+        };
+        result
+    } else {
+        todo!()
+    };
+
+    if let RelationShipResponse::Count(quantity) = response {
+        return Ok(quantity)
+    } else {
+        todo!()
+    };
+}
+
+
+pub async fn register_relation<A>(
+    ctx: &mut ActorContext<A>,
+    gov: String,
+    schema: String,
+    owner: String,
+    subject: String,
+    namespace: String,
+    max_quantity: usize
+) -> Result<(), Error>
+where
+    A: Actor + Handler<A>,
+{
+    let relation_path = ActorPath::from("/user/node/relation_ship");
+    let relation_actor: Option<ActorRef<RelationShip>> =
+        ctx.system().get_actor(&relation_path).await;
+
+    let response = if let Some(relation_actor) = relation_actor {
+        let Ok(result) = relation_actor.ask(RelationShipMessage::RegisterNewSubject { data: OwnerSchema {
+            owner,
+            gov,
+            schema,
+            namespace
+        }, subject,
+            max_quantity }).await else {
+            todo!()
+        };
+        result
+    } else {
+        todo!()
+    };
+
+    match response {
+        RelationShipResponse::None => Ok(()),
+        RelationShipResponse::Error(e) => Err(e),
+        _ => todo!()
+    }
+}
+
+pub async fn delete_relation<A>(
+    ctx: &mut ActorContext<A>,
+    gov: String,
+    schema: String,
+    owner: String,
+    subject: String,
+    namespace: String,
+) -> Result<(), Error>
+where
+    A: Actor + Handler<A>,
+{
+    let relation_path = ActorPath::from("/user/node/relation_ship");
+    let relation_actor: Option<ActorRef<RelationShip>> =
+        ctx.system().get_actor(&relation_path).await;
+
+    let response = if let Some(relation_actor) = relation_actor {
+        let Ok(result) = relation_actor.ask(RelationShipMessage::DeleteSubject { data: OwnerSchema {
+            owner,
+            gov,
+            schema,
+            namespace
+        }, subject }).await else {
+            todo!()
+        };
+        result
+    } else {
+        todo!()
+    };
+
+    if let RelationShipResponse::None = response {
+        return Ok(())
+    } else {
+        todo!()
+    };
 }

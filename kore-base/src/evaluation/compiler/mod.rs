@@ -6,20 +6,29 @@ use actor::{
 };
 use async_std::fs;
 use async_trait::async_trait;
+use borsh::{to_vec, BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tracing::error;
-use wasmtime::{Config, Engine, ExternType, Module};
+use wasmtime::{Caller, Config, Engine, ExternType, Linker, Module, Store};
 
 use crate::{
     governance::json_schema::JsonSchema, Error, HashId, ValueWrapper,
-    CONTRACTS, DIGEST_DERIVATOR, SCHEMAS,
+    CONTRACTS, DIGEST_DERIVATOR,
 };
+
+use super::runner::types::MemoryManager;
+
+#[derive(
+    Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug, Clone,
+)]
+pub struct ContractResult {
+    pub success: bool,
+}
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Compiler {
-    pub schema: DigestIdentifier,
     pub contract: DigestIdentifier,
 }
 
@@ -67,7 +76,7 @@ impl Compiler {
         Ok(())
     }
 
-    async fn check_wasm(contract_path: &str) -> Result<Vec<u8>, Error> {
+    async fn check_wasm(contract_path: &str, state: ValueWrapper) -> Result<Vec<u8>, Error> {
         // Read compile contract
         let file = fs::read(format!(
             "contracts/target/wasm32-unknown-unknown/release/{}.wasm",
@@ -134,7 +143,161 @@ impl Compiler {
             )));
         }
 
+        // We create a context from the state and the event.
+        let (context, state_ptr) =
+            Self::generate_context(state)?;
+
+        // Container to store and manage the global state of a WebAssembly instance during its execution.
+        let mut store = Store::new(&engine, context);
+
+        // Responsible for combining several object files into a single WebAssembly executable file (.wasm).
+        let linker = Self::generate_linker(&engine)?;
+
+        // Contract instance.
+        let instance =
+            linker.instantiate(&mut store, &module).map_err(|e| {
+                Error::Compiler(format!(
+                    "Error when creating a contract instance: {}",
+                    e
+                ))
+            })?;
+
+        // Get access to contract, only to check if main_function exist.
+        let _main_contract_entrypoint = instance
+            .get_typed_func::<(u32, u32, u32), u32>(&mut store, "main_function")
+            .map_err(|e| {
+                Error::Runner(format!("Contract entry point not found: {}", e))
+            })?;
+
+        // Get access to contract
+        let init_contract_entrypoint = instance
+            .get_typed_func::<u32, u32>(&mut store, "init_check_function")
+            .map_err(|e| {
+                Error::Runner(format!("Contract entry point not found: {}", e))
+            })?;
+        
+        // Contract execution
+        let result_ptr = init_contract_entrypoint
+            .call(
+                &mut store,
+                state_ptr,
+            )
+            .map_err(|e| {
+                Error::Runner(format!("Contract execution failed: {}", e))
+            })?;
+
+        let result = Self::get_result(&store, result_ptr)?;
+        
+        if !result.success {
+            todo!()
+        }
+
         Ok(contract_bytes)
+    }
+
+    fn get_result(
+        store: &Store<MemoryManager>,
+        pointer: u32,
+    ) -> Result<ContractResult, Error> {
+        let bytes = store.data().read_data(pointer as usize)?;
+        let contract_result: ContractResult =
+            BorshDeserialize::try_from_slice(bytes).map_err(|e| {
+                Error::Runner(format!(
+                    "Can not generate wasm contract result: {}",
+                    e
+                ))
+            })?;
+
+        if contract_result.success {
+            Ok(contract_result)
+        } else {
+            todo!()
+        }
+    }
+
+    // TODO SI todo funciona refactorizar este método que también está en el runner.
+    // Cambiar errores De Runner a Compiler
+    fn generate_linker(
+        engine: &Engine,
+    ) -> Result<Linker<MemoryManager>, Error> {
+        let mut linker: Linker<MemoryManager> = Linker::new(engine);
+
+        // functions are created for webasembly modules, the logic of which is programmed in Rust
+        linker
+            .func_wrap(
+                "env",
+                "pointer_len",
+                |caller: Caller<'_, MemoryManager>, pointer: i32| {
+                    return caller.data().get_pointer_len(pointer as usize)
+                        as u32;
+                },
+            )
+            .map_err(|e| {
+                Error::Runner(format!("An error has occurred linking a function, module: env, name: pointer_len, {}", e))
+            })?;
+
+        linker
+            .func_wrap(
+                "env",
+                "alloc",
+                |mut caller: Caller<'_, MemoryManager>, len: u32| {
+                    return caller.data_mut().alloc(len as usize) as u32;
+                },
+            )
+            .map_err(|e| {
+                Error::Runner(format!("An error has occurred linking a function, module: env, name: allow, {}", e))
+            })?;
+
+        linker
+            .func_wrap(
+                "env",
+                "write_byte",
+                |mut caller: Caller<'_, MemoryManager>, ptr: u32, offset: u32, data: u32| {
+                    return caller
+                        .data_mut()
+                        .write_byte(ptr as usize, offset as usize, data as u8);
+                },
+            )
+            .map_err(|e| {
+                Error::Runner(format!("An error has occurred linking a function, module: env, name: write_byte, {}", e))
+            })?;
+
+        linker
+            .func_wrap(
+                "env",
+                "read_byte",
+                |caller: Caller<'_, MemoryManager>, index: i32| {
+                    return caller.data().read_byte(index as usize) as u32;
+                },
+            )
+            .map_err(|e| {
+                Error::Runner(format!("An error has occurred linking a function, module: env, name: read_byte, {}", e))
+            })?;
+
+        linker
+            .func_wrap(
+                "env",
+                "cout",
+                |_caller: Caller<'_, MemoryManager>, ptr: u32| {
+                    println!("{}", ptr);
+                },
+            )
+            .map_err(|e| {
+                Error::Runner(format!("An error has occurred linking a function, module: env, name: cout, {}", e))
+            })?;
+        Ok(linker)
+    }
+
+    fn generate_context(state: ValueWrapper) -> Result<(MemoryManager, u32), Error> {
+        let mut context = MemoryManager::new();
+        let state_bytes = to_vec(&state).map_err(|e| {
+            Error::Runner(format!(
+                "Error when serializing the state using borsh: {}",
+                e
+            ))
+        })?;
+        let state_ptr = context.add_data_raw(&state_bytes);
+        Ok((context, state_ptr as u32))
     }
 
     fn get_sdk_functions_identifier() -> HashSet<String> {
@@ -151,13 +314,11 @@ impl Compiler {
 pub enum CompilerMessage {
     Compile {
         contract: String,
-        schema: ValueWrapper,
         initial_value: Value,
         contract_path: String,
     },
     CompileCheck {
         contract: String,
-        schema: ValueWrapper,
         initial_value: Value,
         contract_path: String,
     },
@@ -199,7 +360,6 @@ impl Handler<Compiler> for Compiler {
                 contract,
                 contract_path,
                 initial_value,
-                schema,
             } => {
                 let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
                     *derivator
@@ -221,7 +381,7 @@ impl Handler<Compiler> for Compiler {
                         return Ok(CompilerResponse::Error(e));
                     };
 
-                    let contract = match Self::check_wasm(&contract_path).await
+                    let contract = match Self::check_wasm(&contract_path, ValueWrapper(initial_value)).await
                     {
                         Ok(contract) => contract,
                         Err(e) => return Ok(CompilerResponse::Error(e)),
@@ -235,35 +395,12 @@ impl Handler<Compiler> for Compiler {
                     self.contract = contract_hash;
                 }
 
-                let schema_hash = match schema.hash_id(derivator) {
-                    Ok(hash) => hash,
-                    Err(_e) => todo!(),
-                };
-
-                if schema_hash != self.schema {
-                    let compilation = match JsonSchema::compile(&schema.0) {
-                        Ok(compilation) => compilation,
-                        Err(_e) => todo!(),
-                    };
-
-                    if !compilation.fast_validate(&initial_value) {
-                        todo!()
-                    }
-
-                    {
-                        let mut schemas = SCHEMAS.write().await;
-                        schemas.insert(contract_path, compilation);
-                    }
-                    self.schema = schema_hash;
-                }
-
                 Ok(CompilerResponse::Ok)
             }
             CompilerMessage::CompileCheck {
                 contract,
                 contract_path,
                 initial_value,
-                schema,
             } => {
                 let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
                     *derivator
@@ -285,24 +422,8 @@ impl Handler<Compiler> for Compiler {
                         return Ok(CompilerResponse::Error(e));
                     };
 
-                    if let Err(e) = Self::check_wasm(&contract_path).await {
+                    if let Err(e) = Self::check_wasm(&contract_path, ValueWrapper(initial_value)).await {
                         return Ok(CompilerResponse::Error(e));
-                    }
-                }
-
-                let schema_hash = match schema.hash_id(derivator) {
-                    Ok(hash) => hash,
-                    Err(_e) => todo!(),
-                };
-
-                if schema_hash != self.schema {
-                    let compilation = match JsonSchema::compile(&schema.0) {
-                        Ok(compilation) => compilation,
-                        Err(_e) => todo!(),
-                    };
-
-                    if !compilation.fast_validate(&initial_value) {
-                        todo!()
                     }
                 }
 

@@ -26,7 +26,7 @@ use crate::{
     governance::model::Roles,
     helpers::db::LocalDB,
     init_state,
-    model::common::{get_gov, get_metadata},
+    model::common::{get_gov, get_metadata, get_quantity},
     subject::{CreateSubjectData, SubjectID},
     CreateRequest, Error, EventRequest, HashId, Node, NodeMessage,
     NodeResponse, Signed, DIGEST_DERIVATOR,
@@ -201,7 +201,6 @@ pub enum RequestHandlerMessage {
     NewRequest { request: Signed<EventRequest> },
     PopQueue { subject_id: String },
     EndHandling { subject_id: String, id: String },
-    GetState { request_id: String },
 }
 
 impl Message for RequestHandlerMessage {}
@@ -347,16 +346,20 @@ impl Handler<RequestHandler> for RequestHandler {
                                 Err(e) => return Ok(RequestHandlerResponse::Error(Error::RequestHandler(format!("It has not been possible to obtain governance: {}", e)))),
                             };
 
-                            if !gov
-                                .get_signers(
-                                    Roles::CREATOR { quantity: 0 },
-                                    &create_request.schema_id,
-                                    create_request.namespace.clone(),
-                                )
-                                .0
-                                .iter()
-                                .any(|x| x.clone() == self.node_key)
-                            {
+                            if let Some(max_quantity) = gov.max_creations(
+                                &self.node_key.to_string(),
+                                &create_request.schema_id,
+                                create_request.namespace.clone(),
+                            ) {
+                                let quantity = match get_quantity(ctx, create_request.governance_id.to_string(), create_request.schema_id.clone(), self.node_key.to_string(), create_request.namespace.to_string()).await {
+                                    Ok(quantity) => quantity,
+                                    Err(e) => return Ok(RequestHandlerResponse::Error(Error::RequestHandler(format!("An error occurred while processing the event: {}", e))))
+                                };
+
+                                if quantity >= max_quantity {
+                                    return Ok(RequestHandlerResponse::Error(Error::RequestHandler(format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id.to_string() ))));
+                                }
+                            } else {
                                 return Ok(RequestHandlerResponse::Error(Error::RequestHandler("The Scheme does not exist or does not have permissions for the creation of subjects, it needs to be assigned the creator role.".to_owned())));
                             };
                         }
@@ -505,7 +508,6 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 Ok(RequestHandlerResponse::Ok(RequestID { request_id }))
             }
-            RequestHandlerMessage::GetState { request_id } => todo!(),
             RequestHandlerMessage::PopQueue { subject_id } => {
                 // TODO, Ver si los que usan derivator nos renta que lo tengan directamente en memoria,
                 // Para no estar pidiendolo a cada rato.
@@ -584,17 +586,54 @@ impl Handler<RequestHandler> for RequestHandler {
                 let message = match event.content.clone() {
                     EventRequest::Create(create_request) => {
                         if create_request.schema_id != "governance" {
-                            if !gov
-                                .get_signers(
-                                    Roles::CREATOR { quantity: 0 },
-                                    &create_request.schema_id,
-                                    create_request.namespace.clone(),
+                            if let Some(max_quantity) = gov.max_creations(
+                                &self.node_key.to_string(),
+                                &create_request.schema_id,
+                                create_request.namespace.clone(),
+                            ) {
+                                let quantity = match get_quantity(
+                                    ctx,
+                                    create_request.governance_id.to_string(),
+                                    create_request.schema_id.clone(),
+                                    self.node_key.to_string(),
+                                    create_request.namespace.to_string()
                                 )
-                                .0
-                                .iter()
-                                .any(|x| x.clone() == self.node_key)
-                            {
-                                // TDO EVENTO DE FALLO
+                                .await
+                                {
+                                    Ok(quantity) => quantity,
+                                    Err(e) => {
+                                        if let Err(_e) = self
+                                            .error_queue_handling(
+                                                ctx,
+                                                &request_id,
+                                                &subject_id,
+                                            )
+                                            .await
+                                        {
+                                            todo!()
+                                        }
+
+                                        return Ok(
+                                            RequestHandlerResponse::None,
+                                        );
+                                    }
+                                };
+
+                                if quantity >= max_quantity {
+                                    if let Err(_e) = self
+                                        .error_queue_handling(
+                                            ctx,
+                                            &request_id,
+                                            &subject_id,
+                                        )
+                                        .await
+                                    {
+                                        todo!()
+                                    }
+
+                                    return Ok(RequestHandlerResponse::None);
+                                }
+                            } else {
                                 if let Err(_e) = self
                                     .error_queue_handling(
                                         ctx,

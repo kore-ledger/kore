@@ -2,7 +2,7 @@ use actor::{ActorSystem, SystemRef};
 
 use crate::{
     db::Database,
-    helpers::{db::LocalDB, encrypted_pass::EncryptedPass},
+    helpers::encrypted_pass::EncryptedPass,
     Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR,
 };
 
@@ -42,7 +42,9 @@ pub mod tests {
 
     use std::{fs, time::Duration};
 
-    use crate::{helpers::db::LocalDB, local_db::DBManager};
+    use async_std::sync::RwLock;
+
+    use crate::{governance::{json_schema::JsonSchema, schema}, helpers::db::LocalDB, local_db::DBManager, GOVERNANCE};
 
     use super::*;
 
@@ -77,6 +79,10 @@ pub mod tests {
     }
 
     pub async fn create_system() -> SystemRef {
+        let schema = JsonSchema::compile(&schema()).unwrap();
+
+        let _ = GOVERNANCE.get_or_init(|| RwLock::new(schema));
+        
         let dir =
             tempfile::tempdir().expect("Can not create temporal directory.");
         let path = dir.path().to_str().unwrap();
