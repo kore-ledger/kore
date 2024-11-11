@@ -192,8 +192,7 @@ impl Runner {
                 _ => return Err(Error::Runner(format!("The only json patch operations that are allowed are add, replace and remove (only for members and roles), invalid operation: {}", op)))
             }
 
-            // Check if has schema field is a schema
-            if !val["value"]["schema"].is_null() {
+            if !val["value"]["contract"].is_null() {
                 let id = if let Some(id) = val["value"]["id"].as_str() {
                     id
                 } else {

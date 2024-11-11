@@ -167,18 +167,6 @@ impl Node {
                 Error::Node(format!("Can not create contracts dir: {}", e))
             })?;
         }
-
-        let toml: String = Self::compilation_toml();
-        // We write cargo.toml
-        fs::write("contracts/Cargo.toml", toml).await.map_err(|e| {
-            Error::Node(format!("Can not create Cargo.toml file: {}", e))
-        })?;
-
-        if !Path::new("contracts/src/bin").exists() {
-            fs::create_dir_all("contracts/src/bin").await.map_err(|e| {
-                Error::Node(format!("Can not create src dir: {}", e))
-            })?;
-        }
         Ok(())
     }
 
@@ -199,30 +187,6 @@ impl Node {
         }
 
         Ok(())
-    }
-
-    fn compilation_toml() -> String {
-        r#"
-    [package]
-    name = "contract"
-    version = "0.1.0"
-    edition = "2021"
-    
-    [dependencies]
-    serde = { version = "1.0.208", features = ["derive"] }
-    serde_json = "1.0.125"
-    json-patch = "2.0.0"
-    thiserror = "1.0.63"
-    kore-contract-sdk = { git = "https://github.com/kore-ledger/kore-contract-sdk.git", branch = "main"}
-    
-    [profile.release]
-    strip = "debuginfo"
-    lto = true
-    
-    [lib]
-    crate-type = ["cdylib"]
-      "#
-        .into()
     }
 }
 

@@ -428,7 +428,9 @@ impl RequestManager {
 
         match response {
             SubjectResponse::LastSn(_) => Ok(()),
-            SubjectResponse::Error(e) => todo!(),
+            SubjectResponse::Error(e) => {
+                todo!()
+            },
             _ => todo!(),
         }
     }

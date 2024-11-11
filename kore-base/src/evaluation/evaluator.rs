@@ -12,7 +12,7 @@ use crate::{
         network::{RetryNetwork, TimeOutResponse},
         HashId, SignTypesNode, TimeStamp,
     },
-    subject::{SubjectMessage, SubjectResponse},
+    subject::{self, SubjectMessage, SubjectResponse},
     Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
     DIGEST_DERIVATOR,
 };
@@ -120,7 +120,7 @@ impl Evaluator {
                 };
 
             let response = compiler_actor
-                .ask(CompilerMessage::CompileCheck {
+                .ask(CompilerMessage::Compile {
                     contract: schema.contract.raw.clone(),
                     initial_value: schema.initial_value.clone(),
                     contract_path: format!("{}_{}", governance_id, id),
@@ -132,10 +132,8 @@ impl Evaluator {
                 Err(e) => return Err(Error::Actor(format!("{}", e))),
             };
 
-            match compilation {
-                CompilerResponse::Check => {},
-                CompilerResponse::Error(e) => return Err(e),
-                _ => return Err(Error::Actor("An unexpected response has been received from compiler actor".to_owned()))
+            if let CompilerResponse::Error(e) = compilation {
+                return Err(e);
             }
         }
         Ok(())
@@ -224,6 +222,11 @@ impl Evaluator {
                 ))
             })?;
 
+            // TODO SI falla eliminar los new_compilers y borrar de CONTRACTS.
+            let Ok(new_compilers) = Evaluator::create_compilers(ctx, &compilations, &governance_id.to_string()).await else {
+                todo!()
+            };
+
             self.compile_contracts(
                 ctx,
                 &compilations,
@@ -234,6 +237,25 @@ impl Evaluator {
         }
 
         Ok(result)
+    }
+
+    async fn create_compilers(ctx: &mut ActorContext<Evaluator>, ids: &[String], gov: &str) -> Result<Vec<String>, Error> {
+        let subject: Option<ActorRef<Subject>> = ctx.system().get_actor(&ActorPath::from(format!("/user/node/{}", gov))).await;
+
+        let response = if let Some(subject) = subject {
+            let Ok(response) = subject.ask(SubjectMessage::CreateCompilers(ids.to_vec())).await else {
+                todo!()
+            };
+            response
+        } else {
+            todo!()
+        };
+
+        match response {
+            SubjectResponse::NewCompilers(new_compilers) => Ok(new_compilers),
+            SubjectResponse::Error(e) => todo!(),
+            _ => todo!()
+        }
     }
 
     fn generate_json_patch(
@@ -378,7 +400,7 @@ impl Handler<Evaluator> for Evaluator {
                     Ok(evaluation) => {
                         Self::build_response(evaluation, evaluation_req).await
                     }
-                    Err(_e) => {
+                    Err(e) => {
                         // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
                         todo!()
                     }

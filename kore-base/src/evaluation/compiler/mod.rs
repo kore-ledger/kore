@@ -1,4 +1,4 @@
-use std::{collections::HashSet, process::Command};
+use std::{collections::HashSet, path::Path, process::Command};
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
@@ -6,6 +6,7 @@ use actor::{
 };
 use async_std::fs;
 use async_trait::async_trait;
+use base64::{prelude::BASE64_STANDARD, Engine as Base64Engine};
 use borsh::{to_vec, BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
@@ -33,16 +34,59 @@ pub struct Compiler {
 }
 
 impl Compiler {
+    fn compilation_toml() -> String {
+        r#"
+    [package]
+    name = "contract"
+    version = "0.1.0"
+    edition = "2021"
+    
+    [dependencies]
+    serde = { version = "1.0.208", features = ["derive"] }
+    serde_json = "1.0.125"
+    json-patch = "3.0.1"
+    thiserror = "2.0.3"
+    kore-contract-sdk = { git = "https://github.com/kore-ledger/kore-contract-sdk.git", branch = "main"}
+    
+    [profile.release]
+    strip = "debuginfo"
+    lto = true
+    
+    [lib]
+    crate-type = ["cdylib"]
+
+    [workspace]
+      "#
+        .into()
+    }
+
     async fn compile_contract(
         contract: &str,
         contract_path: &str,
     ) -> Result<(), Error> {
         // Write contract.
-        fs::write(format!("contracts/src/bin/{}.rs", contract_path), contract)
+        let Ok(decode_base64) = BASE64_STANDARD.decode(contract) else {
+            return Err(Error::Compiler(format!("Failed to decode base64 {}", contract_path)));
+        };
+
+        if !Path::new(&format!("contracts/{}/src", contract_path)).exists() {
+            fs::create_dir_all(&format!("contracts/{}/src", contract_path)).await.map_err(|e| {
+                Error::Node(format!("Can not create src dir: {}", e))
+            })?;
+        }
+
+        let toml: String = Self::compilation_toml();
+        // We write cargo.toml
+        fs::write(format!("contracts/{}/Cargo.toml", contract_path), toml).await.map_err(|e| {
+            Error::Node(format!("Can not create Cargo.toml file: {}", e))
+        })?;
+
+        
+        fs::write(format!("contracts/{}/src/lib.rs", contract_path), decode_base64)
             .await
             .map_err(|e| {
                 Error::Compiler(format!(
-                    "Can not create contracts/src/{} file: {}",
+                    "Can not create contracts/{}/src/lib.rs file: {}",
                     contract_path, e
                 ))
             })?;
@@ -50,17 +94,15 @@ impl Compiler {
         // Compiling contract
         let status = Command::new("cargo")
             .arg("build")
-            .arg("--manifest-path=contracts/Cargo.toml")
+            .arg(format!("--manifest-path=contracts/{}/Cargo.toml", contract_path))
             .arg("--target")
             .arg("wasm32-unknown-unknown")
             .arg("--release")
-            .arg("--bin")
-            .arg(contract_path)
             .output()
             // Does not show stdout. Generates child process and waits
             .map_err(|e| {
                 Error::Compiler(format!(
-                    "Can not compile contract {}: {}",
+                    "Can not compile contract contracts/{}/src/lib.rs: {}",
                     contract_path, e
                 ))
             })?;
@@ -68,7 +110,7 @@ impl Compiler {
         // Is success
         if !status.status.success() {
             return Err(Error::Compiler(format!(
-                "Can not compile {}",
+                "Can not compile contracts/{}/src/lib.rs",
                 contract_path
             )));
         }
@@ -79,7 +121,7 @@ impl Compiler {
     async fn check_wasm(contract_path: &str, state: ValueWrapper) -> Result<Vec<u8>, Error> {
         // Read compile contract
         let file = fs::read(format!(
-            "contracts/target/wasm32-unknown-unknown/release/{}.wasm",
+            "contracts/{}/target/wasm32-unknown-unknown/release/contract.wasm",
             contract_path
         ))
         .await
@@ -317,11 +359,6 @@ pub enum CompilerMessage {
         initial_value: Value,
         contract_path: String,
     },
-    CompileCheck {
-        contract: String,
-        initial_value: Value,
-        contract_path: String,
-    },
 }
 
 impl Message for CompilerMessage {}
@@ -334,7 +371,6 @@ impl Event for CompilerEvent {}
 #[derive(Debug, Clone)]
 pub enum CompilerResponse {
     Error(Error),
-    Check,
     Ok,
 }
 
@@ -396,38 +432,6 @@ impl Handler<Compiler> for Compiler {
                 }
 
                 Ok(CompilerResponse::Ok)
-            }
-            CompilerMessage::CompileCheck {
-                contract,
-                contract_path,
-                initial_value,
-            } => {
-                let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-                    *derivator
-                } else {
-                    error!("Error getting derivator");
-                    DigestDerivator::Blake3_256
-                };
-
-                let contract_wrapper = ValueWrapper(json!({"raw": contract}));
-                let contract_hash = match contract_wrapper.hash_id(derivator) {
-                    Ok(hash) => hash,
-                    Err(_e) => todo!(),
-                };
-
-                if contract_hash != self.contract {
-                    if let Err(e) =
-                        Self::compile_contract(&contract, &contract_path).await
-                    {
-                        return Ok(CompilerResponse::Error(e));
-                    };
-
-                    if let Err(e) = Self::check_wasm(&contract_path, ValueWrapper(initial_value)).await {
-                        return Ok(CompilerResponse::Error(e));
-                    }
-                }
-
-                Ok(CompilerResponse::Check)
             }
         }
     }
