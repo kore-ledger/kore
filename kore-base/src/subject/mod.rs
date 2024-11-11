@@ -671,7 +671,7 @@ impl Subject {
         for schema in schemas {
             let actor = Compiler::default();
             let actor = ctx
-                .create_child(&format!("{}_compiler", schema.id), actor)
+                .get_or_create_child(&format!("{}_compiler", schema.id), || {actor})
                 .await
                 .map_err(|e| Error::Actor(format!("{}", e)))?;
             if let Err(_e) = actor
@@ -995,30 +995,7 @@ impl Subject {
                         // Error, hemos aplicado el nuevo patch y hemos obtenido un estado diferenta al del nodo original
                     }
                 }
-                EventRequest::Transfer(transfer_request) => {
-                    let hash_without_patch = self
-                        .properties
-                        .hash_id(new_ledger.signature.content_hash.derivator)?;
-
-                    if hash_without_patch != new_ledger.content.state_hash {
-                        // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
-                        // propierties deberían ser iguales.
-                    }
-                }
-                EventRequest::Confirm(confirm_request) => {
-                    let hash_without_patch = self
-                        .properties
-                        .hash_id(new_ledger.signature.content_hash.derivator)?;
-
-                    if hash_without_patch != new_ledger.content.state_hash {
-                        // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
-                        // propierties deberían ser iguales.
-                    }
-
-                    // TODO tenemos que guardar las nuevas claves,
-                    todo!()
-                }
-                EventRequest::EOL(eolrequest) => {
+                _ => {
                     let hash_without_patch = self
                         .properties
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
@@ -1633,6 +1610,22 @@ impl Subject {
             _ => todo!(),
         }
     }
+
+    async fn create_compilers(ctx: &mut ActorContext<Subject>, compilers: &[String]) -> Result<Vec<String>, Error> {
+        let mut new_compilers = vec![];
+
+        for compiler in compilers {
+            let child: Option<ActorRef<Compiler>> = ctx.get_child(&format!("{}_compiler", compiler)).await;
+            if child.is_none() {
+                new_compilers.push(compiler.clone());
+                if let Err(e) = ctx.create_child(&format!("{}_compiler", compiler), Compiler::default()).await {
+                    todo!()
+                }
+            }
+        }
+
+        Ok(new_compilers)
+    }
 }
 
 impl Clone for Subject {
@@ -1683,6 +1676,7 @@ pub struct Metadata {
 /// Subject command.
 #[derive(Debug, Clone)]
 pub enum SubjectMessage {
+    CreateCompilers(Vec<String>),
     /// Get the subject metadata.
     GetMetadata,
     GetLedger {
@@ -1711,6 +1705,7 @@ pub enum SubjectResponse {
     Ledger((Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>)),
     Governance(Governance),
     Owner(KeyIdentifier),
+    NewCompilers(Vec<String>)
 }
 
 impl Response for SubjectResponse {}
@@ -1773,6 +1768,12 @@ impl Handler<Subject> for Subject {
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
+            SubjectMessage::CreateCompilers(compilers) => {
+                match Self::create_compilers(ctx, &compilers).await {
+                    Ok(new_compilers) => Ok(SubjectResponse::NewCompilers(new_compilers)),
+                    Err(e) => Ok(SubjectResponse::Error(e))
+                }
+            },
             SubjectMessage::GetLedger { last_sn } => {
                 let ledger = match self.get_ledger(ctx, last_sn).await {
                     Ok(response) => response,

@@ -36,8 +36,9 @@ pub mod manager;
 pub mod state;
 
 #[derive(Debug, Clone)]
-pub struct RequestID {
+pub struct RequestData {
     pub request_id: String,
+    pub subject_id: String
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -207,7 +208,7 @@ impl Message for RequestHandlerMessage {}
 
 #[derive(Debug, Clone)]
 pub enum RequestHandlerResponse {
-    Ok(RequestID),
+    Ok(RequestData),
     Error(Error),
     None,
 }
@@ -392,8 +393,9 @@ impl Handler<RequestHandler> for RequestHandler {
                             todo!()
                         }
 
-                        return Ok(RequestHandlerResponse::Ok(RequestID {
+                        return Ok(RequestHandlerResponse::Ok(RequestData {
                             request_id,
+                            subject_id: subject_id.to_string()
                         }));
                     }
                     EventRequest::Fact(fact_request) => fact_request.subject_id,
@@ -506,7 +508,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 }
 
-                Ok(RequestHandlerResponse::Ok(RequestID { request_id }))
+                Ok(RequestHandlerResponse::Ok(RequestData { request_id, subject_id: subject_id.to_string() }))
             }
             RequestHandlerMessage::PopQueue { subject_id } => {
                 // TODO, Ver si los que usan derivator nos renta que lo tengan directamente en memoria,
