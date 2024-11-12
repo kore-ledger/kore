@@ -379,7 +379,7 @@ impl Handler<Node> for Node {
                 else {
                     todo!()
                 };
-                
+
                 let subject = Subject::from_event(None, &ledger);
                 let subject = match subject {
                     Ok(subject) => subject,

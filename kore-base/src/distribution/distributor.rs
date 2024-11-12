@@ -10,11 +10,16 @@ use identity::identifier::{Derivable, DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
-    governance::model::Roles, intermediary::Intermediary, model::{
+    governance::model::Roles,
+    intermediary::Intermediary,
+    model::{
         common::{get_gov, get_metadata, get_quantity, update_event},
         event::Ledger,
         network::RetryNetwork,
-    }, ActorMessage, CreateRequest, Error, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
+    },
+    ActorMessage, CreateRequest, Error, Event as KoreEvent, EventRequest,
+    NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject,
+    SubjectMessage, SubjectResponse,
 };
 
 use super::{Distribution, DistributionMessage};
@@ -152,12 +157,14 @@ impl Distributor {
         ctx: &mut ActorContext<Distributor>,
         ledger: Signed<Ledger>,
     ) -> Result<(), Error> {
-        
         // TODO refactorizar.
-        if let EventRequest::Create(request) = ledger.content.event_request.content.clone()
+        if let EventRequest::Create(request) =
+            ledger.content.event_request.content.clone()
         {
             if request.schema_id != "governance" {
-                let Ok(gov) = get_gov(ctx, &request.governance_id.to_string()).await else {
+                let Ok(gov) =
+                    get_gov(ctx, &request.governance_id.to_string()).await
+                else {
                     todo!()
                 };
 
@@ -166,9 +173,17 @@ impl Distributor {
                     &request.schema_id,
                     request.namespace.clone(),
                 ) {
-                    let quantity = match get_quantity(ctx, request.governance_id.to_string(), request.schema_id.clone(), ledger.signature.signer.to_string(), request.namespace.to_string()).await {
+                    let quantity = match get_quantity(
+                        ctx,
+                        request.governance_id.to_string(),
+                        request.schema_id.clone(),
+                        ledger.signature.signer.to_string(),
+                        request.namespace.to_string(),
+                    )
+                    .await
+                    {
                         Ok(quantity) => quantity,
-                        Err(e) => todo!()
+                        Err(e) => todo!(),
                     };
 
                     if quantity >= max_quantity {
@@ -960,7 +975,6 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 if new_subject {
-                    
                     // Creamos el sujeto.
                     if let Err(_e) =
                         self.create_subject(ctx, events[0].clone()).await

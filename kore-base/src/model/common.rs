@@ -1,10 +1,17 @@
 use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler};
 
 use crate::{
-    model::SignTypesNode, node::relationship::{OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse}, subject::{
+    model::SignTypesNode,
+    node::relationship::{
+        OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
+    },
+    subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
         Metadata,
-    }, Error, Event as KoreEvent, EventRequestType, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
+    },
+    Error, Event as KoreEvent, EventRequestType, Governance, Node, NodeMessage,
+    NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse,
+    SubjectsTypes,
 };
 
 pub async fn get_gov<A>(
@@ -187,7 +194,7 @@ pub async fn get_quantity<A>(
     gov: String,
     schema: String,
     owner: String,
-    namespace: String
+    namespace: String,
 ) -> Result<usize, Error>
 where
     A: Actor + Handler<A>,
@@ -197,12 +204,15 @@ where
         ctx.system().get_actor(&relation_path).await;
 
     let response = if let Some(relation_actor) = relation_actor {
-        let Ok(result) = relation_actor.ask(RelationShipMessage::GetSubjectsCount(OwnerSchema {
-            owner,
-            gov,
-            schema,
-            namespace
-        })).await else {
+        let Ok(result) = relation_actor
+            .ask(RelationShipMessage::GetSubjectsCount(OwnerSchema {
+                owner,
+                gov,
+                schema,
+                namespace,
+            }))
+            .await
+        else {
             todo!()
         };
         result
@@ -211,12 +221,11 @@ where
     };
 
     if let RelationShipResponse::Count(quantity) = response {
-        return Ok(quantity)
+        return Ok(quantity);
     } else {
         todo!()
     };
 }
-
 
 pub async fn register_relation<A>(
     ctx: &mut ActorContext<A>,
@@ -225,7 +234,7 @@ pub async fn register_relation<A>(
     owner: String,
     subject: String,
     namespace: String,
-    max_quantity: usize
+    max_quantity: usize,
 ) -> Result<(), Error>
 where
     A: Actor + Handler<A>,
@@ -235,13 +244,19 @@ where
         ctx.system().get_actor(&relation_path).await;
 
     let response = if let Some(relation_actor) = relation_actor {
-        let Ok(result) = relation_actor.ask(RelationShipMessage::RegisterNewSubject { data: OwnerSchema {
-            owner,
-            gov,
-            schema,
-            namespace
-        }, subject,
-            max_quantity }).await else {
+        let Ok(result) = relation_actor
+            .ask(RelationShipMessage::RegisterNewSubject {
+                data: OwnerSchema {
+                    owner,
+                    gov,
+                    schema,
+                    namespace,
+                },
+                subject,
+                max_quantity,
+            })
+            .await
+        else {
             todo!()
         };
         result
@@ -252,7 +267,7 @@ where
     match response {
         RelationShipResponse::None => Ok(()),
         RelationShipResponse::Error(e) => Err(e),
-        _ => todo!()
+        _ => todo!(),
     }
 }
 
@@ -272,12 +287,18 @@ where
         ctx.system().get_actor(&relation_path).await;
 
     let response = if let Some(relation_actor) = relation_actor {
-        let Ok(result) = relation_actor.ask(RelationShipMessage::DeleteSubject { data: OwnerSchema {
-            owner,
-            gov,
-            schema,
-            namespace
-        }, subject }).await else {
+        let Ok(result) = relation_actor
+            .ask(RelationShipMessage::DeleteSubject {
+                data: OwnerSchema {
+                    owner,
+                    gov,
+                    schema,
+                    namespace,
+                },
+                subject,
+            })
+            .await
+        else {
             todo!()
         };
         result
@@ -286,7 +307,7 @@ where
     };
 
     if let RelationShipResponse::None = response {
-        return Ok(())
+        return Ok(());
     } else {
         todo!()
     };

@@ -66,35 +66,47 @@ impl Compiler {
     ) -> Result<(), Error> {
         // Write contract.
         let Ok(decode_base64) = BASE64_STANDARD.decode(contract) else {
-            return Err(Error::Compiler(format!("Failed to decode base64 {}", contract_path)));
+            return Err(Error::Compiler(format!(
+                "Failed to decode base64 {}",
+                contract_path
+            )));
         };
 
         if !Path::new(&format!("contracts/{}/src", contract_path)).exists() {
-            fs::create_dir_all(&format!("contracts/{}/src", contract_path)).await.map_err(|e| {
-                Error::Node(format!("Can not create src dir: {}", e))
-            })?;
+            fs::create_dir_all(&format!("contracts/{}/src", contract_path))
+                .await
+                .map_err(|e| {
+                    Error::Node(format!("Can not create src dir: {}", e))
+                })?;
         }
 
         let toml: String = Self::compilation_toml();
         // We write cargo.toml
-        fs::write(format!("contracts/{}/Cargo.toml", contract_path), toml).await.map_err(|e| {
-            Error::Node(format!("Can not create Cargo.toml file: {}", e))
-        })?;
-
-        
-        fs::write(format!("contracts/{}/src/lib.rs", contract_path), decode_base64)
+        fs::write(format!("contracts/{}/Cargo.toml", contract_path), toml)
             .await
             .map_err(|e| {
-                Error::Compiler(format!(
-                    "Can not create contracts/{}/src/lib.rs file: {}",
-                    contract_path, e
-                ))
+                Error::Node(format!("Can not create Cargo.toml file: {}", e))
             })?;
+
+        fs::write(
+            format!("contracts/{}/src/lib.rs", contract_path),
+            decode_base64,
+        )
+        .await
+        .map_err(|e| {
+            Error::Compiler(format!(
+                "Can not create contracts/{}/src/lib.rs file: {}",
+                contract_path, e
+            ))
+        })?;
 
         // Compiling contract
         let status = Command::new("cargo")
             .arg("build")
-            .arg(format!("--manifest-path=contracts/{}/Cargo.toml", contract_path))
+            .arg(format!(
+                "--manifest-path=contracts/{}/Cargo.toml",
+                contract_path
+            ))
             .arg("--target")
             .arg("wasm32-unknown-unknown")
             .arg("--release")
@@ -118,7 +130,10 @@ impl Compiler {
         Ok(())
     }
 
-    async fn check_wasm(contract_path: &str, state: ValueWrapper) -> Result<Vec<u8>, Error> {
+    async fn check_wasm(
+        contract_path: &str,
+        state: ValueWrapper,
+    ) -> Result<Vec<u8>, Error> {
         // Read compile contract
         let file = fs::read(format!(
             "contracts/{}/target/wasm32-unknown-unknown/release/contract.wasm",
@@ -186,8 +201,7 @@ impl Compiler {
         }
 
         // We create a context from the state and the event.
-        let (context, state_ptr) =
-            Self::generate_context(state)?;
+        let (context, state_ptr) = Self::generate_context(state)?;
 
         // Container to store and manage the global state of a WebAssembly instance during its execution.
         let mut store = Store::new(&engine, context);
@@ -217,19 +231,16 @@ impl Compiler {
             .map_err(|e| {
                 Error::Runner(format!("Contract entry point not found: {}", e))
             })?;
-        
+
         // Contract execution
         let result_ptr = init_contract_entrypoint
-            .call(
-                &mut store,
-                state_ptr,
-            )
+            .call(&mut store, state_ptr)
             .map_err(|e| {
-                Error::Runner(format!("Contract execution failed: {}", e))
-            })?;
+            Error::Runner(format!("Contract execution failed: {}", e))
+        })?;
 
         let result = Self::get_result(&store, result_ptr)?;
-        
+
         if !result.success {
             todo!()
         }
@@ -330,7 +341,9 @@ impl Compiler {
         Ok(linker)
     }
 
-    fn generate_context(state: ValueWrapper) -> Result<(MemoryManager, u32), Error> {
+    fn generate_context(
+        state: ValueWrapper,
+    ) -> Result<(MemoryManager, u32), Error> {
         let mut context = MemoryManager::new();
         let state_bytes = to_vec(&state).map_err(|e| {
             Error::Runner(format!(
@@ -417,7 +430,11 @@ impl Handler<Compiler> for Compiler {
                         return Ok(CompilerResponse::Error(e));
                     };
 
-                    let contract = match Self::check_wasm(&contract_path, ValueWrapper(initial_value)).await
+                    let contract = match Self::check_wasm(
+                        &contract_path,
+                        ValueWrapper(initial_value),
+                    )
+                    .await
                     {
                         Ok(contract) => contract,
                         Err(e) => return Ok(CompilerResponse::Error(e)),

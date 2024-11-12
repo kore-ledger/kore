@@ -17,7 +17,10 @@ use crate::{
     governance::{model::Roles, Schema},
     helpers::db::LocalDB,
     model::{
-        common::{delete_relation, get_gov, get_quantity, register_relation, verify_protocols_state},
+        common::{
+            delete_relation, get_gov, get_quantity, register_relation,
+            verify_protocols_state,
+        },
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
@@ -430,9 +433,8 @@ impl Subject {
         &self,
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
-        local_db: LocalDB
+        local_db: LocalDB,
     ) -> Result<(), ActorError> {
-
         // If subject is a governance
         let gov = Governance::try_from(self.properties.clone())
             .map_err(|e| ActorError::Create)?;
@@ -1099,9 +1101,8 @@ impl Subject {
         };
 
         for event in events {
-            if let Err(e) = self
-                .verify_new_ledger_event(&last_ledger, &event)
-                .await
+            if let Err(e) =
+                self.verify_new_ledger_event(&last_ledger, &event).await
             {
                 if let Error::Sn(_) = e {
                     // El evento que estamos aplicando no es el siguiente.
@@ -1206,9 +1207,8 @@ impl Subject {
         };
 
         for event in events {
-            if let Err(e) = self
-                .verify_new_ledger_event(&last_ledger, &event)
-                .await
+            if let Err(e) =
+                self.verify_new_ledger_event(&last_ledger, &event).await
             {
                 if let Error::Sn(_) = e {
                     // El evento que estamos aplicando no es el siguiente.
@@ -1719,15 +1719,19 @@ impl Actor for Subject {
         };
 
         let ledger_event = LedgerEvent::new(self.governance_id.is_empty());
-        let ledger_event_actor = ctx.create_child("ledger_event", ledger_event).await?;
+        let ledger_event_actor =
+            ctx.create_child("ledger_event", ledger_event).await?;
 
-        let sink =
-        Sink::new(ledger_event_actor.subscribe(), local_db.get_ledger_event());
+        let sink = Sink::new(
+            ledger_event_actor.subscribe(),
+            local_db.get_ledger_event(),
+        );
         ctx.system().run_sink(sink).await;
 
         if self.active {
             if self.governance_id.is_empty() {
-                self.build_childs_governance(ctx, our_key.clone(), local_db).await?;
+                self.build_childs_governance(ctx, our_key.clone(), local_db)
+                    .await?;
             } else {
                 self.build_childs_not_governance(ctx, our_key.clone())
                     .await?;

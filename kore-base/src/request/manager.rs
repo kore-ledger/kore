@@ -430,7 +430,7 @@ impl RequestManager {
             SubjectResponse::LastSn(_) => Ok(()),
             SubjectResponse::Error(e) => {
                 todo!()
-            },
+            }
             _ => todo!(),
         }
     }

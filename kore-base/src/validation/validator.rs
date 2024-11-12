@@ -5,7 +5,10 @@ use std::{collections::HashSet, time::Duration};
 
 use crate::{
     governance::model::Roles,
-    helpers::{db::{LocalDB, Querys}, network::{intermediary::Intermediary, NetworkMessage}},
+    helpers::{
+        db::{LocalDB, Querys},
+        network::{intermediary::Intermediary, NetworkMessage},
+    },
     model::{
         common::{get_gov, get_sign},
         event::ProtocolsSignatures,
@@ -263,11 +266,16 @@ impl Validator {
                     return Err(Error::Validation("The previous event received validations from validators who are not part of governance.".to_owned()));
                 }
             } else {
-                let Some(helper): Option<LocalDB> = ctx.system().get_helper("local_db").await else {
+                let Some(helper): Option<LocalDB> =
+                    ctx.system().get_helper("local_db").await
+                else {
                     todo!()
                 };
 
-                let Ok(validators) = helper.get_last_validators(&new_proof.subject_id.to_string()).await else {
+                let Ok(validators) = helper
+                    .get_last_validators(&new_proof.subject_id.to_string())
+                    .await
+                else {
                     todo!()
                 };
 

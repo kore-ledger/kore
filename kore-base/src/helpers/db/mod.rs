@@ -1,5 +1,11 @@
 use crate::{
-    approval::approver::{ApprovalState, ApprovalStateRes, ApproverEvent}, error::Error, local_db::DBManager, model::event::Ledger, request::{manager::RequestManagerEvent, RequestHandlerEvent}, subject::event::LedgerEventEvent, Signed
+    approval::approver::{ApprovalState, ApprovalStateRes, ApproverEvent},
+    error::Error,
+    local_db::DBManager,
+    model::event::Ledger,
+    request::{manager::RequestManagerEvent, RequestHandlerEvent},
+    subject::event::LedgerEventEvent,
+    Signed,
 };
 
 use actor::{ActorRef, Subscriber};
@@ -27,7 +33,6 @@ pub trait Querys {
         &self,
         subject_id: &str,
     ) -> Result<String, Error>;
-    
 }
 
 #[derive(Clone)]

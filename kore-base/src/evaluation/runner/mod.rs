@@ -23,7 +23,6 @@ use crate::{
     Error, ValueWrapper, GOVERNANCE,
 };
 
-
 pub mod types;
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -121,33 +120,31 @@ impl Runner {
                         Error::Runner(format!("Can not apply patch {}", e))
                     })?;
 
-                    Self::check_governance_state(&patched_state)?;
+                Self::check_governance_state(&patched_state)?;
 
-                    let compilations = Self::check_compilation(data.clone())?;
+                let compilations = Self::check_compilation(data.clone())?;
 
-                    let final_state = ValueWrapper(
-                        serde_json::to_value(patched_state).unwrap(),
-                    );
+                let final_state =
+                    ValueWrapper(serde_json::to_value(patched_state).unwrap());
 
-                    if let Some(lock) = GOVERNANCE.get() {
-                        let schema = lock.read().await;
-                        if !schema.fast_validate(&final_state.0) {
-                            todo!()
-                        }
-                    } else {
+                if let Some(lock) = GOVERNANCE.get() {
+                    let schema = lock.read().await;
+                    if !schema.fast_validate(&final_state.0) {
                         todo!()
-                    };
+                    }
+                } else {
+                    todo!()
+                };
 
-                    // TODO QUITAR TODOS LOS unwrap()
-                    Ok((
-                        RunnerResult {
-                            final_state,
-                            approval_required: true,
-                            success: true,
-                        },
-                        compilations,
-                    ))
-                
+                // TODO QUITAR TODOS LOS unwrap()
+                Ok((
+                    RunnerResult {
+                        final_state,
+                        approval_required: true,
+                        success: true,
+                    },
+                    compilations,
+                ))
             }
         }
     }

@@ -351,9 +351,9 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
                 };
                 succes = "true".to_owned();
                 string
-            },        
+            }
         };
-        
+
         if let Err(e) = self
                     .conn
                     .call(move |conn| {

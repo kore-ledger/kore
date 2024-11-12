@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use crate::{model::{common::verify_protocols_state, event::ProtocolsSignatures}, EventRequestType};
+use crate::{
+    model::{common::verify_protocols_state, event::ProtocolsSignatures},
+    EventRequestType,
+};
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
     Handler, Message, Response,
@@ -98,7 +101,9 @@ impl Handler<LedgerEvent> for LedgerEvent {
         match msg {
             LedgerEventMessage::UpdateLastEvent { event } => {
                 let valid_event = match verify_protocols_state(
-                    EventRequestType::from(event.content.event_request.content.clone()),
+                    EventRequestType::from(
+                        event.content.event_request.content.clone(),
+                    ),
                     event.content.eval_success,
                     event.content.appr_success,
                     event.content.appr_required,
@@ -110,39 +115,43 @@ impl Handler<LedgerEvent> for LedgerEvent {
 
                 if valid_event {
                     let validators: HashSet<KeyIdentifier> =
-                    if let Some(last_event) = self.last_event.clone() {
-                        last_event
-                            .content
-                            .validators
-                            .iter()
-                            .map(|x| match x {
-                                ProtocolsSignatures::Signature(signature) => {
-                                    signature.signer.clone()
-                                }
-                                ProtocolsSignatures::TimeOut(
-                                    time_out_response,
-                                ) => time_out_response.who.clone(),
-                            })
-                            .collect()
-                    } else {
-                        HashSet::new()
-                    };
+                        if let Some(last_event) = self.last_event.clone() {
+                            last_event
+                                .content
+                                .validators
+                                .iter()
+                                .map(|x| match x {
+                                    ProtocolsSignatures::Signature(
+                                        signature,
+                                    ) => signature.signer.clone(),
+                                    ProtocolsSignatures::TimeOut(
+                                        time_out_response,
+                                    ) => time_out_response.who.clone(),
+                                })
+                                .collect()
+                        } else {
+                            HashSet::new()
+                        };
 
                     self.on_event(
-                        LedgerEventEvent::WithVal { event: event.clone(), validators },
+                        LedgerEventEvent::WithVal {
+                            event: event.clone(),
+                            validators,
+                        },
                         ctx,
                     )
                     .await;
                 } else {
-
                     self.on_event(
-                        LedgerEventEvent::WithOutVal { event: event.clone() },
+                        LedgerEventEvent::WithOutVal {
+                            event: event.clone(),
+                        },
                         ctx,
                     )
                     .await;
                 }
 
-                if self.is_gov {    
+                if self.is_gov {
                     if let EventRequest::EOL(_) =
                         event.content.event_request.content
                     {

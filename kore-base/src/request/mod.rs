@@ -38,7 +38,7 @@ pub mod state;
 #[derive(Debug, Clone)]
 pub struct RequestData {
     pub request_id: String,
-    pub subject_id: String
+    pub subject_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -395,7 +395,7 @@ impl Handler<RequestHandler> for RequestHandler {
 
                         return Ok(RequestHandlerResponse::Ok(RequestData {
                             request_id,
-                            subject_id: subject_id.to_string()
+                            subject_id: subject_id.to_string(),
                         }));
                     }
                     EventRequest::Fact(fact_request) => fact_request.subject_id,
@@ -508,7 +508,10 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 }
 
-                Ok(RequestHandlerResponse::Ok(RequestData { request_id, subject_id: subject_id.to_string() }))
+                Ok(RequestHandlerResponse::Ok(RequestData {
+                    request_id,
+                    subject_id: subject_id.to_string(),
+                }))
             }
             RequestHandlerMessage::PopQueue { subject_id } => {
                 // TODO, Ver si los que usan derivator nos renta que lo tengan directamente en memoria,
@@ -598,7 +601,7 @@ impl Handler<RequestHandler> for RequestHandler {
                                     create_request.governance_id.to_string(),
                                     create_request.schema_id.clone(),
                                     self.node_key.to_string(),
-                                    create_request.namespace.to_string()
+                                    create_request.namespace.to_string(),
                                 )
                                 .await
                                 {
