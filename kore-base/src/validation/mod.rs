@@ -543,7 +543,7 @@ pub mod tests {
     use identity::identifier::derive::digest::DigestDerivator;
     use std::time::Duration;
 
-    use actor::{ActorPath, ActorRef, Sink};
+    use actor::{ActorPath, ActorRef, Sink, SystemRef};
     use identity::{
         identifier::{DigestIdentifier, KeyIdentifier},
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
@@ -566,6 +566,7 @@ pub mod tests {
     };
 
     pub async fn create_subject_gov() -> (
+        SystemRef,
         ActorRef<Node>,
         ActorRef<RequestHandler>,
         ActorRef<Query>,
@@ -724,6 +725,7 @@ pub mod tests {
         assert!(!gov.policies.is_empty());
 
         (
+            system,
             node_actor,
             request_actor,
             query_actor,
@@ -741,6 +743,7 @@ pub mod tests {
     #[tokio::test]
     async fn test_eol_req() {
         let (
+            _system,
             node_actor,
             request_actor,
             _query_actor,
@@ -844,6 +847,7 @@ pub mod tests {
     #[tokio::test]
     async fn test_transfer_req() {
         let (
+            _system,
             node_actor,
             request_actor,
             _query_actor,

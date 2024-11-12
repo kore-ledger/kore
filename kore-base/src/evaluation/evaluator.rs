@@ -296,41 +296,6 @@ impl Evaluator {
         };
 
         if evaluation.success {
-            // Sacar esquema actual
-            let governance_data =
-                match serde_json::from_value::<GovernanceData>(
-                    evaluation_req.context.state.0.clone(),
-                )
-                .map_err(|e| {
-                    Error::Evaluation(format!(
-                        "Can not create governance data {}",
-                        e
-                    ))
-                }) {
-                    Ok(gov_data) => gov_data,
-                    Err(_e) => todo!(),
-                };
-
-            let schema = if evaluation_req.context.schema_id == "governance" {
-                "governance".to_owned()
-            } else {
-                let schema = if let Some(schema) = governance_data
-                    .schemas
-                    .iter()
-                    .find(|x| x.id.clone() == evaluation_req.context.schema_id)
-                {
-                    schema
-                } else {
-                    todo!()
-                };
-
-                format!(
-                    "{}_{}",
-                    evaluation_req.context.governance_id.clone(),
-                    schema.id
-                )
-            };
-
             let state_hash = match evaluation.final_state.hash_id(derivator) {
                 Ok(state_hash) => state_hash,
                 Err(_e) => todo!(),

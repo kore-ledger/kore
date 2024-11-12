@@ -484,15 +484,17 @@ impl Handler<Evaluation> for Evaluation {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{str::FromStr, time::Duration};
 
-    use actor::ActorRef;
-    use identity::identifier::{DigestIdentifier, KeyIdentifier};
+    use actor::{ActorPath, ActorRef, SystemRef};
+    use identity::identifier::{
+        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+    };
     use serde_json::json;
 
     use crate::{
         approval::approver::ApprovalStateRes,
-        model::{event::LedgerValue, Namespace, SignTypesNode},
+        model::{event::LedgerValue, HashId, Namespace, SignTypesNode},
         node::Node,
         query::{Query, QueryMessage, QueryResponse},
         request::{
@@ -510,6 +512,7 @@ mod tests {
     #[tokio::test]
     async fn test_fact_gov() {
         let (
+            _system,
             node_actor,
             request_actor,
             query_actor,
@@ -667,6 +670,7 @@ mod tests {
     }
 
     async fn init_gov_sub() -> (
+        SystemRef,
         ActorRef<Node>,
         ActorRef<RequestHandler>,
         ActorRef<Query>,
@@ -675,6 +679,7 @@ mod tests {
         DigestIdentifier,
     ) {
         let (
+            system,
             node_actor,
             request_actor,
             query_actor,
@@ -780,7 +785,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        tokio::time::sleep(Duration::from_secs(8)).await;
+        tokio::time::sleep(Duration::from_secs(9)).await;
 
         let QueryResponse::RequestState(state) = query_actor
             .ask(QueryMessage::GetRequestState {
@@ -946,6 +951,7 @@ mod tests {
         assert!(!gov.policies.is_empty());
 
         (
+            system,
             node_actor,
             request_actor,
             query_actor,
@@ -960,10 +966,17 @@ mod tests {
         init_gov_sub().await;
     }
 
-    #[tokio::test]
-    async fn test_subject() {
-        /*
+    async fn create_subject() -> (
+        SystemRef,
+        ActorRef<Node>,
+        ActorRef<RequestHandler>,
+        ActorRef<Query>,
+        ActorRef<Subject>,
+        ActorRef<LedgerEvent>,
+        DigestIdentifier,
+    ) {
         let (
+            system,
             node_actor,
             request_actor,
             query_actor,
@@ -972,8 +985,11 @@ mod tests {
             gov_id,
         ) = init_gov_sub().await;
 
-
-        let create_request = EventRequest::Create(crate::CreateRequest { governance_id: gov_id.clone(), schema_id: "Example".to_owned(), namespace: Namespace::new() } );
+        let create_request = EventRequest::Create(crate::CreateRequest {
+            governance_id: gov_id.clone(),
+            schema_id: "Example".to_owned(),
+            namespace: Namespace::new(),
+        });
 
         let response = node_actor
             .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
@@ -1014,6 +1030,142 @@ mod tests {
 
         assert_eq!("Finish", state);
 
+        let ledger_event_actor: ActorRef<LedgerEvent> = system
+            .get_actor(&ActorPath::from(format!(
+                "/user/node/{}/ledger_event",
+                request_id.subject_id
+            )))
+            .await
+            .unwrap();
+
+        let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let subject_actor: ActorRef<Subject> = system
+            .get_actor(&ActorPath::from(format!(
+                "/user/node/{}",
+                request_id.subject_id
+            )))
+            .await
+            .unwrap();
+
+        let SubjectResponse::Metadata(metadata) = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(
+            last_event.content.subject_id.to_string(),
+            request_id.subject_id
+        );
+        assert_eq!(last_event.content.event_request, signed_event_req);
+        assert_eq!(last_event.content.sn, 0);
+        assert_eq!(last_event.content.gov_version, 1);
+        assert_eq!(
+            last_event.content.value,
+            LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
+                "[]".to_owned(),
+            ),))
+        );
+        assert_eq!(
+            last_event.content.state_hash,
+            metadata
+                .properties
+                .hash_id(DigestDerivator::Blake3_256)
+                .unwrap()
+        );
+        assert!(last_event.content.eval_success.is_none());
+        assert!(!last_event.content.appr_required);
+        assert!(last_event.content.appr_success.is_none());
+        assert!(last_event.content.vali_success);
+        assert_eq!(
+            last_event.content.hash_prev_event,
+            DigestIdentifier::default()
+        );
+        assert!(last_event.content.evaluators.is_none());
+        assert!(last_event.content.approvers.is_none(),);
+        assert!(!last_event.content.validators.is_empty());
+
+        assert_eq!(metadata.subject_id.to_string(), request_id.subject_id);
+        assert_eq!(metadata.governance_id.to_string(), gov_id.to_string());
+        assert_eq!(metadata.genesis_gov_version, 1);
+        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.schema_id, "Example");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 0);
+        assert!(metadata.active);
+
+        (
+            system,
+            node_actor,
+            request_actor,
+            query_actor,
+            subject_actor,
+            ledger_event_actor,
+            DigestIdentifier::from_str(&request_id.subject_id).unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn test_subject() {
+        let _ = create_subject().await;
+    }
+
+    #[tokio::test]
+    async fn test_subject_events() {
+        let (
+            _system,
+            node_actor,
+            request_actor,
+            _query_actor,
+            subject_actor,
+            ledger_event_actor,
+            subject_id,
+        ) = create_subject().await;
+
+        let fact_request = EventRequest::Fact(crate::FactRequest {
+            subject_id,
+            payload: ValueWrapper(json!({
+                "ModOne": {
+                    "data": 100
+                }
+            })),
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                fact_request.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: fact_request,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(request_id) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
         let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
             .ask(LedgerEventMessage::GetLastEvent)
             .await
@@ -1030,45 +1182,37 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(last_event.content.subject_id.to_string(), request_id.subject_id);
+        assert_eq!(
+            last_event.content.subject_id.to_string(),
+            request_id.subject_id
+        );
         assert_eq!(last_event.content.event_request, signed_event_req);
         assert_eq!(last_event.content.sn, 1);
-        assert_eq!(last_event.content.gov_version, 0);
+        assert_eq!(last_event.content.gov_version, 1);
         assert_eq!(
-            last_event.content.value,
-            LedgerValue::Patch(ValueWrapper(json!([
-            {
-                "op": "add",
-                "path": "/members/1",
-                "value": {
-                    "id": "EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE",
-                    "name": "KoreNode1"
-                }
-            }])))
+            last_event.content.state_hash,
+            metadata
+                .properties
+                .hash_id(DigestDerivator::Blake3_256)
+                .unwrap()
         );
         assert!(last_event.content.eval_success.unwrap());
-        assert!(last_event.content.appr_required);
-        assert!(last_event.content.appr_success.unwrap());
+        assert!(!last_event.content.appr_required);
+        assert!(last_event.content.appr_success.is_none());
         assert!(last_event.content.vali_success);
         assert!(!last_event.content.evaluators.unwrap().is_empty());
-        assert!(!last_event.content.approvers.unwrap().is_empty());
+        assert!(last_event.content.approvers.is_none(),);
         assert!(!last_event.content.validators.is_empty());
 
         assert_eq!(metadata.subject_id.to_string(), request_id.subject_id);
-        assert_eq!(metadata.governance_id.to_string(), "");
-        assert_eq!(metadata.genesis_gov_version, 0);
+        assert_eq!(metadata.genesis_gov_version, 1);
         assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
-        assert_eq!(metadata.schema_id, "governance");
+        assert_eq!(metadata.schema_id, "Example");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 1);
         assert!(metadata.active);
-
-        let gov = Governance::try_from(metadata.properties).unwrap();
-        assert_eq!(gov.version, 1);
-        assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
-        assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
-         */
+        assert!(metadata.properties.0["one"].as_u64().unwrap() == 100);
+        assert!(metadata.properties.0["two"].as_u64().unwrap() == 0);
+        assert!(metadata.properties.0["three"].as_u64().unwrap() == 0);
     }
 }
