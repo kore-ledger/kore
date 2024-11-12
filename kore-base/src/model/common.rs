@@ -4,7 +4,7 @@ use crate::{
     model::SignTypesNode, node::relationship::{OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse}, subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
         Metadata,
-    }, Error, Event as KoreEvent, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
+    }, Error, Event as KoreEvent, EventRequestType, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
 };
 
 pub async fn get_gov<A>(
@@ -290,4 +290,42 @@ where
     } else {
         todo!()
     };
+}
+
+pub fn verify_protocols_state(
+    request: EventRequestType,
+    eval: Option<bool>,
+    approve: Option<bool>,
+    approval_require: bool,
+    val: bool,
+) -> Result<bool, Error> {
+    match request {
+        EventRequestType::Create
+        | EventRequestType::Transfer
+        | EventRequestType::Confirm
+        | EventRequestType::EOL => {
+            if approve.is_some() || eval.is_some() || approval_require {
+                todo!()
+            }
+            Ok(val)
+        }
+        EventRequestType::Fact => {
+            let eval = if let Some(eval) = eval { eval } else { todo!() };
+
+            if approval_require {
+                let approve = if let Some(approve) = approve {
+                    approve
+                } else {
+                    todo!()
+                };
+                Ok(eval && approve && val)
+            } else {
+                if let Some(_approve) = approve {
+                    todo!()
+                }
+
+                Ok(val && eval)
+            }
+        }
+    }
 }

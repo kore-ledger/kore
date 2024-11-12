@@ -1,8 +1,5 @@
 use crate::{
-    approval::approver::{ApprovalState, ApprovalStateRes, ApproverEvent},
-    error::Error,
-    local_db::DBManager,
-    request::{manager::RequestManagerEvent, RequestHandlerEvent},
+    approval::approver::{ApprovalState, ApprovalStateRes, ApproverEvent}, error::Error, local_db::DBManager, model::event::Ledger, request::{manager::RequestManagerEvent, RequestHandlerEvent}, subject::event::LedgerEventEvent, Signed
 };
 
 use actor::{ActorRef, Subscriber};
@@ -23,8 +20,14 @@ pub trait Querys {
     // approver
     async fn get_approve_req(
         &self,
-        request_id: &str,
+        subject_id: &str,
     ) -> Result<(String, String), Error>;
+    // validators
+    async fn get_last_validators(
+        &self,
+        subject_id: &str,
+    ) -> Result<String, Error>;
+    
 }
 
 #[derive(Clone)]
@@ -63,6 +66,20 @@ impl LocalDB {
             LocalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
         }
     }
+
+    pub fn get_ledger_event(&self) -> impl Subscriber<LedgerEventEvent> {
+        match self {
+            #[cfg(feature = "sqlite-local")]
+            LocalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+        }
+    }
+
+    pub fn get_subject(&self) -> impl Subscriber<Signed<Ledger>> {
+        match self {
+            #[cfg(feature = "sqlite-local")]
+            LocalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+        }
+    }
 }
 
 #[async_trait]
@@ -90,12 +107,24 @@ impl Querys for LocalDB {
 
     async fn get_approve_req(
         &self,
-        request_id: &str,
+        subject_id: &str,
     ) -> Result<(String, String), Error> {
         match self {
             #[cfg(feature = "sqlite-local")]
             LocalDB::SqliteLocal(sqlite_local) => {
-                sqlite_local.get_approve_req(request_id).await
+                sqlite_local.get_approve_req(subject_id).await
+            }
+        }
+    }
+
+    async fn get_last_validators(
+        &self,
+        subject_id: &str,
+    ) -> Result<String, Error> {
+        match self {
+            #[cfg(feature = "sqlite-local")]
+            LocalDB::SqliteLocal(sqlite_local) => {
+                sqlite_local.get_last_validators(subject_id).await
             }
         }
     }

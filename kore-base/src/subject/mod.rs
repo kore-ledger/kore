@@ -17,7 +17,7 @@ use crate::{
     governance::{model::Roles, Schema},
     helpers::db::LocalDB,
     model::{
-        common::{delete_relation, get_gov, get_quantity, register_relation},
+        common::{delete_relation, get_gov, get_quantity, register_relation, verify_protocols_state},
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
         signature::{Signature, Signed},
@@ -69,6 +69,32 @@ pub struct CreateSubjectData {
     pub value: ValueWrapper,
 }
 
+/// Subject metadata.
+#[derive(
+    Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
+)]
+pub struct Metadata {
+    /// The identifier of the subject of the event.
+    pub subject_id: DigestIdentifier,
+    /// The identifier of the governance contract.
+    pub governance_id: DigestIdentifier,
+    pub genesis_gov_version: u64,
+    pub last_event_hash: DigestIdentifier,
+    pub subject_public_key: KeyIdentifier,
+    /// The identifier of the schema used to validate the event.
+    pub schema_id: String,
+    /// The namespace of the subject.
+    pub namespace: Namespace,
+    /// The current sequence number of the subject.
+    pub sn: u64,
+    /// The identifier of the public key of the subject owner.
+    pub owner: KeyIdentifier,
+    /// Indicates whether the subject is active or not.
+    pub active: bool,
+    /// The current status of the subject.
+    pub properties: ValueWrapper,
+}
+
 #[derive(
     Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
@@ -107,6 +133,7 @@ pub struct Subject {
     pub schema_id: String,
     /// The identifier of the public key of the subject owner.
     pub owner: KeyIdentifier,
+
     pub last_event_hash: DigestIdentifier,
     /// The identifier of the public key of the subject creator.
     pub creator: KeyIdentifier,
@@ -356,10 +383,15 @@ impl Subject {
             .await
             .map_err(|e| Error::Actor(e.to_string()))?;
 
-        let evaluation = Evaluation::new(our_key);
+        let evaluation = Evaluation::new(our_key.clone());
         ctx.create_child("evaluation", evaluation)
             .await
             .map_err(|e| Error::Actor(e.to_string()))?;
+
+        let distribution = Distribution::new(our_key);
+        ctx.create_child("distribution", distribution)
+            .await
+            .map_err(|e| Error::Actor(format!("{}", e)))?;
 
         Ok(())
     }
@@ -383,6 +415,14 @@ impl Subject {
             todo!()
         }
 
+        let actor: Option<ActorRef<Distribution>> =
+            ctx.get_child("distribution").await;
+        if let Some(actor) = actor {
+            actor.stop().await;
+        } else {
+            todo!()
+        }
+
         Ok(())
     }
 
@@ -390,12 +430,8 @@ impl Subject {
         &self,
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
+        local_db: LocalDB
     ) -> Result<(), ActorError> {
-        let Some(local_db): Option<LocalDB> =
-            ctx.system().get_helper("local_db").await
-        else {
-            todo!()
-        };
 
         // If subject is a governance
         let gov = Governance::try_from(self.properties.clone())
@@ -671,7 +707,9 @@ impl Subject {
         for schema in schemas {
             let actor = Compiler::default();
             let actor = ctx
-                .get_or_create_child(&format!("{}_compiler", schema.id), || {actor})
+                .get_or_create_child(&format!("{}_compiler", schema.id), || {
+                    actor
+                })
                 .await
                 .map_err(|e| Error::Actor(format!("{}", e)))?;
             if let Err(_e) = actor
@@ -815,44 +853,6 @@ impl Subject {
         }
     }
 
-    fn verify_protocols_state(
-        request: EventRequestType,
-        eval: Option<bool>,
-        approve: Option<bool>,
-        approval_require: bool,
-        val: bool,
-    ) -> Result<bool, Error> {
-        match request {
-            EventRequestType::Create
-            | EventRequestType::Transfer
-            | EventRequestType::Confirm
-            | EventRequestType::EOL => {
-                if approve.is_some() || eval.is_some() || approval_require {
-                    todo!()
-                }
-                Ok(val)
-            }
-            EventRequestType::Fact => {
-                let eval = if let Some(eval) = eval { eval } else { todo!() };
-
-                if approval_require {
-                    let approve = if let Some(approve) = approve {
-                        approve
-                    } else {
-                        todo!()
-                    };
-                    Ok(eval && approve && val)
-                } else {
-                    if let Some(_approve) = approve {
-                        todo!()
-                    }
-
-                    Ok(val && eval)
-                }
-            }
-        }
-    }
-
     async fn change_node_subject(
         ctx: &mut ActorContext<Subject>,
         subject_id: &str,
@@ -880,11 +880,8 @@ impl Subject {
         Ok(())
     }
 
-    // TODO ARREGLAR EL HASH CUANDO ES UNA GOV, ya que la versión de la gov cambia
-    // y siendo un evento que no modifica estdo sí lo modifica al cambiar la gov_version +1
     async fn verify_new_ledger_event(
         &self,
-        ctx: &mut ActorContext<Subject>,
         last_ledger: &Signed<Ledger>,
         new_ledger: &Signed<Ledger>,
     ) -> Result<(), Error> {
@@ -915,7 +912,7 @@ impl Subject {
             todo!();
         }
 
-        let valid_last_event = match Self::verify_protocols_state(
+        let valid_last_event = match verify_protocols_state(
             EventRequestType::from(
                 last_ledger.content.event_request.content.clone(),
             ),
@@ -950,7 +947,7 @@ impl Subject {
             }
         }
 
-        let valid_new_event = match Self::verify_protocols_state(
+        let valid_new_event = match verify_protocols_state(
             EventRequestType::from(
                 new_ledger.content.event_request.content.clone(),
             ),
@@ -1061,7 +1058,7 @@ impl Subject {
             todo!()
         }
 
-        match Self::verify_protocols_state(
+        match verify_protocols_state(
             EventRequestType::Create,
             event.content.eval_success,
             event.content.appr_success,
@@ -1103,7 +1100,7 @@ impl Subject {
 
         for event in events {
             if let Err(e) = self
-                .verify_new_ledger_event(ctx, &last_ledger, &event)
+                .verify_new_ledger_event(&last_ledger, &event)
                 .await
             {
                 if let Error::Sn(_) = e {
@@ -1210,7 +1207,7 @@ impl Subject {
 
         for event in events {
             if let Err(e) = self
-                .verify_new_ledger_event(ctx, &last_ledger, &event)
+                .verify_new_ledger_event(&last_ledger, &event)
                 .await
             {
                 if let Error::Sn(_) = e {
@@ -1611,14 +1608,24 @@ impl Subject {
         }
     }
 
-    async fn create_compilers(ctx: &mut ActorContext<Subject>, compilers: &[String]) -> Result<Vec<String>, Error> {
+    async fn create_compilers(
+        ctx: &mut ActorContext<Subject>,
+        compilers: &[String],
+    ) -> Result<Vec<String>, Error> {
         let mut new_compilers = vec![];
 
         for compiler in compilers {
-            let child: Option<ActorRef<Compiler>> = ctx.get_child(&format!("{}_compiler", compiler)).await;
+            let child: Option<ActorRef<Compiler>> =
+                ctx.get_child(&format!("{}_compiler", compiler)).await;
             if child.is_none() {
                 new_compilers.push(compiler.clone());
-                if let Err(e) = ctx.create_child(&format!("{}_compiler", compiler), Compiler::default()).await {
+                if let Err(e) = ctx
+                    .create_child(
+                        &format!("{}_compiler", compiler),
+                        Compiler::default(),
+                    )
+                    .await
+                {
                     todo!()
                 }
             }
@@ -1645,32 +1652,6 @@ impl Clone for Subject {
             properties: self.properties.clone(),
         }
     }
-}
-
-/// Subject metadata.
-#[derive(
-    Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
-)]
-pub struct Metadata {
-    /// The identifier of the subject of the event.
-    pub subject_id: DigestIdentifier,
-    /// The identifier of the governance contract.
-    pub governance_id: DigestIdentifier,
-    pub genesis_gov_version: u64,
-    pub last_event_hash: DigestIdentifier,
-    pub subject_public_key: KeyIdentifier,
-    /// The identifier of the schema used to validate the event.
-    pub schema_id: String,
-    /// The namespace of the subject.
-    pub namespace: Namespace,
-    /// The current sequence number of the subject.
-    pub sn: u64,
-    /// The identifier of the public key of the subject owner.
-    pub owner: KeyIdentifier,
-    /// Indicates whether the subject is active or not.
-    pub active: bool,
-    /// The current status of the subject.
-    pub properties: ValueWrapper,
 }
 
 /// Subject command.
@@ -1705,7 +1686,7 @@ pub enum SubjectResponse {
     Ledger((Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>)),
     Governance(Governance),
     Owner(KeyIdentifier),
-    NewCompilers(Vec<String>)
+    NewCompilers(Vec<String>),
 }
 
 impl Response for SubjectResponse {}
@@ -1731,12 +1712,22 @@ impl Actor for Subject {
             .await
             .map_err(|e| ActorError::Create)?;
 
-        let ledger_event = LedgerEvent::default();
-        ctx.create_child("ledger_event", ledger_event).await?;
+        let Some(local_db): Option<LocalDB> =
+            ctx.system().get_helper("local_db").await
+        else {
+            todo!()
+        };
+
+        let ledger_event = LedgerEvent::new(self.governance_id.is_empty());
+        let ledger_event_actor = ctx.create_child("ledger_event", ledger_event).await?;
+
+        let sink =
+        Sink::new(ledger_event_actor.subscribe(), local_db.get_ledger_event());
+        ctx.system().run_sink(sink).await;
 
         if self.active {
             if self.governance_id.is_empty() {
-                self.build_childs_governance(ctx, our_key.clone()).await?;
+                self.build_childs_governance(ctx, our_key.clone(), local_db).await?;
             } else {
                 self.build_childs_not_governance(ctx, our_key.clone())
                     .await?;
@@ -1770,10 +1761,12 @@ impl Handler<Subject> for Subject {
         match msg {
             SubjectMessage::CreateCompilers(compilers) => {
                 match Self::create_compilers(ctx, &compilers).await {
-                    Ok(new_compilers) => Ok(SubjectResponse::NewCompilers(new_compilers)),
-                    Err(e) => Ok(SubjectResponse::Error(e))
+                    Ok(new_compilers) => {
+                        Ok(SubjectResponse::NewCompilers(new_compilers))
+                    }
+                    Err(e) => Ok(SubjectResponse::Error(e)),
                 }
-            },
+            }
             SubjectMessage::GetLedger { last_sn } => {
                 let ledger = match self.get_ledger(ctx, last_sn).await {
                     Ok(response) => response,
@@ -1853,7 +1846,7 @@ impl Handler<Subject> for Subject {
 #[async_trait]
 impl PersistentActor for Subject {
     fn apply(&mut self, event: &Signed<Ledger>) {
-        let valid_event = match Self::verify_protocols_state(
+        let valid_event = match verify_protocols_state(
             EventRequestType::from(event.content.event_request.content.clone()),
             event.content.eval_success,
             event.content.appr_success,

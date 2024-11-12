@@ -13,6 +13,7 @@ use relationship::RelationShip;
 use crate::{
     db::Storable,
     distribution::distributor::Distributor,
+    helpers::db::LocalDB,
     model::{
         event::Ledger,
         signature::{Signature, Signed},
@@ -31,7 +32,7 @@ use identity::{
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
-    Message, Response,
+    Message, Response, Sink,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -275,7 +276,8 @@ impl Actor for Node {
         };
         ctx.create_child("distributor", distributor).await?;
 
-        ctx.create_child("relation_ship", RelationShip::default()).await?;
+        ctx.create_child("relation_ship", RelationShip::default())
+            .await?;
 
         Ok(())
     }
@@ -372,6 +374,12 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::None)
             }
             NodeMessage::CreateNewSubjectLedger(ledger) => {
+                let Some(local_db): Option<LocalDB> =
+                    ctx.system().get_helper("local_db").await
+                else {
+                    todo!()
+                };
+                
                 let subject = Subject::from_event(None, &ledger);
                 let subject = match subject {
                     Ok(subject) => subject,
@@ -386,6 +394,12 @@ impl Handler<Node> for Node {
                     .await
                 {
                     Ok(subject_actor) => {
+                        let sink = Sink::new(
+                            subject_actor.subscribe(),
+                            local_db.get_subject(),
+                        );
+                        ctx.system().run_sink(sink).await;
+
                         self.on_event(
                             NodeEvent::TemporalSubject(
                                 ledger.content.subject_id.to_string(),
@@ -438,20 +452,37 @@ impl Handler<Node> for Node {
                 }
             }
             NodeMessage::CreateNewSubjectReq(data) => {
+                let Some(local_db): Option<LocalDB> =
+                    ctx.system().get_helper("local_db").await
+                else {
+                    todo!()
+                };
+
                 let subject = Subject::new(data.clone());
 
-                if let Err(e) = ctx
+                match ctx
                     .create_child(&format!("{}", data.subject_id), subject)
                     .await
                 {
-                    Ok(NodeResponse::Error(Error::Actor(format!("{}", e))))
-                } else {
-                    self.on_event(
-                        NodeEvent::TemporalSubject(data.subject_id.to_string()),
-                        ctx,
-                    )
-                    .await;
-                    Ok(NodeResponse::SonWasCreated)
+                    Ok(actor) => {
+                        let sink = Sink::new(
+                            actor.subscribe(),
+                            local_db.get_subject(),
+                        );
+                        ctx.system().run_sink(sink).await;
+
+                        self.on_event(
+                            NodeEvent::TemporalSubject(
+                                data.subject_id.to_string(),
+                            ),
+                            ctx,
+                        )
+                        .await;
+                        Ok(NodeResponse::SonWasCreated)
+                    }
+                    Err(e) => {
+                        Ok(NodeResponse::Error(Error::Actor(format!("{}", e))))
+                    }
                 }
             }
             NodeMessage::SignRequest(content) => {
