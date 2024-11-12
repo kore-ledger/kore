@@ -19,14 +19,13 @@ pub enum Quorum {
     #[default]
     MAJORITY,
     FIXED(u32),
-    PERCENTAGE(f64)
-    // BFT { BFT: f64 },
+    PERCENTAGE(f64), // BFT { BFT: f64 },
 }
 
 impl Quorum {
     pub fn check_quorum(&self, total_members: u32, signers: u32) -> bool {
         match self {
-            Quorum::FIXED(fixed ) => {
+            Quorum::FIXED(fixed) => {
                 let min = std::cmp::min(fixed, &total_members);
                 signers >= *min
             }
@@ -284,7 +283,7 @@ impl<'de> Deserialize<'de> for SchemaEnum {
 }
 
 /// Governance schema.
-#[derive(Serialize, Deserialize, Clone, Debug )]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Schema {
     pub id: String,
     pub initial_value: serde_json::Value,

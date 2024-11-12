@@ -5,7 +5,10 @@ use std::{collections::HashSet, time::Duration};
 
 use crate::{
     governance::model::Roles,
-    helpers::network::{intermediary::Intermediary, NetworkMessage},
+    helpers::{
+        db::{LocalDB, Querys},
+        network::{intermediary::Intermediary, NetworkMessage},
+    },
     model::{
         common::{get_gov, get_sign},
         event::ProtocolsSignatures,
@@ -263,6 +266,23 @@ impl Validator {
                     return Err(Error::Validation("The previous event received validations from validators who are not part of governance.".to_owned()));
                 }
             } else {
+                let Some(helper): Option<LocalDB> =
+                    ctx.system().get_helper("local_db").await
+                else {
+                    todo!()
+                };
+
+                let Ok(validators) = helper
+                    .get_last_validators(&new_proof.subject_id.to_string())
+                    .await
+                else {
+                    todo!()
+                };
+
+                let validators: HashSet<KeyIdentifier>  = serde_json::from_str(&validators).map_err(|e| Error::Validation(format!("Unable to get list of validators for previous test: {}", e)))?;
+                if validators != previous_signers {
+                    return Err(Error::Validation("The previous event received validations from validators who are not part of governance.".to_owned()));
+                }
                 // TODO: Si la versión de la governanza es -1, solicitarle a la governanza los validadores de esa versión
             }
             Ok(())

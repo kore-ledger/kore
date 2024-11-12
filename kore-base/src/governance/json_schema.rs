@@ -28,7 +28,9 @@ impl JsonSchema {
     }
 
     pub fn validate(&self, value: &Value) -> Result<(), Error> {
-        self.json_schema.validate(value).map_err(|e| Error::JSONSChema(format!("{}", e)))
+        self.json_schema
+            .validate(value)
+            .map_err(|e| Error::JSONSChema(format!("{}", e)))
     }
 }
 

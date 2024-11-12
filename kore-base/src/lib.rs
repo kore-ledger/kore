@@ -74,7 +74,6 @@ impl Api {
         config: KoreBaseConfig,
         password: &str,
     ) -> Result<Self, Error> {
-        
         let schema = JsonSchema::compile(&schema())?;
 
         if let Err(_e) = GOVERNANCE.set(RwLock::new(schema)) {

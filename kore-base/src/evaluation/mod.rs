@@ -484,17 +484,26 @@ impl Handler<Evaluation> for Evaluation {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{str::FromStr, time::Duration};
 
-    use identity::identifier::KeyIdentifier;
+    use actor::{ActorPath, ActorRef, SystemRef};
+    use identity::identifier::{
+        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+    };
     use serde_json::json;
 
     use crate::{
         approval::approver::ApprovalStateRes,
-        model::{event::LedgerValue, Namespace, SignTypesNode},
-        query::{QueryMessage, QueryResponse},
-        request::{RequestHandlerMessage, RequestHandlerResponse},
-        subject::event::{LedgerEventMessage, LedgerEventResponse},
+        model::{event::LedgerValue, HashId, Namespace, SignTypesNode},
+        node::Node,
+        query::{Query, QueryMessage, QueryResponse},
+        request::{
+            RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
+        },
+        subject::{
+            event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
+            Subject,
+        },
         validation::tests::create_subject_gov,
         EventRequest, FactRequest, Governance, NodeMessage, NodeResponse,
         Signed, SubjectMessage, SubjectResponse, ValueWrapper,
@@ -503,6 +512,7 @@ mod tests {
     #[tokio::test]
     async fn test_fact_gov() {
         let (
+            _system,
             node_actor,
             request_actor,
             query_actor,
@@ -659,9 +669,17 @@ mod tests {
         assert!(!gov.policies.is_empty());
     }
 
-    #[tokio::test]
-    async fn test_fact_sub() {
+    async fn init_gov_sub() -> (
+        SystemRef,
+        ActorRef<Node>,
+        ActorRef<RequestHandler>,
+        ActorRef<Query>,
+        ActorRef<Subject>,
+        ActorRef<LedgerEvent>,
+        DigestIdentifier,
+    ) {
         let (
+            system,
             node_actor,
             request_actor,
             query_actor,
@@ -767,7 +785,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        tokio::time::sleep(Duration::from_secs(7)).await;
+        tokio::time::sleep(Duration::from_secs(9)).await;
 
         let QueryResponse::RequestState(state) = query_actor
             .ask(QueryMessage::GetRequestState {
@@ -842,71 +860,71 @@ mod tests {
         assert_eq!(
             last_event.content.value,
             LedgerValue::Patch(ValueWrapper(json!([
-                {
-                    "op": "add",
-                    "path": "/policies/1",
-                    "value": {
-                        "id": "Example",
-                        "approve": {
-                            "quorum": {
-                                "FIXED": 1
-                            }
-                        },
-                        "evaluate": {
-                            "quorum": "MAJORITY"
-                        },
-                        "validate": {
-                            "quorum": "MAJORITY"
+            {
+                "op": "add",
+                "path": "/policies/1",
+                "value": {
+                    "id": "Example",
+                    "approve": {
+                        "quorum": {
+                            "FIXED": 1
                         }
+                    },
+                    "evaluate": {
+                        "quorum": "MAJORITY"
+                    },
+                    "validate": {
+                        "quorum": "MAJORITY"
                     }
-                },
-                {
-                    "op": "add",
-                    "path": "/roles/6",
-                    "value": {
-                        "namespace": "",
-                        "role": {
-                            "CREATOR": {
-                                "quantity": 2
-                            }
-                        },
-                        "schema": {
-                            "ID": "Example"
-                        },
-                        "who": {
-                            "NAME": "Owner"
+                }
+            },
+            {
+                "op": "add",
+                "path": "/roles/6",
+                "value": {
+                    "namespace": "",
+                    "role": {
+                        "CREATOR": {
+                            "quantity": 2
                         }
+                    },
+                    "schema": {
+                        "ID": "Example"
+                    },
+                    "who": {
+                        "NAME": "Owner"
                     }
-                },
-                {
-                    "op": "add",
-                    "path": "/roles/7",
-                    "value": {
-                        "namespace": "",
-                        "role": "ISSUER",
-                        "schema": {
-                            "ID": "Example"
-                        },
-                        "who": {
-                            "NAME": "Owner"
-                        }
+                }
+            },
+            {
+                "op": "add",
+                "path": "/roles/7",
+                "value": {
+                    "namespace": "",
+                    "role": "ISSUER",
+                    "schema": {
+                        "ID": "Example"
+                    },
+                    "who": {
+                        "NAME": "Owner"
                     }
-                },
-                {
-                    "op": "add",
-                    "path": "/schemas/0",
-                    "value": {
-                        "contract": {
-                            "raw": "dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS50aHJlZSA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZEFsbCB7IG9uZSwgdHdvLCB0aHJlZSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBvbmU7CiAgICAgICAgc3RhdGUudHdvID0gdHdvOwogICAgICAgIHN0YXRlLnRocmVlID0gdGhyZWU7CiAgICAgIH0KICB9CiAgY29udHJhY3RfcmVzdWx0LnN1Y2Nlc3MgPSB0cnVlOwp9Cgo="
-                        },
-                        "id": "Example",
-                        "initial_value": {
-                            "one": 0,
-                            "two": 0,
-                            "three": 0
-                        }
+                }
+            },
+            {
+                "op": "add",
+                "path": "/schemas/0",
+                "value": {
+                    "contract": {
+                        "raw": "dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS50aHJlZSA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZEFsbCB7IG9uZSwgdHdvLCB0aHJlZSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBvbmU7CiAgICAgICAgc3RhdGUudHdvID0gdHdvOwogICAgICAgIHN0YXRlLnRocmVlID0gdGhyZWU7CiAgICAgIH0KICB9CiAgY29udHJhY3RfcmVzdWx0LnN1Y2Nlc3MgPSB0cnVlOwp9Cgo="
+                    },
+                    "id": "Example",
+                    "initial_value": {
+                        "one": 0,
+                        "two": 0,
+                        "three": 0
                     }
-                }])))
+                }
+            }])))
         );
         assert!(last_event.content.eval_success.unwrap());
         assert!(last_event.content.appr_required);
@@ -931,6 +949,270 @@ mod tests {
         assert!(!gov.roles.is_empty());
         assert!(!gov.schemas.is_empty());
         assert!(!gov.policies.is_empty());
+
+        (
+            system,
+            node_actor,
+            request_actor,
+            query_actor,
+            subject_actor,
+            ledger_event_actor,
+            subject_id,
+        )
     }
 
+    #[tokio::test]
+    async fn test_fact_sub() {
+        init_gov_sub().await;
+    }
+
+    async fn create_subject() -> (
+        SystemRef,
+        ActorRef<Node>,
+        ActorRef<RequestHandler>,
+        ActorRef<Query>,
+        ActorRef<Subject>,
+        ActorRef<LedgerEvent>,
+        DigestIdentifier,
+    ) {
+        let (
+            system,
+            node_actor,
+            request_actor,
+            query_actor,
+            _subject_actor,
+            _ledger_event_actor,
+            gov_id,
+        ) = init_gov_sub().await;
+
+        let create_request = EventRequest::Create(crate::CreateRequest {
+            governance_id: gov_id.clone(),
+            schema_id: "Example".to_owned(),
+            namespace: Namespace::new(),
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                create_request.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: create_request,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(request_id) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let QueryResponse::RequestState(state) = query_actor
+            .ask(QueryMessage::GetRequestState {
+                request_id: request_id.request_id.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!("Finish", state);
+
+        let ledger_event_actor: ActorRef<LedgerEvent> = system
+            .get_actor(&ActorPath::from(format!(
+                "/user/node/{}/ledger_event",
+                request_id.subject_id
+            )))
+            .await
+            .unwrap();
+
+        let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let subject_actor: ActorRef<Subject> = system
+            .get_actor(&ActorPath::from(format!(
+                "/user/node/{}",
+                request_id.subject_id
+            )))
+            .await
+            .unwrap();
+
+        let SubjectResponse::Metadata(metadata) = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(
+            last_event.content.subject_id.to_string(),
+            request_id.subject_id
+        );
+        assert_eq!(last_event.content.event_request, signed_event_req);
+        assert_eq!(last_event.content.sn, 0);
+        assert_eq!(last_event.content.gov_version, 1);
+        assert_eq!(
+            last_event.content.value,
+            LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
+                "[]".to_owned(),
+            ),))
+        );
+        assert_eq!(
+            last_event.content.state_hash,
+            metadata
+                .properties
+                .hash_id(DigestDerivator::Blake3_256)
+                .unwrap()
+        );
+        assert!(last_event.content.eval_success.is_none());
+        assert!(!last_event.content.appr_required);
+        assert!(last_event.content.appr_success.is_none());
+        assert!(last_event.content.vali_success);
+        assert_eq!(
+            last_event.content.hash_prev_event,
+            DigestIdentifier::default()
+        );
+        assert!(last_event.content.evaluators.is_none());
+        assert!(last_event.content.approvers.is_none(),);
+        assert!(!last_event.content.validators.is_empty());
+
+        assert_eq!(metadata.subject_id.to_string(), request_id.subject_id);
+        assert_eq!(metadata.governance_id.to_string(), gov_id.to_string());
+        assert_eq!(metadata.genesis_gov_version, 1);
+        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.schema_id, "Example");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 0);
+        assert!(metadata.active);
+
+        (
+            system,
+            node_actor,
+            request_actor,
+            query_actor,
+            subject_actor,
+            ledger_event_actor,
+            DigestIdentifier::from_str(&request_id.subject_id).unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn test_subject() {
+        let _ = create_subject().await;
+    }
+
+    #[tokio::test]
+    async fn test_subject_events() {
+        let (
+            _system,
+            node_actor,
+            request_actor,
+            _query_actor,
+            subject_actor,
+            ledger_event_actor,
+            subject_id,
+        ) = create_subject().await;
+
+        let fact_request = EventRequest::Fact(crate::FactRequest {
+            subject_id,
+            payload: ValueWrapper(json!({
+                "ModOne": {
+                    "data": 100
+                }
+            })),
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                fact_request.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: fact_request,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(request_id) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let SubjectResponse::Metadata(metadata) = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(
+            last_event.content.subject_id.to_string(),
+            request_id.subject_id
+        );
+        assert_eq!(last_event.content.event_request, signed_event_req);
+        assert_eq!(last_event.content.sn, 1);
+        assert_eq!(last_event.content.gov_version, 1);
+        assert_eq!(
+            last_event.content.state_hash,
+            metadata
+                .properties
+                .hash_id(DigestDerivator::Blake3_256)
+                .unwrap()
+        );
+        assert!(last_event.content.eval_success.unwrap());
+        assert!(!last_event.content.appr_required);
+        assert!(last_event.content.appr_success.is_none());
+        assert!(last_event.content.vali_success);
+        assert!(!last_event.content.evaluators.unwrap().is_empty());
+        assert!(last_event.content.approvers.is_none(),);
+        assert!(!last_event.content.validators.is_empty());
+
+        assert_eq!(metadata.subject_id.to_string(), request_id.subject_id);
+        assert_eq!(metadata.genesis_gov_version, 1);
+        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.schema_id, "Example");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 1);
+        assert!(metadata.active);
+        assert!(metadata.properties.0["one"].as_u64().unwrap() == 100);
+        assert!(metadata.properties.0["two"].as_u64().unwrap() == 0);
+        assert!(metadata.properties.0["three"].as_u64().unwrap() == 0);
+    }
 }

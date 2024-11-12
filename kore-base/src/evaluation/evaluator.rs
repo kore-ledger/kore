@@ -223,7 +223,13 @@ impl Evaluator {
             })?;
 
             // TODO SI falla eliminar los new_compilers y borrar de CONTRACTS.
-            let Ok(new_compilers) = Evaluator::create_compilers(ctx, &compilations, &governance_id.to_string()).await else {
+            let Ok(new_compilers) = Evaluator::create_compilers(
+                ctx,
+                &compilations,
+                &governance_id.to_string(),
+            )
+            .await
+            else {
                 todo!()
             };
 
@@ -239,11 +245,21 @@ impl Evaluator {
         Ok(result)
     }
 
-    async fn create_compilers(ctx: &mut ActorContext<Evaluator>, ids: &[String], gov: &str) -> Result<Vec<String>, Error> {
-        let subject: Option<ActorRef<Subject>> = ctx.system().get_actor(&ActorPath::from(format!("/user/node/{}", gov))).await;
+    async fn create_compilers(
+        ctx: &mut ActorContext<Evaluator>,
+        ids: &[String],
+        gov: &str,
+    ) -> Result<Vec<String>, Error> {
+        let subject: Option<ActorRef<Subject>> = ctx
+            .system()
+            .get_actor(&ActorPath::from(format!("/user/node/{}", gov)))
+            .await;
 
         let response = if let Some(subject) = subject {
-            let Ok(response) = subject.ask(SubjectMessage::CreateCompilers(ids.to_vec())).await else {
+            let Ok(response) = subject
+                .ask(SubjectMessage::CreateCompilers(ids.to_vec()))
+                .await
+            else {
                 todo!()
             };
             response
@@ -254,7 +270,7 @@ impl Evaluator {
         match response {
             SubjectResponse::NewCompilers(new_compilers) => Ok(new_compilers),
             SubjectResponse::Error(e) => todo!(),
-            _ => todo!()
+            _ => todo!(),
         }
     }
 
@@ -280,61 +296,25 @@ impl Evaluator {
         };
 
         if evaluation.success {
-            // Sacar esquema actual
-            let governance_data =
-                match serde_json::from_value::<GovernanceData>(
-                    evaluation_req.context.state.0.clone(),
-                )
-                .map_err(|e| {
-                    Error::Evaluation(format!(
-                        "Can not create governance data {}",
-                        e
-                    ))
-                }) {
-                    Ok(gov_data) => gov_data,
-                    Err(_e) => todo!(),
-                };
-
-            let schema = if evaluation_req.context.schema_id == "governance" {
-                "governance".to_owned()
-            } else {
-                let schema = if let Some(schema) = governance_data
-                    .schemas
-                    .iter()
-                    .find(|x| x.id.clone() == evaluation_req.context.schema_id)
-                {
-                    schema
-                } else {
-                    todo!()
-                };
-
-                format!(
-                    "{}_{}",
-                    evaluation_req.context.governance_id.clone(),
-                    schema.id
-                )
+            let state_hash = match evaluation.final_state.hash_id(derivator) {
+                Ok(state_hash) => state_hash,
+                Err(_e) => todo!(),
             };
 
-                let state_hash = match evaluation.final_state.hash_id(derivator)
-                {
-                    Ok(state_hash) => state_hash,
-                    Err(_e) => todo!(),
-                };
+            let patch = match Self::generate_json_patch(
+                &evaluation_req.context.state.0,
+                &evaluation.final_state.0,
+            ) {
+                Ok(patch) => patch,
+                Err(_e) => todo!(),
+            };
 
-                let patch = match Self::generate_json_patch(
-                    &evaluation_req.context.state.0,
-                    &evaluation.final_state.0,
-                ) {
-                    Ok(patch) => patch,
-                    Err(_e) => todo!(),
-                };
-
-                return EvaluationRes::Response(EvalRes {
-                    patch: ValueWrapper(patch),
-                    state_hash,
-                    eval_success: evaluation.success,
-                    appr_required: evaluation.approval_required,
-                });
+            return EvaluationRes::Response(EvalRes {
+                patch: ValueWrapper(patch),
+                state_hash,
+                eval_success: evaluation.success,
+                appr_required: evaluation.approval_required,
+            });
         }
         // Retornar error.
         todo!()

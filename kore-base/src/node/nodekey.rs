@@ -14,7 +14,6 @@ use crate::{
     request::state,
 };
 
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeKey {
     key: KeyIdentifier,

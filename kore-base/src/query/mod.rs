@@ -23,9 +23,9 @@ pub struct Query {
 }
 
 impl Query {
-   pub fn new(key: KeyIdentifier,) -> Self {
-     Self { key }
-   }
+    pub fn new(key: KeyIdentifier) -> Self {
+        Self { key }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -15,7 +15,7 @@ pub struct OwnerSchema {
     pub owner: String,
     pub gov: String,
     pub schema: String,
-    pub namespace: String
+    pub namespace: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -33,8 +33,15 @@ impl RelationShip {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RelationShipMessage {
     GetSubjectsCount(OwnerSchema),
-    RegisterNewSubject { data: OwnerSchema, subject: String, max_quantity: usize },
-    DeleteSubject { data: OwnerSchema, subject: String }
+    RegisterNewSubject {
+        data: OwnerSchema,
+        subject: String,
+        max_quantity: usize,
+    },
+    DeleteSubject {
+        data: OwnerSchema,
+        subject: String,
+    },
 }
 
 impl Message for RelationShipMessage {}
@@ -43,7 +50,7 @@ impl Message for RelationShipMessage {}
 pub enum RelationShipResponse {
     Count(usize),
     None,
-    Error(Error)
+    Error(Error),
 }
 
 impl Response for RelationShipResponse {}
@@ -51,7 +58,7 @@ impl Response for RelationShipResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RelationShipEvent {
     NewRegister { data: OwnerSchema, subject: String },
-    DeleteSubject { data: OwnerSchema, subject: String }
+    DeleteSubject { data: OwnerSchema, subject: String },
 }
 
 impl Event for RelationShipEvent {}
@@ -93,8 +100,13 @@ impl Handler<RelationShip> for RelationShip {
                     Ok(RelationShipResponse::Count(0))
                 }
             }
-            RelationShipMessage::RegisterNewSubject { data, subject, max_quantity } => {
-                let quantity = if let Some(vec) = self.owner_subjects.get(&data) {
+            RelationShipMessage::RegisterNewSubject {
+                data,
+                subject,
+                max_quantity,
+            } => {
+                let quantity = if let Some(vec) = self.owner_subjects.get(&data)
+                {
                     vec.len()
                 } else {
                     0
@@ -108,9 +120,11 @@ impl Handler<RelationShip> for RelationShip {
                     .await;
                     Ok(RelationShipResponse::None)
                 } else {
-                    Ok(RelationShipResponse::Error(Error::RelationShip("Maximum number of subjects reached".to_owned())))
+                    Ok(RelationShipResponse::Error(Error::RelationShip(
+                        "Maximum number of subjects reached".to_owned(),
+                    )))
                 }
-            },
+            }
             RelationShipMessage::DeleteSubject { data, subject } => {
                 self.on_event(
                     RelationShipEvent::DeleteSubject { data, subject },
@@ -143,17 +157,17 @@ impl PersistentActor for RelationShip {
                     .entry(data.clone())
                     .or_insert_with(Vec::new)
                     .push(subject.clone());
-            },
+            }
             RelationShipEvent::DeleteSubject { data, subject } => {
-                self.owner_subjects
-                    .entry(data.clone())
-                    .and_modify(|vec| {
-                        if let Some(pos) = vec.iter().position(|x| x.clone() == subject.clone()) {
-                            vec.remove(pos);
-                        } else {
-                            todo!()
-                        };
-                    });
+                self.owner_subjects.entry(data.clone()).and_modify(|vec| {
+                    if let Some(pos) =
+                        vec.iter().position(|x| x.clone() == subject.clone())
+                    {
+                        vec.remove(pos);
+                    } else {
+                        todo!()
+                    };
+                });
             }
         }
     }
