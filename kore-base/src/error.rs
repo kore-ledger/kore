@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 /// Error type.
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
+    /// Init error.
+    #[error("Init error: {0}")]
+    Init(String),
     /// RelationShip error.
     #[error("NoRelationShipde error: {0}")]
     RelationShip(String),

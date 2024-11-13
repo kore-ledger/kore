@@ -24,7 +24,7 @@ use tracing::error;
 use crate::{
     db::Storable,
     governance::model::Roles,
-    helpers::db::LocalDB,
+    helpers::db::ExternalDB,
     init_state,
     model::common::{get_gov, get_metadata, get_quantity},
     subject::{CreateSubjectData, SubjectID},
@@ -258,7 +258,7 @@ impl Actor for RequestHandler {
         {
             todo!()
         };
-        let Some(local_db): Option<LocalDB> =
+        let Some(local_db): Option<ExternalDB> =
             ctx.system().get_helper("local_db").await
         else {
             todo!()
@@ -703,7 +703,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     Err(_e) => todo!(),
                 };
 
-                let Some(local_db): Option<LocalDB> =
+                let Some(local_db): Option<ExternalDB> =
                     ctx.system().get_helper("local_db").await
                 else {
                     todo!()

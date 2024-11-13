@@ -4,9 +4,10 @@
 //! # Store module.
 //!
 
-use crate::{helpers::encrypted_pass::EncryptedPass, DbConfig, Error};
+use crate::{helpers::encrypted_pass::EncryptedPass, config::KoreDbConfig, Error};
 
 use actor::{ActorContext, Error as ActorError};
+#[cfg(feature = "rocksdb")]
 use rocksdb_db::{RocksDbManager, RocksDbStore};
 #[cfg(feature = "sqlite")]
 use sqlite_db::SqliteManager;
@@ -21,20 +22,22 @@ use tracing::{debug, error};
 
 #[derive(Clone)]
 pub enum Database {
+    #[cfg(feature = "rocksdb")]
     RocksDb(RocksDbManager),
     #[cfg(feature = "sqlite")]
     SQLite(SqliteManager),
 }
 
 impl Database {
-    pub fn open(config: &DbConfig) -> Result<Self, Error> {
+    pub fn open(config: &KoreDbConfig) -> Result<Self, Error> {
         match config {
-            DbConfig::Rocksdb { path } => {
+            #[cfg(feature = "rocksdb")]
+            KoreDbConfig::Rocksdb { path } => {
                 let manager = RocksDbManager::new(path);
                 Ok(Database::RocksDb(manager))
             }
             #[cfg(feature = "sqlite")]
-            DbConfig::SQLite { path } => {
+            KoreDbConfig::SQLite { path } => {
                 let manager = SqliteManager::new(&path);
                 Ok(Database::SQLite(manager))
             }
@@ -51,6 +54,7 @@ impl DbManager<DbCollection> for Database {
         prefix: &str,
     ) -> Result<DbCollection, StoreError> {
         match self {
+            #[cfg(feature = "rocksdb")]
             Database::RocksDb(manager) => {
                 let store = manager.create_collection(name, prefix)?;
                 Ok(DbCollection::RocksDb(store))
@@ -69,6 +73,7 @@ impl DbManager<DbCollection> for Database {
 }
 
 pub enum DbCollection {
+    #[cfg(feature = "rocksdb")]
     RocksDb(RocksDbStore),
     #[cfg(feature = "sqlite")]
     SQLite(sqlite_db::SqliteCollection),
@@ -77,6 +82,7 @@ pub enum DbCollection {
 impl Collection for DbCollection {
     fn name(&self) -> &str {
         match self {
+            #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => store.name(),
             #[cfg(feature = "sqlite")]
             DbCollection::SQLite(store) => store.name(),
@@ -85,6 +91,7 @@ impl Collection for DbCollection {
 
     fn get(&self, key: &str) -> Result<Vec<u8>, store::Error> {
         match self {
+            #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => store.get(key),
             #[cfg(feature = "sqlite")]
             DbCollection::SQLite(store) => store.get(key),
@@ -93,6 +100,7 @@ impl Collection for DbCollection {
 
     fn put(&mut self, key: &str, data: &[u8]) -> Result<(), store::Error> {
         match self {
+            #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => store.put(key, data),
             #[cfg(feature = "sqlite")]
             DbCollection::SQLite(store) => store.put(key, data),
@@ -101,6 +109,7 @@ impl Collection for DbCollection {
 
     fn del(&mut self, key: &str) -> Result<(), store::Error> {
         match self {
+            #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => store.del(key),
             #[cfg(feature = "sqlite")]
             DbCollection::SQLite(store) => store.del(key),
@@ -112,6 +121,7 @@ impl Collection for DbCollection {
         reverse: bool,
     ) -> Box<dyn Iterator<Item = (String, Vec<u8>)> + 'a> {
         match self {
+            #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => store.iter(reverse),
             #[cfg(feature = "sqlite")]
             DbCollection::SQLite(store) => store.iter(reverse),
@@ -120,6 +130,7 @@ impl Collection for DbCollection {
 
     fn purge(&mut self) -> Result<(), StoreError> {
         match self {
+            #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => store.purge(),
             #[cfg(feature = "sqlite")]
             DbCollection::SQLite(store) => store.purge(),

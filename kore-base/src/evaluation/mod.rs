@@ -491,6 +491,7 @@ mod tests {
         derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
     };
     use serde_json::json;
+    use serial_test::serial;
 
     use crate::{
         approval::approver::ApprovalStateRes,
@@ -962,6 +963,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_fact_sub() {
         init_gov_sub().await;
     }
@@ -1115,11 +1117,13 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_subject() {
         let _ = create_subject().await;
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_subject_events() {
         let (
             _system,

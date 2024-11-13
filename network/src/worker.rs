@@ -10,11 +10,13 @@ use crate::{
     service::NetworkService,
     transport::build_transport,
     utils::convert_addresses,
-    Command, CommandHelper, Config, Error, Event as NetworkEvent, NodeType,
+    Command, CommandHelper, Config, Error, Event as NetworkEvent, Monitor,
+    NodeType,
 };
 
 use std::{fmt::Debug, time::Duration};
 
+use actor::ActorRef;
 use identity::{
     identifier::derive::KeyDerivator,
     keys::{KeyMaterial, KeyPair},
@@ -70,8 +72,8 @@ where
     /// The command sender to Helper Intermediary.
     helper_sender: Option<mpsc::Sender<CommandHelper<T>>>,
 
-    /// The event sender.
-    event_sender: mpsc::Sender<NetworkEvent>,
+    /// Monitor actor.
+    monitor: Option<ActorRef<Monitor>>,
 
     /// The cancellation token.
     cancel: CancellationToken,
@@ -108,7 +110,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         registry: &mut Registry,
         keys: KeyPair,
         config: Config,
-        event_sender: mpsc::Sender<NetworkEvent>,
+        monitor: Option<ActorRef<Monitor>>,
         keyderivator: KeyDerivator,
         cancel: CancellationToken,
     ) -> Result<Self, Error> {
@@ -221,7 +223,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             state: NetworkState::Start,
             command_receiver,
             helper_sender: None,
-            event_sender,
+            monitor,
             cancel,
             node_type,
             boot_nodes,
@@ -379,8 +381,10 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
     /// Send event
     async fn send_event(&mut self, event: NetworkEvent) {
-        if self.event_sender.send(event).await.is_err() {
-            error!(TARGET_WORKER, "Can't send network event.")
+        if let Some(monitor) = self.monitor.clone() {
+            if monitor.tell(event).await.is_err() {
+                error!(TARGET_WORKER, "Can't send network event.")
+            }
         }
     }
 
@@ -415,19 +419,13 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         // Dial to boot node.
                         if self.boot_nodes.is_empty() {
                             error!(TARGET_WORKER, "No bootstrap nodes.");
-                            if self
-                                .event_sender
-                                .send(NetworkEvent::Error(Error::Network(
+                            self.send_event(NetworkEvent::Error(
+                                Error::Network(
                                     "No more bootstrap nodes.".to_owned(),
-                                )))
-                                .await
-                                .is_err()
-                            {
-                                error!(
-                                    TARGET_WORKER,
-                                    "Error sending network error event."
-                                );
-                            }
+                                ),
+                            ))
+                            .await;
+                        
                             error!(
                                 TARGET_WORKER,
                                 "Can't connect to kore network"
@@ -767,33 +765,24 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         ..
                     } => {
                         self.add_ephemeral_response(peer_id, channel);
-                        if self
-                            .event_sender
-                            .send(NetworkEvent::MessageReceived {
-                                peer: peer_id.to_string(),
-                                message: request.0,
-                            })
-                            .await
-                            .is_err()
-                        {
-                            error!(
-                                TARGET_WORKER,
-                                "Could not receive request from peer {}",
-                                peer_id
-                            );
-                        } else {
-                            trace!(
-                                TARGET_WORKER,
-                                "Request received from peer {}.",
-                                peer_id
-                            );
-                            self.messages_metric
+                        self.send_event(NetworkEvent::MessageReceived {
+                            peer: peer_id.to_string(),
+                            message: request.0,
+                        })
+                        .await;
+
+                        trace!(
+                            TARGET_WORKER,
+                            "Request received from peer {}.",
+                            peer_id
+                        );
+
+                        self.messages_metric
                                 .get_or_create(&MetricLabels {
                                     fact: Fact::Received,
                                     peer_id: peer_id.to_string(),
                                 })
                                 .inc();
-                        }
                     }
                     request_response::Message::Response {
                         request_id,
@@ -856,24 +845,18 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 ..
             }) => {
                 trace!(TARGET_WORKER, "Message sent to peer {}", peer_id);
+
                 self.messages_metric
                     .get_or_create(&MetricLabels {
                         fact: Fact::Sent,
                         peer_id: peer_id.to_string(),
                     })
                     .inc();
-                let result = self
-                    .event_sender
-                    .send(NetworkEvent::MessageSent {
-                        peer: peer_id.to_string(),
-                    })
-                    .await;
-                if result.is_err() {
-                    error!(
-                        TARGET_WORKER,
-                        "Error with message sent event to {}", peer_id
-                    );
-                }
+
+                self.send_event(NetworkEvent::MessageSent {
+                    peer: peer_id.to_string(),
+                })
+                .await;
             }
             SwarmEvent::Behaviour(BehaviourEvent::TellMessageProcessed {
                 peer_id,
@@ -1044,41 +1027,21 @@ mod tests {
 
         // Build a node.
         let node_addr = "/ip4/127.0.0.1/tcp/54422";
-        let (mut node, mut node_receiver) = build_worker(
+        let mut node = build_worker(
             boot_nodes.clone(),
             false,
             NodeType::Addressable,
             token.clone(),
             Some(node_addr.to_owned()),
         );
+        if let Err(e) = node.run_connection().await {
+            assert_eq!(e.to_string(), "Network error: Can't connect to kore network");    
+        };
 
-        // Spawn the ephemeral node
-        tokio::spawn(async move {
-            let _ = node.run_connection().await;
-        });
-
-        loop {
-            tokio::select! {
-                event = node_receiver.recv() => {
-                    if let Some(event) = event {
-                        match event {
-                            NetworkEvent::Error(Error::Network(value)) => {
-                                assert_eq!(value, "No more bootstrap nodes.".to_owned());
-                            }
-                            NetworkEvent::StateChanged(NetworkState::Disconnected) => {
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ = token.cancelled() => {
-                    break;
-                }
-            }
-        }
+        assert_eq!(node.state, NetworkState::Disconnected);
     }
 
+    
     #[tokio::test]
     #[serial]
     async fn test_fake_boot_node() {
@@ -1096,44 +1059,21 @@ mod tests {
 
         // Build a node.
         let node_addr = "/ip4/127.0.0.1/tcp/55422";
-        let (mut node, mut node_receiver) = build_worker(
+        let mut node= build_worker(
             boot_nodes.clone(),
             false,
             NodeType::Addressable,
             token.clone(),
             Some(node_addr.to_owned()),
         );
+        
+        if let Err(e) = node.run_connection().await {
+            assert_eq!(e.to_string(), "Network error: Can't connect to kore network");      
+        };
 
-        // Spawn the ephemeral node
-        tokio::spawn(async move {
-            let _ = node.run_connection().await;
-        });
-
-        loop {
-            tokio::select! {
-                event = node_receiver.recv() => {
-                    if let Some(event) = event {
-                        match event {
-                            NetworkEvent::StateChanged(NetworkState::Dialing) => {
-                                //break;
-                            }
-                            NetworkEvent::Error(Error::Network(value)) => {
-                                assert_eq!(value, "No more bootstrap nodes.".to_owned());
-                            }
-                            NetworkEvent::StateChanged(NetworkState::Dial) => {}
-                            NetworkEvent::StateChanged(NetworkState::Disconnected) => {
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ = token.cancelled() => {
-                    break;
-                }
-            }
-        }
+        assert_eq!(node.state, NetworkState::Disconnected);
     }
+    
 
     #[tokio::test]
     #[tracing_test::traced_test]
@@ -1145,7 +1085,7 @@ mod tests {
 
         // Build a bootstrap node.
         let boot_addr = "/ip4/127.0.0.1/tcp/56421";
-        let (mut boot, mut boot_receiver) = build_worker(
+        let mut boot = build_worker(
             boot_nodes.clone(),
             false,
             NodeType::Bootstrap,
@@ -1162,7 +1102,7 @@ mod tests {
 
         // Build a node.
         let node_addr = "/ip4/127.0.0.1/tcp/56422";
-        let (mut node, mut node_receiver) = build_worker(
+        let mut node = build_worker(
             boot_nodes,
             false,
             NodeType::Ephemeral,
@@ -1179,45 +1119,6 @@ mod tests {
 
         // Wait for connection.
         node.run_connection().await.unwrap();
-
-        // Spawn the node
-        tokio::spawn(async move {
-            node.run().await;
-        });
-
-        loop {
-            tokio::select! {
-                event = boot_receiver.recv() => {
-                    if let Some(event) = event {
-                        match event {
-                            _ => {}
-                        }
-                    }
-                }
-                event = node_receiver.recv() => {
-                    if let Some(event) = event {
-                        match event {
-                            NetworkEvent::ConnectedToBootstrap { peer } => {
-                                assert_eq!(peer, boot_peer_id.to_string());
-                                break;
-                            }
-                            NetworkEvent::StateChanged(state) => {
-                                match state {
-                                    NetworkState::Running => {
-
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ = token.cancelled() => {
-                    break;
-                }
-            }
-        }
     }
 
     /*
@@ -1391,7 +1292,7 @@ mod tests {
         node_type: NodeType,
         token: CancellationToken,
         tcp_addr: Option<String>,
-    ) -> (NetworkWorker<Dummy>, Receiver<NetworkEvent>) {
+    ) -> NetworkWorker<Dummy> {
         let listen_addresses = if let Some(addr) = tcp_addr {
             vec![addr]
         } else {
@@ -1406,17 +1307,15 @@ mod tests {
         );
         let keys = KeyPair::default();
         let mut registry = Registry::default();
-        let (event_sender, event_receiver) = mpsc::channel(100);
-        let worker = NetworkWorker::new(
+        NetworkWorker::new(
             &mut registry,
             keys,
             config,
-            event_sender,
+            None,
             KeyDerivator::Ed25519,
             token,
         )
-        .unwrap();
-        (worker, event_receiver)
+        .unwrap()
     }
 
     // Create a config

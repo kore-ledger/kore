@@ -13,7 +13,7 @@ use crate::{
     approval::approver::{
         ApprovalState, ApprovalStateRes, Approver, ApproverMessage,
     },
-    helpers::db::{LocalDB, Querys},
+    helpers::db::{ExternalDB, Querys},
     request::state,
 };
 
@@ -83,7 +83,7 @@ impl Handler<Query> for Query {
         msg: QueryMessage,
         ctx: &mut actor::ActorContext<Query>,
     ) -> Result<QueryResponse, ActorError> {
-        let Some(helper): Option<LocalDB> =
+        let Some(helper): Option<ExternalDB> =
             ctx.system().get_helper("local_db").await
         else {
             todo!()

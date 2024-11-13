@@ -13,7 +13,7 @@ use relationship::RelationShip;
 use crate::{
     db::Storable,
     distribution::distributor::Distributor,
-    helpers::db::LocalDB,
+    helpers::db::ExternalDB,
     model::{
         event::Ledger,
         signature::{Signature, Signed},
@@ -374,7 +374,7 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::None)
             }
             NodeMessage::CreateNewSubjectLedger(ledger) => {
-                let Some(local_db): Option<LocalDB> =
+                let Some(local_db): Option<ExternalDB> =
                     ctx.system().get_helper("local_db").await
                 else {
                     todo!()
@@ -452,7 +452,7 @@ impl Handler<Node> for Node {
                 }
             }
             NodeMessage::CreateNewSubjectReq(data) => {
-                let Some(local_db): Option<LocalDB> =
+                let Some(local_db): Option<ExternalDB> =
                     ctx.system().get_helper("local_db").await
                 else {
                     todo!()

@@ -15,7 +15,7 @@ use crate::{
         Evaluation,
     },
     governance::{model::Roles, Schema},
-    helpers::db::LocalDB,
+    helpers::db::ExternalDB,
     model::{
         common::{
             delete_relation, get_gov, get_quantity, register_relation,
@@ -433,7 +433,7 @@ impl Subject {
         &self,
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
-        local_db: LocalDB,
+        local_db: ExternalDB,
     ) -> Result<(), ActorError> {
         // If subject is a governance
         let gov = Governance::try_from(self.properties.clone())
@@ -508,7 +508,7 @@ impl Subject {
         gov: Governance,
         our_key: KeyIdentifier,
         namespace: Namespace,
-        local_db: LocalDB,
+        local_db: ExternalDB,
         subject_id: DigestIdentifier,
     ) -> Result<(), Error> {
         if gov.has_this_role(
@@ -620,7 +620,7 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
         subject_id: DigestIdentifier,
-        local_db: LocalDB,
+        local_db: ExternalDB,
     ) -> Result<(), Error> {
         let validation = Validation::new(our_key.clone());
         ctx.create_child("validation", validation)
@@ -1342,7 +1342,7 @@ impl Subject {
 
                     // Si cambió el dueño
                     if current_owner != self.owner {
-                        let Some(local_db): Option<LocalDB> =
+                        let Some(local_db): Option<ExternalDB> =
                             ctx.system().get_helper("local_db").await
                         else {
                             todo!()
@@ -1712,7 +1712,7 @@ impl Actor for Subject {
             .await
             .map_err(|e| ActorError::Create)?;
 
-        let Some(local_db): Option<LocalDB> =
+        let Some(local_db): Option<ExternalDB> =
             ctx.system().get_helper("local_db").await
         else {
             todo!()

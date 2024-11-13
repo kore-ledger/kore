@@ -6,7 +6,7 @@ use actor::{
     Strategy,
 };
 use async_trait::async_trait;
-use identity::identifier::{Derivable, DigestIdentifier, KeyIdentifier};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
@@ -17,7 +17,7 @@ use crate::{
         event::Ledger,
         network::RetryNetwork,
     },
-    ActorMessage, CreateRequest, Error, Event as KoreEvent, EventRequest,
+    ActorMessage, Error, Event as KoreEvent, EventRequest,
     NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject,
     SubjectMessage, SubjectResponse,
 };

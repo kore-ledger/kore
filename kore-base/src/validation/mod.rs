@@ -550,7 +550,7 @@ pub mod tests {
     };
 
     use crate::{
-        helpers::db::LocalDB,
+        helpers::db::ExternalDB,
         model::{event::LedgerValue, Namespace, SignTypesNode},
         query::Query,
         request::{
@@ -589,7 +589,7 @@ pub mod tests {
             .await
             .unwrap();
 
-        let local_db: LocalDB = system.get_helper("local_db").await.unwrap();
+        let local_db: ExternalDB = system.get_helper("local_db").await.unwrap();
 
         let sink = Sink::new(
             request_actor.subscribe(),

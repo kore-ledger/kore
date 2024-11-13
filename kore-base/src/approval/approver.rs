@@ -74,7 +74,6 @@ impl ApprovalState {
     }
 }
 
-// TODO CAMBIAR A POR DEFECTO MANUAL, ALWaysaccept
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum VotationType {
     #[default]

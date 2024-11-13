@@ -21,7 +21,7 @@ mod validation;
 
 use actor::ActorRef;
 use async_std::sync::RwLock;
-use config::{Config as KoreBaseConfig, DbConfig};
+use config::Config as KoreBaseConfig;
 use error::Error;
 use governance::json_schema::JsonSchema;
 use governance::schema;
@@ -29,16 +29,21 @@ use governance::{init::init_state, Governance};
 use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use identity::keys::KeyPair;
+use intermediary::Intermediary;
 use model::event::Event;
 use model::request::*;
 use model::signature::*;
 use model::HashId;
 use model::ValueWrapper;
+use network::{Monitor, NetworkWorker, PeerId};
 use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
 use once_cell::sync::OnceCell;
+use prometheus_client::registry::Registry;
+use query::Query;
 use request::{RequestHandler, RequestHandlerResponse};
 use subject::{Subject, SubjectMessage, SubjectResponse};
 use system::system;
+use tokio_util::sync::CancellationToken;
 use validation::{Validation, ValidationInfo, ValidationMessage};
 
 use lazy_static::lazy_static;
@@ -62,9 +67,11 @@ lazy_static! {
 static GOVERNANCE: OnceCell<RwLock<JsonSchema>> = OnceCell::new();
 
 pub struct Api {
-    keys: KeyPair,
+    peer_id: String,
+    controller_id: String,
     request: ActorRef<RequestHandler>,
     node: ActorRef<Node>,
+    query: ActorRef<Query>
 }
 
 impl Api {
@@ -72,7 +79,9 @@ impl Api {
     pub async fn new(
         keys: KeyPair,
         config: KoreBaseConfig,
+        registry: &mut Registry,
         password: &str,
+        token: &CancellationToken
     ) -> Result<Self, Error> {
         let schema = JsonSchema::compile(&schema())?;
 
@@ -80,7 +89,7 @@ impl Api {
             return Err(Error::JSONSChema("An error occurred with the governance schema, it could not be initialized globally".to_owned()));
         };
 
-        let system = match system(config, password).await {
+        let system = match system(config.clone(), password, Some(token.clone())).await {
             Ok(sys) => sys,
             Err(e) => todo!(),
         };
@@ -98,11 +107,59 @@ impl Api {
                 Err(e) => todo!(),
             };
 
+        let query = Query::new(keys.key_identifier());
+        let query_actor = match system.create_root_actor("query", query).await {
+            Ok(actor) => actor,
+            Err(e) => todo!(),
+        };
+
+        let newtork_monitor = Monitor;
+        let newtork_monitor_actor = system.create_root_actor("network_monitor", newtork_monitor)
+        .await
+        .unwrap();
+
+        let mut worker: NetworkWorker<NetworkMessage> = NetworkWorker::new(
+            registry,
+            keys.clone(),
+            config.network.clone(),
+            Some(newtork_monitor_actor),
+            config.key_derivator.clone(),
+            token.clone(),
+        )
+        .unwrap();
+
+    // Create worker
+    let service = Intermediary::new(
+        worker.service().sender().clone(),
+        KeyDerivator::Ed25519,
+        system.clone(),
+    );
+
+    let peer_id = worker.local_peer_id().to_string();
+
+    worker.add_helper_sender(service.service().sender());
+
+    system.add_helper("NetworkIntermediary", service).await;
+
+    tokio::spawn(async move {
+        let _ = worker.run().await;
+    });
+
         Ok(Self {
-            keys,
+            controller_id: keys.key_identifier().to_string(),
+            peer_id,
             request: request_actor,
             node: node_actor,
+            query: query_actor
         })
+    }
+
+    pub fn peer_id(&self) -> String {
+        self.peer_id.clone()
+    }
+
+    pub fn controller_id(&self) -> String {
+        self.controller_id.clone()
     }
 
     /// Request from issuer.
