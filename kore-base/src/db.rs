@@ -4,7 +4,9 @@
 //! # Store module.
 //!
 
-use crate::{helpers::encrypted_pass::EncryptedPass, config::KoreDbConfig, Error};
+use crate::{
+    config::KoreDbConfig, helpers::encrypted_pass::EncryptedPass, Error,
+};
 
 use actor::{ActorContext, Error as ActorError};
 #[cfg(feature = "rocksdb")]

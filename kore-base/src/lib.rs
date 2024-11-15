@@ -8,9 +8,9 @@ mod approval;
 mod db;
 mod distribution;
 mod evaluation;
+mod external_db;
 mod governance;
 mod helpers;
-mod external_db;
 mod model;
 mod node;
 mod query;
@@ -71,7 +71,7 @@ pub struct Api {
     controller_id: String,
     request: ActorRef<RequestHandler>,
     node: ActorRef<Node>,
-    query: ActorRef<Query>
+    query: ActorRef<Query>,
 }
 
 impl Api {
@@ -81,7 +81,7 @@ impl Api {
         config: KoreBaseConfig,
         registry: &mut Registry,
         password: &str,
-        token: &CancellationToken
+        token: &CancellationToken,
     ) -> Result<Self, Error> {
         let schema = JsonSchema::compile(&schema())?;
 
@@ -89,10 +89,11 @@ impl Api {
             return Err(Error::JSONSChema("An error occurred with the governance schema, it could not be initialized globally".to_owned()));
         };
 
-        let system = match system(config.clone(), password, Some(token.clone())).await {
-            Ok(sys) => sys,
-            Err(e) => todo!(),
-        };
+        let system =
+            match system(config.clone(), password, Some(token.clone())).await {
+                Ok(sys) => sys,
+                Err(e) => todo!(),
+            };
 
         let node = Node::new(&keys).unwrap();
         let node_actor = match system.create_root_actor("node", node).await {
@@ -114,9 +115,10 @@ impl Api {
         };
 
         let newtork_monitor = Monitor;
-        let newtork_monitor_actor = system.create_root_actor("network_monitor", newtork_monitor)
-        .await
-        .unwrap();
+        let newtork_monitor_actor = system
+            .create_root_actor("network_monitor", newtork_monitor)
+            .await
+            .unwrap();
 
         let mut worker: NetworkWorker<NetworkMessage> = NetworkWorker::new(
             registry,
@@ -128,29 +130,29 @@ impl Api {
         )
         .unwrap();
 
-    // Create worker
-    let service = Intermediary::new(
-        worker.service().sender().clone(),
-        KeyDerivator::Ed25519,
-        system.clone(),
-    );
+        // Create worker
+        let service = Intermediary::new(
+            worker.service().sender().clone(),
+            KeyDerivator::Ed25519,
+            system.clone(),
+        );
 
-    let peer_id = worker.local_peer_id().to_string();
+        let peer_id = worker.local_peer_id().to_string();
 
-    worker.add_helper_sender(service.service().sender());
+        worker.add_helper_sender(service.service().sender());
 
-    system.add_helper("NetworkIntermediary", service).await;
+        system.add_helper("NetworkIntermediary", service).await;
 
-    tokio::spawn(async move {
-        let _ = worker.run().await;
-    });
+        tokio::spawn(async move {
+            let _ = worker.run().await;
+        });
 
         Ok(Self {
             controller_id: keys.key_identifier().to_string(),
             peer_id,
             request: request_actor,
             node: node_actor,
-            query: query_actor
+            query: query_actor,
         })
     }
 
@@ -203,5 +205,4 @@ impl Api {
 
     // Obtener el estado de un sujeto.
     // Obtener sus eventos.
-
 }

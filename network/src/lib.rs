@@ -9,12 +9,12 @@ mod behaviour;
 mod control_list;
 pub mod error;
 //mod node;
+mod monitor;
 mod routing;
 mod service;
 mod transport;
 mod utils;
 mod worker;
-mod monitor;
 
 use std::fmt::Debug;
 

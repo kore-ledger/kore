@@ -207,7 +207,7 @@ impl Approval {
                         request_id.to_owned(),
                         signer.clone(),
                         approval_req.content.subject_id.to_string(),
-                        VotationType::Manual
+                        VotationType::Manual,
                     ),
                 )
                 .await;

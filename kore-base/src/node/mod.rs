@@ -41,8 +41,8 @@ use store::store::PersistentActor;
 use tracing::{debug, error};
 
 pub mod nodekey;
-pub mod relationship;
 pub mod register;
+pub mod relationship;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct CompiledContract(Vec<u8>);
@@ -192,13 +192,13 @@ impl Node {
         Ok(())
     }
 }
-    // Autorizar un sujeto y sus testigos, o si ya está autorizado acutalizar sus testigos
-    // Obtener los nodos autorizados y los testigos.
-    // Eliminar un sujeto autorizado.
-    // Actualizar de forma manual el sujeto.
-    // Obtener Todas las governanzas
-    // Obtener todos los sujetos de una determinada governanza
-    // Obtener todos los schemas de una determinada governanza
+// Autorizar un sujeto y sus testigos, o si ya está autorizado acutalizar sus testigos
+// Obtener los nodos autorizados y los testigos.
+// Eliminar un sujeto autorizado.
+// Actualizar de forma manual el sujeto.
+// Obtener Todas las governanzas
+// Obtener todos los sujetos de una determinada governanza
+// Obtener todos los schemas de una determinada governanza
 
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -477,10 +477,8 @@ impl Handler<Node> for Node {
                     .await
                 {
                     Ok(actor) => {
-                        let sink = Sink::new(
-                            actor.subscribe(),
-                            ext_db.get_subject(),
-                        );
+                        let sink =
+                            Sink::new(actor.subscribe(), ext_db.get_subject());
                         ctx.system().run_sink(sink).await;
 
                         self.on_event(

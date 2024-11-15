@@ -30,12 +30,8 @@ impl Query {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryMessage {
-    GetRequestState {
-        request_id: String,
-    },
-    GetApproval {
-        subject_id: String,
-    },
+    GetRequestState { request_id: String },
+    GetApproval { subject_id: String },
 }
 
 impl Message for QueryMessage {}
@@ -85,18 +81,17 @@ impl Handler<Query> for Query {
             todo!()
         };
 
+        // Sacar el estado de una request
+        // Sacar la aprobación
 
-    // Sacar el estado de una request
-    // Sacar la aprobación
+        // Obtener los nodos autorizados y los testigos.
 
-    // Obtener los nodos autorizados y los testigos.
+        // Obtener Todas las governanzas
+        // Obtener todos los sujetos de una determinada governanza
+        // Obtener todos los schemas de una determinada governanza
 
-    // Obtener Todas las governanzas
-    // Obtener todos los sujetos de una determinada governanza
-    // Obtener todos los schemas de una determinada governanza
-
-    // Obtener el estado de un sujeto.
-    // Obtener sus eventos.
+        // Obtener el estado de un sujeto.
+        // Obtener sus eventos.
 
         match msg {
             QueryMessage::GetRequestState { request_id } => {

@@ -198,10 +198,9 @@ impl RequestHandler {
     }
 }
 
-
-    // Enviar un evento sin firmar
-    // Enviar un evento firmado
-    // Aprobar
+// Enviar un evento sin firmar
+// Enviar un evento firmado
+// Aprobar
 
 #[derive(Debug, Clone)]
 pub enum RequestHandlerMessage {

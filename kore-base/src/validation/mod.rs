@@ -591,10 +591,8 @@ pub mod tests {
 
         let ext_db: ExternalDB = system.get_helper("ext_db").await.unwrap();
 
-        let sink = Sink::new(
-            request_actor.subscribe(),
-            ext_db.get_request_handler(),
-        );
+        let sink =
+            Sink::new(request_actor.subscribe(), ext_db.get_request_handler());
         system.run_sink(sink).await;
 
         let create_req = EventRequest::Create(CreateRequest {

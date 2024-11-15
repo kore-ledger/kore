@@ -106,7 +106,7 @@ impl Approver {
         request_id: String,
         node: KeyIdentifier,
         subject_id: String,
-        pass_votation: VotationType
+        pass_votation: VotationType,
     ) -> Self {
         Approver {
             node,

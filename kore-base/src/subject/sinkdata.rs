@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -13,10 +13,9 @@ use super::Metadata;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SinkData;
 
-
 #[derive(Debug, Clone)]
 pub enum SinkDataMessage {
-    SafeMetadata(Metadata)
+    SafeMetadata(Metadata),
 }
 
 impl Message for SinkDataMessage {}
@@ -66,8 +65,8 @@ impl Handler<SinkData> for SinkData {
     ) -> Result<SinkDataResponse, ActorError> {
         match msg {
             SinkDataMessage::SafeMetadata(metadata) => {
-                self.on_event(SinkDataEvent {metadata}, ctx).await;
-            },
+                self.on_event(SinkDataEvent { metadata }, ctx).await;
+            }
         };
 
         Ok(SinkDataResponse::None)

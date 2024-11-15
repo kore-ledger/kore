@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -16,25 +16,19 @@ use crate::{db::Storable, request::state};
 pub struct RegisterData {
     pub subject_id: String,
     pub schema: String,
-    pub active: bool
+    pub active: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Register {
     register_gov: HashMap<String, bool>,
-    register_subj: HashMap<String, Vec<RegisterData>>
+    register_subj: HashMap<String, Vec<RegisterData>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum RegisterMessage {
-    RegisterGov {
-        gov_id: String,
-        active: bool
-    },
-    RegisterSubj {
-        gov_id: String,
-        data: RegisterData
-    }
+    RegisterGov { gov_id: String, active: bool },
+    RegisterSubj { gov_id: String, data: RegisterData },
 }
 
 impl Message for RegisterMessage {}
@@ -48,14 +42,8 @@ impl Response for RegisterResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RegisterEvent {
-    RegisterGov {
-        gov_id: String,
-        active: bool
-    },
-    RegisterSubj {
-        gov_id: String,
-        data: RegisterData
-    }
+    RegisterGov { gov_id: String, active: bool },
+    RegisterSubj { gov_id: String, data: RegisterData },
 }
 
 impl Event for RegisterEvent {}
@@ -89,10 +77,19 @@ impl Handler<Register> for Register {
         msg: RegisterMessage,
         ctx: &mut actor::ActorContext<Register>,
     ) -> Result<RegisterResponse, ActorError> {
-       match msg {
-           RegisterMessage::RegisterGov { gov_id, active } => self.on_event(RegisterEvent::RegisterGov { gov_id, active }, ctx).await,
-           RegisterMessage::RegisterSubj { gov_id, data } => self.on_event(RegisterEvent::RegisterSubj { gov_id, data }, ctx).await,
-       }
+        match msg {
+            RegisterMessage::RegisterGov { gov_id, active } => {
+                self.on_event(
+                    RegisterEvent::RegisterGov { gov_id, active },
+                    ctx,
+                )
+                .await
+            }
+            RegisterMessage::RegisterSubj { gov_id, data } => {
+                self.on_event(RegisterEvent::RegisterSubj { gov_id, data }, ctx)
+                    .await
+            }
+        }
         Ok(RegisterResponse::None)
     }
 
@@ -114,13 +111,13 @@ impl PersistentActor for Register {
         match event {
             RegisterEvent::RegisterGov { gov_id, active } => {
                 self.register_gov.insert(gov_id.clone(), active.clone());
-            },
+            }
             RegisterEvent::RegisterSubj { gov_id, data } => {
                 self.register_subj
                     .entry(gov_id.clone())
                     .or_insert_with(Vec::new)
                     .push(data.clone());
-            },
+            }
         }
     }
 }

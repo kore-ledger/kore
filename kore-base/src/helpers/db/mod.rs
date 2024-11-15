@@ -54,7 +54,7 @@ impl ExternalDB {
             ExternalDbConfig::SQLite { path } => {
                 let sqlite = SqliteLocal::new(&path, manager).await?;
                 Ok(ExternalDB::SqliteLocal(sqlite))
-            },
+            }
         }
     }
 

@@ -6,8 +6,8 @@
 use std::time::Duration;
 
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
-use serde::Deserialize;
 use network::Config as NetworkConfig;
+use serde::Deserialize;
 
 /// Node configuration.
 #[derive(Clone, Debug, Deserialize)]
@@ -27,7 +27,7 @@ pub struct Config {
     /// Approval mode.
     pub always_accept: bool,
     /// Garbage collector acts
-    pub garbage_collector: Duration
+    pub garbage_collector: Duration,
 }
 
 /// Database configuration.
@@ -52,9 +52,9 @@ impl KoreDbConfig {
             path: path.to_owned(),
         };
         #[cfg(feature = "sqlite")]
-        return  KoreDbConfig::SQLite {
-                path: path.to_owned(),
-            };
+        return KoreDbConfig::SQLite {
+            path: path.to_owned(),
+        };
     }
 }
 
@@ -72,7 +72,7 @@ impl ExternalDbConfig {
     pub fn build(path: &str) -> Self {
         #[cfg(feature = "ext-sqlite")]
         return ExternalDbConfig::SQLite {
-            path: path.to_owned()
+            path: path.to_owned(),
         };
     }
 }

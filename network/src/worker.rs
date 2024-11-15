@@ -425,7 +425,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                 ),
                             ))
                             .await;
-                        
+
                             error!(
                                 TARGET_WORKER,
                                 "Can't connect to kore network"
@@ -778,11 +778,11 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         );
 
                         self.messages_metric
-                                .get_or_create(&MetricLabels {
-                                    fact: Fact::Received,
-                                    peer_id: peer_id.to_string(),
-                                })
-                                .inc();
+                            .get_or_create(&MetricLabels {
+                                fact: Fact::Received,
+                                peer_id: peer_id.to_string(),
+                            })
+                            .inc();
                     }
                     request_response::Message::Response {
                         request_id,
@@ -1035,13 +1035,15 @@ mod tests {
             Some(node_addr.to_owned()),
         );
         if let Err(e) = node.run_connection().await {
-            assert_eq!(e.to_string(), "Network error: Can't connect to kore network");    
+            assert_eq!(
+                e.to_string(),
+                "Network error: Can't connect to kore network"
+            );
         };
 
         assert_eq!(node.state, NetworkState::Disconnected);
     }
 
-    
     #[tokio::test]
     #[serial]
     async fn test_fake_boot_node() {
@@ -1059,21 +1061,23 @@ mod tests {
 
         // Build a node.
         let node_addr = "/ip4/127.0.0.1/tcp/55422";
-        let mut node= build_worker(
+        let mut node = build_worker(
             boot_nodes.clone(),
             false,
             NodeType::Addressable,
             token.clone(),
             Some(node_addr.to_owned()),
         );
-        
+
         if let Err(e) = node.run_connection().await {
-            assert_eq!(e.to_string(), "Network error: Can't connect to kore network");      
+            assert_eq!(
+                e.to_string(),
+                "Network error: Can't connect to kore network"
+            );
         };
 
         assert_eq!(node.state, NetworkState::Disconnected);
     }
-    
 
     #[tokio::test]
     #[tracing_test::traced_test]

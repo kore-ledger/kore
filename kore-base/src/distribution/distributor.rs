@@ -17,9 +17,9 @@ use crate::{
         event::Ledger,
         network::RetryNetwork,
     },
-    ActorMessage, Error, Event as KoreEvent, EventRequest,
-    NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject,
-    SubjectMessage, SubjectResponse,
+    ActorMessage, Error, Event as KoreEvent, EventRequest, NetworkMessage,
+    Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
+    SubjectResponse,
 };
 
 use super::{Distribution, DistributionMessage};

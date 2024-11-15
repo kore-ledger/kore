@@ -1,4 +1,3 @@
-
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
     Message, Response,
@@ -14,7 +13,6 @@ use serde::{Deserialize, Serialize};
 pub struct Monitor;
 
 impl Message for NetworkEvent {}
-
 
 #[async_trait]
 impl Actor for Monitor {
