@@ -1,10 +1,10 @@
 use crate::{
     approval::approver::{ApprovalState, ApprovalStateRes, ApproverEvent},
     error::Error,
-    local_db::DBManager,
+    external_db::DBManager,
     model::event::Ledger,
     request::{manager::RequestManagerEvent, RequestHandlerEvent},
-    subject::event::LedgerEventEvent,
+    subject::{event::LedgerEventEvent, sinkdata::SinkDataEvent},
     Signed,
 };
 
@@ -87,6 +87,13 @@ impl ExternalDB {
     }
 
     pub fn get_subject(&self) -> impl Subscriber<Signed<Ledger>> {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+        }
+    }
+
+    pub fn get_sink_data(&self) -> impl Subscriber<SinkDataEvent> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),

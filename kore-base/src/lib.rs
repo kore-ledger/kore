@@ -10,7 +10,7 @@ mod distribution;
 mod evaluation;
 mod governance;
 mod helpers;
-mod local_db;
+mod external_db;
 mod model;
 mod node;
 mod query;
@@ -35,7 +35,7 @@ use model::request::*;
 use model::signature::*;
 use model::HashId;
 use model::ValueWrapper;
-use network::{Monitor, NetworkWorker, PeerId};
+use network::{Monitor, NetworkWorker};
 use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
 use once_cell::sync::OnceCell;
 use prometheus_client::registry::Registry;
@@ -184,8 +184,24 @@ impl Api {
         todo!()
     }
 
-    // TODO TODAS LAS REQUEST encoladas
-    // TODO TODAS LAS REQUEST Que se está realizando.
-    // TODO Información de una determinada request.
-    // TODO Todas las request para un determinado sujeto.
+    // Enviar un evento sin firmar
+    // Enviar un evento firmado
+
+    // Sacar el estado de una request
+    // Sacar la aprobación
+    // Aprobar
+
+    // Autorizar un sujeto y sus testigos, o si ya está autorizado acutalizar sus testigos
+    // Obtener los nodos autorizados y los testigos.
+    // Eliminar un sujeto autorizado.
+
+    // Actualizar de forma manual el sujeto.
+
+    // Obtener Todas las governanzas
+    // Obtener todos los sujetos de una determinada governanza
+    // Obtener todos los schemas de una determinada governanza
+
+    // Obtener el estado de un sujeto.
+    // Obtener sus eventos.
+
 }

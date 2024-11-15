@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
-    Message, Response, Sink,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
+    Handler, Message, Response, Sink,
 };
 use async_trait::async_trait;
 use identity::{
@@ -22,6 +22,7 @@ use store::store::PersistentActor;
 use tracing::error;
 
 use crate::{
+    approval::approver::{ApprovalStateRes, Approver, ApproverMessage},
     db::Storable,
     governance::model::Roles,
     helpers::db::ExternalDB,
@@ -197,11 +198,27 @@ impl RequestHandler {
     }
 }
 
+
+    // Enviar un evento sin firmar
+    // Enviar un evento firmado
+    // Aprobar
+
 #[derive(Debug, Clone)]
 pub enum RequestHandlerMessage {
-    NewRequest { request: Signed<EventRequest> },
-    PopQueue { subject_id: String },
-    EndHandling { subject_id: String, id: String },
+    NewRequest {
+        request: Signed<EventRequest>,
+    },
+    ChangeApprovalState {
+        subject_id: String,
+        state: ApprovalStateRes,
+    },
+    PopQueue {
+        subject_id: String,
+    },
+    EndHandling {
+        subject_id: String,
+        id: String,
+    },
 }
 
 impl Message for RequestHandlerMessage {}
@@ -209,6 +226,7 @@ impl Message for RequestHandlerMessage {}
 #[derive(Debug, Clone)]
 pub enum RequestHandlerResponse {
     Ok(RequestData),
+    Response(String),
     Error(Error),
     None,
 }
@@ -258,8 +276,8 @@ impl Actor for RequestHandler {
         {
             todo!()
         };
-        let Some(local_db): Option<ExternalDB> =
-            ctx.system().get_helper("local_db").await
+        let Some(ext_db): Option<ExternalDB> =
+            ctx.system().get_helper("ext_db").await
         else {
             todo!()
         };
@@ -274,7 +292,7 @@ impl Actor for RequestHandler {
                 };
             let sink = Sink::new(
                 request_manager_actor.subscribe(),
-                local_db.get_request_manager(),
+                ext_db.get_request_manager(),
             );
             ctx.system().run_sink(sink).await;
 
@@ -305,6 +323,48 @@ impl Handler<RequestHandler> for RequestHandler {
         ctx: &mut actor::ActorContext<RequestHandler>,
     ) -> Result<RequestHandlerResponse, ActorError> {
         match msg {
+            RequestHandlerMessage::ChangeApprovalState {
+                subject_id,
+                state,
+            } => {
+                match state.to_string().as_str() {
+                    "RespondedAccepted" | "RespondedRejected" => {}
+                    _ => {
+                        return Ok(RequestHandlerResponse::Error(
+                            Error::RequestHandler(
+                                "Invalid Response".to_owned(),
+                            ),
+                        ))
+                    }
+                };
+
+                let approver_actor: Option<ActorRef<Approver>> = ctx
+                    .system()
+                    .get_actor(&ActorPath::from(format!(
+                        "/user/node/{}/approver",
+                        subject_id
+                    )))
+                    .await;
+
+                if let Some(approver_actor) = approver_actor {
+                    if let Err(e) = approver_actor
+                        .tell(ApproverMessage::ChangeResponse {
+                            response: state.clone(),
+                        })
+                        .await
+                    {
+                        todo!()
+                    }
+                } else {
+                    todo!()
+                };
+
+                Ok(RequestHandlerResponse::Response(format!(
+                    "The approval request for subject {} has changed to {}",
+                    subject_id,
+                    state.to_string()
+                )))
+            }
             RequestHandlerMessage::NewRequest { request } => {
                 if let Err(_e) = request.verify() {
                     todo!()
@@ -703,15 +763,15 @@ impl Handler<RequestHandler> for RequestHandler {
                     Err(_e) => todo!(),
                 };
 
-                let Some(local_db): Option<ExternalDB> =
-                    ctx.system().get_helper("local_db").await
+                let Some(ext_db): Option<ExternalDB> =
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };
 
                 let sink = Sink::new(
                     request_actor.subscribe(),
-                    local_db.get_request_manager(),
+                    ext_db.get_request_manager(),
                 );
                 ctx.system().run_sink(sink).await;
 
@@ -761,7 +821,10 @@ impl Handler<RequestHandler> for RequestHandler {
             // TODO Propagar error.
         };
 
-        if let Err(e) = ctx.publish_event(event).await {}
+        if let Err(e) = ctx.publish_event(event).await {
+            println!("{}", e);
+            todo!()
+        }
     }
 }
 

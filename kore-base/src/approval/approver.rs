@@ -90,7 +90,7 @@ impl From<bool> for VotationType {
     }
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Approver {
     node: KeyIdentifier,
     request_id: String,
@@ -106,12 +106,16 @@ impl Approver {
         request_id: String,
         node: KeyIdentifier,
         subject_id: String,
+        pass_votation: VotationType
     ) -> Self {
         Approver {
             node,
             request_id,
             subject_id,
-            ..Default::default()
+            pass_votation,
+            state: None,
+            request: None,
+            info: None,
         }
     }
 

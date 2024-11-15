@@ -589,11 +589,11 @@ pub mod tests {
             .await
             .unwrap();
 
-        let local_db: ExternalDB = system.get_helper("local_db").await.unwrap();
+        let ext_db: ExternalDB = system.get_helper("ext_db").await.unwrap();
 
         let sink = Sink::new(
             request_actor.subscribe(),
-            local_db.get_request_handler(),
+            ext_db.get_request_handler(),
         );
         system.run_sink(sink).await;
 
@@ -636,6 +636,7 @@ pub mod tests {
 
         let temporal_subj = subjects.temporal_subjects[0].clone();
 
+        tokio::time::sleep(Duration::from_millis(500)).await;
         let NodeResponse::Subjects(subjects) =
             node_actor.ask(NodeMessage::GetSubjects).await.unwrap()
         else {

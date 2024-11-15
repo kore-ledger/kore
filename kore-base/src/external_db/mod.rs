@@ -123,7 +123,7 @@ impl Handler<DBManager> for DBManager {
                 };
 
                 let Some(helper): Option<ExternalDB> =
-                    ctx.system().get_helper("local_db").await
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };
@@ -147,7 +147,7 @@ impl Handler<DBManager> for DBManager {
                 };
 
                 let Some(helper): Option<ExternalDB> =
-                    ctx.system().get_helper("local_db").await
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };

@@ -1,13 +1,12 @@
 use std::time::Duration;
 
 use actor::{ActorSystem, SystemRef};
-use network::Monitor;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     db::Database,
     helpers::{db::ExternalDB, encrypted_pass::EncryptedPass},
-    local_db::DBManager,
+    external_db::DBManager,
     Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR,
 };
 
@@ -27,6 +26,8 @@ pub async fn system(
     // Create de actor system.
     let (system, mut runner) = ActorSystem::create(token);
 
+    system.add_helper("config", config.clone()).await;
+
     // Build database manager.
     let db_manager = Database::open(&config.kore_db)?;
     system.add_helper("store", db_manager).await;
@@ -41,9 +42,9 @@ pub async fn system(
         .await
         .unwrap();
 
-    let local_db = ExternalDB::build(config.external_db, db_manager_actor).await.unwrap();
+    let ext_db = ExternalDB::build(config.external_db, db_manager_actor).await.unwrap();
 
-    system.add_helper("local_db", local_db).await;
+    system.add_helper("ext_db", ext_db).await;
 
     // Spawn the runner.
     tokio::spawn(async move {
@@ -56,7 +57,6 @@ pub async fn system(
 #[cfg(test)]
 pub mod tests {
 
-    use bincode::config;
     use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
     use network::Config as NetworkConfig;
     use crate::config::{ExternalDbConfig, KoreDbConfig};
@@ -66,8 +66,6 @@ pub mod tests {
 
     use crate::{
         governance::{json_schema::JsonSchema, schema},
-        helpers::db::ExternalDB,
-        local_db::DBManager,
         GOVERNANCE,
     };
 

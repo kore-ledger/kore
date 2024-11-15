@@ -576,7 +576,7 @@ mod tests {
         assert_eq!("In Approval", state);
         let QueryResponse::ApprovalState { request, state } = query_actor
             .ask(QueryMessage::GetApproval {
-                request_id: subject_id.to_string(),
+                subject_id: subject_id.to_string(),
             })
             .await
             .unwrap()
@@ -587,8 +587,8 @@ mod tests {
         assert_eq!(state, "Pending");
         assert!(!request.is_empty());
 
-        let QueryResponse::Response(res) = query_actor
-            .ask(QueryMessage::ChangeApprovalState {
+        let RequestHandlerResponse::Response(res) = request_actor
+            .ask(RequestHandlerMessage::ChangeApprovalState {
                 subject_id: subject_id.to_string(),
                 state: ApprovalStateRes::RespondedAccepted,
             })
@@ -603,7 +603,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
         let QueryResponse::ApprovalState { state, .. } = query_actor
             .ask(QueryMessage::GetApproval {
-                request_id: subject_id.to_string(),
+                subject_id: subject_id.to_string(),
             })
             .await
             .unwrap()
@@ -801,7 +801,7 @@ mod tests {
         assert_eq!("In Approval", state);
         let QueryResponse::ApprovalState { request, state } = query_actor
             .ask(QueryMessage::GetApproval {
-                request_id: subject_id.to_string(),
+                subject_id: subject_id.to_string(),
             })
             .await
             .unwrap()
@@ -812,8 +812,8 @@ mod tests {
         assert_eq!(state, "Pending");
         assert!(!request.is_empty());
 
-        let QueryResponse::Response(res) = query_actor
-            .ask(QueryMessage::ChangeApprovalState {
+        let RequestHandlerResponse::Response(res) = request_actor
+            .ask(RequestHandlerMessage::ChangeApprovalState {
                 subject_id: subject_id.to_string(),
                 state: ApprovalStateRes::RespondedAccepted,
             })
@@ -828,7 +828,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(1)).await;
         let QueryResponse::ApprovalState { state, .. } = query_actor
             .ask(QueryMessage::GetApproval {
-                request_id: subject_id.to_string(),
+                subject_id: subject_id.to_string(),
             })
             .await
             .unwrap()

@@ -8,6 +8,7 @@ use std::path::Path;
 
 use async_std::fs;
 use nodekey::NodeKey;
+use register::Register;
 use relationship::RelationShip;
 
 use crate::{
@@ -41,6 +42,7 @@ use tracing::{debug, error};
 
 pub mod nodekey;
 pub mod relationship;
+pub mod register;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct CompiledContract(Vec<u8>);
@@ -190,6 +192,13 @@ impl Node {
         Ok(())
     }
 }
+    // Autorizar un sujeto y sus testigos, o si ya está autorizado acutalizar sus testigos
+    // Obtener los nodos autorizados y los testigos.
+    // Eliminar un sujeto autorizado.
+    // Actualizar de forma manual el sujeto.
+    // Obtener Todas las governanzas
+    // Obtener todos los sujetos de una determinada governanza
+    // Obtener todos los schemas de una determinada governanza
 
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -265,6 +274,9 @@ impl Actor for Node {
         // Start store
         debug!("Creating Node store");
         self.init_store("node", None, false, ctx).await?;
+
+        let register = Register::default();
+        ctx.create_child("register", register).await?;
 
         let node_key = NodeKey::new(self.owner());
         ctx.create_child("key", node_key).await?;
@@ -374,8 +386,8 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::None)
             }
             NodeMessage::CreateNewSubjectLedger(ledger) => {
-                let Some(local_db): Option<ExternalDB> =
-                    ctx.system().get_helper("local_db").await
+                let Some(ext_db): Option<ExternalDB> =
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };
@@ -396,7 +408,7 @@ impl Handler<Node> for Node {
                     Ok(subject_actor) => {
                         let sink = Sink::new(
                             subject_actor.subscribe(),
-                            local_db.get_subject(),
+                            ext_db.get_subject(),
                         );
                         ctx.system().run_sink(sink).await;
 
@@ -452,8 +464,8 @@ impl Handler<Node> for Node {
                 }
             }
             NodeMessage::CreateNewSubjectReq(data) => {
-                let Some(local_db): Option<ExternalDB> =
-                    ctx.system().get_helper("local_db").await
+                let Some(ext_db): Option<ExternalDB> =
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };
@@ -467,7 +479,7 @@ impl Handler<Node> for Node {
                     Ok(actor) => {
                         let sink = Sink::new(
                             actor.subscribe(),
-                            local_db.get_subject(),
+                            ext_db.get_subject(),
                         );
                         ctx.system().run_sink(sink).await;
 
