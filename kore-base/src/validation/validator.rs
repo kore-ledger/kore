@@ -532,7 +532,7 @@ impl Handler<Validator> for Validator {
                 // Validar y devolver la respuesta al helper, no a Validation. Nos llegó por la network la validación.
                 // Sacar el Helper aquí
                 let helper: Option<Intermediary> =
-                    ctx.system().get_helper("NetworkIntermediary").await;
+                    ctx.system().get_helper("network").await;
                 let mut helper = if let Some(helper) = helper {
                     helper
                 } else {
@@ -636,6 +636,7 @@ impl Handler<Validator> for Validator {
                     // Can not obtain parent actor
                     // return Err(ActorError::Exists(validation_path));
                 }
+                // TODO AQUï debería ir un ctx.stop()?
             }
         }
     }

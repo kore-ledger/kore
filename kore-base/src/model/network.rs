@@ -46,7 +46,7 @@ impl Handler<RetryNetwork> for RetryNetwork {
         ctx: &mut ActorContext<RetryNetwork>,
     ) -> Result<(), ActorError> {
         let helper: Option<Intermediary> =
-            ctx.system().get_helper("NetworkIntermediary").await;
+            ctx.system().get_helper("network").await;
         let mut helper = if let Some(helper) = helper {
             helper
         } else {

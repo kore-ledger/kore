@@ -12,16 +12,11 @@ use register::Register;
 use relationship::RelationShip;
 
 use crate::{
-    db::Storable,
-    distribution::distributor::Distributor,
-    helpers::db::ExternalDB,
-    model::{
+    auth::{Auth, AuthMessage, AuthResponse}, db::Storable, distribution::distributor::Distributor, helpers::db::ExternalDB, model::{
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    },
-    subject::CreateSubjectData,
-    Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR,
+    }, subject::CreateSubjectData, Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -63,8 +58,6 @@ pub struct SubjectsVectors {
     pub owned_subjects: Vec<String>,
     /// The node's known subjects.
     pub known_subjects: Vec<String>,
-    /// The authorized subjects.
-    pub authorized_subjects: Vec<String>,
 
     pub temporal_subjects: Vec<String>,
 }
@@ -79,8 +72,6 @@ pub struct Node {
     owned_subjects: Vec<String>,
     /// The node's known subjects.
     known_subjects: Vec<String>,
-    /// The authorized subjects.
-    authorized_subjects: Vec<String>,
 
     temporal_subjects: Vec<String>,
 }
@@ -92,7 +83,6 @@ impl Node {
             owner: id.clone(),
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
-            authorized_subjects: Vec::new(),
             temporal_subjects: Vec::new(),
         })
     }
@@ -147,10 +137,6 @@ impl Node {
             self.owned_subjects.retain(|x| x.clone() != subject_id);
             self.known_subjects.push(subject_id);
         }
-    }
-
-    pub fn add_authorized_subject_id(&mut self, subject_id: String) {
-        self.authorized_subjects.push(subject_id);
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
@@ -243,7 +229,6 @@ impl Response for NodeResponse {}
 pub enum NodeEvent {
     OwnedSubject(String),
     KnownSubject(String),
-    AuthorizedSubject(String),
     TemporalSubject(String),
     ChangeTempSubj {
         subject_id: String,
@@ -286,8 +271,12 @@ impl Actor for Node {
         let distributor = Distributor {
             node: self.owner.key_identifier(),
         };
-        ctx.create_child("distributor", distributor).await?;
 
+        let auth = Auth::new(self.owner());
+        ctx.create_child("auth", auth).await?;
+
+        
+        ctx.create_child("distributor", distributor).await?;
         ctx.create_child("relation_ship", RelationShip::default())
             .await?;
 
@@ -314,9 +303,6 @@ impl PersistentActor for Node {
             }
             NodeEvent::KnownSubject(subject_id) => {
                 self.add_known_subject(subject_id.clone());
-            }
-            NodeEvent::AuthorizedSubject(subject_id) => {
-                self.add_authorized_subject_id(subject_id.clone());
             }
             NodeEvent::ChangeTempSubj {
                 subject_id,
@@ -354,7 +340,6 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::Subjects(SubjectsVectors {
                     owned_subjects: self.owned_subjects.clone(),
                     known_subjects: self.known_subjects.clone(),
-                    authorized_subjects: self.authorized_subjects.clone(),
                     temporal_subjects: self.temporal_subjects.clone(),
                 }))
             }
@@ -570,8 +555,17 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::None)
             }
             NodeMessage::IsAuthorized(subject_id) => {
-                let auth_subj = self
-                    .authorized_subjects
+                let auth: Option<actor::ActorRef<Auth>> = ctx.get_child("auth").await;
+                let authorized_subjects = if let Some(auth) = auth {
+                    let Ok(AuthResponse::Auths { subjects }) = auth.ask(AuthMessage::GetAuths).await else {
+                        todo!()
+                    };
+                    subjects
+                } else {
+                    todo!();
+                };
+
+                let auth_subj = authorized_subjects
                     .iter()
                     .any(|x| x.clone() == subject_id);
 

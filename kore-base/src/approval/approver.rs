@@ -181,7 +181,7 @@ impl Approver {
             };
 
             let helper: Option<Intermediary> =
-                ctx.system().get_helper("NetworkIntermediary").await;
+                ctx.system().get_helper("network").await;
             let mut helper = if let Some(helper) = helper {
                 helper
             } else {
@@ -632,7 +632,7 @@ impl Handler<Approver> for Approver {
                     }
 
                     let helper: Option<Intermediary> =
-                        ctx.system().get_helper("NetworkIntermediary").await;
+                        ctx.system().get_helper("network").await;
                     let helper = if let Some(helper) = helper {
                         helper
                     } else {

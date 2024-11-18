@@ -50,6 +50,12 @@ pub enum ActorMessage {
         ledger: Vec<Signed<Ledger>>,
         last_event: Option<Signed<KoreEvent>>,
     },
+    DistributionGetLastSn {
+        subject_id: DigestIdentifier,
+    },
+    AuthLastSn {
+        sn: u64
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

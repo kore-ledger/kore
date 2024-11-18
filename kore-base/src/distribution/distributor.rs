@@ -25,7 +25,7 @@ use crate::{
 use super::{Distribution, DistributionMessage};
 
 enum CheckGovernance {
-    Continue(u64),
+    Continue,
     Finish,
 }
 
@@ -347,7 +347,7 @@ impl Distributor {
                 };
 
                 let helper: Option<Intermediary> =
-                    ctx.system().get_helper("NetworkIntermediary").await;
+                    ctx.system().get_helper("network").await;
 
                 let mut helper = if let Some(helper) = helper {
                     helper
@@ -422,7 +422,7 @@ impl Distributor {
             }
         }
 
-        Ok(CheckGovernance::Continue(our_gov_version))
+        Ok(CheckGovernance::Continue)
     }
 
     async fn check_gov_version(
@@ -467,7 +467,7 @@ impl Distributor {
                     };
 
                     let helper: Option<Intermediary> =
-                        ctx.system().get_helper("NetworkIntermediary").await;
+                        ctx.system().get_helper("network").await;
 
                     let mut helper = if let Some(helper) = helper {
                         helper
@@ -549,7 +549,7 @@ impl Distributor {
 
         // Si el owner nos pide la copia.
         if metadata.owner == info.sender {
-            return Ok(CheckGovernance::Continue(our_gov_version));
+            return Ok(CheckGovernance::Continue);
         }
 
         if !gov.has_this_role(
@@ -562,7 +562,7 @@ impl Distributor {
             todo!()
         };
 
-        Ok(CheckGovernance::Continue(our_gov_version))
+        Ok(CheckGovernance::Continue)
     }
 }
 
@@ -575,6 +575,10 @@ impl Actor for Distributor {
 
 #[derive(Debug, Clone)]
 pub enum DistributorMessage {
+    GetLastSn {
+        subject_id: String,
+        info: ComunicateInfo,
+    },
     // Un nodo nos solicitó la copia del ledger.
     SendDistribution {
         gov_version: Option<u64>,
@@ -617,24 +621,108 @@ impl Handler<Distributor> for Distributor {
         ctx: &mut ActorContext<Distributor>,
     ) -> Result<(), ActorError> {
         match msg {
+            DistributorMessage::GetLastSn { subject_id, info } => {
+                let Ok(metadata) = get_metadata(ctx, &subject_id).await else {
+                    // Me está pidiendo info de un sujeto que no tengo
+                    todo!()
+                };
+
+                let gov = match get_gov(ctx, &subject_id).await {
+                    Ok(gov) => gov,
+                    Err(_e) => todo!(),
+                };
+
+                if metadata.owner != info.sender
+                    && !gov.has_this_role(
+                        &info.sender.to_string(),
+                        Roles::WITNESS,
+                        &metadata.schema_id.clone(),
+                        metadata.namespace.clone(),
+                    )
+                {
+                    todo!()
+                }
+
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver.clone(),
+                    request_id: info.request_id,
+                    reciver_actor: format!(
+                        "/user/node/auth/{}/{}",
+                        subject_id, info.reciver
+                    ),
+                    schema: info.schema,
+                };
+
+                let helper: Option<Intermediary> =
+                    ctx.system().get_helper("network").await;
+
+                let mut helper = if let Some(helper) = helper {
+                    helper
+                } else {
+                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
+                    // return Err(ActorError::Get("Error".to_owned()))
+                    return Err(ActorError::NotHelper);
+                };
+
+                // TODO firmar la respuesta.
+                if let Err(_e) = helper
+                    .send_command(network::CommandHelper::SendMessage {
+                        message: NetworkMessage {
+                            info: new_info,
+                            message: ActorMessage::AuthLastSn {
+                                sn: metadata.sn,
+                            },
+                        },
+                    })
+                    .await
+                {
+                    todo!()
+                };
+            }
             DistributorMessage::SendDistribution {
                 actual_sn,
-                info,
+                mut info,
                 gov_version,
                 subject_id,
             } => {
-                let gov_version = match self
-                    .check_gov_version(
-                        ctx,
-                        &subject_id,
-                        gov_version,
-                        info.clone(),
-                    )
-                    .await?
-                {
-                    CheckGovernance::Continue(gov_version) => gov_version,
-                    CheckGovernance::Finish => return Ok(()),
-                };
+                if info.schema.is_empty() {
+                    let Ok(metadata) = get_metadata(ctx, &subject_id).await
+                    else {
+                        // Me está pidiendo info de un sujeto que no tengo
+                        todo!()
+                    };
+
+                    let gov = match get_gov(ctx, &subject_id).await {
+                        Ok(gov) => gov,
+                        Err(_e) => todo!(),
+                    };
+
+                    if metadata.owner != info.sender
+                        && !gov.has_this_role(
+                            &info.sender.to_string(),
+                            Roles::WITNESS,
+                            &metadata.schema_id.clone(),
+                            metadata.namespace.clone(),
+                        )
+                    {
+                        todo!()
+                    }
+
+                    info.schema = metadata.schema_id;
+                } else {
+                    if let CheckGovernance::Finish = self
+                        .check_gov_version(
+                            ctx,
+                            &subject_id,
+                            gov_version,
+                            info.clone(),
+                        )
+                        .await?
+                    {
+                        return Ok(());
+                    };
+                }
 
                 let sn = if let Some(actual_sn) = actual_sn {
                     actual_sn
@@ -661,7 +749,7 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 let helper: Option<Intermediary> =
-                    ctx.system().get_helper("NetworkIntermediary").await;
+                    ctx.system().get_helper("network").await;
 
                 let mut helper = if let Some(helper) = helper {
                     helper
@@ -859,10 +947,8 @@ impl Handler<Distributor> for Distributor {
                                     schema: info.schema,
                                 };
 
-                                let helper: Option<Intermediary> = ctx
-                                    .system()
-                                    .get_helper("NetworkIntermediary")
-                                    .await;
+                                let helper: Option<Intermediary> =
+                                    ctx.system().get_helper("network").await;
 
                                 let mut helper = if let Some(helper) = helper {
                                     helper
@@ -912,7 +998,7 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 let helper: Option<Intermediary> =
-                    ctx.system().get_helper("NetworkIntermediary").await;
+                    ctx.system().get_helper("network").await;
 
                 let mut helper = if let Some(helper) = helper {
                     helper
@@ -1100,7 +1186,7 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 let helper: Option<Intermediary> =
-                    ctx.system().get_helper("NetworkIntermediary").await;
+                    ctx.system().get_helper("network").await;
                 let mut helper = if let Some(helper) = helper {
                     helper
                 } else {
@@ -1158,6 +1244,7 @@ impl Handler<Distributor> for Distributor {
                     // Can not obtain parent actor
                     // return Err(ActorError::Exists(evaluation_path));
                 }
+                // TODO AQUï debería ir un ctx.stop()?
             }
         }
     }
