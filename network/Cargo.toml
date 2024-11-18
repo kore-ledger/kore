@@ -54,6 +54,7 @@ tokio = { workspace = true, features = ["macros", "sync"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 actor = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 libp2p-swarm-test = { workspace = true }

@@ -6,7 +6,7 @@ use std::{collections::HashSet, time::Duration};
 use crate::{
     governance::model::Roles,
     helpers::{
-        db::{LocalDB, Querys},
+        db::{ExternalDB, Querys},
         network::{intermediary::Intermediary, NetworkMessage},
     },
     model::{
@@ -266,8 +266,8 @@ impl Validator {
                     return Err(Error::Validation("The previous event received validations from validators who are not part of governance.".to_owned()));
                 }
             } else {
-                let Some(helper): Option<LocalDB> =
-                    ctx.system().get_helper("local_db").await
+                let Some(helper): Option<ExternalDB> =
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };
@@ -532,7 +532,7 @@ impl Handler<Validator> for Validator {
                 // Validar y devolver la respuesta al helper, no a Validation. Nos llegó por la network la validación.
                 // Sacar el Helper aquí
                 let helper: Option<Intermediary> =
-                    ctx.system().get_helper("NetworkIntermediary").await;
+                    ctx.system().get_helper("network").await;
                 let mut helper = if let Some(helper) = helper {
                     helper
                 } else {
@@ -636,6 +636,7 @@ impl Handler<Validator> for Validator {
                     // Can not obtain parent actor
                     // return Err(ActorError::Exists(validation_path));
                 }
+                // TODO AQUï debería ir un ctx.stop()?
             }
         }
     }

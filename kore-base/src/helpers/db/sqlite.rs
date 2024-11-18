@@ -1,20 +1,17 @@
-use std::sync::{Arc, RwLock};
-
 use actor::{ActorRef, Subscriber};
-use async_std::sync::Mutex;
 use async_trait::async_trait;
-use serde_json::Value;
 use tokio_rusqlite::{params, Connection, OpenFlags, Result as SqliteError};
 
 use crate::approval::approver::ApproverEvent;
 use crate::error::Error;
-use crate::local_db::{DBManager, DBManagerMessage, DeleteTypes};
+use crate::external_db::{DBManager, DBManagerMessage, DeleteTypes};
 use crate::model::event::{Ledger, LedgerValue};
 use crate::request::manager::RequestManagerEvent;
 use crate::request::state::RequestManagerState;
 use crate::request::RequestHandlerEvent;
 use crate::subject::event::LedgerEventEvent;
-use crate::Signed;
+use crate::subject::sinkdata::SinkDataEvent;
+use crate::{EventRequest, Signed};
 
 use super::Querys;
 
@@ -156,6 +153,12 @@ impl SqliteLocal {
 
             let sql = "CREATE TABLE IF NOT EXISTS events (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, data TEXT NOT NULL, succes TEXT NOT NULL, PRIMARY KEY (subject_id, sn))";
             let _ = conn.execute(sql, ())?;
+
+            let sql = "CREATE TABLE IF NOT EXISTS subjects (subject_id TEXT NOT NULL, governance_id TEXT NOT NULL, genesis_gov_version INTEGER NOT NULL, namespace TEXT NOT NULL, schema_id TEXT NOT NULL, owner TEXT NOT NULL, creator TEXT NOT NULL, active TEXT NOT NULL, sn INTEGER NOT NULL, properties TEXT NOT NULL, PRIMARY KEY (subject_id))";
+            let _ = conn.execute(sql, ())?;
+
+            let sql = "CREATE TABLE IF NOT EXISTS signatures (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, signatures_eval TEXT NOT NULL, signatures_appr TEXT NOT NULL, signatures_vali TEXT NOT NULL, PRIMARY KEY (subject_id))";
+            let _ = conn.execute(sql, ())?;
             Ok(())
         }).await.map_err(|e| Error::Database(format!("Can not create request table: {}",e)))?;
 
@@ -163,9 +166,6 @@ impl SqliteLocal {
     }
 }
 
-// TODO Actor nuevo para que si falla la escritura en la base de datos
-// el nodo sea capaz de manejar la situación, ya que sino no habría
-// comunicación
 #[async_trait]
 impl Subscriber<RequestManagerEvent> for SqliteLocal {
     async fn notify(&self, event: RequestManagerEvent) {
@@ -308,7 +308,7 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
 #[async_trait]
 impl Subscriber<LedgerEventEvent> for SqliteLocal {
     async fn notify(&self, event: LedgerEventEvent) {
-        match event {
+        let event = match event {
             LedgerEventEvent::WithVal { validators, event } => {
                 let subject_id = event.content.subject_id.to_string();
                 let Ok(validators) = serde_json::to_string(&validators) else {
@@ -331,8 +331,40 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
                     println!("{}", e);
                     todo!()
                 };
+
+                event
             }
-            LedgerEventEvent::WithOutVal { .. } => {}
+            LedgerEventEvent::WithOutVal { event } => event,
+        };
+        let sn = event.content.sn;
+        let subject_id = event.content.subject_id.to_string();
+        let Ok(sig_eval) = serde_json::to_string(&event.content.evaluators)
+        else {
+            todo!()
+        };
+        let Ok(sig_appr) = serde_json::to_string(&event.content.approvers)
+        else {
+            todo!()
+        };
+        let Ok(sig_vali) = serde_json::to_string(&event.content.validators)
+        else {
+            todo!()
+        };
+        if let Err(e) = self
+            .conn
+            .call(move |conn| {
+                let _ =
+                    conn.execute("INSERT OR REPLACE INTO signatures (subject_id, sn, signatures_eval, signatures_appr, signatures_vali) VALUES (?1, ?2, ?3, ?4, ?5)", params![subject_id, sn, sig_eval, sig_appr, sig_vali])?;
+
+                Ok(())
+            })
+            .await
+            .map_err(|e| {
+                Error::Database(format!(": {}", e))
+            })
+        {
+            println!("{}", e);
+            todo!()
         };
     }
 }
@@ -355,20 +387,54 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
         };
 
         if let Err(e) = self
-                    .conn
-                    .call(move |conn| {
-                        let _ =
-                            conn.execute("INSERT INTO events (subject_id, sn, data, succes) VALUES (?1, ?2, ?3, ?4)", params![subject_id, sn, data, succes])?;
+            .conn
+            .call(move |conn| {
+                let _ =
+                    conn.execute("INSERT INTO events (subject_id, sn, data, succes) VALUES (?1, ?2, ?3, ?4)", params![subject_id, sn, data, succes])?;
 
-                        Ok(())
-                    })
-                    .await
-                    .map_err(|e| {
-                        Error::Database(format!(": {}", e))
-                    })
-                {
-                    println!("{}", e);
-                    todo!()
-                };
+                Ok(())
+            })
+            .await
+            .map_err(|e| {
+                Error::Database(format!(": {}", e))
+            })
+            {
+                println!("{}", e);
+                todo!()
+        };
+    }
+}
+
+#[async_trait]
+impl Subscriber<SinkDataEvent> for SqliteLocal {
+    async fn notify(&self, event: SinkDataEvent) {
+        let subject_id = event.metadata.subject_id.to_string();
+        let governance_id = event.metadata.governance_id.to_string();
+        let genesis_gov_version = event.metadata.genesis_gov_version;
+        let namespace = event.metadata.namespace.to_string();
+        let schema_id = event.metadata.schema_id;
+        let owner = event.metadata.owner.to_string();
+        let creator = event.metadata.creator.to_string();
+        let active = event.metadata.active.to_string();
+        let sn = event.metadata.sn;
+        let properties = event.metadata.properties.0.to_string();
+
+        // let sql = "CREATE TABLE IF NOT EXISTS subjects (subject_id TEXT NOT NULL, governance_id TEXT NOT NULL, genesis_gov_version INTEGER NOT NULL, namespace TEXT NOT NULL, schema_id TEXT NOT NULL, owner TEXT NOT NULL, creator TEXT NOT NULL, active TEXT NOT NULL, sn INTEGER NOT NULL, properties TEXT NOT NULL, PRIMARY KEY (subject_id))";
+        if let Err(e) = self
+        .conn
+        .call(move |conn| {
+            let _ =
+                conn.execute("INSERT OR REPLACE INTO subjects (subject_id, governance_id, genesis_gov_version, namespace, schema_id, owner, creator, active, sn, properties) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)", params![subject_id, governance_id, genesis_gov_version, namespace, schema_id, owner, creator, active, sn, properties])?;
+
+            Ok(())
+        })
+        .await
+        .map_err(|e| {
+            Error::Database(format!(": {}", e))
+        })
+        {
+            println!("{}", e);
+            todo!()
+    };
     }
 }

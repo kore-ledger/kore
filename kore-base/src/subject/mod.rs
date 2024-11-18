@@ -5,7 +5,11 @@
 //!
 
 use crate::{
-    approval::{approver::Approver, Approval},
+    approval::{
+        approver::{Approver, VotationType},
+        Approval,
+    },
+    config::Config,
     db::Storable,
     distribution::{distributor::Distributor, Distribution},
     evaluation::{
@@ -15,7 +19,7 @@ use crate::{
         Evaluation,
     },
     governance::{model::Roles, Schema},
-    helpers::db::LocalDB,
+    helpers::db::ExternalDB,
     model::{
         common::{
             delete_relation, get_gov, get_quantity, register_relation,
@@ -28,6 +32,7 @@ use crate::{
     },
     node::{
         nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
+        register::{Register, RegisterData, RegisterMessage},
         NodeMessage,
     },
     validation::{
@@ -55,12 +60,14 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use json_patch::{patch, Patch};
 use serde::{Deserialize, Serialize};
 use serde_json::to_value;
+use sinkdata::{SinkData, SinkDataMessage};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{debug, error};
 
 use std::{collections::HashSet, str::FromStr};
 
 pub mod event;
+pub mod sinkdata;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateSubjectData {
@@ -90,6 +97,8 @@ pub struct Metadata {
     pub namespace: Namespace,
     /// The current sequence number of the subject.
     pub sn: u64,
+    /// The identifier of the public key of the creator owner.
+    pub creator: KeyIdentifier,
     /// The identifier of the public key of the subject owner.
     pub owner: KeyIdentifier,
     /// Indicates whether the subject is active or not.
@@ -331,6 +340,7 @@ impl Subject {
 
         Metadata {
             subject_public_key,
+            creator: self.creator.clone(),
             genesis_gov_version: self.genesis_gov_version,
             last_event_hash: self.last_event_hash.clone(),
             subject_id: self.subject_id.clone(),
@@ -433,7 +443,7 @@ impl Subject {
         &self,
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
-        local_db: LocalDB,
+        ext_db: ExternalDB,
     ) -> Result<(), ActorError> {
         // If subject is a governance
         let gov = Governance::try_from(self.properties.clone())
@@ -447,7 +457,7 @@ impl Subject {
                 ctx,
                 our_key.clone(),
                 self.subject_id.clone(),
-                local_db,
+                ext_db,
             )
             .await
             .map_err(|e| ActorError::Custom(e.to_string()))?;
@@ -457,7 +467,7 @@ impl Subject {
                 gov.clone(),
                 our_key.clone(),
                 self.namespace.clone(),
-                local_db,
+                ext_db,
                 self.subject_id.clone(),
             )
             .await
@@ -508,7 +518,7 @@ impl Subject {
         gov: Governance,
         our_key: KeyIdentifier,
         namespace: Namespace,
-        local_db: LocalDB,
+        ext_db: ExternalDB,
         subject_id: DigestIdentifier,
     ) -> Result<(), Error> {
         if gov.has_this_role(
@@ -543,11 +553,18 @@ impl Subject {
             "governance",
             namespace.clone(),
         ) {
+            let Some(config): Option<Config> =
+                ctx.system().get_helper("config").await
+            else {
+                todo!()
+            };
+
             // If we are a approver
             let approver = Approver::new(
                 "".to_owned(),
                 our_key.clone(),
                 subject_id.to_string(),
+                VotationType::from(config.always_accept),
             );
             let approver_actor = ctx
                 .create_child("approver", approver)
@@ -555,7 +572,7 @@ impl Subject {
                 .map_err(|e| Error::Actor(format!("{}", e)))?;
 
             let sink =
-                Sink::new(approver_actor.subscribe(), local_db.get_approver());
+                Sink::new(approver_actor.subscribe(), ext_db.get_approver());
             ctx.system().run_sink(sink).await;
         }
 
@@ -620,8 +637,14 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
         subject_id: DigestIdentifier,
-        local_db: LocalDB,
+        ext_db: ExternalDB,
     ) -> Result<(), Error> {
+        let Some(config): Option<Config> =
+            ctx.system().get_helper("config").await
+        else {
+            todo!()
+        };
+
         let validation = Validation::new(our_key.clone());
         ctx.create_child("validation", validation)
             .await
@@ -641,14 +664,14 @@ impl Subject {
             "".to_owned(),
             our_key.clone(),
             subject_id.to_string(),
+            VotationType::from(config.always_accept),
         );
         let approver_actor = ctx
             .create_child("approver", approver)
             .await
             .map_err(|e| Error::Actor(format!("{}", e)))?;
 
-        let sink =
-            Sink::new(approver_actor.subscribe(), local_db.get_approver());
+        let sink = Sink::new(approver_actor.subscribe(), ext_db.get_approver());
         ctx.system().run_sink(sink).await;
 
         let distribution = Distribution::new(our_key.clone());
@@ -1078,6 +1101,42 @@ impl Subject {
         }
     }
 
+    async fn register(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        active: bool,
+    ) -> Result<(), Error> {
+        let register: Option<ActorRef<Register>> = ctx
+            .system()
+            .get_actor(&ActorPath::from("/user/node/register"))
+            .await;
+        if let Some(register) = register {
+            let message = if self.governance_id.is_empty() {
+                RegisterMessage::RegisterGov {
+                    gov_id: self.subject_id.to_string(),
+                    active,
+                }
+            } else {
+                RegisterMessage::RegisterSubj {
+                    gov_id: self.governance_id.to_string(),
+                    data: RegisterData {
+                        subject_id: self.subject_id.to_string(),
+                        schema: self.schema_id.clone(),
+                        active,
+                    },
+                }
+            };
+
+            if let Err(e) = register.tell(message).await {
+                todo!()
+            }
+        } else {
+            todo!()
+        }
+
+        Ok(())
+    }
+
     async fn verify_new_ledger_events_gov(
         &mut self,
         ctx: &mut ActorContext<Subject>,
@@ -1097,6 +1156,7 @@ impl Subject {
             }
 
             self.on_event(events[0].clone(), ctx).await;
+            self.register(ctx, true).await?;
             events.remove(0)
         };
 
@@ -1112,19 +1172,23 @@ impl Subject {
                 }
             }
 
-            if let EventRequest::Transfer(transfer_request) =
-                event.content.event_request.content.clone()
-            {
-                if let Err(_e) = Subject::change_node_subject(
-                    ctx,
-                    &transfer_request.subject_id.to_string(),
-                    &transfer_request.new_owner.to_string(),
-                    &self.owner.to_string(),
-                )
-                .await
-                {
-                    todo!()
+            match event.content.event_request.content.clone() {
+                EventRequest::Transfer(transfer_request) => {
+                    if let Err(_e) = Subject::change_node_subject(
+                        ctx,
+                        &transfer_request.subject_id.to_string(),
+                        &transfer_request.new_owner.to_string(),
+                        &self.owner.to_string(),
+                    )
+                    .await
+                    {
+                        todo!()
+                    }
                 }
+                EventRequest::EOL(_eolrequest) => {
+                    self.register(ctx, false).await?
+                }
+                _ => {}
             };
 
             // Aplicar evento.
@@ -1203,6 +1267,7 @@ impl Subject {
             }
 
             self.on_event(events[0].clone(), ctx).await;
+            self.register(ctx, true).await?;
             events.remove(0)
         };
 
@@ -1218,45 +1283,48 @@ impl Subject {
                 }
             }
 
-            if let EventRequest::Transfer(transfer_request) =
-                event.content.event_request.content.clone()
-            {
-                if let Err(e) = delete_relation(
-                    ctx,
-                    self.governance_id.to_string(),
-                    self.schema_id.clone(),
-                    event.signature.signer.to_string(),
-                    self.subject_id.to_string(),
-                    self.namespace.to_string(),
-                )
-                .await
-                {
-                    todo!()
+            match event.content.event_request.content.clone() {
+                EventRequest::Confirm(confirm_request) => {
+                    if let Err(e) = self
+                        .register_relation(
+                            ctx,
+                            event.signature.signer.to_string(),
+                            max_quantity,
+                        )
+                        .await
+                    {
+                        todo!()
+                    }
                 }
-
-                if let Err(_e) = Subject::change_node_subject(
-                    ctx,
-                    &transfer_request.subject_id.to_string(),
-                    &transfer_request.new_owner.to_string(),
-                    &self.owner.to_string(),
-                )
-                .await
-                {
-                    todo!()
-                }
-            } else if let EventRequest::Confirm(confirm_request) =
-                event.content.event_request.content.clone()
-            {
-                if let Err(e) = self
-                    .register_relation(
+                EventRequest::Transfer(transfer_request) => {
+                    if let Err(e) = delete_relation(
                         ctx,
+                        self.governance_id.to_string(),
+                        self.schema_id.clone(),
                         event.signature.signer.to_string(),
-                        max_quantity,
+                        self.subject_id.to_string(),
+                        self.namespace.to_string(),
                     )
                     .await
-                {
-                    todo!()
+                    {
+                        todo!()
+                    }
+
+                    if let Err(_e) = Subject::change_node_subject(
+                        ctx,
+                        &transfer_request.subject_id.to_string(),
+                        &transfer_request.new_owner.to_string(),
+                        &self.owner.to_string(),
+                    )
+                    .await
+                    {
+                        todo!()
+                    }
                 }
+                EventRequest::EOL(_eolrequest) => {
+                    self.register(ctx, false).await?
+                }
+                _ => {}
             };
 
             // Aplicar evento.
@@ -1342,8 +1410,8 @@ impl Subject {
 
                     // Si cambió el dueño
                     if current_owner != self.owner {
-                        let Some(local_db): Option<LocalDB> =
-                            ctx.system().get_helper("local_db").await
+                        let Some(ext_db): Option<ExternalDB> =
+                            ctx.system().get_helper("ext_db").await
                         else {
                             todo!()
                         };
@@ -1361,7 +1429,7 @@ impl Subject {
                                 ctx,
                                 our_key.clone(),
                                 self.subject_id.clone(),
-                                local_db,
+                                ext_db,
                             )
                             .await?;
                         } else if current_owner == our_key {
@@ -1372,7 +1440,7 @@ impl Subject {
                                 new_gov.clone(),
                                 our_key.clone(),
                                 self.namespace.clone(),
-                                local_db,
+                                ext_db,
                                 self.subject_id.clone(),
                             )
                             .await?;
@@ -1547,6 +1615,21 @@ impl Subject {
             }
         }
 
+        let sink_data: Option<ActorRef<SinkData>> =
+            ctx.get_child("sink_data").await;
+        if let Some(sink_data) = sink_data {
+            if let Err(e) = sink_data
+                .tell(SinkDataMessage::SafeMetadata(self.get_metadata()))
+                .await
+            {
+                println!("Errror1");
+                todo!()
+            }
+        } else {
+            println!("Errror");
+            todo!()
+        }
+
         Ok(())
     }
 
@@ -1712,8 +1795,8 @@ impl Actor for Subject {
             .await
             .map_err(|e| ActorError::Create)?;
 
-        let Some(local_db): Option<LocalDB> =
-            ctx.system().get_helper("local_db").await
+        let Some(ext_db): Option<ExternalDB> =
+            ctx.system().get_helper("ext_db").await
         else {
             todo!()
         };
@@ -1724,19 +1807,27 @@ impl Actor for Subject {
 
         let sink = Sink::new(
             ledger_event_actor.subscribe(),
-            local_db.get_ledger_event(),
+            ext_db.get_ledger_event(),
         );
         ctx.system().run_sink(sink).await;
 
         if self.active {
             if self.governance_id.is_empty() {
-                self.build_childs_governance(ctx, our_key.clone(), local_db)
-                    .await?;
+                self.build_childs_governance(
+                    ctx,
+                    our_key.clone(),
+                    ext_db.clone(),
+                )
+                .await?;
             } else {
                 self.build_childs_not_governance(ctx, our_key.clone())
                     .await?;
             }
         }
+
+        let sink_actor = ctx.create_child("sink_data", SinkData).await?;
+        let sink = Sink::new(sink_actor.subscribe(), ext_db.get_sink_data());
+        ctx.system().run_sink(sink).await;
 
         let distributor = Distributor { node: our_key };
         ctx.create_child("distributor", distributor).await?;
@@ -1844,6 +1935,11 @@ impl Handler<Subject> for Subject {
             error!("Error persisting subject event: {:?}", err);
             let _ = ctx.emit_error(err).await;
         };
+
+        if let Err(e) = ctx.publish_event(event).await {
+            println!("{}", e);
+            todo!()
+        }
     }
 }
 

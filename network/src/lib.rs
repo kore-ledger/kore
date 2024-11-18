@@ -9,6 +9,7 @@ mod behaviour;
 mod control_list;
 pub mod error;
 //mod node;
+mod monitor;
 mod routing;
 mod service;
 mod transport;
@@ -27,6 +28,7 @@ pub use libp2p::{
     },
     PeerId,
 };
+pub use monitor::*;
 pub use routing::{Config as RoutingConfig, RoutingNode};
 pub use service::NetworkService;
 pub use tell::Config as TellConfig;
@@ -109,7 +111,7 @@ pub enum Command {
 }
 
 /// Event enumeration for the network service.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
     /// Connected to a bootstrap node.
     ConnectedToBootstrap {

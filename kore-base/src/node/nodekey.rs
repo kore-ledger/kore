@@ -10,7 +10,7 @@ use crate::{
     approval::approver::{
         ApprovalState, ApprovalStateRes, Approver, ApproverMessage,
     },
-    helpers::db::{LocalDB, Querys},
+    helpers::db::{ExternalDB, Querys},
     request::state,
 };
 

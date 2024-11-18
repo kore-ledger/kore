@@ -13,7 +13,7 @@ use crate::{
     approval::approver::{
         ApprovalState, ApprovalStateRes, Approver, ApproverMessage,
     },
-    helpers::db::{LocalDB, Querys},
+    helpers::db::{ExternalDB, Querys},
     request::state,
 };
 
@@ -30,16 +30,8 @@ impl Query {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryMessage {
-    GetRequestState {
-        request_id: String,
-    },
-    ChangeApprovalState {
-        subject_id: String,
-        state: ApprovalStateRes,
-    },
-    GetApproval {
-        request_id: String,
-    },
+    GetRequestState { request_id: String },
+    GetApproval { subject_id: String },
 }
 
 impl Message for QueryMessage {}
@@ -83,11 +75,23 @@ impl Handler<Query> for Query {
         msg: QueryMessage,
         ctx: &mut actor::ActorContext<Query>,
     ) -> Result<QueryResponse, ActorError> {
-        let Some(helper): Option<LocalDB> =
-            ctx.system().get_helper("local_db").await
+        let Some(helper): Option<ExternalDB> =
+            ctx.system().get_helper("ext_db").await
         else {
             todo!()
         };
+
+        // Sacar el estado de una request
+        // Sacar la aprobación
+
+        // Obtener los nodos autorizados y los testigos.
+
+        // Obtener Todas las governanzas
+        // Obtener todos los sujetos de una determinada governanza
+        // Obtener todos los schemas de una determinada governanza
+
+        // Obtener el estado de un sujeto.
+        // Obtener sus eventos.
 
         match msg {
             QueryMessage::GetRequestState { request_id } => {
@@ -96,45 +100,8 @@ impl Handler<Query> for Query {
                     Err(e) => Ok(QueryResponse::Error(e.to_string())),
                 }
             }
-            QueryMessage::ChangeApprovalState { subject_id, state } => {
-                match state.to_string().as_str() {
-                    "RespondedAccepted" | "RespondedRejected" => {}
-                    _ => {
-                        return Ok(QueryResponse::Error(
-                            "Invalid Response".to_owned(),
-                        ))
-                    }
-                };
-
-                let approver_actor: Option<ActorRef<Approver>> = ctx
-                    .system()
-                    .get_actor(&ActorPath::from(format!(
-                        "/user/node/{}/approver",
-                        subject_id
-                    )))
-                    .await;
-
-                if let Some(approver_actor) = approver_actor {
-                    if let Err(e) = approver_actor
-                        .tell(ApproverMessage::ChangeResponse {
-                            response: state.clone(),
-                        })
-                        .await
-                    {
-                        todo!()
-                    }
-                } else {
-                    todo!()
-                };
-
-                Ok(QueryResponse::Response(format!(
-                    "The approval request for subject {} has changed to {}",
-                    subject_id,
-                    state.to_string()
-                )))
-            }
-            QueryMessage::GetApproval { request_id } => {
-                match helper.get_approve_req(&request_id).await {
+            QueryMessage::GetApproval { subject_id } => {
+                match helper.get_approve_req(&subject_id).await {
                     Ok((request, state)) => {
                         Ok(QueryResponse::ApprovalState { request, state })
                     }

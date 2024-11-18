@@ -1,15 +1,11 @@
 use crate::{
-    approval::approver::{Approver, ApproverMessage},
-    distribution::distributor::{Distributor, DistributorMessage},
-    evaluation::{
+    approval::approver::{Approver, ApproverMessage}, auth::authorizer::{Authorizer, AuthorizerMessage}, distribution::distributor::{Distributor, DistributorMessage}, evaluation::{
         evaluator::{Evaluator, EvaluatorMessage},
         schema::{EvaluationSchema, EvaluationSchemaMessage},
-    },
-    validation::{
+    }, validation::{
         schema::{ValidationSchema, ValidationSchemaMessage},
         validator::{Validator, ValidatorMessage},
-    },
-    Error,
+    }, Error
 };
 
 use super::ActorMessage;
@@ -131,6 +127,44 @@ impl Intermediary {
                     };
                 // Refactorizar esto TODO:
                 match message.message {
+                    ActorMessage::DistributionGetLastSn {
+                        subject_id
+                    } => {
+                        let distributor_path = ActorPath::from(message.info.reciver_actor.clone());
+                        let distributor_actor: Option<ActorRef<Distributor>> = self.system.get_actor(&distributor_path).await;
+
+                        if let Some(distributor_actor) = distributor_actor {
+                            if let Err(error) = distributor_actor
+                                .tell(DistributorMessage::GetLastSn { subject_id: subject_id.to_string(), info: message.info })
+                                .await
+                            {
+                                todo!()
+                                //return Err(Error::Actor(format!("Can not send a message to Validator Actor(Req): {}",error)));
+                            };
+                        } else {
+                            todo!()
+                            //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",validator_path)));
+                        };
+                    },
+                    ActorMessage::AuthLastSn {
+                        sn
+                    } => {
+                        let authorizer_path = ActorPath::from(message.info.reciver_actor.clone());
+                        let authorizer_actor: Option<ActorRef<Authorizer>> = self.system.get_actor(&authorizer_path).await;
+
+                        if let Some(authorizer_actor) = authorizer_actor {
+                            if let Err(error) = authorizer_actor
+                                .tell(AuthorizerMessage::NetworkResponse { sn } )
+                                .await
+                            {
+                                todo!()
+                                //return Err(Error::Actor(format!("Can not send a message to Validator Actor(Req): {}",error)));
+                            };
+                        } else {
+                            todo!()
+                            //return Err(Error::Actor(format!("The node actor was not found in the expected path {}",validator_path)));
+                        };
+                    },
                     ActorMessage::ValidationReq { req } => {
                         // Validator path.
                         let validator_path =

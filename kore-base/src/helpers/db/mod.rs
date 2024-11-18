@@ -1,18 +1,20 @@
 use crate::{
     approval::approver::{ApprovalState, ApprovalStateRes, ApproverEvent},
     error::Error,
-    local_db::DBManager,
+    external_db::DBManager,
     model::event::Ledger,
     request::{manager::RequestManagerEvent, RequestHandlerEvent},
-    subject::event::LedgerEventEvent,
+    subject::{event::LedgerEventEvent, sinkdata::SinkDataEvent},
     Signed,
 };
 
+use crate::config::ExternalDbConfig;
+
 use actor::{ActorRef, Subscriber};
 use async_trait::async_trait;
-#[cfg(feature = "sqlite-local")]
+#[cfg(feature = "ext-sqlite")]
 use sqlite::SqliteLocal;
-#[cfg(feature = "sqlite-local")]
+#[cfg(feature = "ext-sqlite")]
 mod sqlite;
 
 #[async_trait]
@@ -36,66 +38,78 @@ pub trait Querys {
 }
 
 #[derive(Clone)]
-pub enum LocalDB {
-    #[cfg(feature = "sqlite-local")]
+pub enum ExternalDB {
+    #[cfg(feature = "ext-sqlite")]
     SqliteLocal(SqliteLocal),
 }
 
-impl LocalDB {
-    #[cfg(feature = "sqlite-local")]
-    pub async fn sqlite(
-        path: &str,
+impl ExternalDB {
+    #[cfg(feature = "ext-sqlite")]
+    pub async fn build(
+        ext_db: ExternalDbConfig,
         manager: ActorRef<DBManager>,
     ) -> Result<Self, Error> {
-        let sqlite = SqliteLocal::new(path, manager).await?;
-        Ok(LocalDB::SqliteLocal(sqlite))
+        match ext_db {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDbConfig::SQLite { path } => {
+                let sqlite = SqliteLocal::new(&path, manager).await?;
+                Ok(ExternalDB::SqliteLocal(sqlite))
+            }
+        }
     }
 
     pub fn get_request_manager(&self) -> impl Subscriber<RequestManagerEvent> {
         match self {
-            #[cfg(feature = "sqlite-local")]
-            LocalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
         }
     }
 
     pub fn get_request_handler(&self) -> impl Subscriber<RequestHandlerEvent> {
         match self {
-            #[cfg(feature = "sqlite-local")]
-            LocalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
         }
     }
 
     pub fn get_approver(&self) -> impl Subscriber<ApproverEvent> {
         match self {
-            #[cfg(feature = "sqlite-local")]
-            LocalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
         }
     }
 
     pub fn get_ledger_event(&self) -> impl Subscriber<LedgerEventEvent> {
         match self {
-            #[cfg(feature = "sqlite-local")]
-            LocalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
         }
     }
 
     pub fn get_subject(&self) -> impl Subscriber<Signed<Ledger>> {
         match self {
-            #[cfg(feature = "sqlite-local")]
-            LocalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+        }
+    }
+
+    pub fn get_sink_data(&self) -> impl Subscriber<SinkDataEvent> {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
         }
     }
 }
 
 #[async_trait]
-impl Querys for LocalDB {
+impl Querys for ExternalDB {
     async fn get_request_id_status(
         &self,
         request_id: &str,
     ) -> Result<String, Error> {
         match self {
-            #[cfg(feature = "sqlite-local")]
-            LocalDB::SqliteLocal(sqlite_local) => {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => {
                 sqlite_local.get_request_id_status(request_id).await
             }
         }
@@ -103,8 +117,8 @@ impl Querys for LocalDB {
 
     async fn del_request(&self, request_id: &str) -> Result<(), Error> {
         match self {
-            #[cfg(feature = "sqlite-local")]
-            LocalDB::SqliteLocal(sqlite_local) => {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => {
                 sqlite_local.del_request(request_id).await
             }
         }
@@ -115,8 +129,8 @@ impl Querys for LocalDB {
         subject_id: &str,
     ) -> Result<(String, String), Error> {
         match self {
-            #[cfg(feature = "sqlite-local")]
-            LocalDB::SqliteLocal(sqlite_local) => {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => {
                 sqlite_local.get_approve_req(subject_id).await
             }
         }
@@ -127,8 +141,8 @@ impl Querys for LocalDB {
         subject_id: &str,
     ) -> Result<String, Error> {
         match self {
-            #[cfg(feature = "sqlite-local")]
-            LocalDB::SqliteLocal(sqlite_local) => {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => {
                 sqlite_local.get_last_validators(subject_id).await
             }
         }

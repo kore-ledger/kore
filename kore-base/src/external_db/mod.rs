@@ -10,7 +10,7 @@ use store::store::PersistentActor;
 
 use crate::{
     db::Storable,
-    helpers::db::{LocalDB, Querys},
+    helpers::db::{ExternalDB, Querys},
     model::TimeStamp,
 };
 
@@ -38,7 +38,7 @@ impl DBManager {
         ctx: &mut actor::ActorContext<DBManager>,
         delete: DeleteTypes,
         our_ref: ActorRef<DBManager>,
-        helper: LocalDB,
+        helper: ExternalDB,
     ) {
         let time = self.time.clone();
 
@@ -122,8 +122,8 @@ impl Handler<DBManager> for DBManager {
                     todo!()
                 };
 
-                let Some(helper): Option<LocalDB> =
-                    ctx.system().get_helper("local_db").await
+                let Some(helper): Option<ExternalDB> =
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };
@@ -146,8 +146,8 @@ impl Handler<DBManager> for DBManager {
                     todo!()
                 };
 
-                let Some(helper): Option<LocalDB> =
-                    ctx.system().get_helper("local_db").await
+                let Some(helper): Option<ExternalDB> =
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };

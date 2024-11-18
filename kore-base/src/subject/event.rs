@@ -100,6 +100,13 @@ impl Handler<LedgerEvent> for LedgerEvent {
     ) -> Result<LedgerEventResponse, ActorError> {
         match msg {
             LedgerEventMessage::UpdateLastEvent { event } => {
+                if let Some(last_event) = self.last_event.clone() {
+                    if last_event.content.sn >= event.content.sn {
+                        // NO Hay que actualizar
+                        todo!()
+                    }
+                };
+
                 let valid_event = match verify_protocols_state(
                     EventRequestType::from(
                         event.content.event_request.content.clone(),
@@ -203,6 +210,11 @@ impl Handler<LedgerEvent> for LedgerEvent {
         if let Err(err) = self.persist(&event, ctx).await {
             let _ = ctx.emit_error(err).await;
         };
+
+        if let Err(e) = ctx.publish_event(event).await {
+            println!("{}", e);
+            todo!()
+        }
     }
 }
 

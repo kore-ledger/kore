@@ -550,7 +550,7 @@ pub mod tests {
     };
 
     use crate::{
-        helpers::db::LocalDB,
+        helpers::db::ExternalDB,
         model::{event::LedgerValue, Namespace, SignTypesNode},
         query::Query,
         request::{
@@ -589,12 +589,10 @@ pub mod tests {
             .await
             .unwrap();
 
-        let local_db: LocalDB = system.get_helper("local_db").await.unwrap();
+        let ext_db: ExternalDB = system.get_helper("ext_db").await.unwrap();
 
-        let sink = Sink::new(
-            request_actor.subscribe(),
-            local_db.get_request_handler(),
-        );
+        let sink =
+            Sink::new(request_actor.subscribe(), ext_db.get_request_handler());
         system.run_sink(sink).await;
 
         let create_req = EventRequest::Create(CreateRequest {
@@ -636,6 +634,7 @@ pub mod tests {
 
         let temporal_subj = subjects.temporal_subjects[0].clone();
 
+        tokio::time::sleep(Duration::from_millis(500)).await;
         let NodeResponse::Subjects(subjects) =
             node_actor.ask(NodeMessage::GetSubjects).await.unwrap()
         else {

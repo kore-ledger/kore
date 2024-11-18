@@ -74,7 +74,6 @@ impl ApprovalState {
     }
 }
 
-// TODO CAMBIAR A POR DEFECTO MANUAL, ALWaysaccept
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum VotationType {
     #[default]
@@ -91,7 +90,7 @@ impl From<bool> for VotationType {
     }
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Approver {
     node: KeyIdentifier,
     request_id: String,
@@ -107,12 +106,16 @@ impl Approver {
         request_id: String,
         node: KeyIdentifier,
         subject_id: String,
+        pass_votation: VotationType,
     ) -> Self {
         Approver {
             node,
             request_id,
             subject_id,
-            ..Default::default()
+            pass_votation,
+            state: None,
+            request: None,
+            info: None,
         }
     }
 
@@ -178,7 +181,7 @@ impl Approver {
             };
 
             let helper: Option<Intermediary> =
-                ctx.system().get_helper("NetworkIntermediary").await;
+                ctx.system().get_helper("network").await;
             let mut helper = if let Some(helper) = helper {
                 helper
             } else {
@@ -629,7 +632,7 @@ impl Handler<Approver> for Approver {
                     }
 
                     let helper: Option<Intermediary> =
-                        ctx.system().get_helper("NetworkIntermediary").await;
+                        ctx.system().get_helper("network").await;
                     let helper = if let Some(helper) = helper {
                         helper
                     } else {

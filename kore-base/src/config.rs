@@ -3,7 +3,10 @@
 
 //! # Configuration module
 
+use std::time::Duration;
+
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
+use network::Config as NetworkConfig;
 use serde::Deserialize;
 
 /// Node configuration.
@@ -14,28 +17,22 @@ pub struct Config {
     /// Digest derivator.
     pub digest_derivator: DigestDerivator,
     /// Database configuration.
-    pub kore_db: DbConfig,
-
-    pub external_db: String,
-}
-
-impl Config {
-    /// Creates a new `Config`.
-    pub fn new(kore_db_path: &str, external_db_path: &str) -> Self {
-        Self {
-            key_derivator: KeyDerivator::Ed25519,
-            digest_derivator: DigestDerivator::Blake3_256,
-            kore_db: DbConfig::Rocksdb {
-                path: kore_db_path.to_owned(),
-            },
-            external_db: external_db_path.to_owned(),
-        }
-    }
+    pub kore_db: KoreDbConfig,
+    /// External database configuration.
+    pub external_db: ExternalDbConfig,
+    /// Network configuration.
+    pub network: NetworkConfig,
+    /// Contract dir.
+    pub contracts_dir: String,
+    /// Approval mode.
+    pub always_accept: bool,
+    /// Garbage collector acts
+    pub garbage_collector: Duration,
 }
 
 /// Database configuration.
 #[derive(Debug, Clone, Deserialize)]
-pub enum DbConfig {
+pub enum KoreDbConfig {
     /// Rocksdb database.
     Rocksdb {
         /// Path to the database.
@@ -46,4 +43,36 @@ pub enum DbConfig {
         /// Path to the database.
         path: String,
     },
+}
+
+impl KoreDbConfig {
+    pub fn build(path: &str) -> Self {
+        #[cfg(feature = "rocksdb")]
+        return KoreDbConfig::Rocksdb {
+            path: path.to_owned(),
+        };
+        #[cfg(feature = "sqlite")]
+        return KoreDbConfig::SQLite {
+            path: path.to_owned(),
+        };
+    }
+}
+
+/// Database configuration.
+#[derive(Debug, Clone, Deserialize)]
+pub enum ExternalDbConfig {
+    /// SQLite database.
+    SQLite {
+        /// Path to the database.
+        path: String,
+    },
+}
+
+impl ExternalDbConfig {
+    pub fn build(path: &str) -> Self {
+        #[cfg(feature = "ext-sqlite")]
+        return ExternalDbConfig::SQLite {
+            path: path.to_owned(),
+        };
+    }
 }

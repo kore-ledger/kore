@@ -7,7 +7,7 @@ use actor::{
     Actor, ActorContext, Error as ActorError, Handler, Message, Response,
 };
 use actor::{ActorPath, ActorRef, Event};
-use approver::{Approver, ApproverMessage};
+use approver::{Approver, ApproverMessage, VotationType};
 use async_trait::async_trait;
 use identity::identifier::derive::digest::DigestDerivator;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
@@ -207,6 +207,7 @@ impl Approval {
                         request_id.to_owned(),
                         signer.clone(),
                         approval_req.content.subject_id.to_string(),
+                        VotationType::Manual,
                     ),
                 )
                 .await;

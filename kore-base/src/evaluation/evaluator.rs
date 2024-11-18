@@ -570,7 +570,7 @@ impl Handler<Evaluator> for Evaluator {
                 }
 
                 let helper: Option<Intermediary> =
-                    ctx.system().get_helper("NetworkIntermediary").await;
+                    ctx.system().get_helper("network").await;
                 let mut helper = if let Some(helper) = helper {
                     helper
                 } else {
@@ -688,6 +688,7 @@ impl Handler<Evaluator> for Evaluator {
                     // Can not obtain parent actor
                     // return Err(ActorError::Exists(evaluation_path));
                 }
+                // TODO AQUï debería ir un ctx.stop()?
             }
         }
     }

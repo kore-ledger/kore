@@ -8,19 +8,15 @@ use std::path::Path;
 
 use async_std::fs;
 use nodekey::NodeKey;
+use register::Register;
 use relationship::RelationShip;
 
 use crate::{
-    db::Storable,
-    distribution::distributor::Distributor,
-    helpers::db::LocalDB,
-    model::{
+    auth::{Auth, AuthMessage, AuthResponse}, db::Storable, distribution::distributor::Distributor, helpers::db::ExternalDB, model::{
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    },
-    subject::CreateSubjectData,
-    Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR,
+    }, subject::CreateSubjectData, Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -40,6 +36,7 @@ use store::store::PersistentActor;
 use tracing::{debug, error};
 
 pub mod nodekey;
+pub mod register;
 pub mod relationship;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -61,8 +58,6 @@ pub struct SubjectsVectors {
     pub owned_subjects: Vec<String>,
     /// The node's known subjects.
     pub known_subjects: Vec<String>,
-    /// The authorized subjects.
-    pub authorized_subjects: Vec<String>,
 
     pub temporal_subjects: Vec<String>,
 }
@@ -77,8 +72,6 @@ pub struct Node {
     owned_subjects: Vec<String>,
     /// The node's known subjects.
     known_subjects: Vec<String>,
-    /// The authorized subjects.
-    authorized_subjects: Vec<String>,
 
     temporal_subjects: Vec<String>,
 }
@@ -90,7 +83,6 @@ impl Node {
             owner: id.clone(),
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
-            authorized_subjects: Vec::new(),
             temporal_subjects: Vec::new(),
         })
     }
@@ -147,10 +139,6 @@ impl Node {
         }
     }
 
-    pub fn add_authorized_subject_id(&mut self, subject_id: String) {
-        self.authorized_subjects.push(subject_id);
-    }
-
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
@@ -190,6 +178,13 @@ impl Node {
         Ok(())
     }
 }
+// Autorizar un sujeto y sus testigos, o si ya está autorizado acutalizar sus testigos
+// Obtener los nodos autorizados y los testigos.
+// Eliminar un sujeto autorizado.
+// Actualizar de forma manual el sujeto.
+// Obtener Todas las governanzas
+// Obtener todos los sujetos de una determinada governanza
+// Obtener todos los schemas de una determinada governanza
 
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -234,7 +229,6 @@ impl Response for NodeResponse {}
 pub enum NodeEvent {
     OwnedSubject(String),
     KnownSubject(String),
-    AuthorizedSubject(String),
     TemporalSubject(String),
     ChangeTempSubj {
         subject_id: String,
@@ -266,6 +260,9 @@ impl Actor for Node {
         debug!("Creating Node store");
         self.init_store("node", None, false, ctx).await?;
 
+        let register = Register::default();
+        ctx.create_child("register", register).await?;
+
         let node_key = NodeKey::new(self.owner());
         ctx.create_child("key", node_key).await?;
 
@@ -274,8 +271,12 @@ impl Actor for Node {
         let distributor = Distributor {
             node: self.owner.key_identifier(),
         };
-        ctx.create_child("distributor", distributor).await?;
 
+        let auth = Auth::new(self.owner());
+        ctx.create_child("auth", auth).await?;
+
+        
+        ctx.create_child("distributor", distributor).await?;
         ctx.create_child("relation_ship", RelationShip::default())
             .await?;
 
@@ -302,9 +303,6 @@ impl PersistentActor for Node {
             }
             NodeEvent::KnownSubject(subject_id) => {
                 self.add_known_subject(subject_id.clone());
-            }
-            NodeEvent::AuthorizedSubject(subject_id) => {
-                self.add_authorized_subject_id(subject_id.clone());
             }
             NodeEvent::ChangeTempSubj {
                 subject_id,
@@ -342,7 +340,6 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::Subjects(SubjectsVectors {
                     owned_subjects: self.owned_subjects.clone(),
                     known_subjects: self.known_subjects.clone(),
-                    authorized_subjects: self.authorized_subjects.clone(),
                     temporal_subjects: self.temporal_subjects.clone(),
                 }))
             }
@@ -374,8 +371,8 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::None)
             }
             NodeMessage::CreateNewSubjectLedger(ledger) => {
-                let Some(local_db): Option<LocalDB> =
-                    ctx.system().get_helper("local_db").await
+                let Some(ext_db): Option<ExternalDB> =
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };
@@ -396,7 +393,7 @@ impl Handler<Node> for Node {
                     Ok(subject_actor) => {
                         let sink = Sink::new(
                             subject_actor.subscribe(),
-                            local_db.get_subject(),
+                            ext_db.get_subject(),
                         );
                         ctx.system().run_sink(sink).await;
 
@@ -452,8 +449,8 @@ impl Handler<Node> for Node {
                 }
             }
             NodeMessage::CreateNewSubjectReq(data) => {
-                let Some(local_db): Option<LocalDB> =
-                    ctx.system().get_helper("local_db").await
+                let Some(ext_db): Option<ExternalDB> =
+                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };
@@ -465,10 +462,8 @@ impl Handler<Node> for Node {
                     .await
                 {
                     Ok(actor) => {
-                        let sink = Sink::new(
-                            actor.subscribe(),
-                            local_db.get_subject(),
-                        );
+                        let sink =
+                            Sink::new(actor.subscribe(), ext_db.get_subject());
                         ctx.system().run_sink(sink).await;
 
                         self.on_event(
@@ -560,8 +555,17 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::None)
             }
             NodeMessage::IsAuthorized(subject_id) => {
-                let auth_subj = self
-                    .authorized_subjects
+                let auth: Option<actor::ActorRef<Auth>> = ctx.get_child("auth").await;
+                let authorized_subjects = if let Some(auth) = auth {
+                    let Ok(AuthResponse::Auths { subjects }) = auth.ask(AuthMessage::GetAuths).await else {
+                        todo!()
+                    };
+                    subjects
+                } else {
+                    todo!();
+                };
+
+                let auth_subj = authorized_subjects
                     .iter()
                     .any(|x| x.clone() == subject_id);
 
