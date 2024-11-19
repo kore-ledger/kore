@@ -12,10 +12,49 @@ use crate::config::ExternalDbConfig;
 
 use actor::{ActorRef, Subscriber};
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 #[cfg(feature = "ext-sqlite")]
 use sqlite::SqliteLocal;
 #[cfg(feature = "ext-sqlite")]
 mod sqlite;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SignaturesDB {
+    pub subject_id: String,
+    pub sn: u64,
+    pub signatures_eval: String,
+    pub signatures_appr: String,
+    pub signatures_vali: String
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubjectDB {
+    pub subject_id: String,
+    pub governance_id: String,
+    pub genesis_gov_version: u64,
+    pub namespace: String,
+    pub schema_id: String,
+    pub owner: String,
+    pub creator: String,
+    pub active: String,
+    pub sn: u64,
+    pub properties: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EventDB {
+    pub subject_id: String,
+    pub sn: u64,
+    pub data: String,
+    pub succes: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Paginator {
+    pub pages: u64,
+    pub next: Option<u64>,
+    pub prev: Option<u64>,
+}
 
 #[async_trait]
 pub trait Querys {
@@ -30,11 +69,30 @@ pub trait Querys {
         &self,
         subject_id: &str,
     ) -> Result<(String, String), Error>;
-    // validators
+    // validators (not for user use).
     async fn get_last_validators(
         &self,
         subject_id: &str,
     ) -> Result<String, Error>;
+    // events
+    async fn get_events(
+        &self,
+        subject_id: &str,
+        quantity: Option<u64>,
+        page: Option<u64>,
+    ) -> Result<(Vec<EventDB>, Paginator), Error>;
+
+    // subject
+    async fn get_subject_state(
+        &self,
+        subject_id: &str,
+    ) -> Result<SubjectDB, Error>;
+
+    // signatures
+    async fn get_signatures(
+        &self,
+        subject_id: &str,
+    ) -> Result<SignaturesDB, Error>;
 }
 
 #[derive(Clone)]
@@ -103,6 +161,44 @@ impl ExternalDB {
 
 #[async_trait]
 impl Querys for ExternalDB {
+    async fn get_signatures(
+        &self,
+        subject_id: &str,
+    ) -> Result<SignaturesDB, Error> {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => {
+                sqlite_local.get_signatures(subject_id).await
+            }
+        }  
+    }
+
+    async fn get_subject_state(
+        &self,
+        subject_id: &str,
+    ) -> Result<SubjectDB, Error> {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => {
+                sqlite_local.get_subject_state(subject_id).await
+            }
+        }  
+    }
+
+    async fn get_events(
+        &self,
+        subject_id: &str,
+        quantity: Option<u64>,
+        page: Option<u64>,
+    ) -> Result<(Vec<EventDB>, Paginator), Error> {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => {
+                sqlite_local.get_events(subject_id, quantity, page).await
+            }
+        }
+    }
+
     async fn get_request_id_status(
         &self,
         request_id: &str,

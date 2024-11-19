@@ -798,6 +798,7 @@ mod tests {
             panic!("Invalid response")
         };
 
+        tokio::time::sleep(Duration::from_secs(2)).await;
         assert_eq!("In Approval", state);
         let QueryResponse::ApprovalState { request, state } = query_actor
             .ask(QueryMessage::GetApproval {

@@ -11,6 +11,15 @@ use serde::{Deserialize, Serialize};
 /// Error type.
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
+    /// Register error.
+    #[error("Register error: {0}")]
+    Register(String),
+    /// Auth error.
+    #[error("Auth error: {0}")]
+    Auth(String),
+    /// Query error.
+    #[error("Query error: {0}")]
+    Query(String),
     /// Init error.
     #[error("Init error: {0}")]
     Init(String),

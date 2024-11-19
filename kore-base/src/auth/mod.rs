@@ -13,12 +13,15 @@ use identity::identifier::{
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet}, process::Child, str::FromStr
+    collections::{HashMap, HashSet},
+    process::Child,
+    str::FromStr,
 };
 use store::store::PersistentActor;
 
 use crate::{
     db::Storable,
+    error::Error,
     intermediary::Intermediary,
     model::common::{get_gov, get_metadata},
     subject::{self, Subject, SubjectMessage, SubjectResponse},
@@ -32,6 +35,7 @@ pub mod authorizer;
 pub enum AuthWitness {
     One(KeyIdentifier),
     Many(Vec<KeyIdentifier>),
+    None,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,7 +55,7 @@ impl Auth {
     async fn create_req_schema(
         ctx: &mut ActorContext<Auth>,
         subject_id: DigestIdentifier,
-    ) -> (u64, ActorMessage, String) {
+    ) -> Result<(u64, ActorMessage, String), Error> {
         'req: {
             let Ok(metadata) = get_metadata(ctx, &subject_id.to_string()).await
             else {
@@ -61,7 +65,7 @@ impl Auth {
                 // Debería tener la governanza, si tengo su metadata.
                 todo!()
             };
-            return (
+            return Ok((
                 metadata.sn,
                 ActorMessage::DistributionLedgerReq {
                     gov_version: Some(gov.version),
@@ -69,9 +73,9 @@ impl Auth {
                     subject_id,
                 },
                 metadata.schema_id,
-            );
+            ));
         }
-        (
+        Ok((
             0,
             ActorMessage::DistributionLedgerReq {
                 gov_version: None,
@@ -79,19 +83,22 @@ impl Auth {
                 subject_id,
             },
             String::default(),
-        )
+        ))
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum AuthMessage {
     NewAuth {
-        subject: DigestIdentifier,
+        subject_id: DigestIdentifier,
         witness: AuthWitness,
     },
     GetAuths,
+    GetAuth {
+        subject_id: DigestIdentifier,
+    },
     DeleteAuth {
-        subject: DigestIdentifier,
+        subject_id: DigestIdentifier,
     },
     Update {
         subject_id: DigestIdentifier,
@@ -103,6 +110,8 @@ impl Message for AuthMessage {}
 #[derive(Debug, Clone)]
 pub enum AuthResponse {
     Auths { subjects: Vec<String> },
+    Witnesses(AuthWitness),
+    Error(Error),
     None,
 }
 
@@ -111,11 +120,11 @@ impl Response for AuthResponse {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AuthEvent {
     NewAuth {
-        subject: String,
+        subject_id: String,
         witness: AuthWitness,
     },
     DeleteAuth {
-        subject: String,
+        subject_id: String,
     },
 }
 
@@ -151,24 +160,32 @@ impl Handler<Auth> for Auth {
         ctx: &mut actor::ActorContext<Auth>,
     ) -> Result<AuthResponse, ActorError> {
         match msg {
-            AuthMessage::DeleteAuth { subject } => {
+            AuthMessage::GetAuth { subject_id } => {
+                if let Some(witnesses) = self.auth.get(&subject_id.to_string())
+                {
+                    return Ok(AuthResponse::Witnesses(witnesses.clone()));
+                } else {
+                    return Ok(AuthResponse::Error(Error::Auth(
+                        "The subject has not been authorized".to_owned(),
+                    )));
+                }
+            }
+            AuthMessage::DeleteAuth { subject_id } => {
                 self.on_event(
                     AuthEvent::DeleteAuth {
-                        subject: subject.to_string(),
+                        subject_id: subject_id.to_string(),
                     },
                     ctx,
                 )
                 .await;
             }
-            AuthMessage::NewAuth { subject, witness } => {
-                if let AuthWitness::Many(witness) = witness.clone() {
-                    if witness.is_empty() {
-                        todo!()
-                    }
-                }
+            AuthMessage::NewAuth {
+                subject_id,
+                witness,
+            } => {
                 self.on_event(
                     AuthEvent::NewAuth {
-                        subject: subject.to_string(),
+                        subject_id: subject_id.to_string(),
                         witness,
                     },
                     ctx,
@@ -183,8 +200,10 @@ impl Handler<Auth> for Auth {
             AuthMessage::Update { subject_id } => {
                 let witness = self.auth.get(&subject_id.to_string());
                 if let Some(witness) = witness {
-                    let (sn, request, schema_id) =
-                        Auth::create_req_schema(ctx, subject_id.clone()).await;
+                    let Ok((sn, request, schema_id)) = 
+                        Auth::create_req_schema(ctx, subject_id.clone()).await else {
+                            todo!()
+                        };
 
                     match witness {
                         AuthWitness::One(key_identifier) => {
@@ -224,18 +243,40 @@ impl Handler<Auth> for Auth {
                         }
                         AuthWitness::Many(vec) => {
                             let witnesses = vec.iter().cloned().collect();
-                            let authorization = Authorization::new(subject_id.clone(), self.our_node.clone(), sn, witnesses, schema_id, request);
-                            let child = ctx.create_child(&subject_id.to_string(), authorization).await;
+                            let authorization = Authorization::new(
+                                subject_id.clone(),
+                                self.our_node.clone(),
+                                sn,
+                                witnesses,
+                                schema_id,
+                                request,
+                            );
+                            let child = ctx
+                                .create_child(
+                                    &subject_id.to_string(),
+                                    authorization,
+                                )
+                                .await;
                             let child = match child {
                                 Ok(child) => child,
-                                Err(e) => todo!()
+                                Err(e) => todo!(),
                             };
-                        
-                            if let Err(e) = child.tell(AuthorizationMessage::Create).await {
+
+                            if let Err(e) =
+                                child.tell(AuthorizationMessage::Create).await
+                            {
                                 todo!()
                             }
                         }
+                        AuthWitness::None => {
+                            // Not Witness to update state of subject.
+                            return Ok(AuthResponse::Error(Error::Auth("The subject has no witnesses to try to ask for an update.".to_owned())));
+                        }
                     };
+                } else {
+                    return Ok(AuthResponse::Error(Error::Auth(
+                        "The subject has not been authorized".to_owned(),
+                    )));
                 }
             }
         };
@@ -259,11 +300,14 @@ impl PersistentActor for Auth {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) {
         match event {
-            AuthEvent::NewAuth { subject, witness } => {
-                self.auth.insert(subject.clone(), witness.clone());
+            AuthEvent::NewAuth {
+                subject_id,
+                witness,
+            } => {
+                self.auth.insert(subject_id.clone(), witness.clone());
             }
-            AuthEvent::DeleteAuth { subject } => {
-                self.auth.remove(subject);
+            AuthEvent::DeleteAuth { subject_id } => {
+                self.auth.remove(subject_id);
             }
         };
     }

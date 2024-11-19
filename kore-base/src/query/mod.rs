@@ -12,9 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     approval::approver::{
         ApprovalState, ApprovalStateRes, Approver, ApproverMessage,
-    },
-    helpers::db::{ExternalDB, Querys},
-    request::state,
+    }, error::Error, helpers::db::{EventDB, ExternalDB, Paginator, Querys, SignaturesDB, SubjectDB}, request::state
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -30,6 +28,11 @@ impl Query {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryMessage {
+    GetSubject { subject_id: String },
+    GetSignatures { subject_id: String },
+    GetEvents {
+        subject_id: String, quantity: Option<u64>, page: Option<u64>
+    },
     GetRequestState { request_id: String },
     GetApproval { subject_id: String },
 }
@@ -38,10 +41,19 @@ impl Message for QueryMessage {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryResponse {
+    Signatures {
+        signatures: SignaturesDB
+    },
+    Subject {
+        subject: SubjectDB
+    },
+    Events {
+        events: Vec<EventDB>,
+        paginator: Paginator
+    },
     RequestState(String),
     ApprovalState { request: String, state: String },
-    Response(String),
-    Error(String),
+    Error(Error),
 }
 
 impl Response for QueryResponse {}
@@ -81,23 +93,29 @@ impl Handler<Query> for Query {
             todo!()
         };
 
-        // Sacar el estado de una request
-        // Sacar la aprobación
-
-        // Obtener los nodos autorizados y los testigos.
-
-        // Obtener Todas las governanzas
-        // Obtener todos los sujetos de una determinada governanza
-        // Obtener todos los schemas de una determinada governanza
-
-        // Obtener el estado de un sujeto.
-        // Obtener sus eventos.
-
         match msg {
+            QueryMessage::GetSignatures { subject_id } => {
+                match helper.get_signatures(&subject_id).await {
+                    Ok(signatures) => Ok(QueryResponse::Signatures { signatures } ),
+                    Err(e) => Ok(QueryResponse::Error(e)),
+                }
+            }
+            QueryMessage::GetSubject { subject_id } => {
+                match helper.get_subject_state(&subject_id).await {
+                    Ok(subject) => Ok(QueryResponse::Subject { subject }),
+                    Err(e) => Ok(QueryResponse::Error(e)),
+                }
+            }
+            QueryMessage::GetEvents { subject_id, quantity, page } => {
+                match helper.get_events(&subject_id, quantity, page).await {
+                    Ok((events, paginator)) => Ok(QueryResponse::Events { events, paginator }),
+                    Err(e) => Ok(QueryResponse::Error(e)),
+                }
+            }
             QueryMessage::GetRequestState { request_id } => {
                 match helper.get_request_id_status(&request_id).await {
                     Ok(res) => Ok(QueryResponse::RequestState(res)),
-                    Err(e) => Ok(QueryResponse::Error(e.to_string())),
+                    Err(e) => Ok(QueryResponse::Error(e)),
                 }
             }
             QueryMessage::GetApproval { subject_id } => {
@@ -105,7 +123,7 @@ impl Handler<Query> for Query {
                     Ok((request, state)) => {
                         Ok(QueryResponse::ApprovalState { request, state })
                     }
-                    Err(e) => Ok(QueryResponse::Error(e.to_string())),
+                    Err(e) => Ok(QueryResponse::Error(e)),
                 }
             }
         }

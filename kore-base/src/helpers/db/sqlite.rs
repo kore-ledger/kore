@@ -1,10 +1,12 @@
 use actor::{ActorRef, Subscriber};
 use async_trait::async_trait;
 use tokio_rusqlite::{params, Connection, OpenFlags, Result as SqliteError};
+use tracing::Event;
 
 use crate::approval::approver::ApproverEvent;
 use crate::error::Error;
 use crate::external_db::{DBManager, DBManagerMessage, DeleteTypes};
+use crate::helpers::db::EventDB;
 use crate::model::event::{Ledger, LedgerValue};
 use crate::request::manager::RequestManagerEvent;
 use crate::request::state::RequestManagerState;
@@ -13,7 +15,7 @@ use crate::subject::event::LedgerEventEvent;
 use crate::subject::sinkdata::SinkDataEvent;
 use crate::{EventRequest, Signed};
 
-use super::Querys;
+use super::{Paginator, Querys, SignaturesDB, SubjectDB};
 
 #[derive(Clone)]
 pub struct SqliteLocal {
@@ -23,6 +25,153 @@ pub struct SqliteLocal {
 
 #[async_trait]
 impl Querys for SqliteLocal {
+    async fn get_signatures(
+        &self,
+        subject_id: &str,
+    ) -> Result<SignaturesDB, Error> {
+        let subject_id = subject_id.to_owned();
+
+        let signatures: SignaturesDB = match self
+            .conn
+            .call(move |conn| {
+                let sql = "SELECT * FROM signatures WHERE subject_id = ?1";
+
+                match conn
+                    .query_row(&sql, params![subject_id], |row| {
+                        Ok(SignaturesDB { subject_id: row.get(0)?, sn: row.get(1)?, signatures_eval: row.get(2)?, signatures_appr: row.get(3)?, signatures_vali: row.get(4)?})
+                    })
+                {
+                    Ok(result) => Ok(result),
+                    Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
+                }
+            })
+            .await
+        {
+            Ok(signatures) => signatures,
+            Err(e) => todo!(),
+        };
+
+        Ok(signatures)
+    }
+
+    async fn get_subject_state(
+        &self,
+        subject_id: &str,
+    ) -> Result<SubjectDB, Error> {
+        let subject_id = subject_id.to_owned();
+
+        let subject: SubjectDB = match self
+            .conn
+            .call(move |conn| {
+                let sql = "SELECT * FROM subjects WHERE subject_id = ?1";
+
+                match conn
+                    .query_row(&sql, params![subject_id], |row| {
+                        Ok(SubjectDB { subject_id: row.get(0)?, governance_id: row.get(1)?, genesis_gov_version: row.get(2)?, namespace: row.get(3)?, schema_id: row.get(4)?, owner: row.get(5)?, creator: row.get(6)?, active: row.get(7)?, sn: row.get(8)?, properties: row.get(9)? })
+                    })
+                {
+                    Ok(result) => Ok(result),
+                    Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
+                }
+            })
+            .await
+        {
+            Ok(subject) => subject,
+            Err(e) => todo!(),
+        };
+
+        Ok(subject)
+    }
+
+    async fn get_events(&self, subject_id: &str, quantity: Option<u64>, page: Option<u64>) -> Result<(Vec<EventDB>, Paginator), Error> {
+        let quantity = quantity.unwrap_or(50);
+        let mut page = page.unwrap_or(1);
+        if page == 0 {
+            page = 1;
+        }
+
+        let subject_id_cloned = subject_id.to_owned();
+
+        let total: u64 = match self
+            .conn
+            .call(move |conn| {
+                let sql = "SELECT COUNT(*) FROM events WHERE subject_id = ?1";
+
+                match conn
+                    .query_row(&sql, params![subject_id_cloned], |row| row.get(0))
+                {
+                    Ok(result) => Ok(result),
+                    Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
+                }
+            })
+            .await
+        {
+            Ok(state) => state,
+            Err(e) => todo!(),
+        };
+
+        let pages = if total % quantity == 0 {
+            total / quantity
+        } else {
+            total / quantity + 1
+        };
+
+        if page > pages {
+            page = pages
+        }
+
+        let offset = (page - 1) * quantity;
+
+        let subject_id = subject_id.to_owned();
+
+        let events = match self
+            .conn
+            .call(move |conn| {
+                let sql = "SELECT * FROM events WHERE subject_id = ?1 LIMIT ?2 OFFSET ?3";
+
+                let mut stmt = conn.prepare(sql)?;
+                // subject_id TEXT NOT NULL, sn INTEGER NOT NULL, data TEXT NOT NULL, succes TEXT
+                let events = stmt.query_map(params![subject_id, quantity, offset], |row| {
+                    Ok(EventDB {
+                        subject_id: row.get(0)?,
+                        sn: row.get(1)?,
+                        data: row.get(2)?,
+                        succes: row.get(3)?,  
+                    })
+                })?.map(|x| {
+                    match x {
+                        Ok(event) => Ok(event),
+                        Err(error) => Err(tokio_rusqlite::Error::Rusqlite(error)),
+                    }
+                }).collect::<std::result::Result<Vec<EventDB>, tokio_rusqlite::Error>>()?;
+
+                Ok(events)
+            })
+            .await
+        {
+            Ok(events) => events,
+            Err(e) => todo!(),
+        };
+
+        let prev = if page <= 1 {
+            None
+        } else {
+            Some(page - 1)
+        };
+
+        let next = if page < pages {
+            Some(page + 1)
+        } else {
+            None
+        };
+        
+        Ok((events, Paginator {
+            pages,
+            next,
+            prev
+        }))
+    }
+
     async fn get_request_id_status(
         &self,
         request_id: &str,
