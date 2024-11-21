@@ -1,4 +1,4 @@
-use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler};
+use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler, SystemEvent};
 
 use crate::{
     model::SignTypesNode,
@@ -115,16 +115,22 @@ where
     let node_response = if let Some(node_actor) = node_actor {
         match node_actor.ask(NodeMessage::SignRequest(sign_type)).await {
             Ok(response) => response,
-            Err(_e) => todo!(),
+            Err(e) => {
+                return Err(Error::Actor(e.to_string()));
+            },
         }
     } else {
-        todo!()
+        return Err(Error::Actor("Can not get Node actor".to_owned()));
     };
 
     match node_response {
         NodeResponse::SignRequest(signature) => Ok(signature),
-        NodeResponse::Error(_) => todo!(),
-        _ => todo!(),
+        NodeResponse::Error(e) => {
+            Err(e)
+        },
+        _ => {
+            Err(Error::Node("Invalid node response".to_owned()))
+        },
     }
 }
 

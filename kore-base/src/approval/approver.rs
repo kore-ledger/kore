@@ -3,8 +3,8 @@ use crate::{
     intermediary::Intermediary,
     model::{
         common::{get_gov, get_sign},
-        network::RetryNetwork,
-        SignTypesNode,
+        network::{RetryNetwork, TimeOutResponse},
+        SignTypesNode, TimeStamp,
     },
     ActorMessage, Error, EventRequest, NetworkMessage, Signed, Subject,
     SubjectMessage, SubjectResponse,
@@ -176,7 +176,6 @@ impl Approver {
             let helper: Option<Intermediary> =
                 ctx.system().get_helper("network").await;
             let Some(mut helper) = helper else {
-                ctx.system().send_event(SystemEvent::StopSystem).await;
                 return Err(Error::NetworkHelper(
                     "Can not get network helper".to_owned(),
                 ));
@@ -389,21 +388,10 @@ impl Handler<Approver> for Approver {
             } => {
                 if request_id != self.request_id {
                     if !approval_req.event_request.content.is_fact_event() {
-                        todo!()
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Ok(ApproverResponse::None);
                     }
                     
-
-                    if let Err(_e) = self
-                        .check_governance(
-                            ctx,
-                            &approval_req.subject_id.to_string(),
-                            approval_req.gov_version,
-                        )
-                        .await
-                    {
-                        todo!()
-                    }
-
                     if self.pass_votation == VotationType::AlwaysAccept {
                         let sign_type = SignTypesNode::ApprovalSignature(
                             ApprovalSignature {
@@ -414,7 +402,10 @@ impl Handler<Approver> for Approver {
 
                         let signature = match get_sign(ctx, sign_type).await {
                             Ok(signature) => signature,
-                            Err(_e) => todo!(),
+                            Err(_e) => {                                
+                                ctx.system().send_event(SystemEvent::StopSystem).await;
+                                return Ok(ApproverResponse::None);
+                            },
                         };
 
                         // Approval Path
@@ -478,8 +469,10 @@ impl Handler<Approver> for Approver {
                 {
                     event.subject_id
                 } else {
-                    todo!()
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Ok(ApproverResponse::None);
                 };
+
                 let reciver_actor =
                     format!("/user/node/{}/approver", subject_id);
 
@@ -504,20 +497,18 @@ impl Handler<Approver> for Approver {
 
                 let retry_actor = RetryActor::new(target, message, strategy);
 
-                let retry = if let Ok(retry) = ctx
+                let Ok(retry) = ctx
                     .create_child::<RetryActor<RetryNetwork>>(
                         "retry",
                         retry_actor,
                     )
                     .await
-                {
-                    retry
-                } else {
-                    todo!()
+                else {
+                    return Ok(ApproverResponse::None);
                 };
 
                 if let Err(_e) = retry.tell(RetryMessage::Retry).await {
-                    todo!()
+                    return Ok(ApproverResponse::None);
                 };
             }
             // Finaliza los retries
@@ -528,11 +519,11 @@ impl Handler<Approver> for Approver {
                 if request_id == self.request_id {
                     if self.node != approval_res.signature.signer {
                         // Nos llegó a una aprobación de un nodo incorrecto!
-                        todo!()
+                        return Ok(ApproverResponse::None);
                     }
                     if let Err(_e) = approval_res.verify() {
                         // Hay error criptográfico en la respuesta
-                        todo!()
+                        return Ok(ApproverResponse::None);
                     }
 
                     // Approval path.
@@ -550,22 +541,22 @@ impl Handler<Approver> for Approver {
                             })
                             .await
                         {
-                            // TODO error, no se puede enviar la response. Parar
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            return Ok(ApproverResponse::None);
                         }
                     } else {
-                        // TODO no se puede obtener aprobación! Parar.
-                        // Can not obtain parent actor
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Ok(ApproverResponse::None);
                     }
 
-                    let retry = if let Some(retry) =
+                    let Some(retry) =
                         ctx.get_child::<RetryActor<RetryNetwork>>("retry").await
-                    {
-                        retry
-                    } else {
-                        todo!()
+                    else {
+                        return Ok(ApproverResponse::None);
                     };
+
                     if let Err(_e) = retry.tell(RetryMessage::End).await {
-                        todo!()
+                        return Ok(ApproverResponse::None);
                     };
                     ctx.stop().await;
                 } else {
@@ -586,33 +577,37 @@ impl Handler<Approver> for Approver {
                         match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
-                            Err(_e) => todo!(),
+                            Err(_e) => {
+                                ctx.system().send_event(SystemEvent::StopSystem).await;
+                                return Ok(ApproverResponse::None);
+                            },
                         }
                     } else {
-                        todo!()
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Ok(ApproverResponse::None);
                     };
 
                     let subject_owner = match response {
                         SubjectResponse::Owner(owner) => owner,
-                        _ => todo!(),
+                        _ => {
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            return Ok(ApproverResponse::None);
+                        },
                     };
 
                     if subject_owner != approval_req.signature.signer {
                         // Error nos llegó una evaluation req de un nodo el cual no es el dueño
-                        todo!()
+                        return Ok(ApproverResponse::None);
                     }
 
                     if let Err(_e) = approval_req.verify() {
                         // Hay errores criptográficos
-                        todo!()
+                        return Ok(ApproverResponse::None);
                     }
 
-                    let EventRequest::Fact(_state_data) =
-                        &approval_req.content.event_request.content
-                    else {
-                        // Manejar, solo se aprueban los eventos de tipo fact TODO
-                        todo!()
-                    };
+                    if !approval_req.content.event_request.content.is_fact_event() {
+                        return Ok(ApproverResponse::None);
+                    }
 
                     if let Err(_e) = self
                         .check_governance(
@@ -622,7 +617,8 @@ impl Handler<Approver> for Approver {
                         )
                         .await
                     {
-                        todo!()
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Ok(ApproverResponse::None);
                     }
 
                     if self.pass_votation == VotationType::AlwaysAccept {
@@ -634,7 +630,8 @@ impl Handler<Approver> for Approver {
                             )
                             .await
                         {
-                            todo!()
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            return Ok(ApproverResponse::None);
                         };
                         self.on_event(
                             ApproverEvent::SafeState {
@@ -664,9 +661,9 @@ impl Handler<Approver> for Approver {
                     let state = if let Some(state) = self.state.clone() {
                         state
                     } else {
-                        todo!()
+                        // Si tiene un request debería tener un state
+                        return Ok(ApproverResponse::None);
                     };
-                    // TODO refactorizar, este código también se envía en network_req.
                     let response = if ApprovalState::RespondedAccepted == state
                     {
                         true
@@ -680,14 +677,16 @@ impl Handler<Approver> for Approver {
                         if let Some(approval_req) = self.request.clone() {
                             approval_req
                         } else {
-                            todo!()
+                            // Si tiene un request debería tener un state
+                            return Ok(ApproverResponse::None);
                         };
 
                     if let Err(_e) = self
                         .send_response(ctx, approval_req.clone(), response)
                         .await
                     {
-                        todo!()
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Ok(ApproverResponse::None);
                     };
                 }
             }
@@ -714,6 +713,28 @@ impl Handler<Approver> for Approver {
     ) {
         if let ActorError::Functional(error) = error {
             if &error == "Max retries reached." {
+                let approval_path = ctx.path().parent();
+
+                // Validation actor.
+                let approval_actor: Option<ActorRef<Approval>> =
+                    ctx.system().get_actor(&approval_path).await;
+
+                if let Some(approval_actor) = approval_actor {
+                    if let Err(_e) = approval_actor
+                        .tell(ApprovalMessage::Response { approval_res: ApprovalRes::TimeOut(
+                            TimeOutResponse {
+                                re_trys: 3,
+                                timestamp: TimeStamp::now(),
+                                who: self.node.clone(),
+                            },
+                        ), sender: self.node.clone() })
+                        .await
+                    {
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                    }
+                } else {
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                }
                 ctx.stop().await;
             }
         }
