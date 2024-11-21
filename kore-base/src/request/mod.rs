@@ -3,7 +3,7 @@
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response, Sink,
+    Handler, Message, Response, Sink, SystemEvent,
 };
 use async_trait::async_trait;
 use identity::{
@@ -278,7 +278,8 @@ impl Actor for RequestHandler {
         let Some(ext_db): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
-            todo!()
+            ctx.system().send_event(SystemEvent::StopSystem).await;
+            return Err(ActorError::NotHelper);
         };
 
         for (subject_id, (request_id, request)) in self.handling.clone() {
@@ -765,7 +766,8 @@ impl Handler<RequestHandler> for RequestHandler {
                 let Some(ext_db): Option<ExternalDB> =
                     ctx.system().get_helper("ext_db").await
                 else {
-                    todo!()
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Err(ActorError::NotHelper);
                 };
 
                 let sink = Sink::new(

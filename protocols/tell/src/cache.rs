@@ -102,6 +102,7 @@ impl PeerAddresses {
 
 impl Default for PeerAddresses {
     fn default() -> Self {
+        // This unwrap can not panic.
         PeerAddresses::new(NonZeroUsize::new(100).unwrap())
     }
 }

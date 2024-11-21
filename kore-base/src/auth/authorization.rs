@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Handler, Message, Response, SystemEvent,
 };
 
 use async_trait::async_trait;
@@ -25,11 +25,18 @@ pub struct Authorization {
     witnesses: HashSet<KeyIdentifier>,
     better: Option<KeyIdentifier>,
     schema_id: String,
-    request: ActorMessage
+    request: ActorMessage,
 }
 
 impl Authorization {
-    pub fn new(subject_id: DigestIdentifier,our_key: KeyIdentifier,sn: u64, witnesses: HashSet<KeyIdentifier>,schema_id: String,request: ActorMessage) -> Self {
+    pub fn new(
+        subject_id: DigestIdentifier,
+        our_key: KeyIdentifier,
+        sn: u64,
+        witnesses: HashSet<KeyIdentifier>,
+        schema_id: String,
+        request: ActorMessage,
+    ) -> Self {
         Self {
             subject_id,
             our_key,
@@ -37,7 +44,7 @@ impl Authorization {
             witnesses,
             better: None,
             schema_id,
-            request
+            request,
         }
     }
     fn check_witness(&mut self, witness: KeyIdentifier) -> bool {
@@ -48,10 +55,7 @@ impl Authorization {
 #[derive(Debug, Clone)]
 pub enum AuthorizationMessage {
     Create,
-    Response {
-        sender: KeyIdentifier,
-        sn: u64
-    }
+    Response { sender: KeyIdentifier, sn: u64 },
 }
 
 impl Message for AuthorizationMessage {}
@@ -96,16 +100,23 @@ impl Handler<Authorization> for Authorization {
             AuthorizationMessage::Create => {
                 for witness in self.witnesses.clone() {
                     let authorizer = Authorizer::new(witness.clone());
-                    let child = ctx.create_child(&witness.to_string(), authorizer).await;
-                    let Ok(child) = child else {
-                        todo!()
-                    };
+                    let child = ctx
+                        .create_child(&witness.to_string(), authorizer)
+                        .await;
+                    let Ok(child) = child else { todo!() };
 
-                    if let Err(e) = child.tell(AuthorizerMessage::NetworkLastSn { subject_id: self.subject_id.clone(), node_key: witness, our_key: self.our_key.clone() }).await {
+                    if let Err(e) = child
+                        .tell(AuthorizerMessage::NetworkLastSn {
+                            subject_id: self.subject_id.clone(),
+                            node_key: witness,
+                            our_key: self.our_key.clone(),
+                        })
+                        .await
+                    {
                         todo!()
                     }
                 }
-            },
+            }
             AuthorizationMessage::Response { sender, sn } => {
                 if self.check_witness(sender.clone()) {
                     if sn > self.sn {
@@ -114,7 +125,6 @@ impl Handler<Authorization> for Authorization {
 
                     if self.witnesses.is_empty() {
                         if let Some(node) = self.better.clone() {
-
                             let info = ComunicateInfo {
                                 reciver: node,
                                 sender: self.our_key.clone(),
@@ -129,10 +139,11 @@ impl Handler<Authorization> for Authorization {
                             let helper: Option<Intermediary> =
                                 ctx.system().get_helper("network").await;
 
-                            let mut helper = if let Some(helper) = helper {
-                                helper
-                            } else {
-                                todo!()
+                            let Some(mut helper) = helper else {
+                                ctx.system()
+                                    .send_event(SystemEvent::StopSystem)
+                                    .await;
+                                return Err(ActorError::NotHelper);
                             };
 
                             if let Err(_e) = helper
@@ -154,7 +165,7 @@ impl Handler<Authorization> for Authorization {
                 } else {
                     todo!()
                 }
-            },
+            }
         };
 
         Ok(AuthorizationResponse::None)

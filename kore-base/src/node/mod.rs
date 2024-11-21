@@ -12,11 +12,17 @@ use register::Register;
 use relationship::RelationShip;
 
 use crate::{
-    auth::{Auth, AuthMessage, AuthResponse}, db::Storable, distribution::distributor::Distributor, helpers::db::ExternalDB, model::{
+    auth::{Auth, AuthMessage, AuthResponse},
+    db::Storable,
+    distribution::distributor::Distributor,
+    helpers::db::ExternalDB,
+    model::{
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    }, subject::CreateSubjectData, Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
+    },
+    subject::CreateSubjectData,
+    Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR,
 };
 
 use identity::{
@@ -28,7 +34,7 @@ use identity::{
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
-    Message, Response, Sink,
+    Message, Response, Sink, SystemEvent,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -275,7 +281,6 @@ impl Actor for Node {
         let auth = Auth::new(self.owner());
         ctx.create_child("auth", auth).await?;
 
-        
         ctx.create_child("distributor", distributor).await?;
         ctx.create_child("relation_ship", RelationShip::default())
             .await?;
@@ -374,7 +379,8 @@ impl Handler<Node> for Node {
                 let Some(ext_db): Option<ExternalDB> =
                     ctx.system().get_helper("ext_db").await
                 else {
-                    todo!()
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Err(ActorError::NotHelper);
                 };
 
                 let subject = Subject::from_event(None, &ledger);
@@ -452,7 +458,8 @@ impl Handler<Node> for Node {
                 let Some(ext_db): Option<ExternalDB> =
                     ctx.system().get_helper("ext_db").await
                 else {
-                    todo!()
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Err(ActorError::NotHelper);
                 };
 
                 let subject = Subject::new(data.clone());
@@ -555,9 +562,12 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::None)
             }
             NodeMessage::IsAuthorized(subject_id) => {
-                let auth: Option<actor::ActorRef<Auth>> = ctx.get_child("auth").await;
+                let auth: Option<actor::ActorRef<Auth>> =
+                    ctx.get_child("auth").await;
                 let authorized_subjects = if let Some(auth) = auth {
-                    let Ok(AuthResponse::Auths { subjects }) = auth.ask(AuthMessage::GetAuths).await else {
+                    let Ok(AuthResponse::Auths { subjects }) =
+                        auth.ask(AuthMessage::GetAuths).await
+                    else {
                         todo!()
                     };
                     subjects
@@ -565,9 +575,8 @@ impl Handler<Node> for Node {
                     todo!();
                 };
 
-                let auth_subj = authorized_subjects
-                    .iter()
-                    .any(|x| x.clone() == subject_id);
+                let auth_subj =
+                    authorized_subjects.iter().any(|x| x.clone() == subject_id);
 
                 let owned_subj =
                     self.owned_subjects.iter().any(|x| x.clone() == subject_id);

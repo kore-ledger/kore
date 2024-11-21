@@ -124,8 +124,10 @@ impl Runner {
 
                 let compilations = Self::check_compilation(data.clone())?;
 
-                let final_state =
-                    ValueWrapper(serde_json::to_value(patched_state).unwrap());
+                let final_state = ValueWrapper(
+                    serde_json::to_value(patched_state)
+                        .map_err(|e| Error::Runner(e.to_string()))?,
+                );
 
                 if let Some(lock) = GOVERNANCE.get() {
                     let schema = lock.read().await;
@@ -136,7 +138,6 @@ impl Runner {
                     todo!()
                 };
 
-                // TODO QUITAR TODOS LOS unwrap()
                 Ok((
                     RunnerResult {
                         final_state,

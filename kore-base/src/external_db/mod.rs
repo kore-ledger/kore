@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Handler, Message, Response, SystemEvent,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -112,18 +112,19 @@ impl Handler<DBManager> for DBManager {
         msg: DBManagerMessage,
         ctx: &mut actor::ActorContext<DBManager>,
     ) -> Result<DBManagerResponse, ActorError> {
+        let Some(helper): Option<ExternalDB> =
+            ctx.system().get_helper("ext_db").await
+        else {
+            ctx.system().send_event(SystemEvent::StopSystem).await;
+            return Err(ActorError::NotHelper);
+        };
+
         match msg {
             DBManagerMessage::InitDelete => {
                 let Some(our_ref): Option<ActorRef<DBManager>> = ctx
                     .system()
                     .get_actor(&ActorPath::from("/user/db_manager"))
                     .await
-                else {
-                    todo!()
-                };
-
-                let Some(helper): Option<ExternalDB> =
-                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };
@@ -142,12 +143,6 @@ impl Handler<DBManager> for DBManager {
                     .system()
                     .get_actor(&ActorPath::from("/user/db_manager"))
                     .await
-                else {
-                    todo!()
-                };
-
-                let Some(helper): Option<ExternalDB> =
-                    ctx.system().get_helper("ext_db").await
                 else {
                     todo!()
                 };

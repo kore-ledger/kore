@@ -45,7 +45,7 @@ use crate::{
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response, Sink,
+    Handler, Message, Response, Sink, SystemEvent,
 };
 use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
 use identity::{
@@ -556,7 +556,10 @@ impl Subject {
             let Some(config): Option<Config> =
                 ctx.system().get_helper("config").await
             else {
-                todo!()
+                ctx.system().send_event(SystemEvent::StopSystem).await;
+                return Err(Error::Actor(
+                    "Can not access to config helper".to_string(),
+                ));
             };
 
             // If we are a approver
@@ -642,7 +645,10 @@ impl Subject {
         let Some(config): Option<Config> =
             ctx.system().get_helper("config").await
         else {
-            todo!()
+            ctx.system().send_event(SystemEvent::StopSystem).await;
+            return Err(Error::Actor(
+                "Can not access to config helper".to_string(),
+            ));
         };
 
         let validation = Validation::new(our_key.clone());
@@ -1413,7 +1419,12 @@ impl Subject {
                         let Some(ext_db): Option<ExternalDB> =
                             ctx.system().get_helper("ext_db").await
                         else {
-                            todo!()
+                            ctx.system()
+                                .send_event(SystemEvent::StopSystem)
+                                .await;
+                            return Err(Error::Actor(
+                                "Can not access to ext_db helper".to_string(),
+                            ));
                         };
 
                         if self.owner == our_key {
@@ -1798,7 +1809,8 @@ impl Actor for Subject {
         let Some(ext_db): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
-            todo!()
+            ctx.system().send_event(SystemEvent::StopSystem).await;
+            return Err(ActorError::NotHelper);
         };
 
         let ledger_event = LedgerEvent::new(self.governance_id.is_empty());

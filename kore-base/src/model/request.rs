@@ -59,6 +59,16 @@ pub enum EventRequest {
     EOL(EOLRequest),
 }
 
+impl EventRequest {
+    pub fn is_fact_event(&self) -> bool {
+        match self {
+            EventRequest::Fact(_fact_request) => true,
+            _ => false
+            
+        }
+    }
+}
+
 /// A struct representing a request to create a new subject.
 #[derive(
     Debug,

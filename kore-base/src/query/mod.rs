@@ -3,7 +3,7 @@
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
-    Message, Response,
+    Message, Response, SystemEvent,
 };
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
@@ -12,7 +12,12 @@ use serde::{Deserialize, Serialize};
 use crate::{
     approval::approver::{
         ApprovalState, ApprovalStateRes, Approver, ApproverMessage,
-    }, error::Error, helpers::db::{EventDB, ExternalDB, Paginator, Querys, SignaturesDB, SubjectDB}, request::state
+    },
+    error::Error,
+    helpers::db::{
+        EventDB, ExternalDB, Paginator, Querys, SignaturesDB, SubjectDB,
+    },
+    request::state,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -28,13 +33,23 @@ impl Query {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryMessage {
-    GetSubject { subject_id: String },
-    GetSignatures { subject_id: String },
-    GetEvents {
-        subject_id: String, quantity: Option<u64>, page: Option<u64>
+    GetSubject {
+        subject_id: String,
     },
-    GetRequestState { request_id: String },
-    GetApproval { subject_id: String },
+    GetSignatures {
+        subject_id: String,
+    },
+    GetEvents {
+        subject_id: String,
+        quantity: Option<u64>,
+        page: Option<u64>,
+    },
+    GetRequestState {
+        request_id: String,
+    },
+    GetApproval {
+        subject_id: String,
+    },
 }
 
 impl Message for QueryMessage {}
@@ -42,17 +57,20 @@ impl Message for QueryMessage {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryResponse {
     Signatures {
-        signatures: SignaturesDB
+        signatures: SignaturesDB,
     },
     Subject {
-        subject: SubjectDB
+        subject: SubjectDB,
     },
     Events {
         events: Vec<EventDB>,
-        paginator: Paginator
+        paginator: Paginator,
     },
     RequestState(String),
-    ApprovalState { request: String, state: String },
+    ApprovalState {
+        request: String,
+        state: String,
+    },
     Error(Error),
 }
 
@@ -90,13 +108,16 @@ impl Handler<Query> for Query {
         let Some(helper): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
-            todo!()
+            ctx.system().send_event(SystemEvent::StopSystem).await;
+            return Err(ActorError::NotHelper);
         };
 
         match msg {
             QueryMessage::GetSignatures { subject_id } => {
                 match helper.get_signatures(&subject_id).await {
-                    Ok(signatures) => Ok(QueryResponse::Signatures { signatures } ),
+                    Ok(signatures) => {
+                        Ok(QueryResponse::Signatures { signatures })
+                    }
                     Err(e) => Ok(QueryResponse::Error(e)),
                 }
             }
@@ -106,12 +127,16 @@ impl Handler<Query> for Query {
                     Err(e) => Ok(QueryResponse::Error(e)),
                 }
             }
-            QueryMessage::GetEvents { subject_id, quantity, page } => {
-                match helper.get_events(&subject_id, quantity, page).await {
-                    Ok((events, paginator)) => Ok(QueryResponse::Events { events, paginator }),
-                    Err(e) => Ok(QueryResponse::Error(e)),
+            QueryMessage::GetEvents {
+                subject_id,
+                quantity,
+                page,
+            } => match helper.get_events(&subject_id, quantity, page).await {
+                Ok((events, paginator)) => {
+                    Ok(QueryResponse::Events { events, paginator })
                 }
-            }
+                Err(e) => Ok(QueryResponse::Error(e)),
+            },
             QueryMessage::GetRequestState { request_id } => {
                 match helper.get_request_id_status(&request_id).await {
                     Ok(res) => Ok(QueryResponse::RequestState(res)),

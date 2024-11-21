@@ -28,17 +28,27 @@ pub struct Register {
 #[derive(Debug, Clone)]
 pub enum RegisterMessage {
     GetAllGov,
-    GetSubj { gov_id: String, active: Option<bool>, schema: Option<String> },
-    RegisterGov { gov_id: String, active: bool },
-    RegisterSubj { gov_id: String, data: RegisterData },
+    GetSubj {
+        gov_id: String,
+        active: Option<bool>,
+        schema: Option<String>,
+    },
+    RegisterGov {
+        gov_id: String,
+        active: bool,
+    },
+    RegisterSubj {
+        gov_id: String,
+        data: RegisterData,
+    },
 }
 
 impl Message for RegisterMessage {}
 
 #[derive(Debug, Clone)]
 pub enum RegisterResponse {
-    Govs {governances: Vec<String>},
-    Subjs { subjects: Vec<String>},
+    Govs { governances: Vec<String> },
+    Subjs { subjects: Vec<String> },
     Error(Error),
     None,
 }
@@ -84,9 +94,15 @@ impl Handler<Register> for Register {
     ) -> Result<RegisterResponse, ActorError> {
         match msg {
             RegisterMessage::GetAllGov => {
-                return Ok(RegisterResponse::Govs { governances: self.register_gov.keys().cloned().collect() })
-            },
-            RegisterMessage::GetSubj { gov_id, active, schema  } => {
+                return Ok(RegisterResponse::Govs {
+                    governances: self.register_gov.keys().cloned().collect(),
+                })
+            }
+            RegisterMessage::GetSubj {
+                gov_id,
+                active,
+                schema,
+            } => {
                 let subjects = self.register_subj.get(&gov_id.to_string());
                 if let Some(subjects) = subjects {
                     let mut subj = vec![];
@@ -105,10 +121,12 @@ impl Handler<Register> for Register {
 
                         subj.push(subject.subject_id.clone());
                     }
-                    
+
                     return Ok(RegisterResponse::Subjs { subjects: subj });
                 } else {
-                    return Ok(RegisterResponse::Error(Error::Register("Governance id is not registered".to_owned())));
+                    return Ok(RegisterResponse::Error(Error::Register(
+                        "Governance id is not registered".to_owned(),
+                    )));
                 }
             }
             RegisterMessage::RegisterGov { gov_id, active } => {

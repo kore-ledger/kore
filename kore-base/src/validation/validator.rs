@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
-    Strategy,
+    Strategy, SystemEvent,
 };
 
 use tracing::error;
@@ -533,11 +533,9 @@ impl Handler<Validator> for Validator {
                 // Sacar el Helper aquí
                 let helper: Option<Intermediary> =
                     ctx.system().get_helper("network").await;
-                let mut helper = if let Some(helper) = helper {
-                    helper
-                } else {
-                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                    // return Err(ActorError::Get("Error".to_owned()))
+
+                let Some(mut helper) = helper else {
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
                     return Err(ActorError::NotHelper);
                 };
 
@@ -636,7 +634,7 @@ impl Handler<Validator> for Validator {
                     // Can not obtain parent actor
                     // return Err(ActorError::Exists(validation_path));
                 }
-                // TODO AQUï debería ir un ctx.stop()?
+                ctx.stop().await;
             }
         }
     }

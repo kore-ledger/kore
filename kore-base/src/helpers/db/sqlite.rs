@@ -36,11 +36,15 @@ impl Querys for SqliteLocal {
             .call(move |conn| {
                 let sql = "SELECT * FROM signatures WHERE subject_id = ?1";
 
-                match conn
-                    .query_row(&sql, params![subject_id], |row| {
-                        Ok(SignaturesDB { subject_id: row.get(0)?, sn: row.get(1)?, signatures_eval: row.get(2)?, signatures_appr: row.get(3)?, signatures_vali: row.get(4)?})
+                match conn.query_row(&sql, params![subject_id], |row| {
+                    Ok(SignaturesDB {
+                        subject_id: row.get(0)?,
+                        sn: row.get(1)?,
+                        signatures_eval: row.get(2)?,
+                        signatures_appr: row.get(3)?,
+                        signatures_vali: row.get(4)?,
                     })
-                {
+                }) {
                     Ok(result) => Ok(result),
                     Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
                 }
@@ -65,11 +69,20 @@ impl Querys for SqliteLocal {
             .call(move |conn| {
                 let sql = "SELECT * FROM subjects WHERE subject_id = ?1";
 
-                match conn
-                    .query_row(&sql, params![subject_id], |row| {
-                        Ok(SubjectDB { subject_id: row.get(0)?, governance_id: row.get(1)?, genesis_gov_version: row.get(2)?, namespace: row.get(3)?, schema_id: row.get(4)?, owner: row.get(5)?, creator: row.get(6)?, active: row.get(7)?, sn: row.get(8)?, properties: row.get(9)? })
+                match conn.query_row(&sql, params![subject_id], |row| {
+                    Ok(SubjectDB {
+                        subject_id: row.get(0)?,
+                        governance_id: row.get(1)?,
+                        genesis_gov_version: row.get(2)?,
+                        namespace: row.get(3)?,
+                        schema_id: row.get(4)?,
+                        owner: row.get(5)?,
+                        creator: row.get(6)?,
+                        active: row.get(7)?,
+                        sn: row.get(8)?,
+                        properties: row.get(9)?,
                     })
-                {
+                }) {
                     Ok(result) => Ok(result),
                     Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
                 }
@@ -83,7 +96,12 @@ impl Querys for SqliteLocal {
         Ok(subject)
     }
 
-    async fn get_events(&self, subject_id: &str, quantity: Option<u64>, page: Option<u64>) -> Result<(Vec<EventDB>, Paginator), Error> {
+    async fn get_events(
+        &self,
+        subject_id: &str,
+        quantity: Option<u64>,
+        page: Option<u64>,
+    ) -> Result<(Vec<EventDB>, Paginator), Error> {
         let quantity = quantity.unwrap_or(50);
         let mut page = page.unwrap_or(1);
         if page == 0 {
@@ -97,9 +115,9 @@ impl Querys for SqliteLocal {
             .call(move |conn| {
                 let sql = "SELECT COUNT(*) FROM events WHERE subject_id = ?1";
 
-                match conn
-                    .query_row(&sql, params![subject_id_cloned], |row| row.get(0))
-                {
+                match conn.query_row(&sql, params![subject_id_cloned], |row| {
+                    row.get(0)
+                }) {
                     Ok(result) => Ok(result),
                     Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
                 }
@@ -136,7 +154,7 @@ impl Querys for SqliteLocal {
                         subject_id: row.get(0)?,
                         sn: row.get(1)?,
                         data: row.get(2)?,
-                        succes: row.get(3)?,  
+                        succes: row.get(3)?,
                     })
                 })?.map(|x| {
                     match x {
@@ -153,23 +171,11 @@ impl Querys for SqliteLocal {
             Err(e) => todo!(),
         };
 
-        let prev = if page <= 1 {
-            None
-        } else {
-            Some(page - 1)
-        };
+        let prev = if page <= 1 { None } else { Some(page - 1) };
 
-        let next = if page < pages {
-            Some(page + 1)
-        } else {
-            None
-        };
-        
-        Ok((events, Paginator {
-            pages,
-            next,
-            prev
-        }))
+        let next = if page < pages { Some(page + 1) } else { None };
+
+        Ok((events, Paginator { pages, next, prev }))
     }
 
     async fn get_request_id_status(
@@ -568,7 +574,6 @@ impl Subscriber<SinkDataEvent> for SqliteLocal {
         let sn = event.metadata.sn;
         let properties = event.metadata.properties.0.to_string();
 
-        // let sql = "CREATE TABLE IF NOT EXISTS subjects (subject_id TEXT NOT NULL, governance_id TEXT NOT NULL, genesis_gov_version INTEGER NOT NULL, namespace TEXT NOT NULL, schema_id TEXT NOT NULL, owner TEXT NOT NULL, creator TEXT NOT NULL, active TEXT NOT NULL, sn INTEGER NOT NULL, properties TEXT NOT NULL, PRIMARY KEY (subject_id))";
         if let Err(e) = self
         .conn
         .call(move |conn| {

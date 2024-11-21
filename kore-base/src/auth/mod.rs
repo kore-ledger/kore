@@ -3,7 +3,7 @@
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Handler, Message, Response, SystemEvent,
 };
 use async_trait::async_trait;
 use authorization::{Authorization, AuthorizationMessage};
@@ -200,10 +200,11 @@ impl Handler<Auth> for Auth {
             AuthMessage::Update { subject_id } => {
                 let witness = self.auth.get(&subject_id.to_string());
                 if let Some(witness) = witness {
-                    let Ok((sn, request, schema_id)) = 
-                        Auth::create_req_schema(ctx, subject_id.clone()).await else {
-                            todo!()
-                        };
+                    let Ok((sn, request, schema_id)) =
+                        Auth::create_req_schema(ctx, subject_id.clone()).await
+                    else {
+                        todo!()
+                    };
 
                     match witness {
                         AuthWitness::One(key_identifier) => {
@@ -221,10 +222,11 @@ impl Handler<Auth> for Auth {
                             let helper: Option<Intermediary> =
                                 ctx.system().get_helper("network").await;
 
-                            let mut helper = if let Some(helper) = helper {
-                                helper
-                            } else {
-                                todo!()
+                            let Some(mut helper) = helper else {
+                                ctx.system()
+                                    .send_event(SystemEvent::StopSystem)
+                                    .await;
+                                return Err(ActorError::NotHelper);
                             };
 
                             if let Err(_e) = helper

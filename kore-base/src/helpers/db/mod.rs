@@ -24,7 +24,7 @@ pub struct SignaturesDB {
     pub sn: u64,
     pub signatures_eval: String,
     pub signatures_appr: String,
-    pub signatures_vali: String
+    pub signatures_vali: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -170,7 +170,7 @@ impl Querys for ExternalDB {
             ExternalDB::SqliteLocal(sqlite_local) => {
                 sqlite_local.get_signatures(subject_id).await
             }
-        }  
+        }
     }
 
     async fn get_subject_state(
@@ -182,7 +182,7 @@ impl Querys for ExternalDB {
             ExternalDB::SqliteLocal(sqlite_local) => {
                 sqlite_local.get_subject_state(subject_id).await
             }
-        }  
+        }
     }
 
     async fn get_events(

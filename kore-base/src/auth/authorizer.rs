@@ -164,7 +164,10 @@ impl Handler<Authorizer> for Authorizer {
 
                 if let Some(authorization_actor) = authorization_actor {
                     if let Err(_e) = authorization_actor
-                        .tell(AuthorizationMessage::Response { sender: self.node.clone(), sn: 0 })
+                        .tell(AuthorizationMessage::Response {
+                            sender: self.node.clone(),
+                            sn: 0,
+                        })
                         .await
                     {
                         // TODO error, no se puede enviar la response
@@ -180,4 +183,3 @@ impl Handler<Authorizer> for Authorizer {
         }
     }
 }
-
