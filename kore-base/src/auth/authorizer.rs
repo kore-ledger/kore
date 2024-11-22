@@ -154,8 +154,8 @@ impl Handler<Authorizer> for Authorizer {
         error: ActorError,
         ctx: &mut ActorContext<Authorizer>,
     ) {
-        if let ActorError::Functional(error) = error {
-            if &error == "Max retries reached." {
+        match error {
+            ActorError::ReTry => {
                 let authorization_path = ctx.path().parent();
 
                 // Evaluation actor.
@@ -178,8 +178,11 @@ impl Handler<Authorizer> for Authorizer {
                     // Can not obtain parent actor
                     // return Err(ActorError::Exists(authorization_path));
                 }
-                // TODO AQUï debería ir un ctx.stop()?
+                ctx.stop().await;
+            },
+            _ => {
+                // TODO Error inesperado.
             }
-        }
+        };
     }
 }

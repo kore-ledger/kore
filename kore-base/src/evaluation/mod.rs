@@ -15,7 +15,7 @@ pub mod schema;
 use crate::{
     governance::{model::Roles, Quorum},
     model::{
-        common::{get_metadata, get_sign},
+        common::{get_metadata, get_sign, get_signers_quorum_gov_version},
         event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
@@ -91,60 +91,6 @@ impl Evaluation {
             },
             sn: metadata.sn + 1,
             gov_version,
-        }
-    }
-
-    async fn get_signers_and_quorum_and_gov_version(
-        &self,
-        ctx: &mut ActorContext<Evaluation>,
-        governance: DigestIdentifier,
-        schema_id: &str,
-        namespace: Namespace,
-    ) -> Result<(HashSet<KeyIdentifier>, Quorum, u64), Error> {
-        // Governance path.
-        let governance_path =
-            ActorPath::from(format!("/user/node/{}", governance));
-        // Governance actor.
-        let governance_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&governance_path).await;
-
-        // We obtain the actor governance
-        let response = if let Some(governance_actor) = governance_actor {
-            // We ask a governance
-            let response =
-                governance_actor.ask(SubjectMessage::GetGovernance).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path /user/node/{}",
-                governance
-            )));
-        };
-
-        // We handle the possible responses of governance
-        match response {
-            SubjectResponse::Governance(gov) => {
-                match gov.get_quorum_and_signers(Roles::EVALUATOR, schema_id, namespace) {
-                    Ok((signers, quorum)) => Ok((signers, quorum, gov.version)),
-                    Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
-                }
-            }
-            SubjectResponse::Error(error) => Err(Error::Actor(format!(
-                "The subject encountered problems when getting governance: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
         }
     }
 
@@ -358,12 +304,13 @@ impl Handler<Evaluation> for Evaluation {
                     metadata.governance_id.clone()
                 };
 
-                let (signers, quorum, gov_version) = match self
-                    .get_signers_and_quorum_and_gov_version(
+                let (signers, quorum, gov_version) = match
+                    get_signers_quorum_gov_version(
                         ctx,
-                        governance,
+                        &governance.to_string(),
                         &metadata.schema_id,
                         metadata.namespace.clone(),
+                        Roles::EVALUATOR
                     )
                     .await
                 {

@@ -655,8 +655,8 @@ impl Handler<Evaluator> for Evaluator {
         error: ActorError,
         ctx: &mut ActorContext<Evaluator>,
     ) {
-        if let ActorError::Functional(error) = error {
-            if &error == "Max retries reached." {
+        match error {
+            ActorError::ReTry => {
                 let evaluation_path = ctx.path().parent();
 
                 // Evaluation actor.
@@ -687,7 +687,10 @@ impl Handler<Evaluator> for Evaluator {
                     // return Err(ActorError::Exists(evaluation_path));
                 }
                 ctx.stop().await;
+            },
+            _ => {
+                // TODO error inesperado
             }
-        }
+        };
     }
 }

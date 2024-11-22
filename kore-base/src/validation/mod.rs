@@ -14,7 +14,7 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Quorum},
     model::{
-        common::get_sign,
+        common::{get_sign, get_signers_quorum_gov_version},
         event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
         Namespace, SignTypesNode, SignTypesSubject,
@@ -153,60 +153,6 @@ impl Validation {
             },
             proof,
         ))
-    }
-
-    async fn get_signers_and_quorum(
-        &self,
-        ctx: &mut ActorContext<Validation>,
-        governance: DigestIdentifier,
-        schema_id: &str,
-        namespace: Namespace,
-    ) -> Result<(HashSet<KeyIdentifier>, Quorum), Error> {
-        // Governance path.
-        let governance_path =
-            ActorPath::from(format!("/user/node/{}", governance));
-        // Governance actor.
-        let governance_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&governance_path).await;
-
-        // We obtain the actor governance
-        let response = if let Some(governance_actor) = governance_actor {
-            // We ask a governance
-            let response =
-                governance_actor.ask(SubjectMessage::GetGovernance).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path /user/node/{}",
-                governance
-            )));
-        };
-
-        // We handle the possible responses of governance
-        match response {
-            SubjectResponse::Governance(gov) => {
-                match gov.get_quorum_and_signers(Roles::VALIDATOR, schema_id, namespace) {
-                    Ok(quorum_and_signers) => Ok(quorum_and_signers),
-                    Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
-                }
-            }
-            SubjectResponse::Error(error) => Err(Error::Actor(format!(
-                "The subject encountered problems when getting governance: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
-        }
     }
 
     async fn create_validators(
@@ -384,12 +330,13 @@ impl Handler<Validation> for Validation {
                 self.actual_proof = proof;
 
                 // Get signers and quorum
-                let (signers, quorum) = match self
-                    .get_signers_and_quorum(
+                let (signers, quorum,_) = match
+                    get_signers_quorum_gov_version(
                         ctx,
-                        info.metadata.subject_id.clone(),
+                        &info.metadata.subject_id.to_string(),
                         &info.metadata.schema_id,
                         info.metadata.namespace,
+                        Roles::VALIDATOR
                     )
                     .await
                 {

@@ -1,18 +1,18 @@
+use std::collections::HashSet;
+
 use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler, SystemEvent};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use crate::{
-    model::SignTypesNode,
-    node::relationship::{
+    governance::{model::Roles, Quorum}, model::SignTypesNode, node::relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
-    },
-    subject::{
+    }, subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
         Metadata,
-    },
-    Error, Event as KoreEvent, EventRequestType, Governance, Node, NodeMessage,
-    NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse,
-    SubjectsTypes,
+    }, Error, Event as KoreEvent, EventRequestType, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
 };
+
+use super::Namespace;
 
 pub async fn get_gov<A>(
     ctx: &mut ActorContext<A>,
@@ -356,3 +356,22 @@ pub fn verify_protocols_state(
         }
     }
 }
+
+
+pub async fn get_signers_quorum_gov_version<A>(
+    ctx: &mut ActorContext<A>,
+    governance: &str,
+    schema_id: &str,
+    namespace: Namespace,
+    role: Roles
+) -> Result<(HashSet<KeyIdentifier>, Quorum, u64), Error> 
+where 
+    A: Actor + Handler<A>,
+{
+    let gov = get_gov(ctx, governance).await?;
+    match gov.get_quorum_and_signers(role, schema_id, namespace) {
+        Ok((signers, quorum)) => Ok((signers, quorum, gov.version)),
+        Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
+    }
+}
+

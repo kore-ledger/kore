@@ -7,6 +7,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use jsonschema::error;
 use network::ComunicateInfo;
 
 use crate::{
@@ -1203,8 +1204,8 @@ impl Handler<Distributor> for Distributor {
         error: ActorError,
         ctx: &mut ActorContext<Distributor>,
     ) {
-        if let ActorError::Functional(error) = error {
-            if &error == "Max retries reached." {
+        match error {
+            ActorError::ReTry => {
                 let distribuiton_path = ctx.path().parent();
 
                 // Replication actor.
@@ -1226,8 +1227,11 @@ impl Handler<Distributor> for Distributor {
                     // Can not obtain parent actor
                     // return Err(ActorError::Exists(evaluation_path));
                 }
-                // TODO AQUï debería ir un ctx.stop()?
+                ctx.stop().await;
+            },
+            _ => {
+                // TODO error inesperado
             }
-        }
+        };
     }
 }

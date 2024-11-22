@@ -604,8 +604,8 @@ impl Handler<Validator> for Validator {
         error: ActorError,
         ctx: &mut ActorContext<Validator>,
     ) {
-        if let ActorError::Functional(error) = error {
-            if &error == "Max retries reached." {
+        match error {
+            ActorError::ReTry => {
                 let validation_path = ctx.path().parent();
 
                 // Validation actor.
@@ -635,7 +635,10 @@ impl Handler<Validator> for Validator {
                     // return Err(ActorError::Exists(validation_path));
                 }
                 ctx.stop().await;
+            },
+            _ => {
+                // TODO error inesperado
             }
-        }
+        };
     }
 }

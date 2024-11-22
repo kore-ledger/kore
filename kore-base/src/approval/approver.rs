@@ -388,7 +388,9 @@ impl Handler<Approver> for Approver {
             } => {
                 if request_id != self.request_id {
                     if !approval_req.event_request.content.is_fact_event() {
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        if let Err(e) = ctx.emit_fail(ActorError::Custom("An attempt is being made to approve an event that is not fact.".to_owned())).await {
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                        };
                         return Ok(ApproverResponse::None);
                     }
                     
@@ -402,7 +404,7 @@ impl Handler<Approver> for Approver {
 
                         let signature = match get_sign(ctx, sign_type).await {
                             Ok(signature) => signature,
-                            Err(_e) => {                                
+                            Err(e) => {                                
                                 ctx.system().send_event(SystemEvent::StopSystem).await;
                                 return Ok(ApproverResponse::None);
                             },
@@ -418,17 +420,20 @@ impl Handler<Approver> for Approver {
                             ctx.system().get_actor(&approval_path).await;
                         // Send response of validation to parent
                         if let Some(approval_actor) = approval_actor {
-                            approval_actor
+                            if let Err(_e) = approval_actor
                                 .tell(ApprovalMessage::Response {
                                     approval_res: ApprovalRes::Response(
                                         signature, true,
                                     ),
                                     sender: our_key,
                                 })
-                                .await?
+                                .await {
+                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                    return Ok(ApproverResponse::None);
+                                }
                         } else {
-                            // Can not obtain parent actor
-                            return Err(ActorError::Exists(approval_path));
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            return Ok(ApproverResponse::None);
                         }
 
                         self.on_event(
@@ -469,7 +474,9 @@ impl Handler<Approver> for Approver {
                 {
                     event.subject_id
                 } else {
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    if let Err(e) = ctx.emit_fail(ActorError::Custom("An attempt is being made to approve an event that is not fact.".to_owned())).await {
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                    };
                     return Ok(ApproverResponse::None);
                 };
 
@@ -564,6 +571,13 @@ impl Handler<Approver> for Approver {
                 }
             }
             ApproverMessage::NetworkRequest { approval_req, info } => {
+                let info_subject_path = ActorPath::from(info.reciver_actor.clone()).parent().key();
+                    // Nos llegó una approvación donde en la request se indica un sujeto pero en el info otro
+                    // Posible ataque.
+                if info_subject_path != approval_req.content.subject_id.to_string() {
+                    return Ok(ApproverResponse::None);
+                }
+
                 if info.request_id != self.request_id {
                     let subject_path = ActorPath::from(format!(
                         "/user/node/{}",
@@ -590,7 +604,9 @@ impl Handler<Approver> for Approver {
                     let subject_owner = match response {
                         SubjectResponse::Owner(owner) => owner,
                         _ => {
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            if let Err(e) = ctx.emit_fail(ActorError::Custom("The subject gave us an unexpected answer.".to_owned())).await {
+                                ctx.system().send_event(SystemEvent::StopSystem).await;
+                            };
                             return Ok(ApproverResponse::None);
                         },
                     };
@@ -700,10 +716,12 @@ impl Handler<Approver> for Approver {
         ctx: &mut ActorContext<Approver>,
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
-            println!("{}", e);
+            //TODO
         };
 
-        if let Err(e) = ctx.publish_event(event).await {};
+        if let Err(e) = ctx.publish_event(event).await {
+            // TODO
+        };
     }
 
     async fn on_child_error(
@@ -711,11 +729,10 @@ impl Handler<Approver> for Approver {
         error: ActorError,
         ctx: &mut ActorContext<Approver>,
     ) {
-        if let ActorError::Functional(error) = error {
-            if &error == "Max retries reached." {
+        match error {
+            ActorError::ReTry => {
                 let approval_path = ctx.path().parent();
 
-                // Validation actor.
                 let approval_actor: Option<ActorRef<Approval>> =
                     ctx.system().get_actor(&approval_path).await;
 
@@ -736,8 +753,11 @@ impl Handler<Approver> for Approver {
                     ctx.system().send_event(SystemEvent::StopSystem).await;
                 }
                 ctx.stop().await;
+            },
+            _ => {
+                // TODO Error inesperado o que no debería ocurrir.
             }
-        }
+        };
     }
 }
 
