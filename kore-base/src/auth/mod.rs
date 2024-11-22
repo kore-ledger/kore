@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response, SystemEvent,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response, SystemEvent
 };
 use async_trait::async_trait;
 use authorization::{Authorization, AuthorizationMessage};
@@ -55,16 +54,14 @@ impl Auth {
     async fn create_req_schema(
         ctx: &mut ActorContext<Auth>,
         subject_id: DigestIdentifier,
-    ) -> Result<(u64, ActorMessage, String), Error> {
+    ) -> Result<(u64, ActorMessage, String), ActorError> {
         'req: {
             let Ok(metadata) = get_metadata(ctx, &subject_id.to_string()).await
             else {
                 break 'req;
             };
-            let Ok(gov) = get_gov(ctx, &subject_id.to_string()).await else {
-                // Debería tener la governanza, si tengo su metadata.
-                todo!()
-            };
+            let gov = get_gov(ctx, &subject_id.to_string()).await?;
+
             return Ok((
                 metadata.sn,
                 ActorMessage::DistributionLedgerReq {
@@ -200,11 +197,18 @@ impl Handler<Auth> for Auth {
             AuthMessage::Update { subject_id } => {
                 let witness = self.auth.get(&subject_id.to_string());
                 if let Some(witness) = witness {
-                    let Ok((sn, request, schema_id)) =
-                        Auth::create_req_schema(ctx, subject_id.clone()).await
-                    else {
-                        todo!()
-                    };
+                    let (sn, request, schema_id) =
+                        match Auth::create_req_schema(ctx, subject_id.clone()).await {
+                            Ok(data) => data,
+                            Err(e) => {
+                                if let Err(e) = ctx.emit_fail(e.clone()).await {
+                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                };
+                                return Ok(AuthResponse::Error(Error::Auth(
+                                    e.to_string(),
+                                )));
+                            },
+                        };
 
                     match witness {
                         AuthWitness::One(key_identifier) => {
@@ -223,13 +227,16 @@ impl Handler<Auth> for Auth {
                                 ctx.system().get_helper("network").await;
 
                             let Some(mut helper) = helper else {
-                                ctx.system()
-                                    .send_event(SystemEvent::StopSystem)
-                                    .await;
-                                return Err(ActorError::NotHelper);
+                                let e = ActorError::NotHelper("network".to_owned());
+                                if let Err(e) = ctx.emit_fail(e.clone()).await {
+                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                };
+                                return Ok(AuthResponse::Error(Error::Auth(
+                                    e.to_string(),
+                                )));
                             };
 
-                            if let Err(_e) = helper
+                            if let Err(e) = helper
                                 .send_command(
                                     network::CommandHelper::SendMessage {
                                         message: NetworkMessage {
@@ -240,7 +247,12 @@ impl Handler<Auth> for Auth {
                                 )
                                 .await
                             {
-                                todo!()
+                                if let Err(e) = ctx.emit_fail(e.clone()).await {
+                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                };
+                                return Ok(AuthResponse::Error(Error::Auth(
+                                    e.to_string(),
+                                )));
                             };
                         }
                         AuthWitness::Many(vec) => {
@@ -259,15 +271,25 @@ impl Handler<Auth> for Auth {
                                     authorization,
                                 )
                                 .await;
-                            let child = match child {
-                                Ok(child) => child,
-                                Err(e) => todo!(),
+                            let Ok(child) = child else {
+                                let e = ActorError::Create(ctx.path().clone(), subject_id.to_string());
+                                if let Err(e) = ctx.emit_fail(e.clone()).await {
+                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                };
+                                return Ok(AuthResponse::Error(Error::Auth(
+                                    e.to_string()
+                                )));
                             };
 
                             if let Err(e) =
                                 child.tell(AuthorizationMessage::Create).await
                             {
-                                todo!()
+                                if let Err(e) = ctx.emit_fail(e.clone()).await {
+                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                };
+                                return Ok(AuthResponse::Error(Error::Auth(
+                                    e.to_string()
+                                )));
                             }
                         }
                         AuthWitness::None => {
@@ -294,6 +316,17 @@ impl Handler<Auth> for Auth {
         if let Err(_e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Auth>,
+    ) -> ChildAction {
+        if let Err(e) = ctx.emit_fail(error).await {
+            ctx.system().send_event(SystemEvent::StopSystem).await;
+        };
+        ChildAction::Stop
     }
 }
 

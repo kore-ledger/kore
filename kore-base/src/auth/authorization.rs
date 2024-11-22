@@ -4,8 +4,7 @@
 use std::collections::HashSet;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response, SystemEvent,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response, SystemEvent
 };
 
 use async_trait::async_trait;
@@ -103,7 +102,12 @@ impl Handler<Authorization> for Authorization {
                     let child = ctx
                         .create_child(&witness.to_string(), authorizer)
                         .await;
-                    let Ok(child) = child else { todo!() };
+                    let Ok(child) = child else {
+                        if let Err(e) = ctx.emit_fail(ActorError::Create(ctx.path().clone(),witness.to_string())).await {
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                        };
+                        return Ok(AuthorizationResponse::None);
+                     };
 
                     if let Err(e) = child
                         .tell(AuthorizerMessage::NetworkLastSn {
@@ -113,7 +117,10 @@ impl Handler<Authorization> for Authorization {
                         })
                         .await
                     {
-                        todo!()
+                        if let Err(e) = ctx.emit_fail(e).await {
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                        };
+                        return Ok(AuthorizationResponse::None);
                     }
                 }
             }
@@ -140,13 +147,13 @@ impl Handler<Authorization> for Authorization {
                                 ctx.system().get_helper("network").await;
 
                             let Some(mut helper) = helper else {
-                                ctx.system()
-                                    .send_event(SystemEvent::StopSystem)
-                                    .await;
-                                return Err(ActorError::NotHelper);
+                                if let Err(e) = ctx.emit_fail(ActorError::NotHelper("network".to_owned())).await {
+                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                };
+                                return Ok(AuthorizationResponse::None);
                             };
 
-                            if let Err(_e) = helper
+                            if let Err(e) = helper
                                 .send_command(
                                     network::CommandHelper::SendMessage {
                                         message: NetworkMessage {
@@ -157,17 +164,29 @@ impl Handler<Authorization> for Authorization {
                                 )
                                 .await
                             {
-                                todo!()
+                                if let Err(e) = ctx.emit_fail(e).await {
+                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                };
+                                return Ok(AuthorizationResponse::None);
                             };
                         }
                         ctx.stop().await;
                     }
-                } else {
-                    todo!()
                 }
             }
         };
 
         Ok(AuthorizationResponse::None)
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Authorization>,
+    ) -> ChildAction {
+        if let Err(e) = ctx.emit_fail(error).await {
+            ctx.system().send_event(SystemEvent::StopSystem).await;
+        };
+        ChildAction::Stop
     }
 }

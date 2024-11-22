@@ -32,9 +32,6 @@ pub enum Error {
     /// Database error.
     #[error("Database error: {0}")]
     Database(String),
-    /// Actor error.
-    #[error("Actor error: {0}")]
-    Actor(String),
     /// Store error.
     #[error("Store error: {0}")]
     Store(String),

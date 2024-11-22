@@ -6,7 +6,7 @@ use std::time::Duration;
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
     FixedIntervalStrategy, Handler, Message, Response, RetryActor,
-    RetryMessage, Strategy,
+    RetryMessage, Strategy, SystemEvent,
 };
 
 use async_trait::async_trait;
@@ -116,11 +116,17 @@ impl Handler<Authorizer> for Authorizer {
                 {
                     retry
                 } else {
-                    todo!()
+                    if let Err(e) = ctx.emit_fail(ActorError::Create(ctx.path().clone(), "retry".to_owned())).await {
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                    };
+                    return Ok(AuthorizerResponse::None);
                 };
 
-                if let Err(_e) = retry.tell(RetryMessage::Retry).await {
-                    todo!()
+                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    if let Err(e) = ctx.emit_fail(e).await {
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                    };
+                    return Ok(AuthorizerResponse::None);
                 };
             }
             AuthorizerMessage::NetworkResponse { sn } => {
@@ -128,6 +134,7 @@ impl Handler<Authorizer> for Authorizer {
                 let authorization_actor: Option<ActorRef<Authorization>> =
                     ctx.system().get_actor(&authorization_path).await;
 
+                
                 if let Some(authorization_actor) = authorization_actor {
                     if let Err(e) = authorization_actor
                         .tell(AuthorizationMessage::Response {
@@ -136,10 +143,27 @@ impl Handler<Authorizer> for Authorizer {
                         })
                         .await
                     {
-                        todo!()
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Ok(AuthorizerResponse::None);
                     }
                 } else {
-                    todo!()
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Ok(AuthorizerResponse::None);
+                }
+
+                'retry: {
+                    let Some(retry) = ctx
+                        .get_child::<RetryActor<RetryNetwork>>("retry")
+                        .await
+                    else {
+                        // Aquí me da igual, porque al parar este actor para el hijo
+                        break 'retry;
+                    };
+
+                    if let Err(_e) = retry.tell(RetryMessage::End).await {
+                        // Aquí me da igual, porque al parar este actor para el hijo
+                        break 'retry;
+                    };
                 }
 
                 ctx.stop().await;
@@ -170,13 +194,10 @@ impl Handler<Authorizer> for Authorizer {
                         })
                         .await
                     {
-                        // TODO error, no se puede enviar la response
-                        // return Err(_e);
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
                     }
                 } else {
-                    // TODO no se puede obtener authorization! Parar.
-                    // Can not obtain parent actor
-                    // return Err(ActorError::Exists(authorization_path));
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
                 }
                 ctx.stop().await;
             },

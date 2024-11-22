@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use actor::{
-    Actor, ActorContext, Error as ActorError, Handler, Message, Response, SystemEvent,
+    Actor, ActorContext, ChildAction, Error as ActorError, Handler, Message, Response, SystemEvent
 };
 use actor::{ActorPath, ActorRef, Event};
 use approver::{Approver, ApproverMessage, VotationType};
@@ -117,16 +117,17 @@ impl Approval {
         request_id: &str,
         approval_req: Signed<ApprovalReq>,
         signer: KeyIdentifier,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let our_key = self.node_key.clone();
 
         if signer == our_key {
+            let approver_path = ActorPath::from(format!(
+                "/user/node/{}/approver",
+                approval_req.content.subject_id
+            ));
             let approver_actor: Option<ActorRef<Approver>> = ctx
                 .system()
-                .get_actor(&ActorPath::from(format!(
-                    "/user/node/{}/approver",
-                    approval_req.content.subject_id
-                )))
+                .get_actor(&approver_path)
                 .await;
             if let Some(approver_actor) = approver_actor {
                 approver_actor
@@ -135,15 +136,15 @@ impl Approval {
                         approval_req: approval_req.content,
                         our_key: signer,
                     })
-                    .await.map_err(|e| Error::Actor(e.to_string()))?
+                    .await?
             } else {
-                return Err(Error::Approval("Can not get Our Approver".to_owned()));
+                return Err(ActorError::NotFound(approver_path));
             }
         } else {
             // Create Approvers child
-            let child = ctx
+            let Ok(child) = ctx
                 .create_child(
-                    &format!("{}", signer),
+                    &signer.to_string(),
                     Approver::new(
                         request_id.to_owned(),
                         signer.clone(),
@@ -151,17 +152,18 @@ impl Approval {
                         VotationType::Manual,
                     ),
                 )
-                .await;
-            let approver_actor = child.map_err(|e| Error::Actor(e.to_string()))?;
+                .await else {
+                    return Err(ActorError::Create(ctx.path().clone(), signer.to_string()));
+                };
 
-            approver_actor
+                child
                 .tell(ApproverMessage::NetworkApproval {
                     request_id: request_id.to_owned(),
                     approval_req: approval_req.clone(),
                     node_key: signer,
                     our_key,
                 })
-                .await.map_err(|e| Error::Actor(e.to_string()))?
+                .await?;
         }
 
         Ok(())
@@ -174,24 +176,21 @@ impl Approval {
         &self,
         ctx: &mut ActorContext<Approval>,
         response: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let req_path =
             ActorPath::from(format!("/user/request/{}", self.request_id));
         let req_actor: Option<ActorRef<RequestManager>> =
             ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
-            if let Err(_e) = req_actor
+            req_actor
                 .tell(RequestManagerMessage::ApprovalRes {
                     result: response,
                     signatures: self.approvers_response.clone(),
                 })
-                .await
-            {
-                return Err(Error::Approval("Can not send approval to request".to_owned()));
-            }
+                .await?
         } else {
-            return Err(Error::Actor("Can not get request actor".to_owned()));
+            return Err(ActorError::NotFound(req_path));
         };
 
         Ok(())
@@ -280,12 +279,7 @@ impl Handler<Approval> for Approval {
                 eval_res,
             } => {
                 if request_id == self.request_id {
-                    let request = if let Some(request) = self.request.clone() {
-                        request
-                    } else {
-                        if let Err(e) = ctx.emit_fail(ActorError::Custom("I am processing a request but I cannot access it".to_owned())).await {
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
-                        };
+                    let Some(request) = self.request.clone() else {
                         return Ok(ApprovalResponse::None);
                     };
 
@@ -297,7 +291,7 @@ impl Handler<Approval> for Approval {
                             signer,
                         )
                         .await {
-                            if let Err(e) = ctx.emit_fail(ActorError::Custom("Can not create approvers".to_owned())).await {
+                            if let Err(e) = ctx.emit_fail(e).await {
                                 ctx.system().send_event(SystemEvent::StopSystem).await;
                             };
                             return Ok(ApprovalResponse::None);
@@ -361,7 +355,7 @@ impl Handler<Approval> for Approval {
                             signer,
                         )
                         .await {
-                            if let Err(e) = ctx.emit_fail(ActorError::Custom("Can not create approvers".to_owned())).await {
+                            if let Err(e) = ctx.emit_fail(e).await {
                                 ctx.system().send_event(SystemEvent::StopSystem).await;
                             };
                             return Ok(ApprovalResponse::None);
@@ -419,19 +413,19 @@ impl Handler<Approval> for Approval {
                         self.approvers_quantity,
                         self.approvers_response.len() as u32,
                     ) {
-                        if let Err(_e) =
+                        if let Err(e) =
                             self.send_approval_to_req(ctx, true).await
                         {
-                            if let Err(e) = ctx.emit_fail(ActorError::Custom("Can not send response to request actor".to_owned())).await {
+                            if let Err(e) = ctx.emit_fail(e).await {
                                 ctx.system().send_event(SystemEvent::StopSystem).await;
                             };
                             return Ok(ApprovalResponse::None);
                         };
                     } else if self.approvers.is_empty() {
-                        if let Err(_e) =
+                        if let Err(e) =
                             self.send_approval_to_req(ctx, false).await
                         {
-                            if let Err(e) = ctx.emit_fail(ActorError::Custom("Can not send response to request actor".to_owned())).await {
+                            if let Err(e) = ctx.emit_fail(e).await {
                                 ctx.system().send_event(SystemEvent::StopSystem).await;
                             };
                             return Ok(ApprovalResponse::None);
@@ -453,6 +447,17 @@ impl Handler<Approval> for Approval {
         if let Err(_e) = self.persist(&event, ctx).await {
             // TODO error al persistir, propagar hacia arriba
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Approval>,
+    ) -> ChildAction {
+        if let Err(e) = ctx.emit_fail(error).await {
+            ctx.system().send_event(SystemEvent::StopSystem).await;
+        };
+        ChildAction::Stop
     }
 }
 

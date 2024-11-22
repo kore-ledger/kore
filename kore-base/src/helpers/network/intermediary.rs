@@ -15,7 +15,7 @@ use crate::{
 
 use super::ActorMessage;
 use super::{service::HelperService, NetworkMessage};
-use actor::{ActorPath, ActorRef, SystemRef};
+use actor::{ActorPath, ActorRef, Error as ActorError, SystemRef};
 use identity::identifier::derive::KeyDerivator;
 use network::Command as NetworkCommand;
 use network::CommandHelper as Command;
@@ -559,11 +559,10 @@ impl Intermediary {
     pub async fn send_command(
         &mut self,
         command: Command<NetworkMessage>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         self.service
             .send_command(command)
-            .await
-            .map_err(|e| Error::NetworkHelper(e.to_string()))
+            .await.map_err(|e| ActorError::Functional(e.to_string()))
     }
 }
 
