@@ -79,21 +79,31 @@ impl BorshSerialize for ValueWrapper {
             }
             Value::Number(data) => {
                 BorshSerialize::serialize(&1u8, writer)?;
-                if data.is_f64() {
-                    BorshSerialize::serialize(&0u8, writer)?;
-                    BorshSerialize::serialize(&data.as_f64().unwrap(), writer)
-                } else if data.is_i64() {
-                    BorshSerialize::serialize(&1u8, writer)?;
-                    BorshSerialize::serialize(&data.as_i64().unwrap(), writer)
-                } else if data.is_u64() {
-                    BorshSerialize::serialize(&2u8, writer)?;
-                    BorshSerialize::serialize(&data.as_u64().unwrap(), writer)
-                } else {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Invalid number type",
-                    ));
+                'data: {
+                    if data.is_f64() {
+                        let Some(data) = data.as_f64() else {
+                            break 'data;
+                        };
+                        BorshSerialize::serialize(&0u8, writer)?;
+                        return BorshSerialize::serialize(&data, writer);
+                    } else if data.is_i64() {
+                        let Some(data) = data.as_i64() else {
+                            break 'data;
+                        };
+                        BorshSerialize::serialize(&1u8, writer)?;
+                        return BorshSerialize::serialize(&data, writer);
+                    } else if data.is_u64() {
+                        let Some(data) = data.as_u64() else {
+                            break 'data;
+                        };
+                        BorshSerialize::serialize(&2u8, writer)?;
+                        return BorshSerialize::serialize(&data, writer);
+                    }
                 }
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Invalid number type",
+                ));
             }
             Value::String(data) => {
                 BorshSerialize::serialize(&2u8, writer)?;
@@ -139,9 +149,13 @@ impl BorshDeserialize for ValueWrapper {
                     0 => {
                         let data: f64 =
                             BorshDeserialize::deserialize_reader(reader)?;
-                        Ok(ValueWrapper(Value::Number(
-                            Number::from_f64(data).unwrap(),
-                        )))
+                        let Some(data_f64) = Number::from_f64(data) else {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                format!("Invalid f64 Number: {}", data),
+                            ));
+                        };
+                        Ok(ValueWrapper(Value::Number(data_f64)))
                     }
                     1 => {
                         let data: i64 =

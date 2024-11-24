@@ -6,7 +6,7 @@ use std::time::Duration;
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
     FixedIntervalStrategy, Handler, Message, Response, RetryActor,
-    RetryMessage, Strategy,
+    RetryMessage, Strategy, SystemEvent,
 };
 
 use async_trait::async_trait;
@@ -14,7 +14,7 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use crate::{model::network::RetryNetwork, ActorMessage, NetworkMessage};
+use crate::{model::{common::emit_fail, network::RetryNetwork}, ActorMessage, NetworkMessage};
 
 use super::authorization::{Authorization, AuthorizationMessage};
 
@@ -116,11 +116,12 @@ impl Handler<Authorizer> for Authorizer {
                 {
                     retry
                 } else {
-                    todo!()
+                    let e = ActorError::Create(ctx.path().clone(), "retry".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
-                if let Err(_e) = retry.tell(RetryMessage::Retry).await {
-                    todo!()
+                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
             AuthorizerMessage::NetworkResponse { sn } => {
@@ -128,6 +129,7 @@ impl Handler<Authorizer> for Authorizer {
                 let authorization_actor: Option<ActorRef<Authorization>> =
                     ctx.system().get_actor(&authorization_path).await;
 
+                
                 if let Some(authorization_actor) = authorization_actor {
                     if let Err(e) = authorization_actor
                         .tell(AuthorizationMessage::Response {
@@ -136,10 +138,26 @@ impl Handler<Authorizer> for Authorizer {
                         })
                         .await
                     {
-                        todo!()
+                        return Err(emit_fail(ctx, e).await);
                     }
                 } else {
-                    todo!()
+                    let e = ActorError::NotFound(authorization_path);
+                    return Err(emit_fail(ctx, e).await);
+                }
+
+                'retry: {
+                    let Some(retry) = ctx
+                        .get_child::<RetryActor<RetryNetwork>>("retry")
+                        .await
+                    else {
+                        // Aquí me da igual, porque al parar este actor para el hijo
+                        break 'retry;
+                    };
+
+                    if let Err(_e) = retry.tell(RetryMessage::End).await {
+                        // Aquí me da igual, porque al parar este actor para el hijo
+                        break 'retry;
+                    };
                 }
 
                 ctx.stop().await;
@@ -154,8 +172,8 @@ impl Handler<Authorizer> for Authorizer {
         error: ActorError,
         ctx: &mut ActorContext<Authorizer>,
     ) {
-        if let ActorError::Functional(error) = error {
-            if &error == "Max retries reached." {
+        match error {
+            ActorError::ReTry => {
                 let authorization_path = ctx.path().parent();
 
                 // Evaluation actor.
@@ -163,21 +181,24 @@ impl Handler<Authorizer> for Authorizer {
                     ctx.system().get_actor(&authorization_path).await;
 
                 if let Some(authorization_actor) = authorization_actor {
-                    if let Err(_e) = authorization_actor
-                        .tell(AuthorizationMessage::Response { sender: self.node.clone(), sn: 0 })
+                    if let Err(e) = authorization_actor
+                        .tell(AuthorizationMessage::Response {
+                            sender: self.node.clone(),
+                            sn: 0,
+                        })
                         .await
                     {
-                        // TODO error, no se puede enviar la response
-                        // return Err(_e);
+                        emit_fail(ctx, e).await;
                     }
                 } else {
-                    // TODO no se puede obtener authorization! Parar.
-                    // Can not obtain parent actor
-                    // return Err(ActorError::Exists(authorization_path));
+                    let e = ActorError::NotFound(authorization_path);
+                    emit_fail(ctx, e).await;
                 }
-                // TODO AQUï debería ir un ctx.stop()?
+                ctx.stop().await;
+            },
+            _ => {
+                // TODO Error inesperado.
             }
-        }
+        };
     }
 }
-

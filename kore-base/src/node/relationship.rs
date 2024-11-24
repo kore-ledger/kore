@@ -1,8 +1,8 @@
 use std::{collections::HashMap, time::Duration};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

@@ -38,28 +38,6 @@ pub struct ApprovalReq {
     pub subject_id: DigestIdentifier,
 }
 
-impl ApprovalReq {
-    pub fn to_string(&self) -> String {
-        format!(
-            "
-            subject_id: {},
-            event_request: {:#?},
-            sn: {},
-            gov_version: {},
-            patch: {:#?},
-            state_hash: {},
-            hash_prev_event: {},
-            ",
-            self.subject_id,
-            self.event_request,
-            self.sn,
-            self.gov_version,
-            self.patch,
-            self.state_hash,
-            self.hash_prev_event
-        )
-    }
-}
 
 impl HashId for ApprovalReq {
     fn hash_id(

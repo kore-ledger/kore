@@ -3,17 +3,18 @@ use std::time::Duration;
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
-    Strategy,
+    Strategy, SystemEvent,
 };
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use jsonschema::error;
 use network::ComunicateInfo;
 
 use crate::{
     governance::model::Roles,
     intermediary::Intermediary,
     model::{
-        common::{get_gov, get_metadata, get_quantity, update_event},
+        common::{emit_fail, get_gov, get_metadata, get_quantity, update_event},
         event::Ledger,
         network::RetryNetwork,
     },
@@ -135,7 +136,7 @@ impl Distributor {
         &self,
         ctx: &mut ActorContext<Distributor>,
         subject_id: DigestIdentifier,
-    ) -> Result<ActorRef<Subject>, Error> {
+    ) -> Result<ActorRef<Subject>, ActorError> {
         let subject_path =
             ActorPath::from(format!("/user/node/{}", subject_id));
         let subject_actor: ActorRef<Subject> = if let Some(subject_actor) =
@@ -143,10 +144,7 @@ impl Distributor {
         {
             subject_actor
         } else {
-            return Err(Error::Actor(format!(
-                "The subject actor was not found in the expected path {}",
-                subject_path
-            )));
+            return Err(ActorError::NotFound(subject_path))
         };
 
         Ok(subject_actor)
@@ -156,41 +154,33 @@ impl Distributor {
         &self,
         ctx: &mut ActorContext<Distributor>,
         ledger: Signed<Ledger>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         // TODO refactorizar.
         if let EventRequest::Create(request) =
             ledger.content.event_request.content.clone()
         {
             if request.schema_id != "governance" {
-                let Ok(gov) =
-                    get_gov(ctx, &request.governance_id.to_string()).await
-                else {
-                    todo!()
-                };
+                let gov = get_gov(ctx, &request.governance_id.to_string()).await?;
 
                 if let Some(max_quantity) = gov.max_creations(
                     &ledger.signature.signer.to_string(),
                     &request.schema_id,
                     request.namespace.clone(),
                 ) {
-                    let quantity = match get_quantity(
+                    let quantity = get_quantity(
                         ctx,
                         request.governance_id.to_string(),
                         request.schema_id.clone(),
                         ledger.signature.signer.to_string(),
                         request.namespace.to_string(),
                     )
-                    .await
-                    {
-                        Ok(quantity) => quantity,
-                        Err(e) => todo!(),
-                    };
+                    .await?;
 
                     if quantity >= max_quantity {
-                        todo!()
+                        return Err(ActorError::Functional("The maximum number of created subjects has been reached".to_owned()));
                     }
                 } else {
-                    todo!()
+                    return Err(ActorError::Functional("The number of subjects that can be created has not been found".to_owned()));
                 };
             }
         }
@@ -200,31 +190,16 @@ impl Distributor {
             ctx.system().get_actor(&node_path).await;
 
         let response = if let Some(node_actor) = node_actor {
-            let response = node_actor
+            node_actor
                 .ask(NodeMessage::CreateNewSubjectLedger(ledger))
-                .await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a node {}",
-                        e
-                    )));
-                }
-            }
+                .await?
         } else {
-            return Err(Error::Actor(format!(
-                "The node actor was not found in the expected path {}",
-                node_path
-            )));
+            return Err(ActorError::NotFound(node_path));
         };
         match response {
             NodeResponse::SonWasCreated => Ok(()),
-            NodeResponse::Error(e) => Err(e),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
+            NodeResponse::Error(e) => Err(ActorError::FunctionalFail(e.to_string())),
+            _ => Err(ActorError::UnexpectedMessage(node_path, "NodeResponse::SonWasCreated".to_owned())),
         }
     }
 
@@ -232,36 +207,19 @@ impl Distributor {
         &self,
         ctx: &mut ActorContext<Distributor>,
         subject_id: &str,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, ActorError> {
         let node_path = ActorPath::from("/user/node");
         let node_actor: Option<ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
 
         let response = if let Some(node_actor) = node_actor {
-            let response = node_actor
-                .ask(NodeMessage::IsAuthorized(subject_id.to_owned()))
-                .await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a node {}",
-                        e
-                    )));
-                }
-            }
+            node_actor.ask(NodeMessage::IsAuthorized(subject_id.to_owned())).await?
         } else {
-            return Err(Error::Actor(format!(
-                "The node actor was not found in the expected path {}",
-                node_path
-            )));
+            return Err(ActorError::NotFound(node_path));
         };
         match response {
             NodeResponse::IsAuthorized(know) => Ok(know),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
+            _ => Err(ActorError::UnexpectedMessage(node_path, "NodeResponse::IsAuthorized".to_owned())),
         }
     }
 
@@ -270,7 +228,7 @@ impl Distributor {
         ctx: &mut ActorContext<Distributor>,
         subject_id: &str,
         last_sn: u64,
-    ) -> Result<(Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>), Error> {
+    ) -> Result<(Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>), ActorError> {
         let subject_path =
             ActorPath::from(format!("/user/node/{}", subject_id));
         let subject_actor: Option<ActorRef<Subject>> =
@@ -278,32 +236,16 @@ impl Distributor {
 
         let response = if let Some(subject_actor) = subject_actor {
             // We ask a node
-            let response = subject_actor
+            subject_actor
                 .ask(SubjectMessage::GetLedger { last_sn })
-                .await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a subject {}",
-                        e
-                    )));
-                }
-            }
+                .await?
         } else {
-            return Err(Error::Actor(format!(
-                "The node actor was not found in the expected path {}",
-                subject_path
-            )));
+            return Err(ActorError::NotFound(subject_path));
         };
 
         match response {
             SubjectResponse::Ledger(data) => Ok(data),
-            SubjectResponse::Error(e) => todo!(),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from subject actor"
-                    .to_owned(),
-            )),
+            _ => Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Ledger".to_owned()))
         }
     }
 
@@ -349,16 +291,12 @@ impl Distributor {
                 let helper: Option<Intermediary> =
                     ctx.system().get_helper("network").await;
 
-                let mut helper = if let Some(helper) = helper {
-                    helper
-                } else {
-                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                    // return Err(ActorError::Get("Error".to_owned()))
-                    return Err(ActorError::NotHelper);
+                let Some(mut helper) = helper else {
+                    return Err(ActorError::NotHelper("network".to_owned()));
                 };
 
                 // TODO firmar la respuesta. Por ahora no, ya que si no tengo la gov en la última versión no puedo saber si es un testigo.
-                if let Err(_e) = helper
+                helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
@@ -369,11 +307,7 @@ impl Distributor {
                             },
                         },
                     })
-                    .await
-                {
-                    todo!()
-                    // error al enviar mensaje, propagar hacia arriba
-                };
+                    .await?;
 
                 return Ok(CheckGovernance::Finish);
             }
@@ -469,12 +403,8 @@ impl Distributor {
                     let helper: Option<Intermediary> =
                         ctx.system().get_helper("network").await;
 
-                    let mut helper = if let Some(helper) = helper {
-                        helper
-                    } else {
-                        // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                        // return Err(ActorError::Get("Error".to_owned()))
-                        return Err(ActorError::NotHelper);
+                    let Some(mut helper) = helper else {
+                        return Err(ActorError::NotHelper("network".to_owned()));
                     };
 
                     // TODO firmar la respuesta. Por ahora no, ya que si no tengo la gov en la última versión no puedo saber si es un testigo.
@@ -657,12 +587,9 @@ impl Handler<Distributor> for Distributor {
                 let helper: Option<Intermediary> =
                     ctx.system().get_helper("network").await;
 
-                let mut helper = if let Some(helper) = helper {
-                    helper
-                } else {
-                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                    // return Err(ActorError::Get("Error".to_owned()))
-                    return Err(ActorError::NotHelper);
+                let Some(mut helper) = helper else {
+                    let e = ActorError::NotHelper("network".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 // TODO firmar la respuesta.
@@ -751,12 +678,9 @@ impl Handler<Distributor> for Distributor {
                 let helper: Option<Intermediary> =
                     ctx.system().get_helper("network").await;
 
-                let mut helper = if let Some(helper) = helper {
-                    helper
-                } else {
-                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                    // return Err(ActorError::Get("Error".to_owned()))
-                    return Err(ActorError::NotHelper);
+                let Some(mut helper) = helper else {
+                    let e = ActorError::NotHelper("network".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 // TODO firmar la respuesta.
@@ -950,12 +874,9 @@ impl Handler<Distributor> for Distributor {
                                 let helper: Option<Intermediary> =
                                     ctx.system().get_helper("network").await;
 
-                                let mut helper = if let Some(helper) = helper {
-                                    helper
-                                } else {
-                                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                                    // return Err(ActorError::Get("Error".to_owned()))
-                                    return Err(ActorError::NotHelper);
+                                let Some(mut helper) = helper else {
+                                    let e = ActorError::NotHelper("network".to_owned());
+                                    return Err(emit_fail(ctx, e).await);
                                 };
 
                                 // Pedimos copia del ledger.
@@ -1000,12 +921,9 @@ impl Handler<Distributor> for Distributor {
                 let helper: Option<Intermediary> =
                     ctx.system().get_helper("network").await;
 
-                let mut helper = if let Some(helper) = helper {
-                    helper
-                } else {
-                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                    // return Err(ActorError::Get("Error".to_owned()))
-                    return Err(ActorError::NotHelper);
+                let Some(mut helper) = helper else {
+                    let e = ActorError::NotHelper("network".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 if let Err(_e) = helper
@@ -1187,12 +1105,10 @@ impl Handler<Distributor> for Distributor {
 
                 let helper: Option<Intermediary> =
                     ctx.system().get_helper("network").await;
-                let mut helper = if let Some(helper) = helper {
-                    helper
-                } else {
-                    // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                    // return Err(ActorError::Get("Error".to_owned()))
-                    return Err(ActorError::NotHelper);
+
+                let Some(mut helper) = helper else {
+                    let e = ActorError::NotHelper("network".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 if let Err(_e) = helper
@@ -1221,8 +1137,8 @@ impl Handler<Distributor> for Distributor {
         error: ActorError,
         ctx: &mut ActorContext<Distributor>,
     ) {
-        if let ActorError::Functional(error) = error {
-            if &error == "Max retries reached." {
+        match error {
+            ActorError::ReTry => {
                 let distribuiton_path = ctx.path().parent();
 
                 // Replication actor.
@@ -1244,8 +1160,11 @@ impl Handler<Distributor> for Distributor {
                     // Can not obtain parent actor
                     // return Err(ActorError::Exists(evaluation_path));
                 }
-                // TODO AQUï debería ir un ctx.stop()?
+                ctx.stop().await;
+            },
+            _ => {
+                // TODO error inesperado
             }
-        }
+        };
     }
 }

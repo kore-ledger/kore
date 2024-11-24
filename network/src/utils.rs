@@ -61,7 +61,7 @@ pub fn convert_boot_nodes(
             Err(_) => None,
         };
         let mut aux_addrs = vec![];
-        if peer.is_some() {
+        if let Some(peer) = peer {
             for addr in node.address {
                 let addr = match Multiaddr::from_str(&addr) {
                     Ok(addr) => Some(addr),
@@ -72,7 +72,7 @@ pub fn convert_boot_nodes(
                 }
             }
             if !aux_addrs.is_empty() {
-                boot_nodes_aux.push((peer.unwrap(), aux_addrs))
+                boot_nodes_aux.push((peer, aux_addrs))
             }
         }
     }

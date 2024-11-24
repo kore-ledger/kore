@@ -49,11 +49,6 @@ impl DigestDerivator {
             Self::SHA3_512 => sha3_512_digest(data),
         }
     }
-
-    // TODO: Pending analysis derive method
-    // pub fn derive(&self, data: &[u8]) -> DigestIdentifier {
-    //     DigestIdentifier { derivator: self.to_owned(), digest: self.digest(data) }
-    // }
 }
 
 impl Derivator for DigestDerivator {

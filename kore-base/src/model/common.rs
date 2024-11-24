@@ -1,23 +1,23 @@
-use actor::{Actor, ActorContext, ActorPath, ActorRef, Handler};
+use std::collections::HashSet;
+
+use actor::{Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler, SystemEvent};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use crate::{
-    model::SignTypesNode,
-    node::relationship::{
+    governance::{model::Roles, Quorum}, model::SignTypesNode, node::relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
-    },
-    subject::{
+    }, subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
         Metadata,
-    },
-    Error, Event as KoreEvent, EventRequestType, Governance, Node, NodeMessage,
-    NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse,
-    SubjectsTypes,
+    }, Error, Event as KoreEvent, EventRequestType, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
 };
+
+use super::Namespace;
 
 pub async fn get_gov<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
-) -> Result<Governance, Error>
+) -> Result<Governance, ActorError>
 where
     A: Actor + Handler<A>,
 {
@@ -30,41 +30,22 @@ where
 
     // We obtain the actor governance
     let response = if let Some(subject_actor) = subject_actor {
-        // We ask a governance
-        let response = subject_actor.ask(SubjectMessage::GetGovernance).await;
-        match response {
-            Ok(response) => response,
-            Err(e) => {
-                return Err(Error::Actor(format!(
-                    "Error when asking a Subject {}",
-                    e
-                )));
-            }
-        }
+        subject_actor.ask(SubjectMessage::GetGovernance).await?
     } else {
-        return Err(Error::Actor(format!(
-            "The subject actor was not found in the expected path {}",
-            subject_path
-        )));
+        return Err(ActorError::NotFound(subject_path));
     };
 
     match response {
         SubjectResponse::Governance(gov) => Ok(gov),
-        SubjectResponse::Error(error) => Err(Error::Actor(format!(
-            "The subject encountered problems when getting governance: {}",
-            error
-        ))),
-        _ => Err(Error::Actor(
-            "An unexpected response has been received from node actor"
-                .to_owned(),
-        )),
+        SubjectResponse::Error(error) => Err(ActorError::Functional(error.to_string())),
+        _ => Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Governance".to_owned())),
     }
 }
 
 pub async fn get_metadata<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
-) -> Result<Metadata, Error>
+) -> Result<Metadata, ActorError>
 where
     A: Actor + Handler<A>,
 {
@@ -73,37 +54,21 @@ where
         ctx.system().get_actor(&subject_path).await;
 
     let response = if let Some(subject_actor) = subject_actor {
-        // We ask a node
-        let response = subject_actor.ask(SubjectMessage::GetMetadata).await;
-        match response {
-            Ok(response) => response,
-            Err(e) => {
-                return Err(Error::Actor(format!(
-                    "Error when asking a subject {}",
-                    e
-                )));
-            }
-        }
+        subject_actor.ask(SubjectMessage::GetMetadata).await?
     } else {
-        return Err(Error::Actor(format!(
-            "The node actor was not found in the expected path {}",
-            subject_path
-        )));
+        return Err(ActorError::NotFound(subject_path));
     };
 
     match response {
         SubjectResponse::Metadata(metadata) => Ok(metadata),
-        _ => Err(Error::Actor(
-            "An unexpected response has been received from subject actor"
-                .to_owned(),
-        )),
+        _ => Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Metadata".to_owned())),
     }
 }
 
 pub async fn get_sign<A>(
     ctx: &mut ActorContext<A>,
     sign_type: SignTypesNode,
-) -> Result<Signature, Error>
+) -> Result<Signature, ActorError>
 where
     A: Actor + Handler<A>,
 {
@@ -113,25 +78,26 @@ where
 
     // We obtain the validator
     let node_response = if let Some(node_actor) = node_actor {
-        match node_actor.ask(NodeMessage::SignRequest(sign_type)).await {
-            Ok(response) => response,
-            Err(_e) => todo!(),
-        }
+        node_actor.ask(NodeMessage::SignRequest(sign_type)).await?
     } else {
-        todo!()
+        return Err(ActorError::NotFound(node_path));
     };
 
     match node_response {
         NodeResponse::SignRequest(signature) => Ok(signature),
-        NodeResponse::Error(_) => todo!(),
-        _ => todo!(),
+        NodeResponse::Error(e) => {
+            Err(ActorError::Functional(e.to_string()))
+        },
+        _ => {
+            Err(ActorError::UnexpectedMessage(node_path, "NodeResponse::SignRequest".to_owned()))
+        },
     }
 }
 
 pub async fn update_event<A>(
     ctx: &mut ActorContext<A>,
     event: Signed<KoreEvent>,
-) -> Result<(), Error>
+) -> Result<(), ActorError>
 where
     A: Actor + Handler<A>,
 {
@@ -143,19 +109,15 @@ where
         ctx.system().get_actor(&ledger_event_path).await;
 
     let response = if let Some(ledger_event_actor) = ledger_event_actor {
-        match ledger_event_actor
+        ledger_event_actor
             .ask(LedgerEventMessage::UpdateLastEvent { event })
-            .await
-        {
-            Ok(res) => res,
-            Err(_e) => todo!(),
-        }
+            .await?
     } else {
-        todo!()
+        return Err(ActorError::NotFound(ledger_event_path));
     };
 
     if let LedgerEventResponse::Error(e) = response {
-        todo!()
+        return Err(ActorError::Functional(e.to_string()));
     };
 
     Ok(())
@@ -165,7 +127,7 @@ pub async fn change_temp_subj<A>(
     ctx: &mut ActorContext<A>,
     subject_id: String,
     key_identifier: String,
-) -> Result<(), Error>
+) -> Result<(), ActorError>
 where
     A: Actor + Handler<A>,
 {
@@ -174,17 +136,14 @@ where
         ctx.system().get_actor(&node_path).await;
 
     if let Some(node_actor) = node_actor {
-        if let Err(_e) = node_actor
+        node_actor
             .tell(NodeMessage::RegisterSubject(SubjectsTypes::ChangeTemp {
                 subject_id,
                 key_identifier,
             }))
-            .await
-        {
-            todo!()
-        }
+            .await?;
     } else {
-        todo!()
+        return Err(ActorError::NotFound(node_path));
     }
     Ok(())
 }
@@ -195,7 +154,7 @@ pub async fn get_quantity<A>(
     schema: String,
     owner: String,
     namespace: String,
-) -> Result<usize, Error>
+) -> Result<usize, ActorError>
 where
     A: Actor + Handler<A>,
 {
@@ -204,27 +163,23 @@ where
         ctx.system().get_actor(&relation_path).await;
 
     let response = if let Some(relation_actor) = relation_actor {
-        let Ok(result) = relation_actor
+        relation_actor
             .ask(RelationShipMessage::GetSubjectsCount(OwnerSchema {
                 owner,
                 gov,
                 schema,
                 namespace,
             }))
-            .await
-        else {
-            todo!()
-        };
-        result
+            .await?
     } else {
-        todo!()
+        return Err(ActorError::NotFound(relation_path));
     };
 
     if let RelationShipResponse::Count(quantity) = response {
-        return Ok(quantity);
+        Ok(quantity)
     } else {
-        todo!()
-    };
+        Err(ActorError::UnexpectedMessage(relation_path, "RelationShipResponse::Count".to_owned()))
+    }
 }
 
 pub async fn register_relation<A>(
@@ -235,7 +190,7 @@ pub async fn register_relation<A>(
     subject: String,
     namespace: String,
     max_quantity: usize,
-) -> Result<(), Error>
+) -> Result<(), ActorError>
 where
     A: Actor + Handler<A>,
 {
@@ -244,7 +199,7 @@ where
         ctx.system().get_actor(&relation_path).await;
 
     let response = if let Some(relation_actor) = relation_actor {
-        let Ok(result) = relation_actor
+        relation_actor
             .ask(RelationShipMessage::RegisterNewSubject {
                 data: OwnerSchema {
                     owner,
@@ -255,19 +210,14 @@ where
                 subject,
                 max_quantity,
             })
-            .await
-        else {
-            todo!()
-        };
-        result
+            .await?
     } else {
-        todo!()
+        return Err(ActorError::NotFound(relation_path));
     };
 
     match response {
         RelationShipResponse::None => Ok(()),
-        RelationShipResponse::Error(e) => Err(e),
-        _ => todo!(),
+        _ => Err(ActorError::UnexpectedMessage(relation_path, "RelationShipResponse::None".to_owned())),
     }
 }
 
@@ -278,7 +228,7 @@ pub async fn delete_relation<A>(
     owner: String,
     subject: String,
     namespace: String,
-) -> Result<(), Error>
+) -> Result<(), ActorError>
 where
     A: Actor + Handler<A>,
 {
@@ -287,7 +237,7 @@ where
         ctx.system().get_actor(&relation_path).await;
 
     let response = if let Some(relation_actor) = relation_actor {
-        let Ok(result) = relation_actor
+        relation_actor
             .ask(RelationShipMessage::DeleteSubject {
                 data: OwnerSchema {
                     owner,
@@ -297,20 +247,16 @@ where
                 },
                 subject,
             })
-            .await
-        else {
-            todo!()
-        };
-        result
+            .await?
     } else {
-        todo!()
+        return Err(ActorError::NotFound(relation_path));
     };
 
     if let RelationShipResponse::None = response {
-        return Ok(());
+        Ok(())
     } else {
-        todo!()
-    };
+        Err(ActorError::UnexpectedMessage(relation_path, "RelationShipResponse::None".to_owned()))
+    }
 }
 
 pub fn verify_protocols_state(
@@ -326,27 +272,56 @@ pub fn verify_protocols_state(
         | EventRequestType::Confirm
         | EventRequestType::EOL => {
             if approve.is_some() || eval.is_some() || approval_require {
-                todo!()
+                return Err(Error::Protocols("In create, transferm, confirm and eol request, approve and eval must be None and approval require must be false".to_owned()));
             }
             Ok(val)
         }
         EventRequestType::Fact => {
-            let eval = if let Some(eval) = eval { eval } else { todo!() };
+            let Some(eval) = eval else { 
+                return Err(Error::Protocols("In Fact even eval must be Some".to_owned()));
+            };
 
             if approval_require {
-                let approve = if let Some(approve) = approve {
-                    approve
-                } else {
-                    todo!()
+                 let Some(approve) = approve else {
+                    return Err(Error::Protocols("In Fact even if approval was required, approve must be Some".to_owned()));
                 };
                 Ok(eval && approve && val)
             } else {
-                if let Some(_approve) = approve {
-                    todo!()
+                if approve.is_some() {
+                    return Err(Error::Protocols("In Fact even if approval was not required, approve must be None".to_owned()));
                 }
 
                 Ok(val && eval)
             }
         }
     }
+}
+
+
+pub async fn get_signers_quorum_gov_version<A>(
+    ctx: &mut ActorContext<A>,
+    governance: &str,
+    schema_id: &str,
+    namespace: Namespace,
+    role: Roles
+) -> Result<(HashSet<KeyIdentifier>, Quorum, u64), ActorError> 
+where 
+    A: Actor + Handler<A>,
+{
+    let gov = get_gov(ctx, governance).await?;
+    let (signers, quorum) = gov.get_quorum_and_signers(role, schema_id, namespace)?;
+    Ok((signers, quorum, gov.version))
+}
+
+pub async fn emit_fail<A>(
+    ctx: &mut ActorContext<A>,
+    error: ActorError,
+) -> ActorError
+where
+    A: Actor + Handler<A>,
+{
+    if let Err(e) = ctx.emit_fail(error.clone()).await {
+        ctx.system().send_event(SystemEvent::StopSystem).await;
+    };
+    error
 }

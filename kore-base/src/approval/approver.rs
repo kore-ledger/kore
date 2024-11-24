@@ -2,9 +2,9 @@ use crate::{
     db::Storable,
     intermediary::Intermediary,
     model::{
-        common::{get_gov, get_sign},
-        network::RetryNetwork,
-        SignTypesNode,
+        common::{emit_fail, get_gov, get_sign},
+        network::{RetryNetwork, TimeOutResponse},
+        SignTypesNode, TimeStamp,
     },
     ActorMessage, Error, EventRequest, NetworkMessage, Signed, Subject,
     SubjectMessage, SubjectResponse,
@@ -12,7 +12,7 @@ use crate::{
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
     ExponentialBackoffStrategy, Handler, Message, Response, RetryActor,
-    RetryMessage, Strategy,
+    RetryMessage, Strategy, SystemEvent,
 };
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
@@ -124,7 +124,7 @@ impl Approver {
         ctx: &mut ActorContext<Approver>,
         subject_id: &str,
         gov_version: u64,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let governance = get_gov(ctx, subject_id).await?;
 
         match gov_version.cmp(&governance.version) {
@@ -151,29 +151,22 @@ impl Approver {
         ctx: &mut ActorContext<Approver>,
         request: ApprovalReq,
         response: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let sign_type = SignTypesNode::ApprovalSignature(ApprovalSignature {
             request: request.clone(),
             response,
         });
 
-        let signature = match get_sign(ctx, sign_type).await {
-            Ok(signature) => signature,
-            Err(_e) => todo!(),
-        };
+        let signature = get_sign(ctx, sign_type).await?;
 
         if let Some(info) = self.info.clone() {
             let res = ApprovalRes::Response(signature, response);
 
-            let signature = match get_sign(
+            let signature = get_sign(
                 ctx,
                 SignTypesNode::ApprovalRes(Box::new(res.clone())),
             )
-            .await
-            {
-                Ok(signature) => signature,
-                Err(_e) => todo!(),
-            };
+            .await?;
 
             let signed_response: Signed<ApprovalRes> = Signed {
                 content: res,
@@ -182,13 +175,8 @@ impl Approver {
 
             let helper: Option<Intermediary> =
                 ctx.system().get_helper("network").await;
-            let mut helper = if let Some(helper) = helper {
-                helper
-            } else {
-                // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                // return Err(ActorError::Get("Error".to_owned()))
-                // return Err(ActorError::NotHelper);
-                todo!()
+            let Some(mut helper) = helper else {
+                return Err(ActorError::NotHelper("network".to_string()));
             };
             let new_info = ComunicateInfo {
                 reciver: info.sender,
@@ -202,7 +190,7 @@ impl Approver {
                 schema: info.schema.clone(),
             };
 
-            if let Err(_e) = helper
+            helper
                 .send_command(network::CommandHelper::SendMessage {
                     message: NetworkMessage {
                         info: new_info,
@@ -211,10 +199,7 @@ impl Approver {
                         },
                     },
                 })
-                .await
-            {
-                // error al enviar mensaje, propagar hacia arriba TODO
-            };
+                .await?;
         } else {
             // Approval Path
             let approval_path = ActorPath::from(format!(
@@ -226,19 +211,16 @@ impl Approver {
                 ctx.system().get_actor(&approval_path).await;
             // Send response of validation to parent
             if let Some(approval_actor) = approval_actor {
-                if let Err(e) = approval_actor
+                approval_actor
                     .tell(ApprovalMessage::Response {
                         approval_res: ApprovalRes::Response(
                             signature, response,
                         ),
                         sender: self.node.clone(),
                     })
-                    .await
-                {
-                    todo!()
-                };
+                    .await?;
             } else {
-                todo!()
+                return Err(ActorError::NotFound(approval_path));
             };
         };
 
@@ -352,10 +334,8 @@ impl Handler<Approver> for Approver {
                 }
             }
             ApproverMessage::ChangeResponse { response } => {
-                let state = if let Some(state) = self.state.clone() {
-                    state
-                } else {
-                    todo!()
+                let Some(state) = self.state.clone() else {
+                    return Ok(ApproverResponse::None);
                 };
 
                 if state == ApprovalState::Pending {
@@ -376,18 +356,15 @@ impl Handler<Approver> for Approver {
                                 (false, ApprovalState::RespondedRejected)
                             };
 
-                        let approval_req =
-                            if let Some(approval_req) = self.request.clone() {
-                                approval_req
-                            } else {
-                                todo!()
-                            };
+                        let Some(approval_req) = self.request.clone() else {
+                            return Ok(ApproverResponse::None);
+                        };
 
-                        if let Err(_e) = self
+                        if let Err(e) = self
                             .send_response(ctx, approval_req, response)
                             .await
                         {
-                            todo!()
+                            return Err(emit_fail(ctx, e).await);
                         };
 
                         self.on_event(
@@ -399,8 +376,6 @@ impl Handler<Approver> for Approver {
                         )
                         .await;
                     }
-                } else {
-                    todo!()
                 }
             }
             // aprobar si esta por defecto
@@ -410,22 +385,9 @@ impl Handler<Approver> for Approver {
                 our_key,
             } => {
                 if request_id != self.request_id {
-                    let EventRequest::Fact(state_data) =
-                        &approval_req.event_request.content
-                    else {
-                        // Manejar, solo se evaluan los eventos de tipo fact TODO
-                        todo!()
-                    };
-
-                    if let Err(_e) = self
-                        .check_governance(
-                            ctx,
-                            &approval_req.subject_id.to_string(),
-                            approval_req.gov_version,
-                        )
-                        .await
-                    {
-                        todo!()
+                    if !approval_req.event_request.content.is_fact_event() {
+                        let e = ActorError::FunctionalFail("An attempt is being made to approve an event that is not fact.".to_owned());
+                        return Err(emit_fail(ctx, e).await);
                     }
 
                     if self.pass_votation == VotationType::AlwaysAccept {
@@ -438,7 +400,9 @@ impl Handler<Approver> for Approver {
 
                         let signature = match get_sign(ctx, sign_type).await {
                             Ok(signature) => signature,
-                            Err(_e) => todo!(),
+                            Err(e) => {
+                                return Err(emit_fail(ctx, e).await);
+                            }
                         };
 
                         // Approval Path
@@ -451,17 +415,20 @@ impl Handler<Approver> for Approver {
                             ctx.system().get_actor(&approval_path).await;
                         // Send response of validation to parent
                         if let Some(approval_actor) = approval_actor {
-                            approval_actor
+                            if let Err(e) = approval_actor
                                 .tell(ApprovalMessage::Response {
                                     approval_res: ApprovalRes::Response(
                                         signature, true,
                                     ),
                                     sender: our_key,
                                 })
-                                .await?
+                                .await
+                            {
+                                return Err(emit_fail(ctx, e).await);
+                            }
                         } else {
-                            // Can not obtain parent actor
-                            return Err(ActorError::Exists(approval_path));
+                            let e = ActorError::NotFound(approval_path);
+                            return Err(emit_fail(ctx, e).await);
                         }
 
                         self.on_event(
@@ -502,8 +469,10 @@ impl Handler<Approver> for Approver {
                 {
                     event.subject_id
                 } else {
-                    todo!()
+                    let e = ActorError::FunctionalFail("An attempt is being made to approve an event that is not fact.".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
+
                 let reciver_actor =
                     format!("/user/node/{}/approver", subject_id);
 
@@ -528,20 +497,19 @@ impl Handler<Approver> for Approver {
 
                 let retry_actor = RetryActor::new(target, message, strategy);
 
-                let retry = if let Ok(retry) = ctx
+                let Ok(retry) = ctx
                     .create_child::<RetryActor<RetryNetwork>>(
                         "retry",
                         retry_actor,
                     )
                     .await
-                {
-                    retry
-                } else {
-                    todo!()
+                else {
+                    let e = ActorError::Create(ctx.path().clone(), "retry".to_string());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
-                if let Err(_e) = retry.tell(RetryMessage::Retry).await {
-                    todo!()
+                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
             // Finaliza los retries
@@ -552,11 +520,11 @@ impl Handler<Approver> for Approver {
                 if request_id == self.request_id {
                     if self.node != approval_res.signature.signer {
                         // Nos llegó a una aprobación de un nodo incorrecto!
-                        todo!()
+                        return Ok(ApproverResponse::None);
                     }
                     if let Err(_e) = approval_res.verify() {
                         // Hay error criptográfico en la respuesta
-                        todo!()
+                        return Ok(ApproverResponse::None);
                     }
 
                     // Approval path.
@@ -567,36 +535,51 @@ impl Handler<Approver> for Approver {
                         ctx.system().get_actor(&approval_path).await;
 
                     if let Some(approval_actor) = approval_actor {
-                        if let Err(_e) = approval_actor
+                        if let Err(e) = approval_actor
                             .tell(ApprovalMessage::Response {
                                 approval_res: approval_res.content,
                                 sender: self.node.clone(),
                             })
                             .await
                         {
-                            // TODO error, no se puede enviar la response. Parar
+                            return Err(emit_fail(ctx, e).await);
                         }
                     } else {
-                        // TODO no se puede obtener aprobación! Parar.
-                        // Can not obtain parent actor
+                        let e = ActorError::NotFound(approval_path);
+                        return Err(emit_fail(ctx, e).await);
                     }
 
-                    let retry = if let Some(retry) =
-                        ctx.get_child::<RetryActor<RetryNetwork>>("retry").await
-                    {
-                        retry
-                    } else {
-                        todo!()
-                    };
-                    if let Err(_e) = retry.tell(RetryMessage::End).await {
-                        todo!()
-                    };
+                    'retry: {
+                        let Some(retry) = ctx
+                            .get_child::<RetryActor<RetryNetwork>>("retry")
+                            .await
+                        else {
+                            // Aquí me da igual, porque al parar este actor para el hijo
+                            break 'retry;
+                        };
+
+                        if let Err(_e) = retry.tell(RetryMessage::End).await {
+                            // Aquí me da igual, porque al parar este actor para el hijo
+                            break 'retry;
+                        };
+                    }
+
                     ctx.stop().await;
                 } else {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
                 }
             }
             ApproverMessage::NetworkRequest { approval_req, info } => {
+                let info_subject_path =
+                    ActorPath::from(info.reciver_actor.clone()).parent().key();
+                // Nos llegó una approvación donde en la request se indica un sujeto pero en el info otro
+                // Posible ataque.
+                if info_subject_path
+                    != approval_req.content.subject_id.to_string()
+                {
+                    return Ok(ApproverResponse::None);
+                }
+
                 if info.request_id != self.request_id {
                     let subject_path = ActorPath::from(format!(
                         "/user/node/{}",
@@ -610,43 +593,41 @@ impl Handler<Approver> for Approver {
                         match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
-                            Err(_e) => todo!(),
+                            Err(e) => {
+                                return Err(emit_fail(ctx, e).await);
+                            }
                         }
                     } else {
-                        todo!()
+                        let e = ActorError::NotFound(subject_path);
+                        return Err(emit_fail(ctx, e).await);
                     };
 
                     let subject_owner = match response {
                         SubjectResponse::Owner(owner) => owner,
-                        _ => todo!(),
+                        _ => {
+                            let e = ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Owner".to_owned());
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
 
                     if subject_owner != approval_req.signature.signer {
                         // Error nos llegó una evaluation req de un nodo el cual no es el dueño
-                        todo!()
+                        return Ok(ApproverResponse::None);
                     }
 
                     if let Err(_e) = approval_req.verify() {
                         // Hay errores criptográficos
-                        todo!()
+                        return Ok(ApproverResponse::None);
                     }
 
-                    let helper: Option<Intermediary> =
-                        ctx.system().get_helper("network").await;
-                    let helper = if let Some(helper) = helper {
-                        helper
-                    } else {
-                        // TODO error no se puede acceder al helper, cambiar este error. este comando se envía con Tell, por lo tanto el error hay que propagarlo hacia arriba directamente, no con
-                        // return Err(ActorError::Get("Error".to_owned()))
-                        return Err(ActorError::NotHelper);
-                    };
-
-                    let EventRequest::Fact(_state_data) =
-                        &approval_req.content.event_request.content
-                    else {
-                        // Manejar, solo se aprueban los eventos de tipo fact TODO
-                        todo!()
-                    };
+                    if !approval_req
+                        .content
+                        .event_request
+                        .content
+                        .is_fact_event()
+                    {
+                        return Ok(ApproverResponse::None);
+                    }
 
                     if let Err(_e) = self
                         .check_governance(
@@ -656,11 +637,12 @@ impl Handler<Approver> for Approver {
                         )
                         .await
                     {
-                        todo!()
+                        let e =  ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Owner".to_owned());
+                        return Err(emit_fail(ctx, e).await);
                     }
 
                     if self.pass_votation == VotationType::AlwaysAccept {
-                        if let Err(_e) = self
+                        if let Err(e) = self
                             .send_response(
                                 ctx,
                                 approval_req.content.clone(),
@@ -668,7 +650,7 @@ impl Handler<Approver> for Approver {
                             )
                             .await
                         {
-                            todo!()
+                            return Err(emit_fail(ctx, e).await);
                         };
                         self.on_event(
                             ApproverEvent::SafeState {
@@ -698,9 +680,9 @@ impl Handler<Approver> for Approver {
                     let state = if let Some(state) = self.state.clone() {
                         state
                     } else {
-                        todo!()
+                        // Si tiene un request debería tener un state
+                        return Ok(ApproverResponse::None);
                     };
-                    // TODO refactorizar, este código también se envía en network_req.
                     let response = if ApprovalState::RespondedAccepted == state
                     {
                         true
@@ -714,14 +696,15 @@ impl Handler<Approver> for Approver {
                         if let Some(approval_req) = self.request.clone() {
                             approval_req
                         } else {
-                            todo!()
+                            // Si tiene un request debería tener un state
+                            return Ok(ApproverResponse::None);
                         };
 
-                    if let Err(_e) = self
+                    if let Err(e) = self
                         .send_response(ctx, approval_req.clone(), response)
                         .await
                     {
-                        todo!()
+                        return Err(emit_fail(ctx, e).await);
                     };
                 }
             }
@@ -735,10 +718,52 @@ impl Handler<Approver> for Approver {
         ctx: &mut ActorContext<Approver>,
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
-            println!("{}", e);
+            //TODO
         };
 
-        if let Err(e) = ctx.publish_event(event).await {};
+        if let Err(e) = ctx.publish_event(event).await {
+            // TODO
+        };
+    }
+
+    async fn on_child_error(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Approver>,
+    ) {
+        match error {
+            ActorError::ReTry => {
+                let approval_path = ctx.path().parent();
+
+                let approval_actor: Option<ActorRef<Approval>> =
+                    ctx.system().get_actor(&approval_path).await;
+
+                if let Some(approval_actor) = approval_actor {
+                    if let Err(e) = approval_actor
+                        .tell(ApprovalMessage::Response {
+                            approval_res: ApprovalRes::TimeOut(
+                                TimeOutResponse {
+                                    re_trys: 3,
+                                    timestamp: TimeStamp::now(),
+                                    who: self.node.clone(),
+                                },
+                            ),
+                            sender: self.node.clone(),
+                        })
+                        .await
+                    {
+                        emit_fail(ctx, e).await;
+                    }
+                } else {
+                    let e = ActorError::NotFound(approval_path);
+                    emit_fail(ctx, e).await;
+                }
+                ctx.stop().await;
+            }
+            _ => {
+                // TODO Error inesperado o que no debería ocurrir.
+            }
+        };
     }
 }
 

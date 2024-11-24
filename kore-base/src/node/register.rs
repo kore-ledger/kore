@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use store::store::PersistentActor;
 
-use crate::{db::Storable, request::state};
+use crate::{db::Storable, error::Error, request::state};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RegisterData {
@@ -27,14 +27,29 @@ pub struct Register {
 
 #[derive(Debug, Clone)]
 pub enum RegisterMessage {
-    RegisterGov { gov_id: String, active: bool },
-    RegisterSubj { gov_id: String, data: RegisterData },
+    GetAllGov,
+    GetSubj {
+        gov_id: String,
+        active: Option<bool>,
+        schema: Option<String>,
+    },
+    RegisterGov {
+        gov_id: String,
+        active: bool,
+    },
+    RegisterSubj {
+        gov_id: String,
+        data: RegisterData,
+    },
 }
 
 impl Message for RegisterMessage {}
 
 #[derive(Debug, Clone)]
 pub enum RegisterResponse {
+    Govs { governances: Vec<String> },
+    Subjs { subjects: Vec<String> },
+    Error(Error),
     None,
 }
 
@@ -78,6 +93,42 @@ impl Handler<Register> for Register {
         ctx: &mut actor::ActorContext<Register>,
     ) -> Result<RegisterResponse, ActorError> {
         match msg {
+            RegisterMessage::GetAllGov => {
+                return Ok(RegisterResponse::Govs {
+                    governances: self.register_gov.keys().cloned().collect(),
+                })
+            }
+            RegisterMessage::GetSubj {
+                gov_id,
+                active,
+                schema,
+            } => {
+                let subjects = self.register_subj.get(&gov_id.to_string());
+                if let Some(subjects) = subjects {
+                    let mut subj = vec![];
+                    for subject in subjects {
+                        if let Some(active) = active.clone() {
+                            if subject.active != active {
+                                continue;
+                            };
+                        };
+
+                        if let Some(schema) = schema.clone() {
+                            if subject.schema != schema {
+                                continue;
+                            }
+                        }
+
+                        subj.push(subject.subject_id.clone());
+                    }
+
+                    return Ok(RegisterResponse::Subjs { subjects: subj });
+                } else {
+                    return Ok(RegisterResponse::Error(Error::Register(
+                        "Governance id is not registered".to_owned(),
+                    )));
+                }
+            }
             RegisterMessage::RegisterGov { gov_id, active } => {
                 self.on_event(
                     RegisterEvent::RegisterGov { gov_id, active },

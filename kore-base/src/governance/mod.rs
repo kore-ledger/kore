@@ -16,6 +16,7 @@ use crate::{
     Error,
 };
 
+use actor::Error as ActorError;
 use model::Roles;
 pub use schema::schema;
 
@@ -279,25 +280,18 @@ impl Governance {
         (signers, not_members)
     }
 
-    fn get_quorum(&self, role: Roles, schema: &str) -> Result<Quorum, Error> {
+    fn get_quorum(&self, role: Roles, schema: &str) -> Option<Quorum> {
         let policies = self.policies.iter().find(|e| e.id == schema);
         if let Some(policies) = policies {
             match role {
-                Roles::APPROVER => Ok(policies.approve.quorum.clone()),
-                Roles::EVALUATOR => Ok(policies.evaluate.quorum.clone()),
-                Roles::VALIDATOR => Ok(policies.validate.quorum.clone()),
-                _ => {
-                    error!("");
-                    Err(Error::InvalidQuorum(
-                        "No Validate quorum found for this scheme".to_owned(),
-                    ))
-                }
+                Roles::APPROVER => Some(policies.approve.quorum.clone()),
+                Roles::EVALUATOR => Some(policies.evaluate.quorum.clone()),
+                Roles::VALIDATOR => Some(policies.validate.quorum.clone()),
+                _ => None
+                
             }
         } else {
-            error!("");
-            Err(Error::InvalidQuorum(
-                "No Evaluate quorum found for this scheme".to_owned(),
-            ))
+            None
         }
     }
 
@@ -306,14 +300,14 @@ impl Governance {
         role: Roles,
         schema: &str,
         namespace: Namespace,
-    ) -> Result<(HashSet<KeyIdentifier>, Quorum), Error> {
+    ) -> Result<(HashSet<KeyIdentifier>, Quorum), ActorError> {
         let (signers, _not_members) =
             self.get_signers(role.clone(), schema, namespace);
-        let quorum = self.get_quorum(role, schema);
-        match quorum {
-            Ok(quorum) => Ok((signers, quorum)),
-            Err(_e) => Err(_e),
-        }
+        let Some(quorum) = self.get_quorum(role.clone(), schema) else {
+            return Err(ActorError::Functional(format!("No quorum found for role {} and schema {}", role, schema)));
+        };
+
+        Ok((signers, quorum))
     }
 
     pub fn schemas(&self, role: Roles, our_id: &str) -> Vec<Schema> {

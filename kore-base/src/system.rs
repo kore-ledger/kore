@@ -40,11 +40,10 @@ pub async fn system(
     let db_manager_actor = system
         .create_root_actor("db_manager", db_manager)
         .await
-        .unwrap();
+        .map_err(|e| Error::System(e.to_string()))?;
 
-    let ext_db = ExternalDB::build(config.external_db, db_manager_actor)
-        .await
-        .unwrap();
+    let ext_db =
+        ExternalDB::build(config.external_db, db_manager_actor).await?;
 
     system.add_helper("ext_db", ext_db).await;
 

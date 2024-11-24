@@ -186,11 +186,17 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         if addresses.is_empty() {
             // Listen on all tcp addresses.
             if swarm
-                .listen_on("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+                .listen_on(
+                    "/ip4/0.0.0.0/tcp/0"
+                        .parse::<Multiaddr>()
+                        .map_err(|e| Error::Address(e.to_string()))?,
+                )
                 .is_err()
             {
                 error!(TARGET_WORKER, "Error listening on all interfaces");
-                panic!("Error listening on all interfaces");
+                return Err(Error::Address(
+                    "Error listening on all interfaces".to_owned(),
+                ));
             }
         } else {
             // Listen on the external addresses.
@@ -583,8 +589,8 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             SwarmEvent::Behaviour(BehaviourEvent::Discovered(_)) => {}
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 info!(TARGET_WORKER, "Connection closed to peer {}", peer_id);
-                if cause.is_some() {
-                    match cause.unwrap() {
+                if let Some(cause) = cause {
+                    match cause {
                         swarm::ConnectionError::KeepAliveTimeout => {
                             if let Some(pos) = self
                                 .boot_nodes

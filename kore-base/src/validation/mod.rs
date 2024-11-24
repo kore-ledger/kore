@@ -14,7 +14,7 @@ use crate::{
     db::Storable,
     governance::{model::Roles, Quorum},
     model::{
-        common::get_sign,
+        common::{get_sign, get_signers_quorum_gov_version},
         event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
         Namespace, SignTypesNode, SignTypesSubject,
@@ -88,7 +88,7 @@ impl Validation {
         &self,
         ctx: &mut ActorContext<Validation>,
         validation_info: ValidationInfo,
-    ) -> Result<(ValidationReq, ValidationProof), Error> {
+    ) -> Result<(ValidationReq, ValidationProof), ActorError> {
         let prev_evet_hash =
             if let Some(previous_proof) = self.previous_proof.clone() {
                 previous_proof.event_hash
@@ -98,7 +98,7 @@ impl Validation {
 
         // Create proof from validation info
         let proof =
-            ValidationProof::from_info(validation_info, prev_evet_hash)?;
+            ValidationProof::from_info(validation_info, prev_evet_hash).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
 
         // Subject path.
         let subject_path = ctx.path().parent();
@@ -109,36 +109,20 @@ impl Validation {
 
         // We obtain the actor subject
         let response = if let Some(subject_actor) = subject_actor {
-            // We ask a subject
-            let response = subject_actor
+            subject_actor
                 .ask(SubjectMessage::SignRequest(Box::new(
                     SignTypesSubject::Validation(proof.clone()),
                 )))
-                .await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a subject {}",
-                        e
-                    )));
-                }
-            }
+                .await?
         } else {
-            return Err(Error::Actor(format!(
-                "The subject actor was not found in the expected path {}",
-                subject_path
-            )));
+            return Err(ActorError::NotFound(subject_path));
         };
 
         // We handle the possible responses of subject
         let subject_signature = match response {
             SubjectResponse::SignRequest(sign) => sign,
-            SubjectResponse::Error(error) => {
-                return Err(Error::Actor(format!("The subject encountered problems when signing the proof: {}",error)));
-            }
             _ => {
-                return Err(Error::Actor("An unexpected response has been received from subject actor".to_owned()));
+                return Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::SignRequest".to_owned()));
             }
         };
 
@@ -153,60 +137,6 @@ impl Validation {
             },
             proof,
         ))
-    }
-
-    async fn get_signers_and_quorum(
-        &self,
-        ctx: &mut ActorContext<Validation>,
-        governance: DigestIdentifier,
-        schema_id: &str,
-        namespace: Namespace,
-    ) -> Result<(HashSet<KeyIdentifier>, Quorum), Error> {
-        // Governance path.
-        let governance_path =
-            ActorPath::from(format!("/user/node/{}", governance));
-        // Governance actor.
-        let governance_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&governance_path).await;
-
-        // We obtain the actor governance
-        let response = if let Some(governance_actor) = governance_actor {
-            // We ask a governance
-            let response =
-                governance_actor.ask(SubjectMessage::GetGovernance).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path /user/node/{}",
-                governance
-            )));
-        };
-
-        // We handle the possible responses of governance
-        match response {
-            SubjectResponse::Governance(gov) => {
-                match gov.get_quorum_and_signers(Roles::VALIDATOR, schema_id, namespace) {
-                    Ok(quorum_and_signers) => Ok(quorum_and_signers),
-                    Err(error) => Err(Error::Actor(format!("The governance encountered problems when getting signers and quorum: {}",error)))
-                }
-            }
-            SubjectResponse::Error(error) => Err(Error::Actor(format!(
-                "The subject encountered problems when getting governance: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
-        }
     }
 
     async fn create_validators(
@@ -378,25 +308,26 @@ impl Handler<Validation> for Validation {
                         Ok(validation_req) => validation_req,
                         Err(e) => {
                             // Mensaje al padre de error return Ok(ValidationResponse::Error(e))
-                            return Ok(ValidationResponse::Error(e));
+                            todo!()
                         }
                     };
                 self.actual_proof = proof;
 
                 // Get signers and quorum
-                let (signers, quorum) = match self
-                    .get_signers_and_quorum(
+                let (signers, quorum,_) = match
+                    get_signers_quorum_gov_version(
                         ctx,
-                        info.metadata.subject_id.clone(),
+                        &info.metadata.subject_id.to_string(),
                         &info.metadata.schema_id,
                         info.metadata.namespace,
+                        Roles::VALIDATOR
                     )
                     .await
                 {
                     Ok(signers_quorum) => signers_quorum,
                     Err(e) => {
                         // Mensaje al padre de error return Ok(ValidationResponse::Error(e))
-                        return Ok(ValidationResponse::Error(e));
+                        todo!()
                     }
                 };
 

@@ -7,7 +7,7 @@ pub(crate) mod error;
 #[cfg(feature = "secp256k1")]
 pub(crate) mod secp256k1;
 
-use std::io::Read;
+use std::{fmt::format, io::Read};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use identifier::error::Error;
@@ -56,13 +56,25 @@ impl KeyPair {
         hex_key: &str,
     ) -> Result<KeyPair, Error> {
         match derivator {
-            KeyDerivator::Ed25519 => Ok(KeyPair::Ed25519(
-                Ed25519KeyPair::from_secret_key(&hex::decode(hex_key).unwrap()),
-            )),
+            KeyDerivator::Ed25519 => {
+                Ok(KeyPair::Ed25519(Ed25519KeyPair::from_secret_key(
+                    &hex::decode(hex_key).map_err(|e| {
+                        Error::KeyPair(format!(
+                            "Error Edd25519 in from_hex: {}",
+                            e
+                        ))
+                    })?,
+                )))
+            }
             #[cfg(feature = "secp256k1")]
             KeyDerivator::Secp256k1 => {
                 Ok(KeyPair::Secp256k1(Secp256k1KeyPair::from_secret_key(
-                    &hex::decode(hex_key).unwrap(),
+                    &hex::decode(hex_key).map_err(|e| {
+                        Error::KeyPair(format!(
+                            "Error Secp256k1 in from_hex: {}",
+                            e
+                        ))
+                    })?,
                 )))
             }
         }
@@ -303,13 +315,25 @@ impl BorshSerialize for KeyPair {
         match &self {
             KeyPair::Ed25519(x) => {
                 BorshSerialize::serialize(&0u8, writer)?;
-                let a: [u8; 32] = x.secret_key_bytes().try_into().unwrap();
+                let a: [u8; 32] =
+                    x.secret_key_bytes().try_into().map_err(|e| {
+                        std::io::Error::other(format!(
+                            "Cant not convert {:?} to [u8;32]",
+                            e
+                        ))
+                    })?;
                 BorshSerialize::serialize(&a, writer)
             }
             #[cfg(feature = "secp256k1")]
             KeyPair::Secp256k1(x) => {
                 BorshSerialize::serialize(&1u8, writer)?;
-                let a: [u8; 32] = x.secret_key_bytes().try_into().unwrap();
+                let a: [u8; 32] =
+                    x.secret_key_bytes().try_into().map_err(|e| {
+                        std::io::Error::other(format!(
+                            "Cant not convert {:?} to [u8;32]",
+                            e
+                        ))
+                    })?;
                 BorshSerialize::serialize(&a, writer)
             }
         }

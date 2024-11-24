@@ -54,8 +54,8 @@ pub enum ActorMessage {
         subject_id: DigestIdentifier,
     },
     AuthLastSn {
-        sn: u64
-    }
+        sn: u64,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
