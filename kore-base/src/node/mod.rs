@@ -380,55 +380,38 @@ impl Handler<Node> for Node {
                     ctx.system().get_helper("ext_db").await
                 else {
                     ctx.system().send_event(SystemEvent::StopSystem).await;
-                    return Err(ActorError::NotHelper);
+                    return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
-                let subject = Subject::from_event(None, &ledger);
-                let subject = match subject {
-                    Ok(subject) => subject,
-                    Err(e) => return Ok(NodeResponse::Error(e)),
-                };
+                let subject = Subject::from_event(None, &ledger).map_err(|e| ActorError::Functional(e.to_string()))?;
 
-                let subjec_actor = match ctx
+                let subject_actor = ctx
                     .create_child(
                         &format!("{}", ledger.content.subject_id),
                         subject,
                     )
-                    .await
-                {
-                    Ok(subject_actor) => {
-                        let sink = Sink::new(
-                            subject_actor.subscribe(),
-                            ext_db.get_subject(),
-                        );
-                        ctx.system().run_sink(sink).await;
+                    .await?;
 
-                        self.on_event(
-                            NodeEvent::TemporalSubject(
-                                ledger.content.subject_id.to_string(),
-                            ),
-                            ctx,
-                        )
-                        .await;
-                        subject_actor
-                    }
-                    Err(e) => {
-                        return Ok(NodeResponse::Error(Error::Actor(format!(
-                            "{}",
-                            e
-                        ))))
-                    }
-                };
+                let sink = Sink::new(
+                    subject_actor.subscribe(),
+                    ext_db.get_subject(),
+                );
+                ctx.system().run_sink(sink).await;
 
-                let response = match subjec_actor
+                self.on_event(
+                    NodeEvent::TemporalSubject(
+                        ledger.content.subject_id.to_string(),
+                    ),
+                    ctx,
+                )
+                .await;
+                
+
+                let response = subject_actor
                     .ask(SubjectMessage::UpdateLedger {
                         events: vec![ledger.clone()],
                     })
-                    .await
-                {
-                    Ok(res) => res,
-                    Err(_e) => todo!(),
-                };
+                    .await?;
 
                 match response {
                     SubjectResponse::Error(error) => todo!(),
@@ -459,18 +442,17 @@ impl Handler<Node> for Node {
                     ctx.system().get_helper("ext_db").await
                 else {
                     ctx.system().send_event(SystemEvent::StopSystem).await;
-                    return Err(ActorError::NotHelper);
+                    return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
                 let subject = Subject::new(data.clone());
 
-                match ctx
+                let child = ctx
                     .create_child(&format!("{}", data.subject_id), subject)
-                    .await
-                {
-                    Ok(actor) => {
-                        let sink =
-                            Sink::new(actor.subscribe(), ext_db.get_subject());
+                    .await?;
+                
+                let sink =
+                            Sink::new(child.subscribe(), ext_db.get_subject());
                         ctx.system().run_sink(sink).await;
 
                         self.on_event(
@@ -481,11 +463,6 @@ impl Handler<Node> for Node {
                         )
                         .await;
                         Ok(NodeResponse::SonWasCreated)
-                    }
-                    Err(e) => {
-                        Ok(NodeResponse::Error(Error::Actor(format!("{}", e))))
-                    }
-                }
             }
             NodeMessage::SignRequest(content) => {
                 let sign = match content {

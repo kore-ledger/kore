@@ -96,7 +96,7 @@ impl Api {
         let schema = JsonSchema::compile(&schema())?;
 
         if let Err(_e) = GOVERNANCE.set(RwLock::new(schema)) {
-            return Err(Error::JSONSChema("An error occurred with the governance schema, it could not be initialized globally".to_owned()));
+            return Err(Error::System("An error occurred with the governance schema, it could not be initialized globally".to_owned()));
         };
 
         let system =
@@ -106,30 +106,30 @@ impl Api {
         let node_actor = system
             .create_root_actor("node", node)
             .await
-            .map_err(|e| Error::Actor(e.to_string()))?;
+            .map_err(|e| Error::System(e.to_string()))?;
 
         let register: Option<ActorRef<Register>> = system
             .get_actor(&ActorPath::from("/user/node/register"))
             .await;
         let Some(register_actor) = register else {
-            return Err(Error::Actor(format!("Can not get register actor")));
+            return Err(Error::System(format!("Can not get register actor")));
         };
 
         let auth: Option<ActorRef<Auth>> =
             system.get_actor(&ActorPath::from("/user/node/auth")).await;
         let Some(auth_actor) = auth else {
-            return Err(Error::Actor(format!("Can not get auth actor")));
+            return Err(Error::System(format!("Can not get auth actor")));
         };
 
         let request = RequestHandler::new(keys.key_identifier());
         let request_actor = system
             .create_root_actor("request", request)
             .await
-            .map_err(|e| Error::Actor(e.to_string()))?;
+            .map_err(|e| Error::System(e.to_string()))?;
         let Some(ext_db): Option<ExternalDB> =
             system.get_helper("ext_db").await
         else {
-            return Err(Error::Actor(format!("Can not get ext_db helper")));
+            return Err(Error::System(format!("Can not get ext_db helper")));
         };
 
         let sink =
@@ -140,13 +140,13 @@ impl Api {
         let query_actor = system
             .create_root_actor("query", query)
             .await
-            .map_err(|e| Error::Actor(e.to_string()))?;
+            .map_err(|e| Error::System(e.to_string()))?;
 
         let newtork_monitor = Monitor;
         let newtork_monitor_actor = system
             .create_root_actor("network_monitor", newtork_monitor)
             .await
-            .map_err(|e| Error::Actor(e.to_string()))?;
+            .map_err(|e| Error::System(e.to_string()))?;
 
         let mut worker: NetworkWorker<NetworkMessage> = NetworkWorker::new(
             registry,

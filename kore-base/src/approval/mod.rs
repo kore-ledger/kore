@@ -19,7 +19,7 @@ use tracing::{debug, error};
 
 use crate::evaluation::response::EvalLedgerResponse;
 use crate::governance::model::Roles;
-use crate::model::common::{get_sign, get_signers_quorum_gov_version};
+use crate::model::common::{emit_fail, get_sign, get_signers_quorum_gov_version};
 use crate::model::event::{LedgerValue, ProtocolsSignatures};
 use crate::model::{Namespace, SignTypesNode};
 use crate::request::manager::{RequestManager, RequestManagerMessage};
@@ -66,13 +66,13 @@ impl Approval {
         ctx: &mut ActorContext<Approval>,
         eval_req: EvaluationReq,
         eval_res: EvalLedgerResponse,
-    ) -> Result<ApprovalReq, Error> {
+    ) -> Result<ApprovalReq, ActorError> {
         let subject_id = if let EventRequest::Fact(event) =
             eval_req.event_request.content.clone()
         {
             event.subject_id
         } else {
-            return Err(Error::Approval("Can not create approval req".to_owned()));
+            return Err(ActorError::FunctionalFail("An attempt is being made to approvation an event that is not fact.".to_owned()));
         };
 
         // Obtain the last event of subject actor
@@ -81,23 +81,18 @@ impl Approval {
             ctx.system().get_actor(&subject_path).await;
 
         let response = if let Some(subject_actor) = subject_actor {
-            let Ok(response) =
-                subject_actor.ask(SubjectMessage::GetMetadata).await
-            else {
-                return Err(Error::Subject("Can not ask subject for metadata".to_owned()));
-            };
-            response
+            subject_actor.ask(SubjectMessage::GetMetadata).await?
         } else {
-            return Err(Error::Subject("Can not get subject".to_owned()));
+            return Err(ActorError::NotFound(subject_path));
         };
 
         let prev_hash = match response {
             SubjectResponse::Metadata(metadata) => metadata.last_event_hash,
-            _ => return Err(Error::Subject("Invalid Subject response".to_owned())),
+            _ => return Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Metadata".to_owned())),
         };
 
          let LedgerValue::Patch(patch) = eval_res.value else {
-            return Err(Error::Approval("Approvation can not be possible if eval fail".to_owned()));
+            return Err(ActorError::FunctionalFail("Approvation can not be possible if eval fail".to_owned()));
         };
 
         Ok(ApprovalReq {
@@ -291,10 +286,7 @@ impl Handler<Approval> for Approval {
                             signer,
                         )
                         .await {
-                            if let Err(e) = ctx.emit_fail(e).await {
-                                ctx.system().send_event(SystemEvent::StopSystem).await;
-                            };
-                            return Ok(ApprovalResponse::None);
+                            return Err(emit_fail(ctx, e).await);
                         }
                     }
                 } else {
@@ -305,8 +297,7 @@ impl Handler<Approval> for Approval {
                     {
                         Ok(approval_req) => approval_req,
                         Err(e) => {
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
-                            return Ok(ApprovalResponse::None);
+                            return Err(emit_fail(ctx, e).await);
                         }
                     };
                     // Get signers and quorum
@@ -321,9 +312,8 @@ impl Handler<Approval> for Approval {
                         .await
                     {
                         Ok(signers_quorum) => signers_quorum,
-                        Err(_e) => {
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
-                            return Ok(ApprovalResponse::None);
+                        Err(e) => {
+                            return Err(emit_fail(ctx, e).await);
                         }
                     };
                     // Update quorum and validators
@@ -336,9 +326,8 @@ impl Handler<Approval> for Approval {
                     .await
                     {
                         Ok(signature) => signature,
-                        Err(_e) => {
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
-                            return Ok(ApprovalResponse::None);
+                        Err(e) => {
+                            return Err(emit_fail(ctx, e).await);
                         },
                     };
 
@@ -355,10 +344,7 @@ impl Handler<Approval> for Approval {
                             signer,
                         )
                         .await {
-                            if let Err(e) = ctx.emit_fail(e).await {
-                                ctx.system().send_event(SystemEvent::StopSystem).await;
-                            };
-                            return Ok(ApprovalResponse::None);
+                            return Err(emit_fail(ctx, e).await);
                         }
                     }
 
@@ -416,19 +402,13 @@ impl Handler<Approval> for Approval {
                         if let Err(e) =
                             self.send_approval_to_req(ctx, true).await
                         {
-                            if let Err(e) = ctx.emit_fail(e).await {
-                                ctx.system().send_event(SystemEvent::StopSystem).await;
-                            };
-                            return Ok(ApprovalResponse::None);
+                            return Err(emit_fail(ctx, e).await);
                         };
                     } else if self.approvers.is_empty() {
                         if let Err(e) =
                             self.send_approval_to_req(ctx, false).await
                         {
-                            if let Err(e) = ctx.emit_fail(e).await {
-                                ctx.system().send_event(SystemEvent::StopSystem).await;
-                            };
-                            return Ok(ApprovalResponse::None);
+                            return Err(emit_fail(ctx, e).await);
                         };
                     }
                 } else {
@@ -454,9 +434,7 @@ impl Handler<Approval> for Approval {
         error: ActorError,
         ctx: &mut ActorContext<Approval>,
     ) -> ChildAction {
-        if let Err(e) = ctx.emit_fail(error).await {
-            ctx.system().send_event(SystemEvent::StopSystem).await;
-        };
+        emit_fail(ctx, error).await;
         ChildAction::Stop
     }
 }

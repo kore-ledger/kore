@@ -12,7 +12,7 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use crate::{intermediary::Intermediary, ActorMessage, NetworkMessage};
+use crate::{intermediary::Intermediary, model::common::emit_fail, ActorMessage, NetworkMessage};
 
 use super::authorizer::{self, Authorizer, AuthorizerMessage};
 
@@ -103,10 +103,8 @@ impl Handler<Authorization> for Authorization {
                         .create_child(&witness.to_string(), authorizer)
                         .await;
                     let Ok(child) = child else {
-                        if let Err(e) = ctx.emit_fail(ActorError::Create(ctx.path().clone(),witness.to_string())).await {
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
-                        };
-                        return Ok(AuthorizationResponse::None);
+                        let e = ActorError::Create(ctx.path().clone(),witness.to_string());
+                        return Err(emit_fail(ctx, e).await);
                      };
 
                     if let Err(e) = child
@@ -117,10 +115,7 @@ impl Handler<Authorization> for Authorization {
                         })
                         .await
                     {
-                        if let Err(e) = ctx.emit_fail(e).await {
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
-                        };
-                        return Ok(AuthorizationResponse::None);
+                        return Err(emit_fail(ctx, e).await);
                     }
                 }
             }
@@ -147,10 +142,8 @@ impl Handler<Authorization> for Authorization {
                                 ctx.system().get_helper("network").await;
 
                             let Some(mut helper) = helper else {
-                                if let Err(e) = ctx.emit_fail(ActorError::NotHelper("network".to_owned())).await {
-                                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                                };
-                                return Ok(AuthorizationResponse::None);
+                                let e = ActorError::NotHelper("network".to_owned());
+                                return Err(emit_fail(ctx, e).await);
                             };
 
                             if let Err(e) = helper
@@ -164,10 +157,7 @@ impl Handler<Authorization> for Authorization {
                                 )
                                 .await
                             {
-                                if let Err(e) = ctx.emit_fail(e).await {
-                                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                                };
-                                return Ok(AuthorizationResponse::None);
+                                return Err(emit_fail(ctx, e).await);
                             };
                         }
                         ctx.stop().await;
@@ -184,9 +174,7 @@ impl Handler<Authorization> for Authorization {
         error: ActorError,
         ctx: &mut ActorContext<Authorization>,
     ) -> ChildAction {
-        if let Err(e) = ctx.emit_fail(error).await {
-            ctx.system().send_event(SystemEvent::StopSystem).await;
-        };
+        emit_fail(ctx, error).await;
         ChildAction::Stop
     }
 }

@@ -14,7 +14,7 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use crate::{model::network::RetryNetwork, ActorMessage, NetworkMessage};
+use crate::{model::{common::emit_fail, network::RetryNetwork}, ActorMessage, NetworkMessage};
 
 use super::authorization::{Authorization, AuthorizationMessage};
 
@@ -116,17 +116,12 @@ impl Handler<Authorizer> for Authorizer {
                 {
                     retry
                 } else {
-                    if let Err(e) = ctx.emit_fail(ActorError::Create(ctx.path().clone(), "retry".to_owned())).await {
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
-                    };
-                    return Ok(AuthorizerResponse::None);
+                    let e = ActorError::Create(ctx.path().clone(), "retry".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
-                    if let Err(e) = ctx.emit_fail(e).await {
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
-                    };
-                    return Ok(AuthorizerResponse::None);
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
             AuthorizerMessage::NetworkResponse { sn } => {
@@ -143,12 +138,11 @@ impl Handler<Authorizer> for Authorizer {
                         })
                         .await
                     {
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
-                        return Ok(AuthorizerResponse::None);
+                        return Err(emit_fail(ctx, e).await);
                     }
                 } else {
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                    return Ok(AuthorizerResponse::None);
+                    let e = ActorError::NotFound(authorization_path);
+                    return Err(emit_fail(ctx, e).await);
                 }
 
                 'retry: {
@@ -187,17 +181,18 @@ impl Handler<Authorizer> for Authorizer {
                     ctx.system().get_actor(&authorization_path).await;
 
                 if let Some(authorization_actor) = authorization_actor {
-                    if let Err(_e) = authorization_actor
+                    if let Err(e) = authorization_actor
                         .tell(AuthorizationMessage::Response {
                             sender: self.node.clone(),
                             sn: 0,
                         })
                         .await
                     {
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        emit_fail(ctx, e).await;
                     }
                 } else {
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    let e = ActorError::NotFound(authorization_path);
+                    emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
             },

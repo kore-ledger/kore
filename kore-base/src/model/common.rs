@@ -217,7 +217,6 @@ where
 
     match response {
         RelationShipResponse::None => Ok(()),
-        RelationShipResponse::Error(e) => Err(ActorError::Functional(e.to_string())),
         _ => Err(ActorError::UnexpectedMessage(relation_path, "RelationShipResponse::None".to_owned())),
     }
 }
@@ -273,23 +272,23 @@ pub fn verify_protocols_state(
         | EventRequestType::Confirm
         | EventRequestType::EOL => {
             if approve.is_some() || eval.is_some() || approval_require {
-                todo!()
+                return Err(Error::Protocols("In create, transferm, confirm and eol request, approve and eval must be None and approval require must be false".to_owned()));
             }
             Ok(val)
         }
         EventRequestType::Fact => {
-            let eval = if let Some(eval) = eval { eval } else { todo!() };
+            let Some(eval) = eval else { 
+                return Err(Error::Protocols("In Fact even eval must be Some".to_owned()));
+            };
 
             if approval_require {
-                let approve = if let Some(approve) = approve {
-                    approve
-                } else {
-                    todo!()
+                 let Some(approve) = approve else {
+                    return Err(Error::Protocols("In Fact even if approval was required, approve must be Some".to_owned()));
                 };
                 Ok(eval && approve && val)
             } else {
-                if let Some(_approve) = approve {
-                    todo!()
+                if approve.is_some() {
+                    return Err(Error::Protocols("In Fact even if approval was not required, approve must be None".to_owned()));
                 }
 
                 Ok(val && eval)
@@ -314,3 +313,15 @@ where
     Ok((signers, quorum, gov.version))
 }
 
+pub async fn emit_fail<A>(
+    ctx: &mut ActorContext<A>,
+    error: ActorError,
+) -> ActorError
+where
+    A: Actor + Handler<A>,
+{
+    if let Err(e) = ctx.emit_fail(error.clone()).await {
+        ctx.system().send_event(SystemEvent::StopSystem).await;
+    };
+    error
+}

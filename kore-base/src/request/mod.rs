@@ -112,7 +112,7 @@ impl RequestHandler {
         ctx: &mut ActorContext<RequestHandler>,
         create_req: CreateRequest,
         request: Signed<EventRequest>,
-    ) -> Result<DigestIdentifier, Error> {
+    ) -> Result<DigestIdentifier, ActorError> {
         let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let subject_id = SubjectID {
             request: request.clone(),
@@ -125,7 +125,7 @@ impl RequestHandler {
             DigestDerivator::Blake3_256
         };
 
-        let subject_id = subject_id.hash_id(derivator)?;
+        let subject_id = subject_id.hash_id(derivator).map_err(|e| ActorError::Functional(e.to_string()))?;
 
         let data = if create_req.schema_id == "governance" {
             CreateSubjectData {
@@ -139,7 +139,7 @@ impl RequestHandler {
         } else {
             let governance =
                 get_gov(ctx, &create_req.governance_id.to_string()).await?;
-            let value = governance.get_init_state(&create_req.schema_id)?;
+            let value = governance.get_init_state(&create_req.schema_id).map_err(|e| ActorError::Functional(e.to_string()))?;
 
             CreateSubjectData {
                 keys,
@@ -279,7 +279,7 @@ impl Actor for RequestHandler {
             ctx.system().get_helper("ext_db").await
         else {
             ctx.system().send_event(SystemEvent::StopSystem).await;
-            return Err(ActorError::NotHelper);
+            return Err(ActorError::NotHelper("ext_db".to_owned()));
         };
 
         for (subject_id, (request_id, request)) in self.handling.clone() {
@@ -767,7 +767,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     ctx.system().get_helper("ext_db").await
                 else {
                     ctx.system().send_event(SystemEvent::StopSystem).await;
-                    return Err(ActorError::NotHelper);
+                    return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
                 let sink = Sink::new(

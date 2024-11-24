@@ -22,7 +22,7 @@ use crate::{
     db::Storable,
     error::Error,
     intermediary::Intermediary,
-    model::common::{get_gov, get_metadata},
+    model::common::{emit_fail, get_gov, get_metadata},
     subject::{self, Subject, SubjectMessage, SubjectResponse},
     ActorMessage, NetworkMessage,
 };
@@ -201,12 +201,7 @@ impl Handler<Auth> for Auth {
                         match Auth::create_req_schema(ctx, subject_id.clone()).await {
                             Ok(data) => data,
                             Err(e) => {
-                                if let Err(e) = ctx.emit_fail(e.clone()).await {
-                                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                                };
-                                return Ok(AuthResponse::Error(Error::Auth(
-                                    e.to_string(),
-                                )));
+                                return Err(emit_fail(ctx, e).await);
                             },
                         };
 
@@ -228,12 +223,7 @@ impl Handler<Auth> for Auth {
 
                             let Some(mut helper) = helper else {
                                 let e = ActorError::NotHelper("network".to_owned());
-                                if let Err(e) = ctx.emit_fail(e.clone()).await {
-                                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                                };
-                                return Ok(AuthResponse::Error(Error::Auth(
-                                    e.to_string(),
-                                )));
+                                return Err(emit_fail(ctx, e).await);
                             };
 
                             if let Err(e) = helper
@@ -247,12 +237,7 @@ impl Handler<Auth> for Auth {
                                 )
                                 .await
                             {
-                                if let Err(e) = ctx.emit_fail(e.clone()).await {
-                                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                                };
-                                return Ok(AuthResponse::Error(Error::Auth(
-                                    e.to_string(),
-                                )));
+                                return Err(emit_fail(ctx, e).await);
                             };
                         }
                         AuthWitness::Many(vec) => {
@@ -273,23 +258,13 @@ impl Handler<Auth> for Auth {
                                 .await;
                             let Ok(child) = child else {
                                 let e = ActorError::Create(ctx.path().clone(), subject_id.to_string());
-                                if let Err(e) = ctx.emit_fail(e.clone()).await {
-                                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                                };
-                                return Ok(AuthResponse::Error(Error::Auth(
-                                    e.to_string()
-                                )));
+                                return Err(emit_fail(ctx, e).await);
                             };
 
                             if let Err(e) =
                                 child.tell(AuthorizationMessage::Create).await
                             {
-                                if let Err(e) = ctx.emit_fail(e.clone()).await {
-                                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                                };
-                                return Ok(AuthResponse::Error(Error::Auth(
-                                    e.to_string()
-                                )));
+                                return Err(emit_fail(ctx, e).await);
                             }
                         }
                         AuthWitness::None => {
@@ -323,9 +298,7 @@ impl Handler<Auth> for Auth {
         error: ActorError,
         ctx: &mut ActorContext<Auth>,
     ) -> ChildAction {
-        if let Err(e) = ctx.emit_fail(error).await {
-            ctx.system().send_event(SystemEvent::StopSystem).await;
-        };
+        emit_fail(ctx, error).await;
         ChildAction::Stop
     }
 }

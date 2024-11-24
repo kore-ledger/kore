@@ -11,7 +11,7 @@ use store::store::PersistentActor;
 use crate::{
     db::Storable,
     helpers::db::{ExternalDB, Querys},
-    model::TimeStamp,
+    model::{common::emit_fail, TimeStamp},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -115,10 +115,10 @@ impl Handler<DBManager> for DBManager {
         let Some(helper): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
-            ctx.system().send_event(SystemEvent::StopSystem).await;
-            return Err(ActorError::NotHelper);
+            let e = ActorError::NotHelper("ext_db".to_owned());
+            return Err(emit_fail(ctx, e).await);
         };
-
+        
         match msg {
             DBManagerMessage::InitDelete => {
                 let Some(our_ref): Option<ActorRef<DBManager>> = ctx

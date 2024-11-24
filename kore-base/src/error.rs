@@ -11,6 +11,24 @@ use serde::{Deserialize, Serialize};
 /// Error type.
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
+    /// JSON schema error.
+    #[error("JSON schema error: {0}")]
+    JSONSChema(String),
+    /// System error.
+    #[error("System error: {0}")]
+    System(String),
+    /// Protocols error.
+    #[error("Protocols error: {0}")]
+    Protocols(String),
+    /// Runner error.
+    #[error("Runner error: {0}")]
+    Runner(String),
+    /// Compiler error.
+    #[error("Compiler error: {0}")]
+    Compiler(String),
+    /// SN error.
+    #[error("SN error: Incorrect sn ledger")]
+    Sn,
     /// Register error.
     #[error("Register error: {0}")]
     Register(String),
@@ -59,21 +77,13 @@ pub enum Error {
     /// Event error.
     #[error("Event error: {0}")]
     Event(String),
-    /// SN error.
-    #[error("SN error: {0}")]
-    Sn(String),
     /// Validation error.
     #[error("Validation error: {0}")]
     Validation(String),
     /// Evaluation error.
     #[error("Evaluation error: {0}")]
     Evaluation(String),
-    /// Runner error.
-    #[error("Runner error: {0}")]
-    Runner(String),
-    /// Compiler error.
-    #[error("Compiler error: {0}")]
-    Compiler(String),
+
     /// Approval error.
     #[error("Approval error: {0}")]
     Approval(String),
@@ -86,7 +96,4 @@ pub enum Error {
     /// Network error.
     #[error("Network error: {0}")]
     Network(String),
-    /// JSONSchema error.
-    #[error("JSONSchema error: {0}")]
-    JSONSChema(String),
 }

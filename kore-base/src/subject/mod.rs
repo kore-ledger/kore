@@ -22,8 +22,7 @@ use crate::{
     helpers::db::ExternalDB,
     model::{
         common::{
-            delete_relation, get_gov, get_quantity, register_relation,
-            verify_protocols_state,
+            delete_relation, get_gov, get_quantity, register_relation, verify_protocols_state
         },
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
@@ -231,7 +230,7 @@ impl Subject {
     async fn get_node_key(
         &self,
         ctx: &mut ActorContext<Subject>,
-    ) -> Result<KeyIdentifier, Error> {
+    ) -> Result<KeyIdentifier, ActorError> {
         // Node path.
         let node_key_path = ActorPath::from("/user/node/key");
         // Node actor.
@@ -240,32 +239,15 @@ impl Subject {
 
         // We obtain the actor node
         let response = if let Some(node_key_actor) = node_key_actor {
-            // We ask a node
-            let response =
-                node_key_actor.ask(NodeKeyMessage::GetKeyIdentifier).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a node {}",
-                        e
-                    )));
-                }
-            }
+            node_key_actor.ask(NodeKeyMessage::GetKeyIdentifier).await?
         } else {
-            return Err(Error::Actor(
-                "The node actor was not found in the expected path /user/node/key"
-                    .to_owned(),
-            ));
+            return Err(ActorError::NotFound(node_key_path));
         };
 
         // We handle the possible responses of node
         match response {
             NodeKeyResponse::KeyIdentifier(key) => Ok(key),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
+            _ => Err(ActorError::UnexpectedMessage(node_key_path, "NodeKeyResponse::KeyIdentifier".to_owned()))
         }
     }
 
@@ -381,8 +363,7 @@ impl Subject {
 
         if owner {
             Self::up_owner_not_gov(ctx, our_key)
-                .await
-                .map_err(|e| ActorError::Custom(e.to_string()))?;
+                .await?;
         }
         Ok(())
     }
@@ -390,34 +371,31 @@ impl Subject {
     async fn up_owner_not_gov(
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let validation = Validation::new(our_key.clone());
         ctx.create_child("validation", validation)
-            .await
-            .map_err(|e| Error::Actor(e.to_string()))?;
+            .await?;
 
         let evaluation = Evaluation::new(our_key.clone());
         ctx.create_child("evaluation", evaluation)
-            .await
-            .map_err(|e| Error::Actor(e.to_string()))?;
+            .await?;
 
         let distribution = Distribution::new(our_key);
         ctx.create_child("distribution", distribution)
-            .await
-            .map_err(|e| Error::Actor(format!("{}", e)))?;
+            .await?;
 
         Ok(())
     }
 
     async fn down_owner_not_gov(
         ctx: &mut ActorContext<Subject>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let actor: Option<ActorRef<Validation>> =
             ctx.get_child("validation").await;
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            todo!()
+            return Err(ActorError::NotFound(ActorPath::from(format!("{}/validation", ctx.path().to_string()))));
         }
 
         let actor: Option<ActorRef<Evaluation>> =
@@ -425,7 +403,7 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            todo!()
+            return Err(ActorError::NotFound(ActorPath::from(format!("{}/evaluation", ctx.path().to_string()))));
         }
 
         let actor: Option<ActorRef<Distribution>> =
@@ -433,7 +411,7 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            todo!()
+            return Err(ActorError::NotFound(ActorPath::from(format!("{}/distribution", ctx.path().to_string()))));
         }
 
         Ok(())
@@ -447,7 +425,7 @@ impl Subject {
     ) -> Result<(), ActorError> {
         // If subject is a governance
         let gov = Governance::try_from(self.properties.clone())
-            .map_err(|e| ActorError::Create)?;
+            .map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
 
         let owner = our_key == self.owner;
 
@@ -459,8 +437,7 @@ impl Subject {
                 self.subject_id.clone(),
                 ext_db,
             )
-            .await
-            .map_err(|e| ActorError::Custom(e.to_string()))?;
+            .await?;
         } else {
             Self::up_not_owner(
                 ctx,
@@ -470,14 +447,12 @@ impl Subject {
                 ext_db,
                 self.subject_id.clone(),
             )
-            .await
-            .map_err(|e| ActorError::Custom(e.to_string()))?;
+            .await?;
         }
 
         let schemas = gov.schemas(Roles::EVALUATOR, &our_key.to_string());
         Self::up_schemas(ctx, schemas, self.subject_id.clone())
-            .await
-            .map_err(|e| ActorError::Custom(e.to_string()))?;
+            .await?;
 
         let (our_roles, creators) =
             gov.subjects_schemas_rol_namespace(&our_key.to_string());
@@ -520,7 +495,7 @@ impl Subject {
         namespace: Namespace,
         ext_db: ExternalDB,
         subject_id: DigestIdentifier,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         if gov.has_this_role(
             &our_key.to_string(),
             Roles::VALIDATOR,
@@ -530,8 +505,7 @@ impl Subject {
             // If we are a validator
             let validator = Validator::default();
             ctx.create_child("validator", validator)
-                .await
-                .map_err(|e| Error::Actor(format!("{}", e)))?;
+                .await?;
         }
 
         if gov.has_this_role(
@@ -543,8 +517,7 @@ impl Subject {
             // If we are a evaluator
             let evaluator = Evaluator::default();
             ctx.create_child("evaluator", evaluator)
-                .await
-                .map_err(|e| Error::Actor(format!("{}", e)))?;
+                .await?;
         }
 
         if gov.has_this_role(
@@ -556,10 +529,7 @@ impl Subject {
             let Some(config): Option<Config> =
                 ctx.system().get_helper("config").await
             else {
-                ctx.system().send_event(SystemEvent::StopSystem).await;
-                return Err(Error::Actor(
-                    "Can not access to config helper".to_string(),
-                ));
+                return Err(ActorError::NotHelper("config".to_owned()));
             };
 
             // If we are a approver
@@ -571,8 +541,7 @@ impl Subject {
             );
             let approver_actor = ctx
                 .create_child("approver", approver)
-                .await
-                .map_err(|e| Error::Actor(format!("{}", e)))?;
+                .await?;
 
             let sink =
                 Sink::new(approver_actor.subscribe(), ext_db.get_approver());
@@ -587,7 +556,7 @@ impl Subject {
         gov: Governance,
         our_key: KeyIdentifier,
         namespace: Namespace,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         if gov.has_this_role(
             &our_key.to_string(),
             Roles::VALIDATOR,
@@ -599,7 +568,7 @@ impl Subject {
             if let Some(actor) = actor {
                 actor.stop().await;
             } else {
-                todo!()
+                return Err(ActorError::NotFound(ActorPath::from(format!("{}/validator", ctx.path().to_string()))));
             }
         }
 
@@ -614,7 +583,7 @@ impl Subject {
             if let Some(actor) = actor {
                 actor.stop().await;
             } else {
-                todo!()
+                return Err(ActorError::NotFound(ActorPath::from(format!("{}/evaluator", ctx.path().to_string()))));
             }
         }
 
@@ -629,7 +598,7 @@ impl Subject {
             if let Some(actor) = actor {
                 actor.stop().await;
             } else {
-                todo!()
+                return Err(ActorError::NotFound(ActorPath::from(format!("{}/approver", ctx.path().to_string()))));
             }
         }
 
@@ -641,30 +610,22 @@ impl Subject {
         our_key: KeyIdentifier,
         subject_id: DigestIdentifier,
         ext_db: ExternalDB,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
             ctx.system().get_helper("config").await
         else {
-            ctx.system().send_event(SystemEvent::StopSystem).await;
-            return Err(Error::Actor(
-                "Can not access to config helper".to_string(),
-            ));
+            return Err(ActorError::NotHelper("config".to_owned()));
         };
 
         let validation = Validation::new(our_key.clone());
-        ctx.create_child("validation", validation)
-            .await
-            .map_err(|e| Error::Actor(format!("{}", e)))?;
+        ctx.create_child("validation", validation).await?;
 
         let evaluation = Evaluation::new(our_key.clone());
-        ctx.create_child("evaluation", evaluation)
-            .await
-            .map_err(|e| Error::Actor(format!("{}", e)))?;
+        ctx.create_child("evaluation", evaluation).await?;
 
         let approval = Approval::new(our_key.clone());
         ctx.create_child("approval", approval)
-            .await
-            .map_err(|e| Error::Actor(format!("{}", e)))?;
+            .await?;
 
         let approver = Approver::new(
             "".to_owned(),
@@ -674,21 +635,19 @@ impl Subject {
         );
         let approver_actor = ctx
             .create_child("approver", approver)
-            .await
-            .map_err(|e| Error::Actor(format!("{}", e)))?;
+            .await?;
 
         let sink = Sink::new(approver_actor.subscribe(), ext_db.get_approver());
         ctx.system().run_sink(sink).await;
 
         let distribution = Distribution::new(our_key.clone());
         ctx.create_child("distribution", distribution)
-            .await
-            .map_err(|e| Error::Actor(format!("{}", e)))?;
+            .await?;
 
         Ok(())
     }
 
-    async fn down_owner(ctx: &mut ActorContext<Subject>) -> Result<(), Error> {
+    async fn down_owner(ctx: &mut ActorContext<Subject>) -> Result<(), ActorError> {
         let actor: Option<ActorRef<Validation>> =
             ctx.get_child("validation").await;
         if let Some(actor) = actor {
@@ -734,25 +693,21 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         schemas: Vec<Schema>,
         subject_id: DigestIdentifier,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         for schema in schemas {
             let actor = Compiler::default();
             let actor = ctx
                 .get_or_create_child(&format!("{}_compiler", schema.id), || {
                     actor
                 })
-                .await
-                .map_err(|e| Error::Actor(format!("{}", e)))?;
-            if let Err(_e) = actor
+                .await?;
+            actor
                 .tell(CompilerMessage::Compile {
                     contract: schema.contract.raw.clone(),
                     initial_value: schema.initial_value.clone(),
                     contract_path: format!("{}_{}", subject_id, schema.id),
                 })
-                .await
-            {
-                todo!()
-            };
+                .await?;
         }
 
         Ok(())
@@ -761,14 +716,14 @@ impl Subject {
     async fn down_schemas(
         ctx: &mut ActorContext<Subject>,
         schemas: Vec<Schema>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         for schema in schemas {
             let actor: Option<ActorRef<Compiler>> =
                 ctx.get_child(&format!("{}_compiler", schema.id)).await;
             if let Some(actor) = actor {
                 actor.stop().await;
             } else {
-                todo!()
+            return Err(ActorError::NotFound(ActorPath::from(format!("{}/{}_compiler", ctx.path().to_string(), schema.id))));
             }
         }
 
@@ -779,23 +734,20 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         schemas: Vec<Schema>,
         subject_id: DigestIdentifier,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         for schema in schemas {
             let actor: Option<ActorRef<Compiler>> =
                 ctx.get_child(&format!("{}_compiler", schema.id)).await;
             if let Some(actor) = actor {
-                if let Err(_e) = actor
+                actor
                     .tell(CompilerMessage::Compile {
                         contract: schema.contract.raw.clone(),
                         initial_value: schema.initial_value.clone(),
                         contract_path: format!("{}_{}", subject_id, schema.id),
                     })
-                    .await
-                {
-                    todo!()
-                };
+                    .await?;
             } else {
-                todo!()
+                return Err(ActorError::NotFound(ActorPath::from(format!("{}/{}_compiler", ctx.path().to_string(), schema.id))))
             }
         }
 
@@ -822,7 +774,7 @@ impl Subject {
     async fn get_governance_from_other_subject(
         &self,
         ctx: &mut ActorContext<Subject>,
-    ) -> Result<Governance, Error> {
+    ) -> Result<Governance, ActorError> {
         let governance_path =
             ActorPath::from(format!("/user/node/{}", self.governance_id));
 
@@ -830,57 +782,34 @@ impl Subject {
             ctx.system().get_actor(&governance_path).await;
 
         let response = if let Some(governance_actor) = governance_actor {
-            // We ask a governance
-            let response =
-                governance_actor.ask(SubjectMessage::GetGovernance).await;
-            match response {
-                Ok(response) => response,
-                Err(e) => {
-                    return Err(Error::Actor(format!(
-                        "Error when asking a Subject {}",
-                        e
-                    )));
-                }
-            }
+            governance_actor.ask(SubjectMessage::GetGovernance).await?
         } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path {}",
-                governance_path
-            )));
+            return Err(ActorError::NotFound(governance_path));
         };
 
         match response {
             SubjectResponse::Governance(gov) => Ok(gov),
-            SubjectResponse::Error(error) => Err(Error::Actor(format!(
-                "The subject encountered problems when getting governance: {}",
-                error
-            ))),
-            _ => Err(Error::Actor(
-                "An unexpected response has been received from node actor"
-                    .to_owned(),
-            )),
+            _ => Err(ActorError::UnexpectedMessage(governance_path, "SubjectResponse::Governance".to_owned()))
         }
     }
 
     async fn get_last_ledger_state(
         &self,
         ctx: &mut ActorContext<Subject>,
-    ) -> Result<Option<Signed<Ledger>>, Error> {
+    ) -> Result<Option<Signed<Ledger>>, ActorError> {
+        let path = ActorPath::from(&format!("{}/store", ctx.path()));
         let store: Option<ActorRef<Store<Subject>>> =
             ctx.get_child("store").await;
         let response = if let Some(store) = store {
-            match store.ask(StoreCommand::LastEvent).await {
-                Ok(response) => response,
-                Err(_e) => todo!(),
-            }
+            store.ask(StoreCommand::LastEvent).await?
         } else {
-            todo!()
+            return Err(ActorError::NotFound(path));
         };
 
         match response {
             StoreResponse::LastEvent(event) => Ok(event),
-            StoreResponse::Error(e) => todo!(),
-            _ => todo!(),
+            StoreResponse::Error(e) => Err(ActorError::FunctionalFail(e.to_string())),
+            _ => Err(ActorError::UnexpectedMessage(path, "StoreResponse::LastEvent".to_string())),
         }
     }
 
@@ -889,24 +818,21 @@ impl Subject {
         subject_id: &str,
         new_owner: &str,
         old_owner: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let node_path = ActorPath::from("/user/node");
         let node_actor: Option<ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
 
         if let Some(node_actor) = node_actor {
-            if let Err(_e) = node_actor
+            node_actor
                 .tell(NodeMessage::ChangeSubjectOwner {
                     new_owner: new_owner.to_owned(),
                     old_owner: old_owner.to_owned(),
                     subject_id: subject_id.to_owned(),
                 })
-                .await
-            {
-                todo!()
-            }
+                .await?;
         } else {
-            todo!()
+            return Err(ActorError::NotFound(node_path))
         }
         Ok(())
     }
@@ -918,21 +844,35 @@ impl Subject {
     ) -> Result<(), Error> {
         // Si no sigue activo
         if !self.active {
-            todo!();
+            return Err(Error::Subject("Subject is not active".to_owned()))
         }
 
         // SI no es el dueño el que firmó el evento
         if new_ledger.signature.signer != self.owner {
-            todo!();
+            return Err(Error::Subject("Signer of the event is not the owner".to_owned()))
         }
 
-        if let Err(_e) = new_ledger.verify() {
-            todo!()
+        match new_ledger.content.event_request.content.clone() {
+            EventRequest::Transfer(..) |
+            EventRequest::Confirm(..) | 
+            EventRequest::EOL(..)
+            => if new_ledger.content.event_request.signature.signer != self.owner {
+                return Err(Error::Subject("Signer of the request is not the owner".to_owned()))
+            },
+            _ => {}
+        };
+
+        if let Err(e) = new_ledger.verify() {
+            return Err(Error::Subject(format!("In new event, event signature: {}", e.to_string())));
+        }
+
+        if let Err(e) = new_ledger.content.event_request.verify() {
+            return Err(Error::Subject(format!("In new event request, request signature: {}", e.to_string())));
         }
 
         // Mirar que sea el siguiente sn
         if last_ledger.content.sn + 1 != new_ledger.content.sn {
-            return Err(Error::Sn("Incorrect sn event".to_owned()));
+            return Err(Error::Sn);
         }
 
         //Comprobar que el hash del actual event sea el mismo que el pre_event_hash,
@@ -940,10 +880,10 @@ impl Subject {
             .hash_id(last_ledger.signature.content_hash.derivator)?;
 
         if last_ledger_hash != new_ledger.content.hash_prev_event {
-            todo!();
+            return Err(Error::Subject("Last event hash is not the same that previous event hash in new event".to_owned()));
         }
 
-        let valid_last_event = match verify_protocols_state(
+        let valid_last_event = verify_protocols_state(
             EventRequestType::from(
                 last_ledger.content.event_request.content.clone(),
             ),
@@ -951,10 +891,7 @@ impl Subject {
             last_ledger.content.appr_success,
             last_ledger.content.appr_required,
             last_ledger.content.vali_success,
-        ) {
-            Ok(is_ok) => is_ok,
-            Err(_e) => todo!(),
-        };
+        )?;
 
         // Si el último evento guardado fue correcto, por ende se aplicó lo que ese
         // evento decía.
@@ -964,21 +901,26 @@ impl Subject {
                 last_ledger.content.event_request.content.clone()
             {
                 if transfer.new_owner != new_ledger.signature.signer {
-                    todo!();
+                    return Err(Error::Subject("The last event was a transfer and the new event received is not signed by the new owner".to_owned()));
                 }
-            } else if let EventRequest::EOL(end) =
+            } else if let EventRequest::EOL(_end) =
                 last_ledger.content.event_request.content.clone()
             {
-                // Error, la vida del sujeto terminó y se está registrando un nuevo evento.
-                todo!();
+                return Err(Error::Subject("The last event was EOL, no more events can be received".to_owned()));
             } else if last_ledger.signature.signer
                 != new_ledger.signature.signer
             {
-                todo!();
+                return Err(Error::Subject("The signer of the new event and the previous one should be the same".to_owned()));
+            }
+        } else {
+            if last_ledger.signature.signer
+                != new_ledger.signature.signer
+            {
+                return Err(Error::Subject("The signer of the new event and the previous one should be the same".to_owned()));
             }
         }
 
-        let valid_new_event = match verify_protocols_state(
+        let valid_new_event = verify_protocols_state(
             EventRequestType::from(
                 new_ledger.content.event_request.content.clone(),
             ),
@@ -986,41 +928,34 @@ impl Subject {
             new_ledger.content.appr_success,
             new_ledger.content.appr_required,
             new_ledger.content.vali_success,
-        ) {
-            Ok(is_ok) => is_ok,
-            Err(_e) => todo!(),
-        };
+        )?;
 
         // Si el nuevo evento a registrar fue correcto.
         if valid_new_event {
             match new_ledger.content.event_request.content.clone() {
-                EventRequest::Create(start_request) => {
-                    // Error no se puede recibir un evento de creación si ya está creado
-                    todo!();
+                EventRequest::Create(_start_request) => {
+                    return Err(Error::Subject("A creation event is being logged when the subject has already been created previously".to_owned()));
                 }
-                EventRequest::Fact(fact_request) => {
-                    // Al estado actual aplicarle el patch del nuevo evento y ver que obtenemos el mismo hash que el hash del nuevo evento
+                EventRequest::Fact(_fact_request) => {
                     let LedgerValue::Patch(json_patch) =
                         new_ledger.content.value.clone()
                     else {
-                        // error el evento fue correcto pero en el value no vino un patch
-                        todo!()
+                        return Err(Error::Subject("The event was successful but does not have a json patch to apply".to_owned()));
                     };
 
                     let patch_json =
                         serde_json::from_value::<Patch>(json_patch.0)
-                            .map_err(|e| todo!())?;
+                            .map_err(|e| Error::Subject(format!("Failed to extract event patch: {}", e)))?;
                     let mut propierties = self.properties.0.clone();
                     let Ok(()) = patch(&mut propierties, &patch_json) else {
-                        // No se pudo aplicar el patch, error
-                        todo!()
+                        return Err(Error::Subject("Failed to apply event patch".to_owned()));
                     };
 
                     let hash_state_after_patch = ValueWrapper(propierties)
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                     if hash_state_after_patch != new_ledger.content.state_hash {
-                        // Error, hemos aplicado el nuevo patch y hemos obtenido un estado diferenta al del nodo original
+                        return Err(Error::Subject("The new patch has been applied and we have obtained a different hash than the event after applying the patch".to_owned()));
                     }
                 }
                 _ => {
@@ -1029,8 +964,7 @@ impl Subject {
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                     if hash_without_patch != new_ledger.content.state_hash {
-                        // Error, Si el evento no es de fact no se aplicó nungún patch, por ende las dos
-                        // propierties deberían ser iguales.
+                        return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
                     }
                 }
             };
@@ -1038,7 +972,7 @@ impl Subject {
         // Si el nuevo evento falló en algún protocolo
         else {
             if let LedgerValue::Patch(_) = new_ledger.content.value {
-                // Error hay un patch cuando debería haber un error,
+                return Err(Error::Subject("The event failed in some protocol but a patch arrived to apply".to_owned()));
             }
 
             let hash_without_patch = self
@@ -1046,8 +980,7 @@ impl Subject {
                 .hash_id(new_ledger.signature.content_hash.derivator)?;
 
             if hash_without_patch != new_ledger.content.state_hash {
-                // Error, Si el evento no fue correcto no se aplicó nungún patch, por ende las dos
-                // propierties deberían ser iguales.
+                return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
             }
         }
         Ok(())
@@ -1065,45 +998,44 @@ impl Subject {
                     || !event_req.namespace.is_empty()
                         && event.content.gov_version != 0)
             {
-                todo!()
+                return Err(Error::Subject("In create event, governance_id must be empty, namespace must be empty and gov version must be 0".to_owned()));
             }
         } else {
-            todo!()
+            return Err(Error::Subject("First event is not a create event".to_owned()));
         };
 
         if event.signature.signer != self.owner
             || event.content.event_request.signature.signer != self.owner
         {
-            todo!();
+            return Err(Error::Subject("In create event, owner must sign request and event.".to_owned()));
         }
 
-        if let Err(_e) = event.verify() {
-            todo!()
+        if let Err(e) = event.verify() {
+            return Err(Error::Subject(format!("In create event, event signature: {}", e.to_string())));
+        }
+
+        if let Err(e) = event.content.event_request.verify() {
+            return Err(Error::Subject(format!("In create event, request signature: {}", e.to_string())));
         }
 
         if event.content.sn != 0 {
-            todo!()
+            return Err(Error::Subject("In create event, sn must be 0.".to_owned()));
         }
 
         if !event.content.hash_prev_event.is_empty() {
-            todo!()
+            return Err(Error::Subject("In create event, previous hash event must be empty.".to_owned()));
         }
 
-        match verify_protocols_state(
+        if verify_protocols_state(
             EventRequestType::Create,
             event.content.eval_success,
             event.content.appr_success,
             event.content.appr_required,
             event.content.vali_success,
-        ) {
-            Ok(is_ok) => {
-                if is_ok {
-                    Ok(())
-                } else {
-                    todo!()
-                }
-            }
-            Err(_e) => todo!(),
+        )? {
+            Ok(())
+        } else {
+            return Err(Error::Subject("Create event fail in validation protocol".to_owned()));
         }
     }
 
@@ -1111,10 +1043,11 @@ impl Subject {
         &self,
         ctx: &mut ActorContext<Subject>,
         active: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
+        let register_path = ActorPath::from("/user/node/register");
         let register: Option<ActorRef<Register>> = ctx
             .system()
-            .get_actor(&ActorPath::from("/user/node/register"))
+            .get_actor(&register_path)
             .await;
         if let Some(register) = register {
             let message = if self.governance_id.is_empty() {
@@ -1133,11 +1066,9 @@ impl Subject {
                 }
             };
 
-            if let Err(e) = register.tell(message).await {
-                todo!()
-            }
+            register.tell(message).await?;
         } else {
-            todo!()
+            return Err(ActorError::NotFound(register_path));
         }
 
         Ok(())
@@ -1147,18 +1078,18 @@ impl Subject {
         &mut self,
         ctx: &mut ActorContext<Subject>,
         events: &[Signed<Ledger>],
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let mut events = events.to_vec();
         let last_ledger = self.get_last_ledger_state(ctx).await?;
 
         let mut last_ledger = if let Some(last_ledger) = last_ledger {
             last_ledger
         } else {
-            // TODO Hay errores que obligan a borrar el sujeto, como el número máximo de sujetos o un error en la validación del evento de creación.
-            if let Err(_e) =
+            if let Err(e) =
                 self.verify_first_ledger_event(events[0].clone()).await
             {
-                todo!()
+                // TODO Borrar sujeto.
+                return Err(ActorError::Functional(e.to_string()));
             }
 
             self.on_event(events[0].clone(), ctx).await;
@@ -1170,26 +1101,23 @@ impl Subject {
             if let Err(e) =
                 self.verify_new_ledger_event(&last_ledger, &event).await
             {
-                if let Error::Sn(_) = e {
+                if let Error::Sn = e {
                     // El evento que estamos aplicando no es el siguiente.
                     continue;
                 } else {
-                    todo!()
+                    return Err(ActorError::Functional(e.to_string()));
                 }
             }
 
             match event.content.event_request.content.clone() {
                 EventRequest::Transfer(transfer_request) => {
-                    if let Err(_e) = Subject::change_node_subject(
+                    Subject::change_node_subject(
                         ctx,
                         &transfer_request.subject_id.to_string(),
                         &transfer_request.new_owner.to_string(),
                         &self.owner.to_string(),
                     )
-                    .await
-                    {
-                        todo!()
-                    }
+                    .await?;
                 }
                 EventRequest::EOL(_eolrequest) => {
                     self.register(ctx, false).await?
@@ -1212,8 +1140,8 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         signer: String,
         max_quantity: usize,
-    ) -> Result<(), Error> {
-        if let Err(e) = register_relation(
+    ) -> Result<(), ActorError> {
+        register_relation(
             ctx,
             self.governance_id.to_string(),
             self.schema_id.clone(),
@@ -1223,53 +1151,43 @@ impl Subject {
             max_quantity,
         )
         .await
-        {
-            todo!()
-        };
-
-        Ok(())
     }
 
     async fn verify_new_ledger_events_not_gov(
         &mut self,
         ctx: &mut ActorContext<Subject>,
         events: &[Signed<Ledger>],
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let mut events = events.to_vec();
         let last_ledger = self.get_last_ledger_state(ctx).await?;
 
-        let Ok(gov) = get_gov(ctx, &self.governance_id.to_string()).await
-        else {
-            todo!()
-        };
+        let gov = get_gov(ctx, &self.governance_id.to_string()).await?;
 
         let Some(max_quantity) = gov.max_creations(
             &events[0].signature.signer.to_string(),
             &self.schema_id,
             self.namespace.clone(),
         ) else {
-            todo!()
+            return Err(ActorError::Functional("The number of subjects that can be created has not been found".to_owned()));
         };
 
         let mut last_ledger = if let Some(last_ledger) = last_ledger {
             last_ledger
         } else {
-            // TODO Hay errores que obligan a borrar el sujeto, como el número máximo de sujetos o un error en la validación del evento de creación.
-            if let Err(e) = self
+            self
                 .register_relation(
                     ctx,
                     events[0].signature.signer.to_string(),
                     max_quantity,
                 )
-                .await
-            {
-                todo!()
-            }
+                .await?;
 
-            if let Err(_e) =
+            if let Err(e) =
                 self.verify_first_ledger_event(events[0].clone()).await
             {
-                todo!()
+                // TODO Borrar sujeto.
+                // Eliminar del register relation.
+                return Err(ActorError::Functional(e.to_string()));
             }
 
             self.on_event(events[0].clone(), ctx).await;
@@ -1281,29 +1199,26 @@ impl Subject {
             if let Err(e) =
                 self.verify_new_ledger_event(&last_ledger, &event).await
             {
-                if let Error::Sn(_) = e {
+                if let Error::Sn = e {
                     // El evento que estamos aplicando no es el siguiente.
                     continue;
                 } else {
-                    todo!()
+                    return Err(ActorError::Functional(e.to_string()));
                 }
             }
 
             match event.content.event_request.content.clone() {
-                EventRequest::Confirm(confirm_request) => {
-                    if let Err(e) = self
+                EventRequest::Confirm(_confirm_request) => {
+                    self
                         .register_relation(
                             ctx,
                             event.signature.signer.to_string(),
                             max_quantity,
                         )
-                        .await
-                    {
-                        todo!()
-                    }
+                        .await?;
                 }
                 EventRequest::Transfer(transfer_request) => {
-                    if let Err(e) = delete_relation(
+                    delete_relation(
                         ctx,
                         self.governance_id.to_string(),
                         self.schema_id.clone(),
@@ -1311,21 +1226,15 @@ impl Subject {
                         self.subject_id.to_string(),
                         self.namespace.to_string(),
                     )
-                    .await
-                    {
-                        todo!()
-                    }
+                    .await?;
 
-                    if let Err(_e) = Subject::change_node_subject(
+                    Subject::change_node_subject(
                         ctx,
                         &transfer_request.subject_id.to_string(),
                         &transfer_request.new_owner.to_string(),
                         &self.owner.to_string(),
                     )
-                    .await
-                    {
-                        todo!()
-                    }
+                    .await?;
                 }
                 EventRequest::EOL(_eolrequest) => {
                     self.register(ctx, false).await?
@@ -1347,7 +1256,7 @@ impl Subject {
         &mut self,
         ctx: &mut ActorContext<Subject>,
         events: &[Signed<Ledger>],
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let our_key = self.get_node_key(ctx).await?;
 
         if self.governance_id.is_empty() {
@@ -1357,11 +1266,16 @@ impl Subject {
 
             if let Err(e) = self.verify_new_ledger_events_gov(ctx, events).await
             {
-                // Hay que ver el fallo TODO, porque se pudieron aplicar X eventos y hay que realizar acutalizaciones.
+                if let ActorError::Functional(e) = e {
+                    println!("{}",e);
+                    // TODO falló pero pudo aplicar algún evento entonces seguimos.
+                } else {
+                    return Err(e);
+                }
             };
 
             if current_sn < self.sn {
-                let old_gov = Governance::try_from(current_properties)?;
+                let old_gov = Governance::try_from(current_properties).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
                 if !self.active {
                     if current_owner == our_key {
                         Self::down_owner(ctx).await?;
@@ -1412,19 +1326,14 @@ impl Subject {
                     }
                 } else {
                     let new_gov =
-                        Governance::try_from(self.properties.clone())?;
+                        Governance::try_from(self.properties.clone()).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
 
                     // Si cambió el dueño
                     if current_owner != self.owner {
                         let Some(ext_db): Option<ExternalDB> =
                             ctx.system().get_helper("ext_db").await
                         else {
-                            ctx.system()
-                                .send_event(SystemEvent::StopSystem)
-                                .await;
-                            return Err(Error::Actor(
-                                "Can not access to ext_db helper".to_string(),
-                            ));
+                            return Err(ActorError::NotHelper("config".to_owned()));
                         };
 
                         if self.owner == our_key {
@@ -1538,8 +1447,7 @@ impl Subject {
                                         &format!("{}_evaluation", schema),
                                         eval_actor,
                                     )
-                                    .await
-                                    .map_err(|e| Error::Actor(e.to_string()))?;
+                                    .await?;
                                 }
                             }
                             crate::governance::model::Roles::VALIDATOR => {
@@ -1568,8 +1476,7 @@ impl Subject {
                                         &format!("{}_validation", schema),
                                         actor,
                                     )
-                                    .await
-                                    .map_err(|e| Error::Actor(e.to_string()))?;
+                                    .await?;
                                 }
                             }
                             _ => {}
@@ -1803,14 +1710,12 @@ impl Actor for Subject {
 
         let our_key = self
             .get_node_key(ctx)
-            .await
-            .map_err(|e| ActorError::Create)?;
+            .await?;
 
         let Some(ext_db): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
-            ctx.system().send_event(SystemEvent::StopSystem).await;
-            return Err(ActorError::NotHelper);
+            return Err(ActorError::NotHelper("ext_db".to_owned()));
         };
 
         let ledger_event = LedgerEvent::new(self.governance_id.is_empty());
@@ -1899,14 +1804,8 @@ impl Handler<Subject> for Subject {
                 Ok(SubjectResponse::Metadata(self.get_metadata()))
             }
             SubjectMessage::UpdateLedger { events } => {
-                debug!("Emit event to update subject.");
-                if let Err(e) =
-                    self.verify_new_ledger_events(ctx, events.as_slice()).await
-                {
-                    Ok(SubjectResponse::Error(e))
-                } else {
-                    Ok(SubjectResponse::LastSn(self.sn))
-                }
+                self.verify_new_ledger_events(ctx, events.as_slice()).await?;
+                Ok(SubjectResponse::LastSn(self.sn))
             }
             SubjectMessage::SignRequest(content) => {
                 let sign = match *content {
@@ -1929,10 +1828,7 @@ impl Handler<Subject> for Subject {
                     }
                 }
                 // If is not a governance
-                match self.get_governance_from_other_subject(ctx).await {
-                    Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
-                    Err(e) => return Ok(SubjectResponse::Error(e)),
-                }
+                return Ok(SubjectResponse::Governance(self.get_governance_from_other_subject(ctx).await?));
             }
         }
     }
@@ -2167,6 +2063,11 @@ mod tests {
                                 "id": KeyIdentifier::new(KeyDerivator::Ed25519, &vec![]),
                                 "name": format!("KoreNode{}", i)
                             }
+                        },
+                        {
+                            "op": "add",
+                            "path": "/version",
+                            "value": i
                         }
                     ]
             );

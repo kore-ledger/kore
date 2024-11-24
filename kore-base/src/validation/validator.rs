@@ -10,7 +10,7 @@ use crate::{
         network::{intermediary::Intermediary, NetworkMessage},
     },
     model::{
-        common::{get_gov, get_sign},
+        common::{emit_fail, get_gov, get_sign},
         event::ProtocolsSignatures,
         network::{RetryNetwork, TimeOutResponse},
         signature::Signature,
@@ -147,7 +147,7 @@ impl Validator {
                     validation_req.proof.governance_id.clone()
                 };
 
-            get_gov(ctx, &governance_id.to_string()).await?.version
+            get_gov(ctx, &governance_id.to_string()).await.map_err(|e| todo!())?.version
         };
 
         match actual_gov_version.cmp(&validation_req.proof.governance_version) {
@@ -176,13 +176,15 @@ impl Validator {
             &validation_req.previous_proof,
         )?;
 
-        self.check_proofs(
+        if let Err(e) = self.check_proofs(
             ctx,
             &validation_req.proof,
             validation_req.previous_proof,
             validation_req.prev_event_validation_response,
         )
-        .await?;
+        .await {
+            todo!()
+        };
 
         match get_sign(
             ctx,
@@ -201,7 +203,7 @@ impl Validator {
         new_proof: &ValidationProof,
         previous_proof: Option<ValidationProof>,
         previous_validation_signatures: Vec<ProtocolsSignatures>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
             // subject_public_key is not verified because it can change if a transfer of the subject is made. is correct?
@@ -215,13 +217,12 @@ impl Validator {
                 || previous_proof.schema_id != new_proof.schema_id
                 || previous_proof.governance_id != new_proof.governance_id
             {
-                error!("");
-                return Err(Error::Validation("There are fields that do not match in the comparison of the previous validation proof and the new proof.".to_owned()));
+                return Err(ActorError::Functional("There are fields that do not match in the comparison of the previous validation proof and the new proof.".to_owned()));
             }
 
             // Validate the previous proof
             // If all validations are correct, we get the public keys of the validators
-            let previous_signers: Result<HashSet<KeyIdentifier>, Error> =
+            let previous_signers: Result<HashSet<KeyIdentifier>, ActorError> =
                 previous_validation_signatures
                     .into_iter()
                     .map(|signer_res| {
@@ -230,7 +231,7 @@ impl Validator {
                             ProtocolsSignatures::Signature(signature) => {
 
                                 if let Err(error) = signature.verify(&previous_proof) {
-                                    Err(Error::Signature(format!("An error occurred while validating the previous proof, {:?}", error)))
+                                    Err(ActorError::Functional(format!("An error occurred while validating the previous proof, {:?}", error)))
                                 } else {
                                     Ok(signature.signer)
                                 }
@@ -263,7 +264,7 @@ impl Validator {
             if previous_proof.governance_version == new_proof.governance_version
             {
                 if actual_signers != previous_signers {
-                    return Err(Error::Validation("The previous event received validations from validators who are not part of governance.".to_owned()));
+                    return Err(ActorError::Functional("The previous event received validations from validators who are not part of governance.".to_owned()));
                 }
             } else {
                 let Some(helper): Option<ExternalDB> =
@@ -279,9 +280,9 @@ impl Validator {
                     todo!()
                 };
 
-                let validators: HashSet<KeyIdentifier>  = serde_json::from_str(&validators).map_err(|e| Error::Validation(format!("Unable to get list of validators for previous test: {}", e)))?;
+                let validators: HashSet<KeyIdentifier>  = serde_json::from_str(&validators).map_err(|e| ActorError::Functional(format!("Unable to get list of validators for previous test: {}", e)))?;
                 if validators != previous_signers {
-                    return Err(Error::Validation("The previous event received validations from validators who are not part of governance.".to_owned()));
+                    return Err(ActorError::Functional("The previous event received validations from validators who are not part of governance.".to_owned()));
                 }
                 // TODO: Si la versión de la governanza es -1, solicitarle a la governanza los validadores de esa versión
             }
@@ -535,8 +536,8 @@ impl Handler<Validator> for Validator {
                     ctx.system().get_helper("network").await;
 
                 let Some(mut helper) = helper else {
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                    return Err(ActorError::NotHelper);
+                    let e = ActorError::NotHelper("network".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 let validation = match self

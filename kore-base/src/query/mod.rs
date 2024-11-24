@@ -109,7 +109,7 @@ impl Handler<Query> for Query {
             ctx.system().get_helper("ext_db").await
         else {
             ctx.system().send_event(SystemEvent::StopSystem).await;
-            return Err(ActorError::NotHelper);
+            return Err(ActorError::NotHelper("ext_db".to_owned()));
         };
 
         match msg {

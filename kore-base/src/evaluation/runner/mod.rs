@@ -540,12 +540,9 @@ pub enum RunnerEvent {}
 impl Event for RunnerEvent {}
 
 #[derive(Debug, Clone)]
-pub enum RunnerResponse {
-    Response {
-        result: RunnerResult,
-        compilations: Vec<String>,
-    },
-    Error(Error),
+pub struct  RunnerResponse {
+    pub result: RunnerResult,
+    pub compilations: Vec<String>,
 }
 
 impl Response for RunnerResponse {}
@@ -565,19 +562,14 @@ impl Handler<Runner> for Runner {
         msg: RunnerMessage,
         _ctx: &mut ActorContext<Runner>,
     ) -> Result<RunnerResponse, ActorError> {
-        match Self::execute_contract(
+        let (result, compilations) = Self::execute_contract(
             &msg.state,
             &msg.event,
             msg.compiled_contract,
             msg.is_owner,
         )
-        .await
-        {
-            Ok((result, compilations)) => Ok(RunnerResponse::Response {
-                result,
-                compilations,
-            }),
-            Err(e) => Ok(RunnerResponse::Error(e)),
-        }
+        .await.map_err(|e| ActorError::Functional(e.to_string()))?;
+
+        Ok(RunnerResponse { result, compilations })
     }
 }

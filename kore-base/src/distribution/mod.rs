@@ -10,7 +10,7 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use crate::{
     governance::model::Roles,
-    model::event::Ledger,
+    model::{common::{emit_fail, get_gov, get_metadata}, event::Ledger},
     request::manager::{RequestManager, RequestManagerMessage},
     subject::Metadata,
     Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage,
@@ -36,80 +36,6 @@ impl Distribution {
 
     fn check_witness(&mut self, witness: KeyIdentifier) -> bool {
         self.witnesses.remove(&witness)
-    }
-
-    async fn get_gov_metadata(
-        &self,
-        ctx: &mut ActorContext<Distribution>,
-        subject_id: DigestIdentifier,
-    ) -> Result<(Governance, Metadata), Error> {
-        // Governance path
-        let governance_path =
-            ActorPath::from(format!("/user/node/{}", subject_id));
-        // Governance actor.
-        let governance_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&governance_path).await;
-
-        // We obtain the actor governance
-        let governance_actor = if let Some(governance_actor) = governance_actor
-        {
-            governance_actor
-        } else {
-            return Err(Error::Actor(format!(
-                "The governance actor was not found in the expected path {}",
-                governance_path
-            )));
-        };
-
-        // We ask a governance
-        let response =
-            governance_actor.ask(SubjectMessage::GetGovernance).await;
-        let response = match response {
-            Ok(response) => response,
-            Err(e) => {
-                return Err(Error::Actor(format!(
-                    "Error when asking a Subject {}",
-                    e
-                )));
-            }
-        };
-
-        let gov =
-            match response {
-                SubjectResponse::Governance(gov) => gov,
-                SubjectResponse::Error(error) => {
-                    return Err(Error::Actor(format!(
-                "The subject encountered problems when getting governance: {}",
-                error
-            )))
-                }
-                _ => return Err(Error::Actor(
-                    "An unexpected response has been received from node actor"
-                        .to_owned(),
-                )),
-            };
-
-        let response = governance_actor.ask(SubjectMessage::GetMetadata).await;
-        let response = match response {
-            Ok(response) => response,
-            Err(e) => {
-                return Err(Error::Actor(format!(
-                    "Error when asking a Subject {}",
-                    e
-                )));
-            }
-        };
-
-        let metadata =
-            match response {
-                SubjectResponse::Metadata(metadata) => metadata,
-                _ => return Err(Error::Actor(
-                    "An unexpected response has been received from node actor"
-                        .to_owned(),
-                )),
-            };
-
-        Ok((gov, metadata))
     }
 
     async fn create_distributors(
@@ -206,15 +132,18 @@ impl Handler<Distribution> for Distribution {
                 event,
                 ledger,
             } => {
+                self.request_id = request_id;
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
-                let (governance, metadata) =
-                    match self.get_gov_metadata(ctx, subject_id).await {
-                        Ok(gov) => gov,
-                        Err(_e) => todo!(),
-                    };
+                let governance = match get_gov(ctx, &subject_id.to_string()).await {
+                    Ok(gov) => gov,
+                    Err(e) => return Err(emit_fail(ctx, e).await),
+                };
 
-                self.request_id = request_id.to_string();
+                let metadata = match get_metadata(ctx, &subject_id.to_string()).await {
+                    Ok(metadata) => metadata,
+                    Err(e) => return Err(emit_fail(ctx, e).await),
+                };
 
                 let witnesses = if metadata.schema_id == "governance" {
                     governance.members_to_key_identifier()
@@ -233,6 +162,8 @@ impl Handler<Distribution> for Distribution {
                         todo!()
                     };
                 }
+
+                self.witnesses = witnesses.clone();
 
                 for witness in witnesses {
                     self.create_distributors(

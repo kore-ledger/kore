@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{intermediary::Intermediary, NetworkMessage};
 
-use super::TimeStamp;
+use super::{common::emit_fail, TimeStamp};
 
 #[derive(
     Debug,
@@ -51,8 +51,8 @@ impl Handler<RetryNetwork> for RetryNetwork {
             ctx.system().get_helper("network").await;
 
         let Some(mut helper) = helper else {
-            ctx.system().send_event(SystemEvent::StopSystem).await;
-            return Err(ActorError::NotHelper);
+            let e = ActorError::NotHelper("network".to_owned());
+            return Err(emit_fail(ctx, e).await);
         };
 
         if let Err(_e) = helper

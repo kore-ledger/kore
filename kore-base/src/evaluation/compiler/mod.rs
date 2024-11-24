@@ -381,19 +381,12 @@ pub enum CompilerEvent {}
 
 impl Event for CompilerEvent {}
 
-#[derive(Debug, Clone)]
-pub enum CompilerResponse {
-    Error(Error),
-    Ok,
-}
-
-impl Response for CompilerResponse {}
 
 #[async_trait]
 impl Actor for Compiler {
     type Event = CompilerEvent;
     type Message = CompilerMessage;
-    type Response = CompilerResponse;
+    type Response = ();
 }
 
 #[async_trait]
@@ -403,7 +396,7 @@ impl Handler<Compiler> for Compiler {
         _sender: ActorPath,
         msg: CompilerMessage,
         _ctx: &mut ActorContext<Compiler>,
-    ) -> Result<CompilerResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             CompilerMessage::Compile {
                 contract,
@@ -427,7 +420,7 @@ impl Handler<Compiler> for Compiler {
                     if let Err(e) =
                         Self::compile_contract(&contract, &contract_path).await
                     {
-                        return Ok(CompilerResponse::Error(e));
+                        return Err(ActorError::Functional(e.to_string()));
                     };
 
                     let contract = match Self::check_wasm(
@@ -437,7 +430,7 @@ impl Handler<Compiler> for Compiler {
                     .await
                     {
                         Ok(contract) => contract,
-                        Err(e) => return Ok(CompilerResponse::Error(e)),
+                        Err(e) => return Err(ActorError::Functional(e.to_string())),
                     };
 
                     {
@@ -448,7 +441,7 @@ impl Handler<Compiler> for Compiler {
                     self.contract = contract_hash;
                 }
 
-                Ok(CompilerResponse::Ok)
+                Ok(())
             }
         }
     }

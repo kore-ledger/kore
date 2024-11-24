@@ -8,7 +8,7 @@ use crate::{
     governance::Schema,
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::{get_gov, get_sign},
+        common::{emit_fail, get_gov, get_sign},
         network::{RetryNetwork, TimeOutResponse},
         HashId, SignTypesNode, TimeStamp,
     },
@@ -35,9 +35,9 @@ use serde_json::Value;
 use tracing::error;
 
 use super::{
-    compiler::{Compiler, CompilerMessage, CompilerResponse},
+    compiler::{Compiler, CompilerMessage},
     request::EvaluationReq,
-    response::EvaluationRes,
+    response::{self, EvaluationRes},
     runner::{
         types::{Contract, GovernanceData, RunnerResult},
         Runner, RunnerMessage, RunnerResponse,
@@ -65,26 +65,16 @@ impl Evaluator {
         compiled_contract: Contract,
         is_owner: bool,
     ) -> Result<RunnerResponse, ActorError> {
-        let child = ctx.create_child("runner", Runner::default()).await;
+        let runner_actor = ctx.create_child("runner", Runner::default()).await?;
 
-        let runner_actor = match child {
-            Ok(child) => child,
-            Err(_e) => return Err(_e),
-        };
-
-        let response = runner_actor
+        runner_actor
             .ask(RunnerMessage {
                 state: state.clone(),
                 event: event.clone(),
                 compiled_contract,
                 is_owner,
             })
-            .await;
-
-        match response {
-            Ok(eval) => Ok(eval),
-            Err(_e) => Err(_e),
-        }
+            .await
     }
 
     async fn compile_contracts(
@@ -93,48 +83,34 @@ impl Evaluator {
         ids: &[String],
         schemas: Vec<Schema>,
         governance_id: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         for id in ids {
             let schema = if let Some(schema) =
                 schemas.iter().find(|x| x.id.clone() == id.clone())
             {
                 schema
             } else {
-                return Err(Error::Evaluation("There is a contract that requires compilation but its scheme could not be found".to_owned()));
+                return Err(ActorError::Functional("There is a contract that requires compilation but its scheme could not be found".to_owned()));
             };
 
             let compiler_path = ActorPath::from(format!(
                 "/user/node/{}/{}_compiler",
                 governance_id, schema.id
             ));
-            let compiler_actor = ctx.system().get_actor(&compiler_path).await;
+            let compiler_actor: Option<ActorRef<Compiler>> = ctx.system().get_actor(&compiler_path).await;
 
-            let compiler_actor: ActorRef<Compiler> =
-                if let Some(compiler_actor) = compiler_actor {
+            
+            if let Some(compiler_actor) = compiler_actor {
                     compiler_actor
-                } else {
-                    return Err(Error::Actor(format!(
-                        "Can not find compiler actor in {}",
-                        compiler_path
-                    )));
-                };
-
-            let response = compiler_actor
                 .ask(CompilerMessage::Compile {
                     contract: schema.contract.raw.clone(),
                     initial_value: schema.initial_value.clone(),
                     contract_path: format!("{}_{}", governance_id, id),
                 })
-                .await;
-
-            let compilation = match response {
-                Ok(compilation) => compilation,
-                Err(e) => return Err(Error::Actor(format!("{}", e))),
-            };
-
-            if let CompilerResponse::Error(e) = compilation {
-                return Err(e);
-            }
+                .await?
+                } else {
+                    return Err(ActorError::NotFound(compiler_path));
+                };        
         }
         Ok(())
     }
@@ -144,7 +120,7 @@ impl Evaluator {
         ctx: &mut ActorContext<Evaluator>,
         execute_contract: &EvaluationReq,
         event: &FactRequest,
-    ) -> Result<RunnerResult, Error> {
+    ) -> Result<RunnerResult, ActorError> {
         // TODO: En el original se usa el sn y no el gov version, revizar.
 
         let is_governance = execute_contract.context.schema_id == "governance";
@@ -187,7 +163,7 @@ impl Evaluator {
             )) {
                 Contract::CompiledContract(contract.clone())
             } else {
-                todo!()
+                return Err(ActorError::FunctionalFail("Contract not found".to_owned()))
             }
         };
 
@@ -200,23 +176,14 @@ impl Evaluator {
                 contract,
                 execute_contract.context.is_owner,
             )
-            .await
-            .map_err(|e| Error::Actor(format!("{}", e)))?;
+            .await?;
 
-        let (result, compilations) = match response {
-            RunnerResponse::Response {
-                result,
-                compilations,
-            } => (result, compilations),
-            RunnerResponse::Error(e) => return Err(e),
-        };
-
-        if result.success && is_governance && !compilations.is_empty() {
+        if response.result.success && is_governance && !response.compilations.is_empty() {
             let governance_data = serde_json::from_value::<GovernanceData>(
-                result.final_state.0.clone(),
+                response.result.final_state.0.clone(),
             )
             .map_err(|e| {
-                Error::Evaluation(format!(
+                ActorError::Functional(format!(
                     "Can not create governance data {}",
                     e
                 ))
@@ -225,7 +192,7 @@ impl Evaluator {
             // TODO SI falla eliminar los new_compilers y borrar de CONTRACTS.
             let Ok(new_compilers) = Evaluator::create_compilers(
                 ctx,
-                &compilations,
+                &response.compilations,
                 &governance_id.to_string(),
             )
             .await
@@ -235,14 +202,14 @@ impl Evaluator {
 
             self.compile_contracts(
                 ctx,
-                &compilations,
+                &response.compilations,
                 governance_data.schemas,
                 &governance_id.to_string(),
             )
             .await?;
         }
 
-        Ok(result)
+        Ok(response.result)
     }
 
     async fn create_compilers(
@@ -381,7 +348,8 @@ impl Handler<Evaluator> for Evaluator {
                         Self::build_response(evaluation, evaluation_req).await
                     }
                     Err(e) => {
-                        // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
+                        // TODO si es un error Funtional es nuestra respuesta, si es un error de otro tipo
+                        // Parar al nodo
                         todo!()
                     }
                 };
@@ -573,8 +541,8 @@ impl Handler<Evaluator> for Evaluator {
                     ctx.system().get_helper("network").await;
 
                 let Some(mut helper) = helper else {
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
-                    return Err(ActorError::NotHelper);
+                    let e = ActorError::NotHelper("network".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 let EventRequest::Fact(state_data) =
@@ -596,7 +564,8 @@ impl Handler<Evaluator> for Evaluator {
                         .await
                     }
                     Err(_e) => {
-                        // Falla al hacer la evaluación, lo que es el proceso, ver como se maneja TODO
+                        // TODO si es un error Funtional es nuestra respuesta, si es un error de otro tipo
+                        // Parar al nodo
                         todo!()
                     }
                 };
