@@ -579,7 +579,7 @@ impl Handler<Approver> for Approver {
                 if info_subject_path
                     != approval_req.content.subject_id.to_string()
                 {
-                    return Ok(ApproverResponse::None);
+                    return Err(ActorError::Functional("We received an approvation where the request indicates one subject but the info indicates another.".to_owned()));
                 }
 
                 if info.request_id != self.request_id {

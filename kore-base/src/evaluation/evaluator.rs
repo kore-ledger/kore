@@ -121,8 +121,6 @@ impl Evaluator {
         execute_contract: &EvaluationReq,
         event: &FactRequest,
     ) -> Result<RunnerResult, ActorError> {
-        // TODO: En el original se usa el sn y no el gov version, revizar.
-
         let is_governance = execute_contract.context.schema_id == "governance";
 
         // Get governance id
@@ -190,15 +188,16 @@ impl Evaluator {
             })?;
 
             // TODO SI falla eliminar los new_compilers y borrar de CONTRACTS.
-            let Ok(new_compilers) = Evaluator::create_compilers(
+            let new_compilers = match Evaluator::create_compilers(
                 ctx,
                 &response.compilations,
                 &governance_id.to_string(),
             )
-            .await
-            else {
-                todo!()
+            .await {
+                Ok(new_compilers) => new_compilers,
+                Err(e) => return Err(ActorError::Functional(format!("{}", e)))
             };
+            
 
             self.compile_contracts(
                 ctx,
@@ -261,7 +260,7 @@ impl Evaluator {
         if evaluation.success {
             let state_hash = match evaluation.final_state.hash_id(derivator) {
                 Ok(state_hash) => state_hash,
-                Err(_e) => todo!(),
+                Err(e) => return EvaluationRes::Error(e.to_string()),
             };
 
             let patch = match Self::generate_json_patch(
@@ -269,7 +268,7 @@ impl Evaluator {
                 &evaluation.final_state.0,
             ) {
                 Ok(patch) => patch,
-                Err(_e) => todo!(),
+                Err(e) => return EvaluationRes::Error(e.to_string()),
             };
 
             return EvaluationRes::Response(EvalRes {
@@ -279,8 +278,7 @@ impl Evaluator {
                 appr_required: evaluation.approval_required,
             });
         }
-        // Retornar error.
-        todo!()
+        return EvaluationRes::Error("The evaluation was not success".to_string())
     }
 }
 
@@ -332,8 +330,8 @@ impl Handler<Evaluator> for Evaluator {
                 let EventRequest::Fact(state_data) =
                     &evaluation_req.event_request.content
                 else {
-                    // Manejar, solo se evaluan los eventos de tipo fact TODO
-                    todo!()
+                    let e = ActorError::FunctionalFail("The only event that can be evaluated is the Fact event".to_owned());
+                    return Err(emit_fail(ctx, e).await)
                 };
 
                 let evaluation = match self
@@ -344,9 +342,11 @@ impl Handler<Evaluator> for Evaluator {
                         Self::build_response(evaluation, evaluation_req).await
                     }
                     Err(e) => {
-                        // TODO si es un error Funtional es nuestra respuesta, si es un error de otro tipo
-                        // Parar al nodo
-                        todo!()
+                        if let ActorError::Functional(_) = e {
+                            EvaluationRes::Error(e.to_string())
+                        } else {
+                            return Err(emit_fail(ctx, e).await)
+                        }
                     }
                 };
 
@@ -357,7 +357,7 @@ impl Handler<Evaluator> for Evaluator {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(_e) => todo!(),
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 // Evaluatiob path.
@@ -424,20 +424,19 @@ impl Handler<Evaluator> for Evaluator {
 
                 let retry_actor = RetryActor::new(target, message, strategy);
 
-                let retry = if let Ok(retry) = ctx
+                let retry = match ctx
                     .create_child::<RetryActor<RetryNetwork>>(
                         "retry",
                         retry_actor,
                     )
-                    .await
-                {
-                    retry
-                } else {
-                    todo!()
-                };
+                    .await {
+                        Ok(retry) => retry,
+                        Err(e) => return Err(emit_fail(ctx, e).await),
 
-                if let Err(_e) = retry.tell(RetryMessage::Retry).await {
-                    todo!()
+                    };
+
+                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    return Err(emit_fail(ctx, e).await)
                 };
             }
             EvaluatorMessage::NetworkResponse {
@@ -447,12 +446,11 @@ impl Handler<Evaluator> for Evaluator {
                 if request_id == self.request_id {
                     if self.node != evaluation_res.signature.signer {
                         // Nos llegó a una validación de un nodo incorrecto!
-                        todo!()
+                        return Err(ActorError::Functional("Invalid signer".to_owned()));
                     }
 
-                    if let Err(_e) = evaluation_res.verify() {
-                        // Hay error criptográfico en la respuesta
-                        todo!()
+                    if let Err(e) = evaluation_res.verify() {
+                        return Err(ActorError::Functional("Can not verify signature".to_owned()));
                     }
 
                     // Evaluation path.
@@ -463,7 +461,7 @@ impl Handler<Evaluator> for Evaluator {
                         ctx.system().get_actor(&evaluation_path).await;
 
                     if let Some(evaluation_actor) = evaluation_actor {
-                        if let Err(_e) = evaluation_actor
+                        if let Err(e) = evaluation_actor
                             .tell(EvaluationMessage::Response {
                                 evaluation_res: evaluation_res.content,
                                 sender: self.node.clone(),
@@ -471,23 +469,28 @@ impl Handler<Evaluator> for Evaluator {
                             })
                             .await
                         {
-                            // TODO error, no se puede enviar la response. Parar
+                            return Err(emit_fail(ctx, e).await)
                         }
                     } else {
-                        // TODO no se puede obtener evaluation! Parar.
-                        // Can not obtain parent actor
+                        let e = ActorError::NotFound(evaluation_path);
+                        return Err(emit_fail(ctx, e).await)
                     }
 
-                    let retry = if let Some(retry) =
-                        ctx.get_child::<RetryActor<RetryNetwork>>("retry").await
-                    {
-                        retry
-                    } else {
-                        todo!()
-                    };
-                    if let Err(_e) = retry.tell(RetryMessage::End).await {
-                        todo!()
-                    };
+                    'retry: {
+                        let Some(retry) = ctx
+                            .get_child::<RetryActor<RetryNetwork>>("retry")
+                            .await
+                        else {
+                            // Aquí me da igual, porque al parar este actor para el hijo
+                            break 'retry;
+                        };
+
+                        if let Err(_e) = retry.tell(RetryMessage::End).await {
+                            // Aquí me da igual, porque al parar este actor para el hijo
+                            break 'retry;
+                        };
+                    }
+
                     ctx.stop().await;
                 } else {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
@@ -497,6 +500,22 @@ impl Handler<Evaluator> for Evaluator {
                 evaluation_req,
                 info,
             } => {
+                let EventRequest::Fact(state_data) =
+                    &evaluation_req.content.event_request.content
+                else {
+                    return Err(ActorError::Functional("The only event that can be evaluated is the Fact event".to_owned()))
+                };
+
+                let info_subject_path =
+                    ActorPath::from(info.reciver_actor.clone()).parent().key();
+                // Nos llegó una eval donde en la request se indica un sujeto pero en el info otro
+                // Posible ataque.
+                if info_subject_path
+                    != evaluation_req.content.context.subject_id.to_string()
+                {
+                    return Err(ActorError::Functional("We received an evaluation where the request indicates one subject but the info indicates another.".to_owned()));
+                }
+                
                 if info.schema == "governance" {
                     // Aquí hay que comprobar que el owner del subject es el que envía la req.
                     let subject_path = ActorPath::from(format!(
@@ -511,25 +530,28 @@ impl Handler<Evaluator> for Evaluator {
                         match subject_actor.ask(SubjectMessage::GetOwner).await
                         {
                             Ok(response) => response,
-                            Err(_e) => todo!(),
+                            Err(e) => return Err(emit_fail(ctx, e).await),
                         }
                     } else {
-                        todo!()
+                        let e = ActorError::NotFound(subject_path);
+                        return Err(emit_fail(ctx, e).await)
                     };
 
                     let subject_owner = match response {
                         SubjectResponse::Owner(owner) => owner,
-                        _ => todo!(),
+                        _ => {
+                            let e = ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Owner".to_owned());
+                            return Err(emit_fail(ctx, e).await)
+                        },
                     };
 
                     if subject_owner != evaluation_req.signature.signer {
                         // Error nos llegó una evaluation req de un nodo el cual no es el dueño
-                        todo!()
+                        return Err(ActorError::Functional("Evaluation req signer and owner are not the same".to_owned()));
                     }
 
-                    if let Err(_e) = evaluation_req.verify() {
-                        // Hay errores criptográficos
-                        todo!()
+                    if let Err(e) = evaluation_req.verify() {
+                        return Err(ActorError::Functional(format!("Can not verify signature: {}", e.to_string())));
                     }
                 }
 
@@ -539,13 +561,6 @@ impl Handler<Evaluator> for Evaluator {
                 let Some(mut helper) = helper else {
                     let e = ActorError::NotHelper("network".to_owned());
                     return Err(emit_fail(ctx, e).await);
-                };
-
-                let EventRequest::Fact(state_data) =
-                    &evaluation_req.content.event_request.content
-                else {
-                    // Manejar, solo se evaluan los eventos de tipo fact TODO
-                    todo!()
                 };
 
                 let evaluation = match self
@@ -559,10 +574,12 @@ impl Handler<Evaluator> for Evaluator {
                         )
                         .await
                     }
-                    Err(_e) => {
-                        // TODO si es un error Funtional es nuestra respuesta, si es un error de otro tipo
-                        // Parar al nodo
-                        todo!()
+                    Err(e) => {
+                        if let ActorError::Functional(_) = e {
+                            EvaluationRes::Error(e.to_string())
+                        } else {
+                            return Err(emit_fail(ctx, e).await)
+                        }
                     }
                 };
 
@@ -585,14 +602,16 @@ impl Handler<Evaluator> for Evaluator {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(_e) => todo!(),
+                    Err(e) => {
+                        return Err(emit_fail(ctx, e).await)
+                    },
                 };
 
                 let signed_response: Signed<EvaluationRes> = Signed {
                     content: evaluation,
                     signature,
                 };
-                if let Err(_e) = helper
+                if let Err(e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
@@ -603,7 +622,7 @@ impl Handler<Evaluator> for Evaluator {
                     })
                     .await
                 {
-                    // error al enviar mensaje, propagar hacia arriba TODO
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 if info.schema != "governance" {
@@ -629,7 +648,7 @@ impl Handler<Evaluator> for Evaluator {
                     ctx.system().get_actor(&evaluation_path).await;
 
                 if let Some(evaluation_actor) = evaluation_actor {
-                    if let Err(_e) = evaluation_actor
+                    if let Err(e) = evaluation_actor
                         .tell(EvaluationMessage::Response {
                             evaluation_res: EvaluationRes::TimeOut(
                                 TimeOutResponse {
@@ -643,13 +662,11 @@ impl Handler<Evaluator> for Evaluator {
                         })
                         .await
                     {
-                        // TODO error, no se puede enviar la response
-                        // return Err(_e);
+                        emit_fail(ctx, e).await;
                     }
                 } else {
-                    // TODO no se puede obtener evaluation! Parar.
-                    // Can not obtain parent actor
-                    // return Err(ActorError::Exists(evaluation_path));
+                    let e = ActorError::NotFound(evaluation_path);
+                    emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
             },
