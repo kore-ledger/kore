@@ -216,28 +216,24 @@ impl Evaluator {
         ctx: &mut ActorContext<Evaluator>,
         ids: &[String],
         gov: &str,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<String>, ActorError> {
+        let subject_path = ActorPath::from(format!("/user/node/{}", gov));
         let subject: Option<ActorRef<Subject>> = ctx
             .system()
-            .get_actor(&ActorPath::from(format!("/user/node/{}", gov)))
+            .get_actor(&subject_path)
             .await;
 
         let response = if let Some(subject) = subject {
-            let Ok(response) = subject
+            subject
                 .ask(SubjectMessage::CreateCompilers(ids.to_vec()))
-                .await
-            else {
-                todo!()
-            };
-            response
+                .await?
         } else {
-            todo!()
+            return Err(ActorError::NotFound(subject_path));
         };
 
         match response {
             SubjectResponse::NewCompilers(new_compilers) => Ok(new_compilers),
-            SubjectResponse::Error(e) => todo!(),
-            _ => todo!(),
+            _ => return Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::NewCompilers".to_owned())),
         }
     }
 

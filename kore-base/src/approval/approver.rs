@@ -190,7 +190,7 @@ impl Approver {
                 schema: info.schema.clone(),
             };
 
-            helper
+            if let Err(e) = helper
                 .send_command(network::CommandHelper::SendMessage {
                     message: NetworkMessage {
                         info: new_info,
@@ -199,7 +199,9 @@ impl Approver {
                         },
                     },
                 })
-                .await?;
+                .await {
+                    return Err(emit_fail(ctx, e).await);
+                };
         } else {
             // Approval Path
             let approval_path = ActorPath::from(format!(

@@ -77,20 +77,16 @@ impl Distribution {
     async fn end_request(
         &self,
         ctx: &mut ActorContext<Distribution>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let req_path =
             ActorPath::from(format!("/user/request/{}", self.request_id));
         let req_actor: Option<ActorRef<RequestManager>> =
             ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
-            if let Err(_e) =
-                req_actor.tell(RequestManagerMessage::FinishRequest).await
-            {
-                todo!()
-            }
+            req_actor.tell(RequestManagerMessage::FinishRequest).await?;
         } else {
-            todo!()
+            return Err(ActorError::NotFound(req_path));
         };
 
         Ok(())
@@ -159,7 +155,7 @@ impl Handler<Distribution> for Distribution {
 
                 if witnesses.len() == 1 && witnesses.contains(&self.node_key) {
                     if let Err(e) = self.end_request(ctx).await {
-                        todo!()
+                        return Err(emit_fail(ctx, e).await);
                     };
                 }
 
@@ -178,7 +174,7 @@ impl Handler<Distribution> for Distribution {
             DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) && self.witnesses.is_empty() {
                     if let Err(e) = self.end_request(ctx).await {
-                        todo!()
+                        return Err(emit_fail(ctx, e).await)
                     };
                 }
             }
