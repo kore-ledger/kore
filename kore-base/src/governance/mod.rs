@@ -4,8 +4,6 @@
 //! # Governance module.
 //!
 
-// TODO Cuando haya un cambio en la governanza, en un schema para el cual soy evaluador, tengo que realizar la compilación de JSONSchema y compilación del contrato,
-// solo en el caso de que haya ocurrido algún cambio.
 pub mod init;
 pub mod json_schema;
 pub mod model;
@@ -146,8 +144,7 @@ impl Governance {
                         }
                     }
                     Who::NOT_MEMBERS => {
-                        // TODO Imposible llegar aquí not members es solo para issuers.
-                        todo!()
+                        unreachable!()
                     }
                 }
             }
@@ -204,8 +201,7 @@ impl Governance {
                         }
                     }
                     Who::NOT_MEMBERS => {
-                        // TODO Imposible llegar aquí not members es solo para issuers.
-                        todo!()
+                        unreachable!()
                     }
                 }
             }

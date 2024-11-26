@@ -184,13 +184,6 @@ impl Node {
         Ok(())
     }
 }
-// Autorizar un sujeto y sus testigos, o si ya está autorizado acutalizar sus testigos
-// Obtener los nodos autorizados y los testigos.
-// Eliminar un sujeto autorizado.
-// Actualizar de forma manual el sujeto.
-// Obtener Todas las governanzas
-// Obtener todos los sujetos de una determinada governanza
-// Obtener todos los schemas de una determinada governanza
 
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -224,7 +217,6 @@ pub enum NodeResponse {
     Contract(Vec<u8>),
     IsAuthorized(bool),
     KnowSubject(bool),
-    Error(Error),
     None,
 }
 
@@ -258,8 +250,8 @@ impl Actor for Node {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        if let Err(_e) = Self::build_compilation_dir().await {
-            // TODO manejar este error.
+        if let Err(e) = Self::build_compilation_dir().await {
+            return Err(ActorError::FunctionalFail(e.to_string()));
         };
 
         // Start store
@@ -414,7 +406,6 @@ impl Handler<Node> for Node {
                     .await?;
 
                 match response {
-                    SubjectResponse::Error(error) => todo!(),
                     SubjectResponse::LastSn(_) => {
                         self.on_event(
                             NodeEvent::ChangeTempSubj {
@@ -433,7 +424,9 @@ impl Handler<Node> for Node {
                         Ok(NodeResponse::SonWasCreated)
                     }
                     _ => {
-                        todo!()
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        let e = ActorError::UnexpectedResponse(subject_actor.path(), "SubjectResponse::LastSn".to_owned());
+                        return Err(e);
                     }
                 }
             }
@@ -498,12 +491,9 @@ impl Handler<Node> for Node {
                     }
                     SignTypesNode::Ledger(ledger) => self.sign(&ledger),
                     SignTypesNode::Event(event) => self.sign(&event),
-                };
+                }.map_err(|e| ActorError::FunctionalFail(format!("Can not sign event: {}", e)))?;
 
-                match sign {
-                    Ok(sign) => Ok(NodeResponse::SignRequest(sign)),
-                    Err(e) => Ok(NodeResponse::Error(e)),
-                }
+                Ok(NodeResponse::SignRequest(sign))
             }
             NodeMessage::AmISubjectOwner(subject_id) => {
                 Ok(NodeResponse::AmIOwner(
@@ -542,14 +532,24 @@ impl Handler<Node> for Node {
                 let auth: Option<actor::ActorRef<Auth>> =
                     ctx.get_child("auth").await;
                 let authorized_subjects = if let Some(auth) = auth {
-                    let Ok(AuthResponse::Auths { subjects }) =
-                        auth.ask(AuthMessage::GetAuths).await
+                    let res = match auth.ask(AuthMessage::GetAuths).await {
+                        Ok(res) => res,
+                        Err(e) => {
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            return Err(e);
+                        }
+                    };
+                    let AuthResponse::Auths { subjects } =res
                     else {
-                        todo!()
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        let e = ActorError::UnexpectedResponse(ActorPath::from(format!("{}/auth", ctx.path())), "AuthResponse::Auths".to_owned());
+                        return Err(e);
                     };
                     subjects
                 } else {
-                    todo!();
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    let e = ActorError::NotFound(ActorPath::from(format!("{}/auth", ctx.path())));
+                    return Err(e);
                 };
 
                 let auth_subj =

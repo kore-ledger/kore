@@ -59,18 +59,12 @@ pub enum AuthorizationMessage {
 
 impl Message for AuthorizationMessage {}
 
-#[derive(Debug, Clone)]
-pub enum AuthorizationResponse {
-    None,
-}
-
-impl Response for AuthorizationResponse {}
 
 #[async_trait]
 impl Actor for Authorization {
     type Event = ();
     type Message = AuthorizationMessage;
-    type Response = AuthorizationResponse;
+    type Response = ();
 
     async fn pre_start(
         &mut self,
@@ -94,7 +88,7 @@ impl Handler<Authorization> for Authorization {
         _sender: ActorPath,
         msg: AuthorizationMessage,
         ctx: &mut ActorContext<Authorization>,
-    ) -> Result<AuthorizationResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             AuthorizationMessage::Create => {
                 for witness in self.witnesses.clone() {
@@ -166,7 +160,7 @@ impl Handler<Authorization> for Authorization {
             }
         };
 
-        Ok(AuthorizationResponse::None)
+        Ok(())
     }
 
     async fn on_child_fault(

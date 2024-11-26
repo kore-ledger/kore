@@ -108,7 +108,6 @@ impl Message for AuthMessage {}
 pub enum AuthResponse {
     Auths { subjects: Vec<String> },
     Witnesses(AuthWitness),
-    Error(Error),
     None,
 }
 
@@ -162,9 +161,9 @@ impl Handler<Auth> for Auth {
                 {
                     return Ok(AuthResponse::Witnesses(witnesses.clone()));
                 } else {
-                    return Ok(AuthResponse::Error(Error::Auth(
+                    return Err(ActorError::Functional(
                         "The subject has not been authorized".to_owned(),
-                    )));
+                    ));
                 }
             }
             AuthMessage::DeleteAuth { subject_id } => {
@@ -269,13 +268,13 @@ impl Handler<Auth> for Auth {
                         }
                         AuthWitness::None => {
                             // Not Witness to update state of subject.
-                            return Ok(AuthResponse::Error(Error::Auth("The subject has no witnesses to try to ask for an update.".to_owned())));
+                            return Err(ActorError::Functional("The subject has no witnesses to try to ask for an update.".to_owned()));
                         }
                     };
                 } else {
-                    return Ok(AuthResponse::Error(Error::Auth(
+                    return Err(ActorError::Functional(
                         "The subject has not been authorized".to_owned(),
-                    )));
+                    ));
                 }
             }
         };

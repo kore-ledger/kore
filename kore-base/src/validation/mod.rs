@@ -122,7 +122,7 @@ impl Validation {
         let subject_signature = match response {
             SubjectResponse::SignRequest(sign) => sign,
             _ => {
-                return Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::SignRequest".to_owned()));
+                return Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::SignRequest".to_owned()));
             }
         };
 
@@ -763,15 +763,13 @@ pub mod tests {
         assert!(gov.schemas.is_empty());
         assert!(!gov.policies.is_empty());
 
-        let RequestHandlerResponse::Error(_response) = request_actor
+        if !request_actor
             .ask(RequestHandlerMessage::NewRequest {
                 request: signed_event_req.clone(),
             })
-            .await
-            .unwrap()
-        else {
-            panic!("Invalid response")
-        };
+            .await.is_err() {
+                panic!("Invalid response")
+            }
     }
 
     #[tokio::test]
@@ -870,14 +868,12 @@ pub mod tests {
         assert!(gov.schemas.is_empty());
         assert!(!gov.policies.is_empty());
 
-        let RequestHandlerResponse::Error(_response) = request_actor
+        if !request_actor
             .ask(RequestHandlerMessage::NewRequest {
                 request: signed_event_req.clone(),
             })
-            .await
-            .unwrap()
-        else {
-            panic!("Invalid response")
-        };
+            .await.is_err() {
+                panic!("Invalid response")
+            }
     }
 }

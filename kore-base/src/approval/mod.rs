@@ -88,7 +88,7 @@ impl Approval {
 
         let prev_hash = match response {
             SubjectResponse::Metadata(metadata) => metadata.last_event_hash,
-            _ => return Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Metadata".to_owned())),
+            _ => return Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Metadata".to_owned())),
         };
 
          let LedgerValue::Patch(patch) = eval_res.value else {
@@ -227,18 +227,12 @@ pub enum ApprovalEvent {
 
 impl Event for ApprovalEvent {}
 
-#[derive(Debug, Clone)]
-pub enum ApprovalResponse {
-    Error(Error),
-    None,
-}
-impl Response for ApprovalResponse {}
 
 #[async_trait]
 impl Actor for Approval {
     type Event = ApprovalEvent;
     type Message = ApprovalMessage;
-    type Response = ApprovalResponse;
+    type Response = ();
 
     async fn pre_start(
         &mut self,
@@ -266,7 +260,7 @@ impl Handler<Approval> for Approval {
         __sender: ActorPath,
         msg: ApprovalMessage,
         ctx: &mut ActorContext<Self>,
-    ) -> Result<ApprovalResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             ApprovalMessage::Create {
                 request_id,
@@ -275,7 +269,7 @@ impl Handler<Approval> for Approval {
             } => {
                 if request_id == self.request_id {
                     let Some(request) = self.request.clone() else {
-                        return Ok(ApprovalResponse::None);
+                        return Ok(());
                     };
 
                     for signer in self.approvers.clone() {
@@ -416,7 +410,7 @@ impl Handler<Approval> for Approval {
                 }
             }
         }
-        Ok(ApprovalResponse::None)
+        Ok(())
     }
 
     async fn on_event(

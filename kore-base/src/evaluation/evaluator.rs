@@ -232,7 +232,7 @@ impl Evaluator {
 
         match response {
             SubjectResponse::NewCompilers(new_compilers) => Ok(new_compilers),
-            _ => return Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::NewCompilers".to_owned())),
+            _ => return Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::NewCompilers".to_owned())),
         }
     }
 
@@ -540,7 +540,7 @@ impl Handler<Evaluator> for Evaluator {
                     let subject_owner = match response {
                         SubjectResponse::Owner(owner) => owner,
                         _ => {
-                            let e = ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Owner".to_owned());
+                            let e = ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Owner".to_owned());
                             return Err(emit_fail(ctx, e).await)
                         },
                     };

@@ -1,10 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use actor::{Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler, SystemEvent};
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
-    governance::{model::Roles, Quorum}, model::SignTypesNode, node::relationship::{
+    auth::{Auth, AuthMessage}, governance::{model::Roles, Quorum}, model::SignTypesNode, node::relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
     }, subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
@@ -13,6 +14,59 @@ use crate::{
 };
 
 use super::Namespace;
+
+#[derive(Debug)]
+pub struct MemoryManager {
+    memory: Vec<u8>,
+    map: HashMap<usize, usize>,
+}
+
+impl MemoryManager {
+    pub fn new() -> Self {
+        Self {
+            memory: vec![],
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn alloc(&mut self, len: usize) -> usize {
+        let current_len = self.memory.len();
+        self.memory.resize(current_len + len, 0);
+        self.map.insert(current_len, len);
+        current_len
+    }
+
+    pub fn write_byte(&mut self, start_ptr: usize, offset: usize, data: u8) {
+        self.memory[start_ptr + offset] = data;
+    }
+
+    pub fn read_byte(&self, ptr: usize) -> u8 {
+        self.memory[ptr]
+    }
+
+    pub fn read_data(&self, ptr: usize) -> Result<&[u8], Error> {
+        let len = self
+            .map
+            .get(&ptr)
+            .ok_or(Error::Runner("Invalid pointer provided".to_owned()))?;
+        Ok(&self.memory[ptr..ptr + len])
+    }
+
+    pub fn get_pointer_len(&self, ptr: usize) -> isize {
+        let Some(result) = self.map.get(&ptr) else {
+            return -1;
+        };
+        *result as isize
+    }
+
+    pub fn add_data_raw(&mut self, bytes: &[u8]) -> usize {
+        let ptr = self.alloc(bytes.len());
+        for (index, byte) in bytes.iter().enumerate() {
+            self.memory[ptr + index] = *byte;
+        }
+        ptr
+    }
+}
 
 pub async fn get_gov<A>(
     ctx: &mut ActorContext<A>,
@@ -38,7 +92,7 @@ where
     match response {
         SubjectResponse::Governance(gov) => Ok(gov),
         SubjectResponse::Error(error) => Err(ActorError::Functional(error.to_string())),
-        _ => Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Governance".to_owned())),
+        _ => Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Governance".to_owned())),
     }
 }
 
@@ -61,7 +115,7 @@ where
 
     match response {
         SubjectResponse::Metadata(metadata) => Ok(metadata),
-        _ => Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Metadata".to_owned())),
+        _ => Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Metadata".to_owned())),
     }
 }
 
@@ -85,11 +139,8 @@ where
 
     match node_response {
         NodeResponse::SignRequest(signature) => Ok(signature),
-        NodeResponse::Error(e) => {
-            Err(ActorError::Functional(e.to_string()))
-        },
         _ => {
-            Err(ActorError::UnexpectedMessage(node_path, "NodeResponse::SignRequest".to_owned()))
+            Err(ActorError::UnexpectedResponse(node_path, "NodeResponse::SignRequest".to_owned()))
         },
     }
 }
@@ -178,7 +229,7 @@ where
     if let RelationShipResponse::Count(quantity) = response {
         Ok(quantity)
     } else {
-        Err(ActorError::UnexpectedMessage(relation_path, "RelationShipResponse::Count".to_owned()))
+        Err(ActorError::UnexpectedResponse(relation_path, "RelationShipResponse::Count".to_owned()))
     }
 }
 
@@ -217,7 +268,7 @@ where
 
     match response {
         RelationShipResponse::None => Ok(()),
-        _ => Err(ActorError::UnexpectedMessage(relation_path, "RelationShipResponse::None".to_owned())),
+        _ => Err(ActorError::UnexpectedResponse(relation_path, "RelationShipResponse::None".to_owned())),
     }
 }
 
@@ -255,7 +306,7 @@ where
     if let RelationShipResponse::None = response {
         Ok(())
     } else {
-        Err(ActorError::UnexpectedMessage(relation_path, "RelationShipResponse::None".to_owned()))
+        Err(ActorError::UnexpectedResponse(relation_path, "RelationShipResponse::None".to_owned()))
     }
 }
 
@@ -324,4 +375,93 @@ where
         ctx.system().send_event(SystemEvent::StopSystem).await;
     };
     error
+}
+
+pub async fn try_to_update_schema<A>(ctx: &mut ActorContext<A>, subject_id: DigestIdentifier) -> Result<(), ActorError> 
+where 
+    A: Actor + Handler<A>,
+{
+        let auth_path = ActorPath::from("/user/node/auth");
+        let auth_actor: Option<ActorRef<Auth>> = ctx.system().get_actor(&auth_path).await;
+
+        if let Some(auth_actor) = auth_actor {
+            if let Err(e) = auth_actor.tell(AuthMessage::Update { subject_id }).await {
+                return Err(e);
+            }
+        } else {
+            return Err(ActorError::NotFound(auth_path));
+        }
+    
+    Ok(())
+}
+
+pub fn generate_linker(
+    engine: &Engine,
+) -> Result<Linker<MemoryManager>, Error> {
+    let mut linker: Linker<MemoryManager> = Linker::new(engine);
+
+    // functions are created for webasembly modules, the logic of which is programmed in Rust
+    linker
+        .func_wrap(
+            "env",
+            "pointer_len",
+            |caller: Caller<'_, MemoryManager>, pointer: i32| {
+                return caller.data().get_pointer_len(pointer as usize)
+                    as u32;
+            },
+        )
+        .map_err(|e| {
+            Error::Compiler(format!("An error has occurred linking a function, module: env, name: pointer_len, {}", e))
+        })?;
+
+    linker
+        .func_wrap(
+            "env",
+            "alloc",
+            |mut caller: Caller<'_, MemoryManager>, len: u32| {
+                return caller.data_mut().alloc(len as usize) as u32;
+            },
+        )
+        .map_err(|e| {
+            Error::Compiler(format!("An error has occurred linking a function, module: env, name: allow, {}", e))
+        })?;
+
+    linker
+        .func_wrap(
+            "env",
+            "write_byte",
+            |mut caller: Caller<'_, MemoryManager>, ptr: u32, offset: u32, data: u32| {
+                return caller
+                    .data_mut()
+                    .write_byte(ptr as usize, offset as usize, data as u8);
+            },
+        )
+        .map_err(|e| {
+            Error::Compiler(format!("An error has occurred linking a function, module: env, name: write_byte, {}", e))
+        })?;
+
+    linker
+        .func_wrap(
+            "env",
+            "read_byte",
+            |caller: Caller<'_, MemoryManager>, index: i32| {
+                return caller.data().read_byte(index as usize) as u32;
+            },
+        )
+        .map_err(|e| {
+            Error::Compiler(format!("An error has occurred linking a function, module: env, name: read_byte, {}", e))
+        })?;
+
+    linker
+        .func_wrap(
+            "env",
+            "cout",
+            |_caller: Caller<'_, MemoryManager>, ptr: u32| {
+                println!("{}", ptr);
+            },
+        )
+        .map_err(|e| {
+            Error::Compiler(format!("An error has occurred linking a function, module: env, name: cout, {}", e))
+        })?;
+    Ok(linker)
 }

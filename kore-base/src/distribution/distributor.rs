@@ -180,8 +180,7 @@ impl Distributor {
         };
         match response {
             NodeResponse::SonWasCreated => Ok(()),
-            NodeResponse::Error(e) => Err(ActorError::FunctionalFail(e.to_string())),
-            _ => Err(ActorError::UnexpectedMessage(node_path, "NodeResponse::SonWasCreated".to_owned())),
+            _ => Err(ActorError::UnexpectedResponse(node_path, "NodeResponse::SonWasCreated".to_owned())),
         }
     }
 
@@ -201,7 +200,7 @@ impl Distributor {
         };
         match response {
             NodeResponse::IsAuthorized(know) => Ok(know),
-            _ => Err(ActorError::UnexpectedMessage(node_path, "NodeResponse::IsAuthorized".to_owned())),
+            _ => Err(ActorError::UnexpectedResponse(node_path, "NodeResponse::IsAuthorized".to_owned())),
         }
     }
 
@@ -227,7 +226,7 @@ impl Distributor {
 
         match response {
             SubjectResponse::Ledger(data) => Ok(data),
-            _ => Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Ledger".to_owned()))
+            _ => Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Ledger".to_owned()))
         }
     }
 
@@ -921,7 +920,7 @@ impl Handler<Distributor> for Distributor {
                             }
                         }
                         _ => {
-                            let e = ActorError::UnexpectedMessage(ActorPath::from(format!("/user/node/{}", ledger.content.subject_id)), "SubjectResponse::LastSn".to_owned());
+                            let e = ActorError::UnexpectedResponse(ActorPath::from(format!("/user/node/{}", ledger.content.subject_id)), "SubjectResponse::LastSn".to_owned());
                             return Err(emit_fail(ctx, e).await)
                         },
                     };
@@ -1046,7 +1045,7 @@ impl Handler<Distributor> for Distributor {
                 let metadata = match response {
                     SubjectResponse::Metadata(data) => data,
                     _ => {
-                        let e = ActorError::UnexpectedMessage(ActorPath::from(format!("/user/node/{}", subject_id)),"SubjectResponse::Metadata".to_owned());
+                        let e = ActorError::UnexpectedResponse(ActorPath::from(format!("/user/node/{}", subject_id)),"SubjectResponse::Metadata".to_owned());
                         return Err(emit_fail(ctx, e).await)
                     }
                 };
@@ -1069,7 +1068,7 @@ impl Handler<Distributor> for Distributor {
                     match response {
                         SubjectResponse::LastSn(last_sn) => last_sn,
                         _ => {
-                            let e = ActorError::UnexpectedMessage(ActorPath::from(format!("/user/node/{}", subject_id)), "SubjectResponse::LastSn".to_owned());
+                            let e = ActorError::UnexpectedResponse(ActorPath::from(format!("/user/node/{}", subject_id)), "SubjectResponse::LastSn".to_owned());
                             return Err(emit_fail(ctx, e).await)
                         },
                     }

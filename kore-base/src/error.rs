@@ -11,6 +11,15 @@ use serde::{Deserialize, Serialize};
 /// Error type.
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
+    /// NetworkHelper error.
+    #[error("NetworkHelper error: {0}")]
+    NetworkHelper(String),
+    /// Network error.
+    #[error("Network error: {0}")]
+    Network(String),
+    /// Ext_db schema error.
+    #[error("Ext DB error: {0}")]
+    ExtDB(String),
     /// JSON schema error.
     #[error("JSON schema error: {0}")]
     JSONSChema(String),
@@ -90,10 +99,4 @@ pub enum Error {
     /// Approval error.
     #[error("InvalidQuorum error: {0}")]
     InvalidQuorum(String),
-    /// NetworkHelper error.
-    #[error("NetworkHelper error: {0}")]
-    NetworkHelper(String),
-    /// Network error.
-    #[error("Network error: {0}")]
-    Network(String),
 }

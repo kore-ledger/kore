@@ -50,7 +50,6 @@ impl Message for RelationShipMessage {}
 pub enum RelationShipResponse {
     Count(usize),
     None,
-    Error(Error),
 }
 
 impl Response for RelationShipResponse {}
@@ -120,9 +119,9 @@ impl Handler<RelationShip> for RelationShip {
                     .await;
                     Ok(RelationShipResponse::None)
                 } else {
-                    Ok(RelationShipResponse::Error(Error::RelationShip(
+                    Err(ActorError::Functional(
                         "Maximum number of subjects reached".to_owned(),
-                    )))
+                    ))
                 }
             }
             RelationShipMessage::DeleteSubject { data, subject } => {
@@ -165,7 +164,7 @@ impl PersistentActor for RelationShip {
                     {
                         vec.remove(pos);
                     } else {
-                        todo!()
+                        println!("Se intentó borrar un sujeto que no estaba registrado");
                     };
                 });
             }

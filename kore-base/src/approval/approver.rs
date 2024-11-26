@@ -280,13 +280,6 @@ pub enum ApproverEvent {
 
 impl Event for ApproverEvent {}
 
-#[derive(Debug, Clone)]
-pub enum ApproverResponse {
-    None,
-}
-
-impl Response for ApproverResponse {}
-
 #[async_trait]
 impl Actor for Approver {
     async fn pre_start(
@@ -305,7 +298,7 @@ impl Actor for Approver {
 
     type Event = ApproverEvent;
     type Message = ApproverMessage;
-    type Response = ApproverResponse;
+    type Response = ();
 }
 
 #[async_trait]
@@ -315,13 +308,13 @@ impl Handler<Approver> for Approver {
         _sender: ActorPath,
         msg: ApproverMessage,
         ctx: &mut ActorContext<Approver>,
-    ) -> Result<ApproverResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             ApproverMessage::MakeObsolete => {
                 let state = if let Some(state) = self.state.clone() {
                     state
                 } else {
-                    return Ok(ApproverResponse::None);
+                    return Ok(());
                 };
 
                 if state == ApprovalState::Pending {
@@ -337,7 +330,7 @@ impl Handler<Approver> for Approver {
             }
             ApproverMessage::ChangeResponse { response } => {
                 let Some(state) = self.state.clone() else {
-                    return Ok(ApproverResponse::None);
+                    return Ok(());
                 };
 
                 if state == ApprovalState::Pending {
@@ -359,7 +352,7 @@ impl Handler<Approver> for Approver {
                             };
 
                         let Some(approval_req) = self.request.clone() else {
-                            return Ok(ApproverResponse::None);
+                            return Ok(());
                         };
 
                         if let Err(e) = self
@@ -522,11 +515,11 @@ impl Handler<Approver> for Approver {
                 if request_id == self.request_id {
                     if self.node != approval_res.signature.signer {
                         // Nos llegó a una aprobación de un nodo incorrecto!
-                        return Ok(ApproverResponse::None);
+                        return Ok(());
                     }
                     if let Err(_e) = approval_res.verify() {
                         // Hay error criptográfico en la respuesta
-                        return Ok(ApproverResponse::None);
+                        return Ok(());
                     }
 
                     // Approval path.
@@ -607,19 +600,19 @@ impl Handler<Approver> for Approver {
                     let subject_owner = match response {
                         SubjectResponse::Owner(owner) => owner,
                         _ => {
-                            let e = ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Owner".to_owned());
+                            let e = ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Owner".to_owned());
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
 
                     if subject_owner != approval_req.signature.signer {
                         // Error nos llegó una evaluation req de un nodo el cual no es el dueño
-                        return Ok(ApproverResponse::None);
+                        return Ok(());
                     }
 
                     if let Err(_e) = approval_req.verify() {
                         // Hay errores criptográficos
-                        return Ok(ApproverResponse::None);
+                        return Ok(());
                     }
 
                     if !approval_req
@@ -628,7 +621,7 @@ impl Handler<Approver> for Approver {
                         .content
                         .is_fact_event()
                     {
-                        return Ok(ApproverResponse::None);
+                        return Ok(());
                     }
 
                     if let Err(_e) = self
@@ -639,7 +632,7 @@ impl Handler<Approver> for Approver {
                         )
                         .await
                     {
-                        let e =  ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Owner".to_owned());
+                        let e =  ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Owner".to_owned());
                         return Err(emit_fail(ctx, e).await);
                     }
 
@@ -683,7 +676,7 @@ impl Handler<Approver> for Approver {
                         state
                     } else {
                         // Si tiene un request debería tener un state
-                        return Ok(ApproverResponse::None);
+                        return Ok(());
                     };
                     let response = if ApprovalState::RespondedAccepted == state
                     {
@@ -691,7 +684,7 @@ impl Handler<Approver> for Approver {
                     } else if ApprovalState::RespondedRejected == state {
                         false
                     } else {
-                        return Ok(ApproverResponse::None);
+                        return Ok(());
                     };
 
                     let approval_req =
@@ -699,7 +692,7 @@ impl Handler<Approver> for Approver {
                             approval_req
                         } else {
                             // Si tiene un request debería tener un state
-                            return Ok(ApproverResponse::None);
+                            return Ok(());
                         };
 
                     if let Err(e) = self
@@ -711,7 +704,7 @@ impl Handler<Approver> for Approver {
                 }
             }
         }
-        Ok(ApproverResponse::None)
+        Ok(())
     }
 
     async fn on_event(

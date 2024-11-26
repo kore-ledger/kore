@@ -43,18 +43,11 @@ pub enum AuthorizerMessage {
 
 impl Message for AuthorizerMessage {}
 
-#[derive(Debug, Clone)]
-pub enum AuthorizerResponse {
-    None,
-}
-
-impl Response for AuthorizerResponse {}
-
 #[async_trait]
 impl Actor for Authorizer {
     type Event = ();
     type Message = AuthorizerMessage;
-    type Response = AuthorizerResponse;
+    type Response = ();
 
     async fn pre_start(
         &mut self,
@@ -78,7 +71,7 @@ impl Handler<Authorizer> for Authorizer {
         _sender: ActorPath,
         msg: AuthorizerMessage,
         ctx: &mut ActorContext<Authorizer>,
-    ) -> Result<AuthorizerResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             AuthorizerMessage::NetworkLastSn {
                 subject_id,
@@ -164,7 +157,7 @@ impl Handler<Authorizer> for Authorizer {
             }
         };
 
-        Ok(AuthorizerResponse::None)
+        Ok(())
     }
 
     async fn on_child_error(

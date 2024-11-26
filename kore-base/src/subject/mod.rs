@@ -247,7 +247,7 @@ impl Subject {
         // We handle the possible responses of node
         match response {
             NodeKeyResponse::KeyIdentifier(key) => Ok(key),
-            _ => Err(ActorError::UnexpectedMessage(node_key_path, "NodeKeyResponse::KeyIdentifier".to_owned()))
+            _ => Err(ActorError::UnexpectedResponse(node_key_path, "NodeKeyResponse::KeyIdentifier".to_owned()))
         }
     }
 
@@ -469,7 +469,7 @@ impl Subject {
             }
             match rol {
                 crate::governance::model::Roles::EVALUATOR => {
-                    let eval_actor = EvaluationSchema::new(valid_users);
+                    let eval_actor = EvaluationSchema::new(valid_users, gov.version);
                     ctx.create_child(
                         &format!("{}_evaluation", schema),
                         eval_actor,
@@ -789,7 +789,7 @@ impl Subject {
 
         match response {
             SubjectResponse::Governance(gov) => Ok(gov),
-            _ => Err(ActorError::UnexpectedMessage(governance_path, "SubjectResponse::Governance".to_owned()))
+            _ => Err(ActorError::UnexpectedResponse(governance_path, "SubjectResponse::Governance".to_owned()))
         }
     }
 
@@ -809,7 +809,7 @@ impl Subject {
         match response {
             StoreResponse::LastEvent(event) => Ok(event),
             StoreResponse::Error(e) => Err(ActorError::FunctionalFail(e.to_string())),
-            _ => Err(ActorError::UnexpectedMessage(path, "StoreResponse::LastEvent".to_string())),
+            _ => Err(ActorError::UnexpectedResponse(path, "StoreResponse::LastEvent".to_string())),
         }
     }
 
@@ -1436,13 +1436,13 @@ impl Subject {
                                         ))
                                         .await;
                                     if let Some(actor) = actor {
-                                        if let Err(e) = actor.tell(EvaluationSchemaMessage::UpdateEvaluators(valid_users)).await {todo!()}
+                                        if let Err(e) = actor.tell(EvaluationSchemaMessage::UpdateEvaluators(valid_users, new_gov.version)).await {todo!()}
                                     } else {
                                         todo!()
                                     }
                                 } else {
                                     let eval_actor =
-                                        EvaluationSchema::new(valid_users);
+                                        EvaluationSchema::new(valid_users, new_gov.version);
                                     ctx.create_child(
                                         &format!("{}_evaluation", schema),
                                         eval_actor,

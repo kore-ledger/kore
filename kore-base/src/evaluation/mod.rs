@@ -13,17 +13,13 @@ mod runner;
 pub mod schema;
 
 use crate::{
-    governance::{model::Roles, Quorum},
-    model::{
-        common::{get_metadata, get_sign, get_signers_quorum_gov_version},
+    auth::{Auth, AuthMessage}, governance::{model::Roles, Quorum}, model::{
+        common::{emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version},
         event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesNode,
-    },
-    request::manager::{RequestManager, RequestManagerMessage},
-    subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
-    Error, DIGEST_DERIVATOR,
+    }, request::manager::{RequestManager, RequestManagerMessage}, subject::{Metadata, Subject, SubjectMessage, SubjectResponse}, Error, DIGEST_DERIVATOR
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
@@ -33,7 +29,7 @@ use actor::{
 use async_trait::async_trait;
 use evaluator::{Evaluator, EvaluatorMessage};
 use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier
 };
 use request::{EvaluationReq, SubjectContext};
 use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
@@ -145,31 +141,32 @@ impl Evaluation {
         set.len() == 1
     }
 
-    fn fail_evaluation(&self) -> EvalLedgerResponse {
+    async fn fail_evaluation(&self, ctx: &mut ActorContext<Evaluation>) -> Result<EvalLedgerResponse, ActorError> {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
-        let state = if let Some(req) = self.eval_req.clone() {
-            req.context.state
+        let (state, subject_id) = if let Some(req) = self.eval_req.clone() {
+            (req.context.state, req.context.subject_id)
         } else {
-            todo!()
+            return Err(ActorError::FunctionalFail("Can not get eval request".to_owned()));
         };
 
         let state_hash = match state.hash_id(derivator) {
             Ok(state_hash) => state_hash,
-            Err(_e) => todo!(),
+            Err(e) => return Err(ActorError::FunctionalFail(format!("Can not obtaing state hash: {}", e))),
         };
 
         let mut error = self.errors.clone();
         if self.errors.is_empty() {
             "who: ALL, error: No evaluator was able to evaluate the event."
                 .clone_into(&mut error);
+            self.try_to_update(ctx, subject_id).await?;
         }
 
-        EvalLedgerResponse {
+        Ok(EvalLedgerResponse {
             value: LedgerValue::Error(ProtocolsError {
                 evaluation: Some(error),
                 validation: None,
@@ -177,14 +174,14 @@ impl Evaluation {
             state_hash,
             eval_success: false,
             appr_required: false,
-        }
+        })
     }
 
     async fn send_evaluation_to_req(
         &self,
         ctx: &mut ActorContext<Evaluation>,
         response: EvalLedgerResponse,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let req_path =
             ActorPath::from(format!("/user/request/{}", self.request_id));
         let req_actor: Option<ActorRef<RequestManager>> =
@@ -193,11 +190,11 @@ impl Evaluation {
         let request = if let Some(req) = self.eval_req.clone() {
             req
         } else {
-            todo!()
+            return Err(ActorError::FunctionalFail("Can not get eval request".to_owned()));
         };
 
         if let Some(req_actor) = req_actor {
-            if let Err(_e) = req_actor
+            if let Err(e) = req_actor
                 .tell(RequestManagerMessage::EvaluationRes {
                     request,
                     response,
@@ -205,28 +202,35 @@ impl Evaluation {
                 })
                 .await
             {
-                todo!()
+                return Err(e);
             }
         } else {
-            todo!()
+            return Err(ActorError::NotFound(req_path));
         };
 
         Ok(())
     }
 
-    async fn try_to_update(&self, ctx: &mut ActorContext<Evaluation>) {
-        let mut all_time_out = true;
-
-        for response in self.evaluators_signatures.clone() {
-            if let ProtocolsSignatures::Signature(_) = response {
-                all_time_out = false;
-                break;
-            }
-        }
+    async fn try_to_update(&self, ctx: &mut ActorContext<Evaluation>, subject_id: DigestIdentifier) -> Result<(), ActorError> {
+        let all_time_out  = self.evaluators_signatures.iter().all(|x| if let ProtocolsSignatures::TimeOut(_) = x {
+            true
+        } else {
+            false
+        });
 
         if all_time_out {
-            todo!()
+            let auth_path = ActorPath::from("/user/node/auth");
+            let auth_actor: Option<ActorRef<Auth>> = ctx.system().get_actor(&auth_path).await;
+
+            if let Some(auth_actor) = auth_actor {
+                if let Err(e) = auth_actor.tell(AuthMessage::Update { subject_id }).await {
+                    return Err(e);
+                }
+            } else {
+                return Err(ActorError::NotFound(auth_path));
+            }
         }
+        Ok(())
     }
 }
 
@@ -251,19 +255,11 @@ pub struct EvaluationEvent {}
 
 impl Event for EvaluationEvent {}
 
-#[derive(Debug, Clone)]
-pub enum EvaluationResponse {
-    Error(Error),
-    None,
-}
-
-impl Response for EvaluationResponse {}
-
 #[async_trait]
 impl Actor for Evaluation {
     type Event = EvaluationEvent;
     type Message = EvaluationMessage;
-    type Response = EvaluationResponse;
+    type Response = ();
 }
 
 // TODO: revizar todos los errores, algunos pueden ser ActorError.
@@ -274,7 +270,7 @@ impl Handler<Evaluation> for Evaluation {
         _sender: ActorPath,
         msg: EvaluationMessage,
         ctx: &mut ActorContext<Evaluation>,
-    ) -> Result<EvaluationResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             EvaluationMessage::Create {
                 request_id,
@@ -285,16 +281,15 @@ impl Handler<Evaluation> for Evaluation {
                 {
                     event.subject_id
                 } else {
-                    // Error evento incorrecto
-                    todo!()
+                    let e = ActorError::FunctionalFail("Only can eval Fact requests".to_owned());
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 let metadata =
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
-                        Err(_e) => {
-                            // No se puede obtener la metadata
-                            todo!()
+                        Err(e) => {
+                            return Err(emit_fail(ctx, e).await);
                         }
                     };
 
@@ -315,9 +310,8 @@ impl Handler<Evaluation> for Evaluation {
                     .await
                 {
                     Ok(data) => data,
-                    Err(_e) => {
-                        // No se puede obtener signers, quorum y gov_ver
-                        todo!()
+                    Err(e) => {
+                        return Err(emit_fail(ctx, e).await);
                     }
                 };
 
@@ -343,7 +337,7 @@ impl Handler<Evaluation> for Evaluation {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(_e) => todo!(),
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 let signed_evaluation_req: Signed<EvaluationReq> = Signed {
@@ -367,8 +361,6 @@ impl Handler<Evaluation> for Evaluation {
                 sender,
                 signature,
             } => {
-                // TODO Al menos una validación tiene que ser válida, no solo errores y timeout.
-
                 // If node is in evaluator list
                 if self.check_evaluator(sender.clone()) {
                     // Check type of validation
@@ -379,7 +371,7 @@ impl Handler<Evaluation> for Evaluation {
                                     ProtocolsSignatures::Signature(signature),
                                 );
                             } else {
-                                todo!()
+                                unreachable!();
                             }
                             self.evaluators_response.push(response);
                         }
@@ -394,8 +386,6 @@ impl Handler<Evaluation> for Evaluation {
                         }
                     };
 
-                    // Add validate response
-                    // self.evaluators_response.push(validate);
                     if self.quorum.check_quorum(
                         self.evaluators_quantity,
                         self.evaluators_response.len() as u32,
@@ -405,18 +395,34 @@ impl Handler<Evaluation> for Evaluation {
                                 self.evaluators_response[0].clone(),
                             )
                         } else {
-                            self.fail_evaluation()
+                            self.errors = format!(
+                                "{} who: ALL, error: Several evaluations were correct, but there are some different.",
+                                self.errors
+                            );
+                            match self.fail_evaluation(ctx).await {
+                                Ok(res) => res,
+                                Err(e) => {
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                            }
                         };
 
-                        if let Err(_e) =
+                        if let Err(e) =
                             self.send_evaluation_to_req(ctx, response).await
                         {
+                            return Err(emit_fail(ctx, e).await);
                         };
                     } else if self.evaluators.is_empty() {
-                        let response = self.fail_evaluation();
-                        if let Err(_e) =
+                        let response = match self.fail_evaluation(ctx).await {
+                            Ok(res) => res,
+                            Err(e) => {
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        };
+                        if let Err(e) =
                             self.send_evaluation_to_req(ctx, response).await
                         {
+                            return Err(emit_fail(ctx, e).await);
                         };
                     }
                 } else {
@@ -425,7 +431,7 @@ impl Handler<Evaluation> for Evaluation {
             }
         }
 
-        Ok(EvaluationResponse::None)
+        Ok(())
     }
 }
 
@@ -745,7 +751,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_secs(3)).await;
         assert_eq!("In Approval", state);
         let QueryResponse::ApprovalState { request, state } = query_actor
             .ask(QueryMessage::GetApproval {

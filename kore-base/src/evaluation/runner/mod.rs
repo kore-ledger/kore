@@ -9,7 +9,7 @@ use borsh::{to_vec, BorshDeserialize};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use types::{
-    Contract, ContractResult, GovernanceData, GovernanceEvent, MemoryManager,
+    Contract, ContractResult, GovernanceData, GovernanceEvent,
     RunnerResult,
 };
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
@@ -19,7 +19,7 @@ use crate::{
         model::{Roles, SchemaEnum},
         Member, Policy, Role, Schema, Who,
     },
-    model::patch::apply_patch,
+    model::{common::{generate_linker, MemoryManager}, patch::apply_patch},
     Error, ValueWrapper, GOVERNANCE,
 };
 
@@ -63,7 +63,7 @@ impl Runner {
         let mut store = Store::new(&engine, context);
 
         // Responsible for combining several object files into a single WebAssembly executable file (.wasm).
-        let linker = Self::generate_linker(&engine)?;
+        let linker = generate_linker(&engine)?;
 
         // Contract instance.
         let instance =
@@ -129,14 +129,17 @@ impl Runner {
                         .map_err(|e| Error::Runner(e.to_string()))?,
                 );
 
-                if let Some(lock) = GOVERNANCE.get() {
-                    let schema = lock.read().await;
-                    if !schema.fast_validate(&final_state.0) {
-                        todo!()
-                    }
-                } else {
-                    todo!()
-                };
+                {
+                    if let Some(lock) = GOVERNANCE.get() {
+                        let schema = lock.read().await;
+                        if !schema.fast_validate(&final_state.0) {
+                            return Err(Error::Runner("Fail in JSON Schema validation".to_owned()));
+                        }
+                    } else {
+                        return Err(Error::Runner("Can not get governance JSOn Schema".to_owned()));
+                    };
+                }
+                
 
                 Ok((
                     RunnerResult {
@@ -382,7 +385,9 @@ impl Runner {
                                     };
                                 }
                             }
-                            SchemaEnum::NOT_GOVERNANCE => todo!(),
+                            SchemaEnum::NOT_GOVERNANCE => return Err(Error::Runner(
+                                "For an empty namespace the owner cannot have any role for NOT_GOVERNANCE".to_owned(),
+                            )),
                             SchemaEnum::ALL => match role.role {
                                 Roles::EVALUATOR => owner_eval = true,
                                 Roles::VALIDATOR => owner_val = true,
@@ -410,76 +415,6 @@ impl Runner {
         Ok(())
     }
 
-    fn generate_linker(
-        engine: &Engine,
-    ) -> Result<Linker<MemoryManager>, Error> {
-        let mut linker: Linker<MemoryManager> = Linker::new(engine);
-
-        // functions are created for webasembly modules, the logic of which is programmed in Rust
-        linker
-            .func_wrap(
-                "env",
-                "pointer_len",
-                |caller: Caller<'_, MemoryManager>, pointer: i32| {
-                    return caller.data().get_pointer_len(pointer as usize)
-                        as u32;
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: pointer_len, {}", e))
-            })?;
-
-        linker
-            .func_wrap(
-                "env",
-                "alloc",
-                |mut caller: Caller<'_, MemoryManager>, len: u32| {
-                    return caller.data_mut().alloc(len as usize) as u32;
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: allow, {}", e))
-            })?;
-
-        linker
-            .func_wrap(
-                "env",
-                "write_byte",
-                |mut caller: Caller<'_, MemoryManager>, ptr: u32, offset: u32, data: u32| {
-                    return caller
-                        .data_mut()
-                        .write_byte(ptr as usize, offset as usize, data as u8);
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: write_byte, {}", e))
-            })?;
-
-        linker
-            .func_wrap(
-                "env",
-                "read_byte",
-                |caller: Caller<'_, MemoryManager>, index: i32| {
-                    return caller.data().read_byte(index as usize) as u32;
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: read_byte, {}", e))
-            })?;
-
-        linker
-            .func_wrap(
-                "env",
-                "cout",
-                |_caller: Caller<'_, MemoryManager>, ptr: u32| {
-                    println!("{}", ptr);
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: cout, {}", e))
-            })?;
-        Ok(linker)
-    }
 
     fn generate_context(
         state: &ValueWrapper,
@@ -519,7 +454,7 @@ impl Runner {
         if contract_result.success {
             Ok(contract_result)
         } else {
-            todo!()
+            return Err(Error::Compiler("Contract execution in running was not successful".to_owned()))
         }
     }
 }
@@ -540,7 +475,7 @@ pub enum RunnerEvent {}
 impl Event for RunnerEvent {}
 
 #[derive(Debug, Clone)]
-pub struct  RunnerResponse {
+pub struct RunnerResponse {
     pub result: RunnerResult,
     pub compilations: Vec<String>,
 }
