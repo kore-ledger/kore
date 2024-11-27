@@ -35,7 +35,7 @@ impl HashId for ValidationRes {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| Error::Evaluation("HashId for ValidationReq fails".to_string()),
+            |e| Error::HashID(format!("HashId for ValidationRes fails: {}", e))
         )
     }
 }

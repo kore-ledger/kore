@@ -11,6 +11,12 @@ use serde::{Deserialize, Serialize};
 /// Error type.
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
+    /// HashID error.
+    #[error("HashID error: {0}")]
+    HashID(String),
+    /// JSONPatch error.
+    #[error("JSON patch error: {0}")]
+    JSONPatch(String),
     /// NetworkHelper error.
     #[error("NetworkHelper error: {0}")]
     NetworkHelper(String),
@@ -89,9 +95,6 @@ pub enum Error {
     /// Validation error.
     #[error("Validation error: {0}")]
     Validation(String),
-    /// Evaluation error.
-    #[error("Evaluation error: {0}")]
-    Evaluation(String),
 
     /// Approval error.
     #[error("Approval error: {0}")]

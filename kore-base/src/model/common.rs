@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use actor::{Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler, SystemEvent};
+use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use wasmtime::{Caller, Engine, Linker};
 
@@ -13,7 +14,7 @@ use crate::{
     }, Error, Event as KoreEvent, EventRequestType, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
 };
 
-use super::Namespace;
+use super::{event::ProtocolsSignatures, HashId, Namespace};
 
 #[derive(Debug)]
 pub struct MemoryManager {
@@ -91,7 +92,6 @@ where
 
     match response {
         SubjectResponse::Governance(gov) => Ok(gov),
-        SubjectResponse::Error(error) => Err(ActorError::Functional(error.to_string())),
         _ => Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Governance".to_owned())),
     }
 }
@@ -167,9 +167,9 @@ where
         return Err(ActorError::NotFound(ledger_event_path));
     };
 
-    if let LedgerEventResponse::Error(e) = response {
-        return Err(ActorError::Functional(e.to_string()));
-    };
+    if let LedgerEventResponse::LastEvent(_) = response {
+        return Err(ActorError::UnexpectedResponse(ledger_event_path, "LedgerEventResponse::Ok".to_owned()));
+    }
 
     Ok(())
 }
@@ -464,4 +464,67 @@ pub fn generate_linker(
             Error::Compiler(format!("An error has occurred linking a function, module: env, name: cout, {}", e))
         })?;
     Ok(linker)
+}
+
+pub async fn try_to_update<A>(vec: Vec<ProtocolsSignatures>, ctx: &mut ActorContext<A>, subject_id: DigestIdentifier) -> Result<(), ActorError> 
+where 
+    A: Actor + Handler<A>,
+{
+    let all_time_out  = vec.iter().all(|x| if let ProtocolsSignatures::TimeOut(_) = x {
+        true
+    } else {
+        false
+    });
+
+    if all_time_out {
+        let auth_path = ActorPath::from("/user/node/auth");
+        let auth_actor: Option<ActorRef<Auth>> = ctx.system().get_actor(&auth_path).await;
+
+        if let Some(auth_actor) = auth_actor {
+            if let Err(e) = auth_actor.tell(AuthMessage::Update { subject_id }).await {
+                return Err(e);
+            }
+        } else {
+            return Err(ActorError::NotFound(auth_path));
+        }
+    }
+    Ok(())
+}
+
+pub async fn check_request_owner<A, T>(ctx: &mut ActorContext<A>, subject_id: &str, owner: &str, req: Signed<T>) -> Result<(), ActorError>
+where 
+    A: Actor + Handler<A>,
+    T: BorshSerialize + BorshDeserialize + Clone + HashId
+{
+    // Aquí hay que comprobar que el owner del subject es el que envía la req.
+    let subject_path = ActorPath::from(format!(
+        "/user/node/{}",
+        subject_id
+    ));
+    let subject_actor: Option<ActorRef<Subject>> =
+        ctx.system().get_actor(&subject_path).await;
+
+    // We obtain the evaluator
+    let response = if let Some(subject_actor) = subject_actor {
+        subject_actor.ask(SubjectMessage::GetOwner).await?
+    } else {
+        return Err(ActorError::NotFound(subject_path))
+    };
+
+    let subject_owner = match response {
+        SubjectResponse::Owner(owner) => owner,
+        _ => {
+            return Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Owner".to_owned()))
+        },
+    };
+
+    if subject_owner.to_string() != owner {
+        return Err(ActorError::Functional("Evaluation req signer and owner are not the same".to_owned()));
+    }
+
+    if let Err(e) = req.verify() {
+        return Err(ActorError::Functional(format!("Can not verify signature: {}", e.to_string())));
+    }
+
+    Ok(())
 }

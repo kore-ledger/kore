@@ -8,7 +8,7 @@ use crate::{
     governance::Schema,
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::{emit_fail, get_gov, get_sign},
+        common::{check_request_owner, emit_fail, get_gov, get_sign},
         network::{RetryNetwork, TimeOutResponse},
         HashId, SignTypesNode, TimeStamp,
     },
@@ -242,7 +242,7 @@ impl Evaluator {
     ) -> Result<Value, Error> {
         let patch = diff(prev_state, new_state);
         serde_json::to_value(patch).map_err(|e| {
-            Error::Evaluation(format!("Can not generate json patch {}", e))
+            Error::JSONPatch(format!("Can not generate json patch {}", e))
         })
     }
 
@@ -450,7 +450,7 @@ impl Handler<Evaluator> for Evaluator {
                     }
 
                     if let Err(e) = evaluation_res.verify() {
-                        return Err(ActorError::Functional("Can not verify signature".to_owned()));
+                        return Err(ActorError::Functional(format!("Can not verify signature: {}", e)));
                     }
 
                     // Evaluation path.
@@ -517,42 +517,13 @@ impl Handler<Evaluator> for Evaluator {
                 }
                 
                 if info.schema == "governance" {
-                    // Aquí hay que comprobar que el owner del subject es el que envía la req.
-                    let subject_path = ActorPath::from(format!(
-                        "/user/node/{}",
-                        evaluation_req.content.context.subject_id.clone()
-                    ));
-                    let subject_actor: Option<ActorRef<Subject>> =
-                        ctx.system().get_actor(&subject_path).await;
-
-                    // We obtain the evaluator
-                    let response = if let Some(subject_actor) = subject_actor {
-                        match subject_actor.ask(SubjectMessage::GetOwner).await
-                        {
-                            Ok(response) => response,
-                            Err(e) => return Err(emit_fail(ctx, e).await),
-                        }
-                    } else {
-                        let e = ActorError::NotFound(subject_path);
-                        return Err(emit_fail(ctx, e).await)
-                    };
-
-                    let subject_owner = match response {
-                        SubjectResponse::Owner(owner) => owner,
-                        _ => {
-                            let e = ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Owner".to_owned());
+                    if let Err(e) = check_request_owner(ctx, &evaluation_req.content.context.subject_id.to_string(), &evaluation_req.signature.signer.to_string(), evaluation_req.clone()).await {
+                        if let ActorError::Functional(_) = e {
+                            return Err(e);
+                        } else {
                             return Err(emit_fail(ctx, e).await)
-                        },
+                        }
                     };
-
-                    if subject_owner != evaluation_req.signature.signer {
-                        // Error nos llegó una evaluation req de un nodo el cual no es el dueño
-                        return Err(ActorError::Functional("Evaluation req signer and owner are not the same".to_owned()));
-                    }
-
-                    if let Err(e) = evaluation_req.verify() {
-                        return Err(ActorError::Functional(format!("Can not verify signature: {}", e.to_string())));
-                    }
                 }
 
                 let helper: Option<Intermediary> =

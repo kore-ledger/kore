@@ -22,7 +22,7 @@ use crate::{
     helpers::db::ExternalDB,
     model::{
         common::{
-            delete_relation, get_gov, get_quantity, register_relation, verify_protocols_state
+            delete_relation, emit_fail, get_gov, get_quantity, register_relation, verify_protocols_state
         },
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
@@ -51,7 +51,7 @@ use identity::{
     identifier::{
         derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
     },
-    keys::{KeyMaterial, KeyPair},
+    keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair},
 };
 
 use async_trait::async_trait;
@@ -122,7 +122,7 @@ impl HashId for SubjectID {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| Error::Evaluation("HashId for ValidationReq fails".to_string()),
+            |e| Error::HashID(format!("HashId for SubjectID fails: {}", e)),
         )
     }
 }
@@ -344,11 +344,7 @@ impl Subject {
             DigestDerivator::Blake3_256
         };
 
-        let keys = if let Some(keys) = self.keys.clone() {
-            keys
-        } else {
-            todo!()
-        };
+        let keys = self.keys.clone().ok_or(Error::Signature("Can not get Subject Keys".to_owned()))?;
 
         Signature::new(content, &keys, derivator)
             .map_err(|e| Error::Signature(format!("{}", e)))
@@ -477,7 +473,7 @@ impl Subject {
                     .await?;
                 }
                 crate::governance::model::Roles::VALIDATOR => {
-                    let actor = ValidationSchema::new(valid_users);
+                    let actor = ValidationSchema::new(valid_users, gov.version);
                     ctx.create_child(&format!("{}_validation", schema), actor)
                         .await?;
                 }
@@ -653,7 +649,8 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            todo!()
+            let e = ActorError::NotFound(ActorPath::from(format!("{}/validation", ctx.path())));
+            return Err(emit_fail(ctx, e).await);
         }
 
         let actor: Option<ActorRef<Evaluation>> =
@@ -661,21 +658,24 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            todo!()
+            let e = ActorError::NotFound(ActorPath::from(format!("{}/evaluation", ctx.path())));
+            return Err(emit_fail(ctx, e).await);
         }
 
         let actor: Option<ActorRef<Approval>> = ctx.get_child("approval").await;
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            todo!()
+            let e = ActorError::NotFound(ActorPath::from(format!("{}/approval", ctx.path())));
+            return Err(emit_fail(ctx, e).await);
         }
 
         let actor: Option<ActorRef<Approver>> = ctx.get_child("approver").await;
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            todo!()
+            let e = ActorError::NotFound(ActorPath::from(format!("{}/approver", ctx.path())));
+            return Err(emit_fail(ctx, e).await);
         }
 
         let actor: Option<ActorRef<Distribution>> =
@@ -683,7 +683,8 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            todo!()
+            let e = ActorError::NotFound(ActorPath::from(format!("{}/distribution", ctx.path())));
+            return Err(emit_fail(ctx, e).await);
         }
 
         Ok(())
@@ -1310,7 +1311,8 @@ impl Subject {
                         if let Some(actor) = actor {
                             actor.stop().await;
                         } else {
-                            todo!()
+                            let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_evaluation", ctx.path(), schema)));
+                            return Err(emit_fail(ctx, e).await);
                         }
                     }
 
@@ -1321,7 +1323,8 @@ impl Subject {
                         if let Some(actor) = actor {
                             actor.stop().await;
                         } else {
-                            todo!()
+                            let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_validation", ctx.path(), schema)));
+                            return Err(emit_fail(ctx, e).await);
                         }
                     }
                 } else {
@@ -1436,9 +1439,12 @@ impl Subject {
                                         ))
                                         .await;
                                     if let Some(actor) = actor {
-                                        if let Err(e) = actor.tell(EvaluationSchemaMessage::UpdateEvaluators(valid_users, new_gov.version)).await {todo!()}
+                                        if let Err(e) = actor.tell(EvaluationSchemaMessage::UpdateEvaluators(valid_users, new_gov.version)).await {
+                                            return Err(emit_fail(ctx, e).await);
+                                        }
                                     } else {
-                                        todo!()
+                                        let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_evaluation", ctx.path(), schema)));
+                                        return Err(emit_fail(ctx, e).await);
                                     }
                                 } else {
                                     let eval_actor =
@@ -1465,13 +1471,16 @@ impl Subject {
                                         ))
                                         .await;
                                     if let Some(actor) = actor {
-                                        if let Err(e) = actor.tell(ValidationSchemaMessage::UpdateValidators(valid_users)).await {todo!()}
+                                        if let Err(e) = actor.tell(ValidationSchemaMessage::UpdateValidators(valid_users, new_gov.version)).await {
+                                            return Err(emit_fail(ctx, e).await);
+                                        }
                                     } else {
-                                        todo!()
+                                        let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_validation", ctx.path(), schema)));
+                                        return Err(emit_fail(ctx, e).await);
                                     }
                                 } else {
                                     let actor =
-                                        ValidationSchema::new(valid_users);
+                                        ValidationSchema::new(valid_users, new_gov.version);
                                     ctx.create_child(
                                         &format!("{}_validation", schema),
                                         actor,
@@ -1490,7 +1499,8 @@ impl Subject {
                         if let Some(actor) = actor {
                             actor.stop().await;
                         } else {
-                            todo!()
+                            let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_evaluation", ctx.path(), schema)));
+                            return Err(emit_fail(ctx, e).await);
                         }
                     }
 
@@ -1501,7 +1511,8 @@ impl Subject {
                         if let Some(actor) = actor {
                             actor.stop().await;
                         } else {
-                            todo!()
+                            let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_validation", ctx.path(), schema)));
+                            return Err(emit_fail(ctx, e).await);
                         }
                     }
                 }
@@ -1540,12 +1551,10 @@ impl Subject {
                 .tell(SinkDataMessage::SafeMetadata(self.get_metadata()))
                 .await
             {
-                println!("Errror1");
-                todo!()
+                return Err(e);
             }
         } else {
-            println!("Errror");
-            todo!()
+            return Err(ActorError::NotFound(ActorPath::from(format!("{}/sink_data", ctx.path()))));
         }
 
         Ok(())
@@ -1555,34 +1564,30 @@ impl Subject {
         &self,
         ctx: &mut ActorContext<Subject>,
         last_sn: u64,
-    ) -> Result<Vec<Signed<Ledger>>, Error> {
+    ) -> Result<Vec<Signed<Ledger>>, ActorError> {
         let store: Option<ActorRef<Store<Subject>>> =
             ctx.get_child("store").await;
         let response = if let Some(store) = store {
-            match store
+            store
                 .ask(StoreCommand::GetEvents {
                     from: last_sn,
                     to: last_sn + 100,
                 })
-                .await
-            {
-                Ok(response) => response,
-                Err(_e) => todo!(),
-            }
+                .await?
         } else {
-            todo!()
+            return Err(ActorError::NotFound(ActorPath::from(format!("{}/store", ctx.path()))));
         };
 
         match response {
             StoreResponse::Events(events) => Ok(events),
-            _ => todo!(),
+            _ => Err(ActorError::UnexpectedResponse(ActorPath::from(format!("{}/store", ctx.path())), "StoreResponse::Events".to_owned())),
         }
     }
 
     async fn get_last_event(
         &self,
         ctx: &mut ActorContext<Subject>,
-    ) -> Result<Signed<KoreEvent>, Error> {
+    ) -> Result<Signed<KoreEvent>, ActorError> {
         let ledger_event_path = ActorPath::from(format!(
             "/user/node/{}/ledger_event",
             self.subject_id
@@ -1591,28 +1596,23 @@ impl Subject {
             ctx.system().get_actor(&ledger_event_path).await;
 
         let response = if let Some(ledger_event_actor) = ledger_event_actor {
-            if let Ok(response) = ledger_event_actor
+            ledger_event_actor
                 .ask(LedgerEventMessage::GetLastEvent)
-                .await
-            {
-                response
-            } else {
-                todo!()
-            }
+                .await?
         } else {
-            todo!()
+            return Err(ActorError::NotFound(ledger_event_path));
         };
 
         match response {
             LedgerEventResponse::LastEvent(event) => Ok(event),
-            _ => todo!(),
+            _ => Err(ActorError::UnexpectedResponse(ledger_event_path, "LedgerEventResponse::LastEvent".to_owned())),
         }
     }
 
     async fn create_compilers(
         ctx: &mut ActorContext<Subject>,
         compilers: &[String],
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<String>, ActorError> {
         let mut new_compilers = vec![];
 
         for compiler in compilers {
@@ -1620,15 +1620,13 @@ impl Subject {
                 ctx.get_child(&format!("{}_compiler", compiler)).await;
             if child.is_none() {
                 new_compilers.push(compiler.clone());
-                if let Err(e) = ctx
+
+                ctx
                     .create_child(
                         &format!("{}_compiler", compiler),
                         Compiler::default(),
                     )
-                    .await
-                {
-                    todo!()
-                }
+                    .await?;
             }
         }
 
@@ -1682,7 +1680,6 @@ pub enum SubjectResponse {
     /// The subject metadata.
     Metadata(Metadata),
     SignRequest(Signature),
-    Error(Error),
     LastSn(u64),
     Ledger((Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>)),
     Governance(Governance),
@@ -1772,27 +1769,15 @@ impl Handler<Subject> for Subject {
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
             SubjectMessage::CreateCompilers(compilers) => {
-                match Self::create_compilers(ctx, &compilers).await {
-                    Ok(new_compilers) => {
-                        Ok(SubjectResponse::NewCompilers(new_compilers))
-                    }
-                    Err(e) => Ok(SubjectResponse::Error(e)),
-                }
+                let new_compilers = Self::create_compilers(ctx, &compilers).await?;
+                Ok(SubjectResponse::NewCompilers(new_compilers))
             }
             SubjectMessage::GetLedger { last_sn } => {
-                let ledger = match self.get_ledger(ctx, last_sn).await {
-                    Ok(response) => response,
-                    Err(e) => return Ok(SubjectResponse::Error(e)),
-                };
+                let ledger = self.get_ledger(ctx, last_sn).await?;
 
                 if ledger.len() < 100 {
-                    match self.get_last_event(ctx).await {
-                        Ok(last_event) => Ok(SubjectResponse::Ledger((
-                            ledger,
-                            Some(last_event),
-                        ))),
-                        Err(e) => Ok(SubjectResponse::Error(e)),
-                    }
+                    let last_event = self.get_last_event(ctx).await?;
+                    Ok(SubjectResponse::Ledger((ledger,Some(last_event))))
                 } else {
                     Ok(SubjectResponse::Ledger((ledger, None)))
                 }
@@ -1812,19 +1797,15 @@ impl Handler<Subject> for Subject {
                     SignTypesSubject::Validation(validation) => {
                         self.sign(&validation)
                     }
-                };
-
-                match sign {
-                    Ok(sign) => Ok(SubjectResponse::SignRequest(sign)),
-                    Err(e) => Ok(SubjectResponse::Error(e)),
-                }
+                }.map_err(|e| ActorError::FunctionalFail(format!("Can not sign event: {}", e)))?;
+                Ok(SubjectResponse::SignRequest(sign))
             }
             SubjectMessage::GetGovernance => {
                 // If is a governance
                 if self.governance_id.is_empty() {
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
-                        Err(e) => return Ok(SubjectResponse::Error(e)),
+                        Err(e) => return Err(ActorError::FunctionalFail(e.to_string()))
                     }
                 }
                 // If is not a governance
@@ -1846,7 +1827,7 @@ impl Handler<Subject> for Subject {
 
         if let Err(e) = ctx.publish_event(event).await {
             println!("{}", e);
-            todo!()
+            // TODO
         }
     }
 }
@@ -1854,6 +1835,7 @@ impl Handler<Subject> for Subject {
 #[async_trait]
 impl PersistentActor for Subject {
     fn apply(&mut self, event: &Signed<Ledger>) {
+        // TODO Cualquier error aquí implicaría que el nodo volviera a un estado previo, eliminando el último storage.
         let valid_event = match verify_protocols_state(
             EventRequestType::from(event.content.event_request.content.clone()),
             event.content.eval_success,
@@ -1862,47 +1844,59 @@ impl PersistentActor for Subject {
             event.content.vali_success,
         ) {
             Ok(is_ok) => is_ok,
-            Err(_e) => todo!(),
+            Err(e) => {
+                println!("{}",e);
+                return
+            },
         };
 
         if valid_event {
             match &event.content.event_request.content {
-                EventRequest::Create(start_request) => {
+                EventRequest::Create(_start_request) => {
                     let last_event_hash = match event
                         .hash_id(event.signature.content_hash.derivator)
                     {
                         Ok(hash) => hash,
-                        Err(_e) => todo!(),
+                        Err(e) => {
+                            println!("{}",e);
+                            return
+                        },
                     };
 
                     self.last_event_hash = last_event_hash;
                     return;
                 }
-                EventRequest::Fact(fact_request) => {
+                EventRequest::Fact(_fact_request) => {
                     let json_patch = match event.content.value.clone() {
                         LedgerValue::Patch(value_wrapper) => value_wrapper,
-                        LedgerValue::Error(e) => todo!(),
+                        LedgerValue::Error(e) => {
+                            println!("{:?}",e);
+                            return
+                        },
                     };
 
                     let patch_json =
                         match serde_json::from_value::<Patch>(json_patch.0) {
                             Ok(patch) => patch,
-                            Err(_e) => todo!(),
+                            Err(e) => {
+                                println!("{}",e);
+                                return
+                            }
                         };
 
-                    if let Err(_e) = patch(&mut self.properties.0, &patch_json)
+                    if let Err(e) = patch(&mut self.properties.0, &patch_json)
                     {
-                        // No se pudo aplicar el patch, error
-                        todo!()
+                        println!("{}",e);
+                        return
                     };
                 }
                 EventRequest::Transfer(transfer_request) => {
-                    // TODO hay que darle una vuelta.
+                    self.keys = None;
                     self.owner = transfer_request.new_owner.clone();
                 }
-                EventRequest::EOL(eolrequest) => self.active = false,
-                EventRequest::Confirm(confirm_request) => {
-                    todo!()
+                EventRequest::EOL(_eolrequest) => self.active = false,
+                EventRequest::Confirm(_confirm_request) => {
+                    self.keys = Some(KeyPair::Ed25519(Ed25519KeyPair::new()));
                 }
             }
 
@@ -1910,14 +1904,19 @@ impl PersistentActor for Subject {
                 let mut gov =
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => gov,
-                        Err(_e) => todo!(),
+                        Err(e) => {
+                            println!("{}",e);
+                            return
+                        },
                     };
 
                 gov.version += 1;
-                let gov_value = if let Ok(value) = to_value(gov) {
-                    value
-                } else {
-                    todo!()
+                let gov_value = match to_value(gov) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        println!("{}",e);
+                        return
+                    }
                 };
 
                 self.properties.0 = gov_value;
@@ -1927,7 +1926,10 @@ impl PersistentActor for Subject {
         let last_event_hash =
             match event.hash_id(event.signature.content_hash.derivator) {
                 Ok(hash) => hash,
-                Err(_e) => todo!(),
+                Err(e) => {
+                    println!("{}",e);
+                    return
+                },
             };
 
         self.last_event_hash = last_event_hash;

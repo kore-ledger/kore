@@ -14,7 +14,7 @@ pub mod schema;
 
 use crate::{
     auth::{Auth, AuthMessage}, governance::{model::Roles, Quorum}, model::{
-        common::{emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version},
+        common::{emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version, try_to_update},
         event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
@@ -163,7 +163,7 @@ impl Evaluation {
         if self.errors.is_empty() {
             "who: ALL, error: No evaluator was able to evaluate the event."
                 .clone_into(&mut error);
-            self.try_to_update(ctx, subject_id).await?;
+            try_to_update(self.evaluators_signatures.clone(), ctx, subject_id).await?;
         }
 
         Ok(EvalLedgerResponse {
@@ -208,28 +208,6 @@ impl Evaluation {
             return Err(ActorError::NotFound(req_path));
         };
 
-        Ok(())
-    }
-
-    async fn try_to_update(&self, ctx: &mut ActorContext<Evaluation>, subject_id: DigestIdentifier) -> Result<(), ActorError> {
-        let all_time_out  = self.evaluators_signatures.iter().all(|x| if let ProtocolsSignatures::TimeOut(_) = x {
-            true
-        } else {
-            false
-        });
-
-        if all_time_out {
-            let auth_path = ActorPath::from("/user/node/auth");
-            let auth_actor: Option<ActorRef<Auth>> = ctx.system().get_actor(&auth_path).await;
-
-            if let Some(auth_actor) = auth_actor {
-                if let Err(e) = auth_actor.tell(AuthMessage::Update { subject_id }).await {
-                    return Err(e);
-                }
-            } else {
-                return Err(ActorError::NotFound(auth_path));
-            }
-        }
         Ok(())
     }
 }

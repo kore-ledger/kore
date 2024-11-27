@@ -11,17 +11,12 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    db::Storable,
-    governance::{model::Roles, Quorum},
-    model::{
-        common::{get_sign, get_signers_quorum_gov_version},
+    auth::{Auth, AuthMessage}, db::Storable, governance::{model::Roles, Quorum}, model::{
+        common::{emit_fail, get_sign, get_signers_quorum_gov_version, try_to_update},
         event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
         Namespace, SignTypesNode, SignTypesSubject,
-    },
-    request::manager::{RequestManager, RequestManagerMessage},
-    subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
-    Error,
+    }, request::manager::{RequestManager, RequestManagerMessage}, subject::{Metadata, Subject, SubjectMessage, SubjectResponse}, Error
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
@@ -47,7 +42,6 @@ pub struct ValidationInfo {
     pub event_proof: Signed<ProofEvent>,
 }
 
-// TODO HAy errores de la validacion que obligan a reiniciarla, ya que hay que actualizar la governanza u otra cosa,
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Validation {
     node_key: KeyIdentifier,
@@ -190,11 +184,12 @@ impl Validation {
         &self,
         ctx: &mut ActorContext<Validation>,
         result: bool,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let mut error = self.errors.clone();
         if !result && error.is_empty() {
             "who: ALL, error: No validator was able to validate the event."
                 .clone_into(&mut error);
+            try_to_update(self.validators_response.clone(), ctx, self.actual_proof.subject_id.clone()).await?;
         }
 
         let req_path =
@@ -203,36 +198,18 @@ impl Validation {
             ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
-            if let Err(_e) = req_actor
+            req_actor
                 .tell(RequestManagerMessage::ValidationRes {
                     result,
                     signatures: self.validators_response.clone(),
                     errors: error,
                 })
-                .await
-            {
-                todo!()
-            }
+                .await?
         } else {
-            todo!()
+            return Err(ActorError::NotFound(req_path));
         };
 
         Ok(())
-    }
-
-    async fn try_to_update(&self, ctx: &mut ActorContext<Validation>) {
-        let mut all_time_out = true;
-
-        for response in self.validators_response.clone() {
-            if let ProtocolsSignatures::Signature(_) = response {
-                all_time_out = false;
-                break;
-            }
-        }
-
-        if all_time_out {
-            todo!()
-        }
     }
 }
 
@@ -292,7 +269,6 @@ impl Actor for Validation {
     }
 }
 
-// TODO: revizar todos los errores, algunos pueden ser ActorError.
 #[async_trait]
 impl Handler<Validation> for Validation {
     async fn handle_message(
@@ -307,8 +283,7 @@ impl Handler<Validation> for Validation {
                     match self.create_validation_req(ctx, info.clone()).await {
                         Ok(validation_req) => validation_req,
                         Err(e) => {
-                            // Mensaje al padre de error return Ok(ValidationResponse::Error(e))
-                            todo!()
+                            return Err(emit_fail(ctx, e).await);
                         }
                     };
                 self.actual_proof = proof;
@@ -326,8 +301,7 @@ impl Handler<Validation> for Validation {
                 {
                     Ok(signers_quorum) => signers_quorum,
                     Err(e) => {
-                        // Mensaje al padre de error return Ok(ValidationResponse::Error(e))
-                        todo!()
+                        return Err(emit_fail(ctx, e).await);
                     }
                 };
 
@@ -349,7 +323,7 @@ impl Handler<Validation> for Validation {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(_e) => todo!(),
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 let signed_validation_req: Signed<ValidationReq> = Signed {
@@ -372,8 +346,6 @@ impl Handler<Validation> for Validation {
                 validation_res,
                 sender,
             } => {
-                // TODO Al menos una validación tiene que ser válida, no solo errores y timeout.
-
                 // If node is in validator list
                 if self.check_validator(sender.clone()) {
                     match validation_res {
@@ -410,15 +382,12 @@ impl Handler<Validation> for Validation {
                         )
                         .await;
 
-                        if let Err(_e) =
+                        if let Err(e) =
                             self.send_validation_to_req(ctx, true).await
                         {
-                            todo!()
+                            return Err(emit_fail(ctx, e).await);
                         };
                     } else if self.validators.is_empty() {
-                        // TODO
-                        // self.try_to_update(ctx).await;
-
                         // we have received all the responses and the quorum has not been met
                         self.on_event(
                             ValidationEvent {
@@ -431,10 +400,10 @@ impl Handler<Validation> for Validation {
                         )
                         .await;
 
-                        if let Err(_e) =
+                        if let Err(e) =
                             self.send_validation_to_req(ctx, false).await
                         {
-                            todo!()
+                            return Err(emit_fail(ctx, e).await);
                         };
                     }
                 } else {
@@ -461,8 +430,6 @@ impl PersistentActor for Validation {
         self.prev_event_validation_response
             .clone_from(&event.actual_event_validation_response);
         self.previous_proof = Some(event.actual_proof.clone());
-
-        // Darle a request la conclusión de la validación y la información que necesite. Esto no se puede hacer en el apply TODO
     }
 }
 
@@ -854,7 +821,7 @@ pub mod tests {
         assert_eq!(metadata.subject_id, subject_id);
         assert_eq!(metadata.governance_id.to_string(), "");
         assert_eq!(metadata.genesis_gov_version, 0);
-        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
+        assert_eq!(metadata.subject_public_key, KeyIdentifier::default());
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 1);

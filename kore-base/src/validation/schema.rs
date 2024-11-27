@@ -8,7 +8,7 @@ use identity::identifier::KeyIdentifier;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use crate::Signed;
+use crate::{model::common::{emit_fail, try_to_update_schema}, Signed};
 
 use super::{
     request::ValidationReq,
@@ -17,12 +17,13 @@ use super::{
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct ValidationSchema {
+    gov_version: u64,
     creators: HashSet<KeyIdentifier>,
 }
 
 impl ValidationSchema {
-    pub fn new(creators: HashSet<KeyIdentifier>) -> Self {
-        ValidationSchema { creators }
+    pub fn new(creators: HashSet<KeyIdentifier>, gov_version: u64,) -> Self {
+        ValidationSchema { creators, gov_version }
     }
 }
 
@@ -32,7 +33,7 @@ pub enum ValidationSchemaMessage {
         validation_req: Box<Signed<ValidationReq>>,
         info: ComunicateInfo,
     },
-    UpdateValidators(HashSet<KeyIdentifier>),
+    UpdateValidators(HashSet<KeyIdentifier>, u64),
 }
 
 impl Message for ValidationSchemaMessage {}
@@ -57,17 +58,20 @@ impl Handler<ValidationSchema> for ValidationSchema {
                 validation_req,
                 info,
             } => {
-                // TODO lo primero que hay que hacer es comprobar la versión de la governanza,
-                // para comprobar que sea un creator.
+                if self.gov_version < validation_req.content.proof.governance_version {
+                    if let Err(e) = try_to_update_schema(ctx, validation_req.content.proof.subject_id.clone()).await {
+                        return Err(emit_fail(ctx, e).await)
+                    }
+                }
+                
                 let creator =
                     self.creators.get(&validation_req.signature.signer);
                 if creator.is_none() {
-                    todo!()
+                    return Err(ActorError::Functional("Sender is not a Creator".to_owned()));
                 };
 
-                if let Err(_e) = validation_req.verify() {
-                    // Hay errores criptográficos
-                    todo!()
+                if let Err(e) = validation_req.verify() {
+                    return Err(ActorError::Functional(format!("Can not verify validation request: {}.", e)));
                 }
 
                 let child = ctx
@@ -82,7 +86,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
 
                 let validator_actor = match child {
                     Ok(child) => child,
-                    Err(_e) => todo!(),
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 validator_actor
@@ -92,7 +96,8 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     })
                     .await?
             }
-            ValidationSchemaMessage::UpdateValidators(validators) => {
+            ValidationSchemaMessage::UpdateValidators(validators, gov_version) => {
+                self.gov_version = gov_version;
                 self.creators = validators;
             }
         };
