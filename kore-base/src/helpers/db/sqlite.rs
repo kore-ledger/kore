@@ -320,6 +320,7 @@ impl Subscriber<RequestManagerEvent> for SqliteLocal {
     async fn notify(&self, event: RequestManagerEvent) {
         let state = match event.state {
             RequestManagerState::Starting => return,
+            RequestManagerState::Reboot => "In Reboot".to_owned(),
             RequestManagerState::Evaluation => "In Evaluation".to_owned(),
             RequestManagerState::Approval { .. } => "In Approval".to_owned(),
             RequestManagerState::Validation(..) => "In Validation".to_owned(),

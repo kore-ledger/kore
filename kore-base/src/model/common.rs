@@ -3,15 +3,16 @@ use std::collections::{HashMap, HashSet};
 use actor::{Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler, SystemEvent};
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use network::ComunicateInfo;
 use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
-    auth::{Auth, AuthMessage}, governance::{model::Roles, Quorum}, model::SignTypesNode, node::relationship::{
+    auth::{Auth, AuthMessage}, governance::{model::Roles, Quorum}, intermediary::Intermediary, model::SignTypesNode, node::relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
-    }, subject::{
+    }, request::manager::{RequestManager, RequestManagerMessage}, subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
         Metadata,
-    }, Error, Event as KoreEvent, EventRequestType, Governance, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
+    }, ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance, NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
 };
 
 use super::{event::ProtocolsSignatures, HashId, Namespace};
@@ -519,12 +520,173 @@ where
     };
 
     if subject_owner.to_string() != owner {
+        // TODO ver si tengo la última version de la gov.
         return Err(ActorError::Functional("Evaluation req signer and owner are not the same".to_owned()));
     }
 
     if let Err(e) = req.verify() {
         return Err(ActorError::Functional(format!("Can not verify signature: {}", e.to_string())));
     }
+
+    Ok(())
+}
+
+pub struct UpdateData {
+    pub sn: u64,
+    pub gov_version: u64,
+    pub subject_id: DigestIdentifier,
+    pub our_node: KeyIdentifier,
+    pub other_node: KeyIdentifier,
+}
+
+pub async fn update_ledger_network<A>(ctx: &mut ActorContext<A>, data: UpdateData) -> Result<(), ActorError> 
+where 
+    A: Actor + Handler<A>
+{
+    let subject_string = data.subject_id.to_string();
+    let request = ActorMessage::DistributionLedgerReq {
+        gov_version: Some(data.gov_version),
+        actual_sn: Some(data.sn),
+        subject_id: data.subject_id,
+    };
+
+    let info = ComunicateInfo {
+        reciver: data.other_node,
+        sender: data.our_node,
+        request_id: String::default(),
+        reciver_actor: format!(
+            "/user/node/{}/distributor",
+            subject_string
+        ),
+        schema: "governance".to_string(),
+    };
+
+    let helper: Option<Intermediary> =
+        ctx.system().get_helper("network").await;
+
+    let Some(mut helper) = helper else {
+        let e = ActorError::NotHelper("network".to_owned());
+        return Err(e);
+    };
+
+    if let Err(e) = helper
+        .send_command(
+            network::CommandHelper::SendMessage {
+                message: NetworkMessage {
+                    info,
+                    message: request,
+                },
+            },
+        )
+        .await
+    {
+        return Err(e);
+    };
+
+    Ok(())
+}
+
+
+pub async fn update_ledger_local<A>(ctx: &mut ActorContext<A>, data: UpdateData) -> Result<(), ActorError> 
+where 
+    A: Actor + Handler<A>
+{
+    let subject_string = data.subject_id.to_string();
+    let request = ActorMessage::DistributionLedgerReq {
+        gov_version: Some(data.gov_version),
+        actual_sn: Some(data.sn),
+        subject_id: data.subject_id,
+    };
+
+    let info = ComunicateInfo {
+        reciver: data.other_node,
+        sender: data.our_node,
+        request_id: String::default(),
+        reciver_actor: format!(
+            "/user/node/{}/distributor",
+            subject_string
+        ),
+        schema: "governance".to_string(),
+    };
+
+    let helper: Option<Intermediary> =
+        ctx.system().get_helper("network").await;
+
+    let Some(mut helper) = helper else {
+        let e = ActorError::NotHelper("network".to_owned());
+        return Err(e);
+    };
+
+    if let Err(e) = helper
+        .send_command(
+            network::CommandHelper::SendMessage {
+                message: NetworkMessage {
+                    info,
+                    message: request,
+                },
+            },
+        )
+        .await
+    {
+        return Err(e);
+    };
+
+    Ok(())
+}
+
+pub async fn get_last_event<A>(
+    ctx: &mut ActorContext<A>,
+    subject_id: &str
+) -> Result<Signed<KoreEvent>, ActorError> 
+where
+    A: Actor + Handler<A>
+{
+    let ledger_event_path = ActorPath::from(format!(
+        "/user/node/{}/ledger_event",
+        subject_id
+    ));
+    let ledger_event_actor: Option<ActorRef<LedgerEvent>> =
+        ctx.system().get_actor(&ledger_event_path).await;
+
+    let response = if let Some(ledger_event_actor) = ledger_event_actor {
+        ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await?
+    } else {
+        return Err(ActorError::NotFound(ledger_event_path));
+    };
+
+    match response {
+        LedgerEventResponse::LastEvent(event) => Ok(event),
+        _ => Err(ActorError::UnexpectedResponse(ledger_event_path, "LedgerEventResponse::LastEvent".to_owned())),
+    }
+}
+
+pub async fn send_reboot_to_req<A>(
+    ctx: &mut ActorContext<A>,
+    request_id: &str,
+    governance_id: DigestIdentifier,
+) -> Result<(), ActorError> 
+where 
+    A: Actor + Handler<A>
+{
+    let req_path =
+        ActorPath::from(format!("/user/request/{}", request_id));
+    let req_actor: Option<ActorRef<RequestManager>> =
+        ctx.system().get_actor(&req_path).await;
+
+    if let Some(req_actor) = req_actor {
+        if let Err(e) = req_actor
+            .tell(RequestManagerMessage::Reboot {
+                governance_id
+            })
+            .await
+        {
+            return Err(e);
+        }
+    } else {
+        return Err(ActorError::NotFound(req_path));
+    };
 
     Ok(())
 }

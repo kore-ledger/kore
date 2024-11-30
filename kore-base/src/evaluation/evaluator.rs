@@ -8,7 +8,7 @@ use crate::{
     governance::Schema,
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::{check_request_owner, emit_fail, get_gov, get_sign},
+        common::{check_request_owner, emit_fail, get_gov, get_metadata, get_sign, update_ledger_network, UpdateData},
         network::{RetryNetwork, TimeOutResponse},
         HashId, SignTypesNode, TimeStamp,
     },
@@ -20,15 +20,13 @@ use crate::{
 use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
-use identity::identifier::{derive::digest::DigestDerivator, KeyIdentifier};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
 
 use json_patch::diff;
 use network::ComunicateInfo;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
-    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
-    Strategy, SystemEvent,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage, Strategy, SystemEvent
 };
 
 use serde_json::Value;
@@ -115,42 +113,50 @@ impl Evaluator {
         Ok(())
     }
 
+    async fn check_governance(
+        &self,
+        ctx: &mut ActorContext<Evaluator>,
+        governance_id: DigestIdentifier,
+        gov_version: u64,
+        other_node: KeyIdentifier
+    ) -> Result<bool, ActorError> {
+        let governance_string = governance_id.to_string();
+        let governance = get_gov(ctx, &governance_string).await?;
+        let metadata = get_metadata(ctx, &governance_string).await?;
+
+        match gov_version.cmp(&governance.version) {
+            std::cmp::Ordering::Equal => {
+                // If it is the same it means that we have the latest version of governance, we are up to date.
+            }
+            std::cmp::Ordering::Greater => {
+                // Me llega una versión mayor a la mía.
+                let data = UpdateData {
+                    sn: metadata.sn,
+                    gov_version: governance.version,
+                    subject_id: governance_id,
+                    our_node: self.node.clone(),
+                    other_node,
+                };
+                update_ledger_network(ctx, data).await?;
+                let e = ActorError::Functional("Abort evaluation, update is required".to_owned());
+                return Err(e);
+            }
+            std::cmp::Ordering::Less => {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
     async fn evaluate(
         &self,
         ctx: &mut ActorContext<Evaluator>,
         execute_contract: &EvaluationReq,
         event: &FactRequest,
+        governance_id: DigestIdentifier,
+        is_governance: bool,
     ) -> Result<RunnerResult, ActorError> {
-        let is_governance = execute_contract.context.schema_id == "governance";
-
-        // Get governance id
-        let governance_id = if is_governance {
-            execute_contract.context.subject_id.clone()
-        } else {
-            execute_contract.context.governance_id.clone()
-        };
-
-        // Get governance
-        let governance = get_gov(ctx, &governance_id.to_string()).await?;
-        // Get governance version
-        let governance_version = governance.version;
-
-        match governance_version.cmp(&execute_contract.gov_version) {
-            std::cmp::Ordering::Equal => {
-                // If it is the same it means that we have the latest version of governance, we are up to date.
-            }
-            std::cmp::Ordering::Greater => {
-                // It is impossible to have a greater version of governance than the owner of the governance himself.
-                // The only possibility is that it is an old evaluation request.
-                // Hay que hacerlo TODO
-            }
-            std::cmp::Ordering::Less => {
-                // Si es un sujeto de traabilidad hay que darle una vuelta.
-                // Stop evaluation process, we need to update governance, we are out of date.
-                // Hay que hacerlo TODO
-            }
-        }
-
         let contract: Contract = if is_governance {
             Contract::GovContract
         } else {
@@ -334,8 +340,17 @@ impl Handler<Evaluator> for Evaluator {
                     return Err(emit_fail(ctx, e).await)
                 };
 
+                let is_governance = evaluation_req.context.schema_id == "governance";
+
+                // Get governance id
+                let governance_id = if is_governance {
+                    evaluation_req.context.subject_id.clone()
+                } else {
+                    evaluation_req.context.governance_id.clone()
+                };
+        
                 let evaluation = match self
-                    .evaluate(ctx, &evaluation_req, state_data)
+                    .evaluate(ctx, &evaluation_req, state_data, governance_id, is_governance)
                     .await
                 {
                     Ok(evaluation) => {
@@ -534,36 +549,48 @@ impl Handler<Evaluator> for Evaluator {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                let evaluation = match self
-                    .evaluate(ctx, &evaluation_req.content, state_data)
-                    .await
-                {
-                    Ok(evaluation) => {
-                        Self::build_response(
-                            evaluation,
-                            evaluation_req.content.clone(),
-                        )
-                        .await
-                    }
+                let is_governance = evaluation_req.content.context.schema_id == "governance";
+
+                // Get governance id
+                let governance_id = if is_governance {
+                    evaluation_req.content.context.subject_id.clone()
+                } else {
+                    evaluation_req.content.context.governance_id.clone()
+                };
+
+                let reboot = match self.check_governance(ctx, governance_id.clone(), evaluation_req.content.gov_version, info.sender.clone()).await {
+                    Ok(reboot) => reboot,
                     Err(e) => {
                         if let ActorError::Functional(_) = e {
-                            EvaluationRes::Error(e.to_string())
+                            return Err(e);
                         } else {
-                            return Err(emit_fail(ctx, e).await)
+                            return Err(emit_fail(ctx, e).await);
                         }
                     }
                 };
 
-                let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver.clone(),
-                    request_id: info.request_id,
-                    reciver_actor: format!(
-                        "/user/node/{}/evaluation/{}",
-                        evaluation_req.content.context.subject_id,
-                        info.reciver.clone()
-                    ),
-                    schema: info.schema.clone(),
+                let evaluation = if reboot {
+                    EvaluationRes::Reboot
+                } else {
+                        match self
+                        .evaluate(ctx, &evaluation_req.content, state_data, governance_id, is_governance)
+                        .await
+                    {
+                        Ok(evaluation) => {
+                            Self::build_response(
+                                evaluation,
+                                evaluation_req.content.clone(),
+                            )
+                            .await
+                        }
+                        Err(e) => {
+                            if let ActorError::Functional(_) = e {
+                                EvaluationRes::Error(e.to_string())
+                            } else {
+                                return Err(emit_fail(ctx, e).await)
+                            }
+                        }
+                    }
                 };
 
                 let signature = match get_sign(
@@ -576,6 +603,18 @@ impl Handler<Evaluator> for Evaluator {
                     Err(e) => {
                         return Err(emit_fail(ctx, e).await)
                     },
+                };
+
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver.clone(),
+                    request_id: info.request_id,
+                    reciver_actor: format!(
+                        "/user/node/{}/evaluation/{}",
+                        evaluation_req.content.context.subject_id,
+                        info.reciver.clone()
+                    ),
+                    schema: info.schema.clone(),
                 };
 
                 let signed_response: Signed<EvaluationRes> = Signed {
@@ -645,5 +684,14 @@ impl Handler<Evaluator> for Evaluator {
                 // TODO error inesperado
             }
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Evaluator>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }

@@ -11,13 +11,32 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
+use updater::{Updater, UpdaterMessage};
 
-use crate::{intermediary::Intermediary, model::common::emit_fail, ActorMessage, NetworkMessage};
+use crate::{intermediary::Intermediary, model::common::emit_fail, request::manager::{RequestManager, RequestManagerMessage}, ActorMessage, NetworkMessage};
 
-use super::authorizer::{self, Authorizer, AuthorizerMessage};
+pub mod updater;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Authorization {
+pub enum UpdateType {
+    Auth,
+    Request {
+        id: String
+    }
+}
+
+pub struct UpdateNew {
+    pub subject_id: DigestIdentifier,
+    pub our_key: KeyIdentifier,
+    pub sn: u64,
+    pub witnesses: HashSet<KeyIdentifier>,
+    pub schema_id: String,
+    pub request: ActorMessage,
+    pub update_type: UpdateType
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Update {
     subject_id: DigestIdentifier,
     our_key: KeyIdentifier,
     sn: u64,
@@ -25,25 +44,22 @@ pub struct Authorization {
     better: Option<KeyIdentifier>,
     schema_id: String,
     request: ActorMessage,
+    update_type: UpdateType
 }
 
-impl Authorization {
+impl Update {
     pub fn new(
-        subject_id: DigestIdentifier,
-        our_key: KeyIdentifier,
-        sn: u64,
-        witnesses: HashSet<KeyIdentifier>,
-        schema_id: String,
-        request: ActorMessage,
+        data: UpdateNew
     ) -> Self {
         Self {
-            subject_id,
-            our_key,
-            sn,
-            witnesses,
+            subject_id: data.subject_id,
+            our_key: data.our_key,
+            sn: data.sn,
+            witnesses: data.witnesses,
             better: None,
-            schema_id,
-            request,
+            schema_id: data.schema_id,
+            request: data.request,
+            update_type: data.update_type
         }
     }
     fn check_witness(&mut self, witness: KeyIdentifier) -> bool {
@@ -52,18 +68,18 @@ impl Authorization {
 }
 
 #[derive(Debug, Clone)]
-pub enum AuthorizationMessage {
+pub enum UpdateMessage {
     Create,
     Response { sender: KeyIdentifier, sn: u64 },
 }
 
-impl Message for AuthorizationMessage {}
+impl Message for UpdateMessage {}
 
 
 #[async_trait]
-impl Actor for Authorization {
+impl Actor for Update {
     type Event = ();
-    type Message = AuthorizationMessage;
+    type Message = UpdateMessage;
     type Response = ();
 
     async fn pre_start(
@@ -82,19 +98,19 @@ impl Actor for Authorization {
 }
 
 #[async_trait]
-impl Handler<Authorization> for Authorization {
+impl Handler<Update> for Update {
     async fn handle_message(
         &mut self,
         _sender: ActorPath,
-        msg: AuthorizationMessage,
-        ctx: &mut ActorContext<Authorization>,
+        msg: UpdateMessage,
+        ctx: &mut ActorContext<Update>,
     ) -> Result<(), ActorError> {
         match msg {
-            AuthorizationMessage::Create => {
+            UpdateMessage::Create => {
                 for witness in self.witnesses.clone() {
-                    let authorizer = Authorizer::new(witness.clone());
+                    let updater = Updater::new(witness.clone());
                     let child = ctx
-                        .create_child(&witness.to_string(), authorizer)
+                        .create_child(&witness.to_string(), updater)
                         .await;
                     let Ok(child) = child else {
                         let e = ActorError::Create(ctx.path().clone(),witness.to_string());
@@ -102,7 +118,7 @@ impl Handler<Authorization> for Authorization {
                      };
 
                     if let Err(e) = child
-                        .tell(AuthorizerMessage::NetworkLastSn {
+                        .tell(UpdaterMessage::NetworkLastSn {
                             subject_id: self.subject_id.clone(),
                             node_key: witness,
                             our_key: self.our_key.clone(),
@@ -113,7 +129,7 @@ impl Handler<Authorization> for Authorization {
                     }
                 }
             }
-            AuthorizationMessage::Response { sender, sn } => {
+            UpdateMessage::Response { sender, sn } => {
                 if self.check_witness(sender.clone()) {
                     if sn > self.sn {
                         self.better = Some(sender);
@@ -154,6 +170,27 @@ impl Handler<Authorization> for Authorization {
                                 return Err(emit_fail(ctx, e).await);
                             };
                         }
+
+                        if let UpdateType::Request { id } = &self.update_type  {
+                            let request_path = ActorPath::from(format!("/user/request/{}", id));
+                            let request_actor: Option<ActorRef<RequestManager>> = ctx.system().get_actor(&request_path).await;
+
+                            if let Some( request_actor ) = request_actor {
+                                let request = if self.better.is_some() {
+                                    RequestManagerMessage::FinishReboot
+                                } else {
+                                    RequestManagerMessage::Reboot { governance_id: self.subject_id.clone() }
+                                };
+
+                                if let Err(e) = request_actor.tell(request).await {
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                            } else {
+                                let e = ActorError::NotFound(request_path);
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        };
+
                         ctx.stop().await;
                     }
                 }
@@ -166,7 +203,7 @@ impl Handler<Authorization> for Authorization {
     async fn on_child_fault(
         &mut self,
         error: ActorError,
-        ctx: &mut ActorContext<Authorization>,
+        ctx: &mut ActorContext<Update>,
     ) -> ChildAction {
         emit_fail(ctx, error).await;
         ChildAction::Stop

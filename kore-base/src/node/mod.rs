@@ -17,9 +17,7 @@ use crate::{
     distribution::distributor::Distributor,
     helpers::db::ExternalDB,
     model::{
-        event::Ledger,
-        signature::{Signature, Signed},
-        HashId, SignTypesNode,
+        common::emit_fail, event::Ledger, signature::{Signature, Signed}, HashId, SignTypesNode
     },
     subject::CreateSubjectData,
     Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR,
@@ -33,8 +31,7 @@ use identity::{
 };
 
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
-    Message, Response, Sink, SystemEvent,
+    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event, Handler, Message, Response, Sink, SystemEvent
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -571,6 +568,16 @@ impl Handler<Node> for Node {
             }
         }
     }
+    
+        async fn on_child_fault(
+            &mut self,
+            error: ActorError,
+            ctx: &mut ActorContext<Node>,
+        ) -> ChildAction {
+            ctx.system().send_event(SystemEvent::StopSystem).await;
+            ChildAction::Stop
+        }
+    
 
     async fn on_event(
         &mut self,

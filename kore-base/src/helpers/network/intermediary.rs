@@ -1,16 +1,11 @@
 use crate::{
-    approval::approver::{Approver, ApproverMessage},
-    auth::authorizer::{Authorizer, AuthorizerMessage},
-    distribution::distributor::{Distributor, DistributorMessage},
-    evaluation::{
+    approval::approver::{Approver, ApproverMessage}, distribution::distributor::{Distributor, DistributorMessage}, evaluation::{
         evaluator::{Evaluator, EvaluatorMessage},
         schema::{EvaluationSchema, EvaluationSchemaMessage},
-    },
-    validation::{
+    }, update::updater::{Updater, UpdaterMessage}, validation::{
         schema::{ValidationSchema, ValidationSchemaMessage},
         validator::{Validator, ValidatorMessage},
-    },
-    Error,
+    }, Error
 };
 
 use super::ActorMessage;
@@ -153,12 +148,12 @@ impl Intermediary {
                     ActorMessage::AuthLastSn { sn } => {
                         let authorizer_path =
                             ActorPath::from(message.info.reciver_actor.clone());
-                        let authorizer_actor: Option<ActorRef<Authorizer>> =
+                        let authorizer_actor: Option<ActorRef<Updater>> =
                             self.system.get_actor(&authorizer_path).await;
 
                         if let Some(authorizer_actor) = authorizer_actor {
                             if let Err(e) = authorizer_actor
-                                .tell(AuthorizerMessage::NetworkResponse { sn })
+                                .tell(UpdaterMessage::NetworkResponse { sn })
                                 .await
                                 {
                                     return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",authorizer_path, e)));

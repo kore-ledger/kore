@@ -15,6 +15,7 @@ mod helpers;
 mod model;
 mod node;
 mod query;
+mod update;
 mod request;
 mod subject;
 pub(crate) mod system;
@@ -32,7 +33,7 @@ use governance::{init::init_state, Governance};
 use helpers::db::{EventDB, ExternalDB, Paginator, SignaturesDB, SubjectDB};
 use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
-use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use identity::identifier::DigestIdentifier;
 use identity::keys::KeyPair;
 use intermediary::Intermediary;
 use model::event::Event;
@@ -420,7 +421,6 @@ impl Api {
 
         match response {
             AuthResponse::Witnesses(witnesses) => Ok(witnesses),
-            
             _ => Err(Error::Auth(
                 "A response was received that was not the expected one"
                     .to_owned(),

@@ -22,7 +22,7 @@ use crate::{
     helpers::db::ExternalDB,
     model::{
         common::{
-            delete_relation, emit_fail, get_gov, get_quantity, register_relation, verify_protocols_state
+            delete_relation, emit_fail, get_gov, get_last_event, get_quantity, register_relation, verify_protocols_state
         },
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
@@ -43,8 +43,7 @@ use crate::{
 };
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response, Sink, SystemEvent,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response, Sink, SystemEvent
 };
 use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
 use identity::{
@@ -1584,30 +1583,7 @@ impl Subject {
         }
     }
 
-    async fn get_last_event(
-        &self,
-        ctx: &mut ActorContext<Subject>,
-    ) -> Result<Signed<KoreEvent>, ActorError> {
-        let ledger_event_path = ActorPath::from(format!(
-            "/user/node/{}/ledger_event",
-            self.subject_id
-        ));
-        let ledger_event_actor: Option<ActorRef<LedgerEvent>> =
-            ctx.system().get_actor(&ledger_event_path).await;
-
-        let response = if let Some(ledger_event_actor) = ledger_event_actor {
-            ledger_event_actor
-                .ask(LedgerEventMessage::GetLastEvent)
-                .await?
-        } else {
-            return Err(ActorError::NotFound(ledger_event_path));
-        };
-
-        match response {
-            LedgerEventResponse::LastEvent(event) => Ok(event),
-            _ => Err(ActorError::UnexpectedResponse(ledger_event_path, "LedgerEventResponse::LastEvent".to_owned())),
-        }
-    }
+   
 
     async fn create_compilers(
         ctx: &mut ActorContext<Subject>,
@@ -1776,7 +1752,7 @@ impl Handler<Subject> for Subject {
                 let ledger = self.get_ledger(ctx, last_sn).await?;
 
                 if ledger.len() < 100 {
-                    let last_event = self.get_last_event(ctx).await?;
+                    let last_event = get_last_event(ctx, &self.subject_id.to_string()).await?;
                     Ok(SubjectResponse::Ledger((ledger,Some(last_event))))
                 } else {
                     Ok(SubjectResponse::Ledger((ledger, None)))
@@ -1829,6 +1805,15 @@ impl Handler<Subject> for Subject {
             println!("{}", e);
             // TODO
         }
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Subject>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }
 

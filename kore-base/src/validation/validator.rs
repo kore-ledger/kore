@@ -10,7 +10,7 @@ use crate::{
         network::{intermediary::Intermediary, NetworkMessage},
     },
     model::{
-        common::{check_request_owner, emit_fail, get_gov, get_sign},
+        common::{check_request_owner, emit_fail, get_gov, get_metadata, get_sign, update_ledger_network, UpdateData},
         event::ProtocolsSignatures,
         network::{RetryNetwork, TimeOutResponse},
         signature::Signature,
@@ -30,15 +30,13 @@ use super::{
 use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
-use identity::identifier::KeyIdentifier;
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
-    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
-    Strategy, SystemEvent,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage, Strategy, SystemEvent
 };
 
 use tracing::error;
@@ -121,45 +119,47 @@ impl Validator {
         Ok(())
     }
 
+    async fn check_governance(
+        &self,
+        ctx: &mut ActorContext<Validator>,
+        governance_id: DigestIdentifier,
+        gov_version: u64,
+        other_node: KeyIdentifier
+    ) -> Result<bool, ActorError> {
+        let governance_string = governance_id.to_string();
+        let governance = get_gov(ctx, &governance_string).await?;
+        let metadata = get_metadata(ctx, &governance_string).await?;
+
+        match gov_version.cmp(&governance.version) {
+            std::cmp::Ordering::Equal => {
+                // If it is the same it means that we have the latest version of governance, we are up to date.
+            }
+            std::cmp::Ordering::Greater => {
+                // Me llega una versión mayor a la mía.
+                let data = UpdateData {
+                    sn: metadata.sn,
+                    gov_version: governance.version,
+                    subject_id: governance_id,
+                    our_node: self.node.clone(),
+                    other_node,
+                };
+                update_ledger_network(ctx, data).await?;
+                let e = ActorError::Functional("Abort evaluation, update is required".to_owned());
+                return Err(e);
+            }
+            std::cmp::Ordering::Less => {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
     async fn validation(
         &self,
         ctx: &mut ActorContext<Validator>,
         validation_req: ValidationReq,
     ) -> Result<Signature, ActorError> {
-        // Obtain gov_version
-        let actual_gov_version: u64 = if validation_req.proof.schema_id
-            == "governance"
-            && validation_req.proof.sn == 0
-        {
-            0
-        // ask the government for its version
-        } else {
-            let governance_id =
-                if validation_req.proof.schema_id == "governance" {
-                    validation_req.proof.subject_id.clone()
-                } else {
-                    validation_req.proof.governance_id.clone()
-                };
-
-            get_gov(ctx, &governance_id.to_string()).await?.version
-        };
-
-        match actual_gov_version.cmp(&validation_req.proof.governance_version) {
-            std::cmp::Ordering::Equal => {
-                // If it is the same it means that we have the latest version of governance, we are up to date.
-            }
-            std::cmp::Ordering::Greater => {
-                // It is impossible to have a greater version of governance than the owner of the governance himself.
-                // The only possibility is that it is an old validation request.
-                // Hay que hacerlo TODO
-            }
-            std::cmp::Ordering::Less => {
-                // Stop validation process, we need to update governance, we are out of date.
-                // Hay que hacerlo TODO
-            }
-        }
-
-
         if let Err(e) = validation_req.subject_signature.verify(&validation_req.proof) {
             return Err(ActorError::Functional("Can not verify signature".to_owned()));
         }
@@ -510,13 +510,31 @@ impl Handler<Validator> for Validator {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                let validation = match self
-                    .validation(ctx, validation_req.content.clone())
-                    .await
-                {
-                    Ok(validation) => ValidationRes::Signature(validation),
+                let reboot = match self.check_governance(ctx, validation_req.content.proof.governance_id.clone(), validation_req.content.proof.governance_version, info.sender.clone()).await {
+                    Ok(reboot) => reboot,
                     Err(e) => {
-                        ValidationRes::Error(e.to_string())
+                        if let ActorError::Functional(_) = e {
+                            return Err(e);
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    }
+                };
+
+                let validation = if reboot {
+                    ValidationRes::Reboot
+                } else {
+                    match self
+                    .validation(ctx, validation_req.content.clone())
+                    .await {
+                        Ok(validation) => ValidationRes::Signature(validation),
+                        Err(e) => {
+                            if let ActorError::Functional(_) = e {
+                                ValidationRes::Error(e.to_string())
+                            } else {
+                                return Err(emit_fail(ctx, e).await)
+                            }
+                        }
                     }
                 };
 
@@ -608,5 +626,14 @@ impl Handler<Validator> for Validator {
                 // TODO error inesperado
             }
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Validator>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }

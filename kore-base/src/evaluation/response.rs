@@ -27,6 +27,7 @@ pub enum EvaluationRes {
     Error(String),
     TimeOut(TimeOutResponse),
     Response(Response),
+    Reboot
 }
 
 #[derive(

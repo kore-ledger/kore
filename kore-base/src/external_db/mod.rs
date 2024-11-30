@@ -2,14 +2,14 @@ use std::time::Duration;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response, SystemEvent,
+    Handler, Message, SystemEvent,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 
 use crate::{
-    db::Storable, error::Error, helpers::db::{ExternalDB, Querys}, model::{common::emit_fail, TimeStamp}
+    db::Storable, error::Error, helpers::db::{ExternalDB, Querys}
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -86,7 +86,7 @@ impl Actor for DBManager {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store("db_manager", None, false, ctx).await
+        self.init_store("ext_db", None, false, ctx).await
     }
 
     async fn pre_stop(
@@ -108,16 +108,18 @@ impl Handler<DBManager> for DBManager {
         let Some(helper): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
+            ctx.system().send_event(SystemEvent::StopSystem).await;
             let e = ActorError::NotHelper("ext_db".to_owned());
-            return Err(emit_fail(ctx, e).await);
+            return Err(e);
         };
         
         match msg {
             DBManagerMessage::InitDelete => {
                 let Some(our_ref): Option<ActorRef<DBManager>> = ctx.reference().await
                 else {
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
                     let e = ActorError::NotFound(ctx.path().clone());
-                    return Err(emit_fail(ctx, e).await);
+                    return Err(e);
                 };
 
                 for req in self.delete_req.clone() {
@@ -127,7 +129,8 @@ impl Handler<DBManager> for DBManager {
             }
             DBManagerMessage::Error(error) => {
                 let e = ActorError::FunctionalFail(error.to_string());
-                return Err(emit_fail(ctx, e).await);
+                ctx.system().send_event(SystemEvent::StopSystem).await;
+                return Err(e);
             },
             DBManagerMessage::Delete(delete) => {
                 self.on_event(DBManagerEvent::DeleteReq(delete.clone()), ctx)
@@ -136,7 +139,8 @@ impl Handler<DBManager> for DBManager {
                 let Some(our_ref): Option<ActorRef<DBManager>> = ctx.reference().await
                 else {
                     let e = ActorError::NotFound(ctx.path().clone());
-                    return Err(emit_fail(ctx, e).await);
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Err(e);
                 };
 
                 self.delete(delete, our_ref, helper).await;

@@ -2,33 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response, SystemEvent
+    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event, Handler, Message, Response
 };
 use async_trait::async_trait;
-use authorization::{Authorization, AuthorizationMessage};
-use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+use identity::identifier::{DigestIdentifier, KeyIdentifier,
 };
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, HashSet},
-    process::Child,
-    str::FromStr,
-};
+use std::collections::HashMap;
 use store::store::PersistentActor;
 
 use crate::{
-    db::Storable,
-    error::Error,
-    intermediary::Intermediary,
-    model::common::{emit_fail, get_gov, get_metadata},
-    subject::{self, Subject, SubjectMessage, SubjectResponse},
-    ActorMessage, NetworkMessage,
+    db::Storable, intermediary::Intermediary, model::common::{emit_fail, get_gov, get_metadata, UpdateData}, update::{Update, UpdateMessage, UpdateNew}, ActorMessage, NetworkMessage
 };
-
-pub mod authorization;
-pub mod authorizer;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum AuthWitness {
@@ -241,13 +227,10 @@ impl Handler<Auth> for Auth {
                         }
                         AuthWitness::Many(vec) => {
                             let witnesses = vec.iter().cloned().collect();
-                            let authorization = Authorization::new(
-                                subject_id.clone(),
-                                self.our_node.clone(),
-                                sn,
-                                witnesses,
-                                schema_id,
-                                request,
+                            let data = UpdateNew { subject_id: subject_id.clone(), our_key: self.our_node.clone(), sn, witnesses, schema_id, request, update_type: crate::update::UpdateType::Auth };
+
+                            let authorization = Update::new(
+                                data
                             );
                             let child = ctx
                                 .create_child(
@@ -261,7 +244,7 @@ impl Handler<Auth> for Auth {
                             };
 
                             if let Err(e) =
-                                child.tell(AuthorizationMessage::Create).await
+                                child.tell(UpdateMessage::Create).await
                             {
                                 return Err(emit_fail(ctx, e).await);
                             }

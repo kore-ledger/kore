@@ -11,16 +11,27 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    auth::{Auth, AuthMessage}, db::Storable, governance::{model::Roles, Quorum}, model::{
-        common::{emit_fail, get_sign, get_signers_quorum_gov_version, try_to_update},
+    auth::{Auth, AuthMessage},
+    db::Storable,
+    governance::{model::Roles, Quorum},
+    model::{
+        common::{
+            emit_fail, get_sign, get_signers_quorum_gov_version, send_reboot_to_req, try_to_update
+        },
         event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
         Namespace, SignTypesNode, SignTypesSubject,
-    }, request::manager::{RequestManager, RequestManagerMessage}, subject::{Metadata, Subject, SubjectMessage, SubjectResponse}, Error
+    },
+    request::{
+        manager::{RequestManager, RequestManagerMessage},
+        reboot,
+    },
+    subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
+    Error,
 };
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    Event, Handler, Message, Response,
 };
 
 use async_trait::async_trait;
@@ -64,6 +75,8 @@ pub struct Validation {
 
     previous_proof: Option<ValidationProof>,
     prev_event_validation_response: Vec<ProtocolsSignatures>,
+
+    reboot: bool,
 }
 
 impl Validation {
@@ -71,6 +84,15 @@ impl Validation {
         Validation {
             node_key,
             ..Default::default()
+        }
+    }
+
+    async fn end_validators(&self, ctx: &mut ActorContext<Validation>) {
+        for validator  in self.validators.clone() {
+            let child: Option<ActorRef<Validator>> = ctx.get_child(&validator.to_string()).await;
+            if let Some(child) = child {
+                child.stop().await;
+            }
         }
     }
 
@@ -91,8 +113,8 @@ impl Validation {
             };
 
         // Create proof from validation info
-        let proof =
-            ValidationProof::from_info(validation_info, prev_evet_hash).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+        let proof = ValidationProof::from_info(validation_info, prev_evet_hash)
+            .map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
 
         // Subject path.
         let subject_path = ctx.path().parent();
@@ -116,7 +138,10 @@ impl Validation {
         let subject_signature = match response {
             SubjectResponse::SignRequest(sign) => sign,
             _ => {
-                return Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::SignRequest".to_owned()));
+                return Err(ActorError::UnexpectedResponse(
+                    subject_path,
+                    "SubjectResponse::SignRequest".to_owned(),
+                ));
             }
         };
 
@@ -189,7 +214,12 @@ impl Validation {
         if !result && error.is_empty() {
             "who: ALL, error: No validator was able to validate the event."
                 .clone_into(&mut error);
-            try_to_update(self.validators_response.clone(), ctx, self.actual_proof.subject_id.clone()).await?;
+            try_to_update(
+                self.validators_response.clone(),
+                ctx,
+                self.actual_proof.subject_id.clone(),
+            )
+            .await?;
         }
 
         let req_path =
@@ -236,19 +266,11 @@ pub struct ValidationEvent {
 
 impl Event for ValidationEvent {}
 
-#[derive(Debug, Clone)]
-pub enum ValidationResponse {
-    Error(Error),
-    None,
-}
-
-impl Response for ValidationResponse {}
-
 #[async_trait]
 impl Actor for Validation {
     type Event = ValidationEvent;
     type Message = ValidationMessage;
-    type Response = ValidationResponse;
+    type Response = ();
 
     async fn pre_start(
         &mut self,
@@ -276,7 +298,7 @@ impl Handler<Validation> for Validation {
         _sender: ActorPath,
         msg: ValidationMessage,
         ctx: &mut ActorContext<Validation>,
-    ) -> Result<ValidationResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             ValidationMessage::Create { request_id, info } => {
                 let (validation_req, proof) =
@@ -289,15 +311,14 @@ impl Handler<Validation> for Validation {
                 self.actual_proof = proof;
 
                 // Get signers and quorum
-                let (signers, quorum,_) = match
-                    get_signers_quorum_gov_version(
-                        ctx,
-                        &info.metadata.subject_id.to_string(),
-                        &info.metadata.schema_id,
-                        info.metadata.namespace,
-                        Roles::VALIDATOR
-                    )
-                    .await
+                let (signers, quorum, _) = match get_signers_quorum_gov_version(
+                    ctx,
+                    &info.metadata.subject_id.to_string(),
+                    &info.metadata.schema_id,
+                    info.metadata.namespace,
+                    Roles::VALIDATOR,
+                )
+                .await
                 {
                     Ok(signers_quorum) => signers_quorum,
                     Err(e) => {
@@ -346,72 +367,91 @@ impl Handler<Validation> for Validation {
                 validation_res,
                 sender,
             } => {
-                // If node is in validator list
-                if self.check_validator(sender.clone()) {
-                    match validation_res {
-                        ValidationRes::Signature(signature) => {
-                            self.valid_validation = true;
-                            self.validators_response
-                                .push(ProtocolsSignatures::Signature(signature))
-                        }
-                        ValidationRes::TimeOut(timeout) => self
-                            .validators_response
-                            .push(ProtocolsSignatures::TimeOut(timeout)),
-                        ValidationRes::Error(error) => {
-                            self.errors = format!(
-                                "{} who: {}, error: {}.",
-                                self.errors, sender, error
-                            );
-                        }
-                    };
+                if !self.reboot {
+                    // If node is in validator list
+                    if self.check_validator(sender.clone()) {
+                        match validation_res {
+                            ValidationRes::Signature(signature) => {
+                                self.valid_validation = true;
+                                self.validators_response.push(
+                                    ProtocolsSignatures::Signature(signature),
+                                )
+                            }
+                            ValidationRes::TimeOut(timeout) => self
+                                .validators_response
+                                .push(ProtocolsSignatures::TimeOut(timeout)),
+                            ValidationRes::Error(error) => {
+                                self.errors = format!(
+                                    "{} who: {}, error: {}.",
+                                    self.errors, sender, error
+                                );
+                            }
+                            ValidationRes::Reboot => {
+                                let governance_id = self.actual_proof.governance_id.clone();
+                                if let Err(e) = send_reboot_to_req(
+                                    ctx,
+                                    &self.request_id,
+                                    governance_id,
+                                )
+                                .await
+                                {
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                                self.reboot = true;
 
-                    if self.quorum.check_quorum(
-                        self.validators_quantity,
-                        self.validators_response.len() as u32,
-                    ) && self.valid_validation
-                    {
-                        // The quorum was met, we persisted, and we applied the status
-                        self.on_event(
-                            ValidationEvent {
-                                actual_proof: self.actual_proof.clone(),
-                                actual_event_validation_response: self
-                                    .validators_response
-                                    .clone(),
-                            },
-                            ctx,
-                        )
-                        .await;
-
-                        if let Err(e) =
-                            self.send_validation_to_req(ctx, true).await
-                        {
-                            return Err(emit_fail(ctx, e).await);
+                                self.end_validators(ctx).await;
+                                return Ok(());
+                            }
                         };
-                    } else if self.validators.is_empty() {
-                        // we have received all the responses and the quorum has not been met
-                        self.on_event(
-                            ValidationEvent {
-                                actual_proof: self.actual_proof.clone(),
-                                actual_event_validation_response: self
-                                    .validators_response
-                                    .clone(),
-                            },
-                            ctx,
-                        )
-                        .await;
 
-                        if let Err(e) =
-                            self.send_validation_to_req(ctx, false).await
+                        if self.quorum.check_quorum(
+                            self.validators_quantity,
+                            self.validators_response.len() as u32,
+                        ) && self.valid_validation
                         {
-                            return Err(emit_fail(ctx, e).await);
-                        };
+                            // The quorum was met, we persisted, and we applied the status
+                            self.on_event(
+                                ValidationEvent {
+                                    actual_proof: self.actual_proof.clone(),
+                                    actual_event_validation_response: self
+                                        .validators_response
+                                        .clone(),
+                                },
+                                ctx,
+                            )
+                            .await;
+
+                            if let Err(e) =
+                                self.send_validation_to_req(ctx, true).await
+                            {
+                                return Err(emit_fail(ctx, e).await);
+                            };
+                        } else if self.validators.is_empty() {
+                            // we have received all the responses and the quorum has not been met
+                            self.on_event(
+                                ValidationEvent {
+                                    actual_proof: self.actual_proof.clone(),
+                                    actual_event_validation_response: self
+                                        .validators_response
+                                        .clone(),
+                                },
+                                ctx,
+                            )
+                            .await;
+
+                            if let Err(e) =
+                                self.send_validation_to_req(ctx, false).await
+                            {
+                                return Err(emit_fail(ctx, e).await);
+                            };
+                        }
+                    } else {
+                        // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                     }
-                } else {
-                    // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                 }
             }
         };
-        Ok(ValidationResponse::None)
+        Ok(())
     }
     async fn on_event(
         &mut self,
@@ -421,6 +461,15 @@ impl Handler<Validation> for Validation {
         if let Err(_e) = self.persist(&event, ctx).await {
             // TODO error al persistir, propagar hacia arriba
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Validation>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }
 
@@ -734,9 +783,11 @@ pub mod tests {
             .ask(RequestHandlerMessage::NewRequest {
                 request: signed_event_req.clone(),
             })
-            .await.is_err() {
-                panic!("Invalid response")
-            }
+            .await
+            .is_err()
+        {
+            panic!("Invalid response")
+        }
     }
 
     #[tokio::test]
@@ -839,8 +890,10 @@ pub mod tests {
             .ask(RequestHandlerMessage::NewRequest {
                 request: signed_event_req.clone(),
             })
-            .await.is_err() {
-                panic!("Invalid response")
-            }
+            .await
+            .is_err()
+        {
+            panic!("Invalid response")
+        }
     }
 }

@@ -1,8 +1,7 @@
 use std::collections::HashSet;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
-    Message,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Handler, Message
 };
 use async_trait::async_trait;
 use distributor::{Distributor, DistributorMessage};
@@ -181,5 +180,14 @@ impl Handler<Distribution> for Distribution {
         }
 
         Ok(())
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Distribution>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }

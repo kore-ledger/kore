@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response, Sink, SystemEvent,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response, Sink, SystemEvent
 };
 use async_trait::async_trait;
 use identity::{
@@ -24,7 +23,7 @@ use crate::{
     governance::model::Roles,
     helpers::db::ExternalDB,
     init_state,
-    model::common::{emit_fail, get_gov, get_metadata, get_quantity},
+    model::common::{get_gov, get_metadata, get_quantity},
     subject::{CreateSubjectData, SubjectID},
     CreateRequest, Error, EventRequest, HashId, Node, NodeMessage,
     NodeResponse, Signed, DIGEST_DERIVATOR,
@@ -32,6 +31,7 @@ use crate::{
 
 pub mod manager;
 pub mod state;
+pub mod reboot;
 
 #[derive(Debug, Clone)]
 pub struct RequestData {
@@ -245,7 +245,7 @@ impl Actor for RequestHandler {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store("request_handler", None, false, ctx).await?;
+        self.init_store("request", None, false, ctx).await?;
         
         let Some(ext_db): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
@@ -255,7 +255,7 @@ impl Actor for RequestHandler {
 
         for (subject_id, (request_id, request)) in self.handling.clone() {
             let request_manager =
-                RequestManager::new(request_id.clone(), subject_id, request);
+                RequestManager::new(self.node_key.clone(), request_id.clone(), subject_id, request);
             let request_manager_actor = ctx.create_child(&request_id, request_manager).await?;
             let sink = Sink::new(
                 request_manager_actor.subscribe(),
@@ -550,7 +550,8 @@ impl Handler<RequestHandler> for RequestHandler {
                     Err(e) => {
                         // YA previamente se ha generado el request id, por lo que no debería haber problema
                         let e = ActorError::Functional(format!("Can not obtain request id hash id: {}", e));
-                        return Err(emit_fail(ctx, e).await);
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Err(e);
                     },
                 };
 
@@ -559,7 +560,8 @@ impl Handler<RequestHandler> for RequestHandler {
                         Ok(metadata) => metadata,
                         Err(e) => {
                             // YA previamente se ha obtenido la metadata, por lo que no debería haber problema
-                            return Err(emit_fail(ctx, e).await);
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            return Err(e);
                         },
                     };
 
@@ -568,7 +570,8 @@ impl Handler<RequestHandler> for RequestHandler {
                         .error_queue_handling(ctx, &request_id, &subject_id)
                         .await
                     {
-                        return Err(emit_fail(ctx, e).await);
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Err(e);
                     }
 
                     return Ok(RequestHandlerResponse::None);
@@ -580,7 +583,8 @@ impl Handler<RequestHandler> for RequestHandler {
                             .error_queue_handling(ctx, &request_id, &subject_id)
                             .await
                     {
-                        return Err(emit_fail(ctx, e).await);
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Err(e);
                     }
 
                     return Ok(RequestHandlerResponse::None);
@@ -624,7 +628,8 @@ impl Handler<RequestHandler> for RequestHandler {
                                             )
                                             .await
                                         {
-                                            return Err(emit_fail(ctx, e).await);
+                                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                                            return Err(e);
                                         }
 
                                         return Ok(
@@ -642,7 +647,8 @@ impl Handler<RequestHandler> for RequestHandler {
                                         )
                                         .await
                                     {
-                                        return Err(emit_fail(ctx, e).await);
+                                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                                        return Err(e);
                                     }
 
                                     return Ok(RequestHandlerResponse::None);
@@ -656,7 +662,8 @@ impl Handler<RequestHandler> for RequestHandler {
                                     )
                                     .await
                                 {
-                                    return Err(emit_fail(ctx, e).await);
+                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                    return Err(e);
                                 }
 
                                 return Ok(RequestHandlerResponse::None);
@@ -687,7 +694,8 @@ impl Handler<RequestHandler> for RequestHandler {
                                 )
                                 .await
                             {
-                                return Err(emit_fail(ctx, e).await);
+                                ctx.system().send_event(SystemEvent::StopSystem).await;
+                                return Err(e);
                             }
 
                             return Ok(RequestHandlerResponse::None);
@@ -698,6 +706,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 };
 
                 let request_manager = RequestManager::new(
+                    self.node_key.clone(),
                     request_id.clone(),
                     subject_id.clone(),
                     event.clone(),
@@ -708,7 +717,10 @@ impl Handler<RequestHandler> for RequestHandler {
                     .await
                 {
                     Ok(request_actor) => request_actor,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
+                    Err(e) => {
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Err(e)
+                    },
                 };
 
                 let Some(ext_db): Option<ExternalDB> =
@@ -725,7 +737,8 @@ impl Handler<RequestHandler> for RequestHandler {
                 ctx.system().run_sink(sink).await;
 
                 if let Err(e) = request_actor.tell(message).await {
-                    return Err(emit_fail(ctx, e).await);
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Err(e);
                 };
 
                 self.on_event(
@@ -753,12 +766,22 @@ impl Handler<RequestHandler> for RequestHandler {
                 if let Err(e) =
                     RequestHandler::queued_event(ctx, &subject_id).await
                 {
-                    return Err(emit_fail(ctx, e).await);
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Err(e);
                 }
 
                 Ok(RequestHandlerResponse::None)
             }
         }
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<RequestHandler>,
+    ) -> ChildAction {
+        ctx.system().send_event(SystemEvent::StopSystem).await;
+        ChildAction::Stop
     }
 
     async fn on_event(

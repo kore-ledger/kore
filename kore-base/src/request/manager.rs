@@ -2,25 +2,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response
 };
 use async_trait::async_trait;
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
+use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use store::store::PersistentActor;
 use tracing::error;
 
 use crate::{
-    approval::{Approval, ApprovalMessage},
-    db::Storable,
-    distribution::{Distribution, DistributionMessage},
-    evaluation::{
+    approval::{Approval, ApprovalMessage}, auth::{Auth, AuthMessage, AuthResponse, AuthWitness}, db::Storable, distribution::{Distribution, DistributionMessage}, evaluation::{
         request::EvaluationReq, response::EvalLedgerResponse, Evaluation,
         EvaluationMessage,
-    },
-    model::{
+    }, intermediary::Intermediary, model::{
         common::{
             change_temp_subj, emit_fail, get_gov, get_metadata, get_sign, update_event
         },
@@ -29,15 +25,11 @@ use crate::{
             ProtocolsSignatures,
         },
         SignTypesNode,
-    },
-    validation::proof::EventProof,
-    Error, Event as KoreEvent, EventRequest, HashId, Signed, Subject,
-    SubjectMessage, SubjectResponse, Validation, ValidationInfo,
-    ValidationMessage, ValueWrapper, DIGEST_DERIVATOR,
+    }, update::{Update, UpdateMessage, UpdateNew, UpdateType}, validation::proof::EventProof, ActorMessage, Error, Event as KoreEvent, EventRequest, HashId, NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
 };
 
 use super::{
-    state::RequestManagerState, RequestHandler, RequestHandlerMessage,
+    reboot::Reboot, state::RequestManagerState, RequestHandler, RequestHandlerMessage
 };
 
 #[derive(Default)]
@@ -51,6 +43,7 @@ pub struct ProtocolsResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestManager {
+    our_key: KeyIdentifier,
     id: String,
     state: RequestManagerState,
     subject_id: String,
@@ -59,11 +52,13 @@ pub struct RequestManager {
 
 impl RequestManager {
     pub fn new(
+        our_key: KeyIdentifier,
         id: String,
         subject_id: String,
         request: Signed<EventRequest>,
     ) -> Self {
         RequestManager {
+            our_key,
             id,
             state: RequestManagerState::Starting,
             subject_id,
@@ -470,12 +465,117 @@ impl RequestManager {
             appr_signatures: protocols_result.appr_signatures,
         })
     }
+
+    async fn get_witnesses(ctx: &mut ActorContext<RequestManager>, governance_id: DigestIdentifier) -> Result<AuthWitness, ActorError> {
+        let auth_path = ActorPath::from("/user/node/auth");
+        let auth_actor: Option<ActorRef<Auth>> = ctx.system().get_actor(&auth_path).await;
+
+        let response = if let Some(auth_actor) = auth_actor {
+            auth_actor.ask(AuthMessage::GetAuth { subject_id: governance_id }).await?
+        } else {
+            return Err(ActorError::NotFound(auth_path));
+        };
+
+        match response {
+            AuthResponse::Witnesses(witnesses) => Ok(witnesses),
+            _ => Err(ActorError::UnexpectedResponse(auth_path, "AuthResponse::Witnesses".to_owned())),
+        }
+    }
+
+    async fn init_reboot(&self, ctx: &mut ActorContext<RequestManager>, governance_id: DigestIdentifier) -> Result<(), ActorError>{
+        let governance_string = governance_id.to_string();
+        let witnesses = Self::get_witnesses(ctx, governance_id.clone()).await?;
+        let metadata = get_metadata(ctx, &governance_string).await?;
+        let gov  = get_gov(ctx,&governance_string).await?;
+
+        let request = ActorMessage::DistributionLedgerReq {
+            gov_version: Some(gov.version),
+            actual_sn: Some(metadata.sn),
+            subject_id: governance_id.clone(),
+        };
+
+        match witnesses {
+            AuthWitness::One(key_identifier) => {
+                
+                let info = ComunicateInfo {
+                    reciver: key_identifier.clone(),
+                    sender: self.our_key.clone(),
+                    request_id: String::default(),
+                    reciver_actor: format!(
+                        "/user/node/{}/distributor",
+                        governance_string
+                    ),
+                    schema: "governance".to_owned(),
+                };
+                
+                let helper: Option<Intermediary> =
+                    ctx.system().get_helper("network").await;
+
+                let Some(mut helper) = helper else {
+                    return Err(ActorError::NotHelper("network".to_owned()));
+                };
+
+                if let Err(e) = helper
+                    .send_command(
+                        network::CommandHelper::SendMessage {
+                            message: NetworkMessage {
+                                info,
+                                message: request,
+                            },
+                        },
+                    )
+                    .await
+                {
+                    return Err(e);
+                };
+
+                let actor = ctx.reference().await;
+                if let Some(actor) = actor {
+                    if let Err(e) = actor.tell(RequestManagerMessage::Reboot { governance_id }).await {
+                        return Err(e);
+                    }
+                } else {
+                    let path = ctx.path().clone();
+                    return Err(ActorError::NotFound(path));
+                }
+            }
+            AuthWitness::Many(vec) => {
+                let witnesses = vec.iter().cloned().collect();
+                let data = UpdateNew { subject_id: governance_id, our_key: self.our_key.clone(), sn: metadata.sn, witnesses, schema_id: "governance".to_owned(), request, update_type: UpdateType::Request { id: self.id.clone()} };
+
+                let update = Update::new(
+                    data
+                );
+                let child = ctx
+                    .create_child(
+                        &&governance_string,
+                        update,
+                    )
+                    .await;
+                let Ok(child) = child else {
+                    return Err(ActorError::Create(ctx.path().clone(), governance_string));
+                };
+
+                if let Err(e) =
+                    child.tell(UpdateMessage::Create).await
+                {
+                    return Err(e);
+                }
+            }
+            AuthWitness::None => return Err(ActorError::Functional("Attempts have been made to obtain witnesses to update governance but there are none authorized".to_owned())),
+        };
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum RequestManagerMessage {
     Run,
-    Reboot,
+    Reboot {
+        governance_id: DigestIdentifier
+    },
+    FinishReboot,
     Fact,
     Other,
     ApprovalRes {
@@ -535,7 +635,43 @@ impl Handler<RequestManager> for RequestManager {
         ctx: &mut actor::ActorContext<RequestManager>,
     ) -> Result<(), ActorError> {
         match msg {
-            RequestManagerMessage::Reboot => {
+            RequestManagerMessage::Reboot {
+                governance_id
+            } => {
+                if let RequestManagerState::Reboot = self.state.clone() {
+                    let reboot = Reboot::new(governance_id);
+                    if let Err(e) = ctx.create_child("reboot", reboot).await {
+                        return Err(emit_fail(ctx, e).await);
+                    }
+                } else {
+                    self.on_event(
+                        RequestManagerEvent {
+                            id: self.id.clone(),
+                            state: RequestManagerState::Reboot,
+                        },
+                        ctx,
+                    )
+                    .await;
+                    if let Err(e) = self.init_reboot(ctx, governance_id).await {
+                        if let ActorError::Functional(_) = e {
+                            let actor = ctx.reference().await;
+                            if let Some(actor) = actor {
+                                if let Err(e) = actor.tell(RequestManagerMessage::FinishRequest ).await {
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                            } else {
+                                let path = ctx.path().clone();
+                                let e = ActorError::NotFound(path);
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    }
+                }
+                
+            },
+            RequestManagerMessage::FinishReboot => {
                 match self.request.content {
                     EventRequest::Fact(_) => {
                         if let Err(e) = self.evaluation(ctx).await {
@@ -567,7 +703,7 @@ impl Handler<RequestManager> for RequestManager {
             }
             RequestManagerMessage::Run => {
                 match self.state.clone() {
-                    RequestManagerState::Starting => {
+                    RequestManagerState::Starting | RequestManagerState::Reboot => {
                         match self.request.content {
                             EventRequest::Fact(_) => {
                                 if let Err(e) = self.evaluation(ctx).await {
@@ -723,10 +859,9 @@ impl Handler<RequestManager> for RequestManager {
                 }
             }
             RequestManagerMessage::FinishRequest => {
-                if let RequestManagerState::Distribution { .. } =
+                if let RequestManagerState::Distribution { .. } | RequestManagerState::Reboot =
                     self.state.clone()
-                {
-                } else {
+                {} else  {
                     let e = ActorError::FunctionalFail("Invalid request state".to_owned());
                     return Err(emit_fail(ctx, e).await);
                 };
@@ -819,6 +954,15 @@ impl Handler<RequestManager> for RequestManager {
         };
 
         if let Err(e) = ctx.publish_event(event).await {};
+    }
+    
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<RequestManager>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }
 

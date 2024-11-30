@@ -4,9 +4,7 @@
 use std::time::Duration;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    FixedIntervalStrategy, Handler, Message, Response, RetryActor,
-    RetryMessage, Strategy, SystemEvent,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, FixedIntervalStrategy, Handler, Message, Response, RetryActor, RetryMessage, Strategy, SystemEvent
 };
 
 use async_trait::async_trait;
@@ -16,21 +14,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::{model::{common::emit_fail, network::RetryNetwork}, ActorMessage, NetworkMessage};
 
-use super::authorization::{Authorization, AuthorizationMessage};
+use super::{Update, UpdateMessage};
+
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct Authorizer {
+pub struct Updater {
     node: KeyIdentifier,
 }
 
-impl Authorizer {
+impl Updater {
     pub fn new(node: KeyIdentifier) -> Self {
         Self { node }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum AuthorizerMessage {
+pub enum UpdaterMessage {
     NetworkLastSn {
         subject_id: DigestIdentifier,
         node_key: KeyIdentifier,
@@ -41,12 +40,12 @@ pub enum AuthorizerMessage {
     },
 }
 
-impl Message for AuthorizerMessage {}
+impl Message for UpdaterMessage {}
 
 #[async_trait]
-impl Actor for Authorizer {
+impl Actor for Updater {
     type Event = ();
-    type Message = AuthorizerMessage;
+    type Message = UpdaterMessage;
     type Response = ();
 
     async fn pre_start(
@@ -65,15 +64,15 @@ impl Actor for Authorizer {
 }
 
 #[async_trait]
-impl Handler<Authorizer> for Authorizer {
+impl Handler<Updater> for Updater {
     async fn handle_message(
         &mut self,
         _sender: ActorPath,
-        msg: AuthorizerMessage,
-        ctx: &mut ActorContext<Authorizer>,
+        msg: UpdaterMessage,
+        ctx: &mut ActorContext<Updater>,
     ) -> Result<(), ActorError> {
         match msg {
-            AuthorizerMessage::NetworkLastSn {
+            UpdaterMessage::NetworkLastSn {
                 subject_id,
                 node_key,
                 our_key,
@@ -117,15 +116,15 @@ impl Handler<Authorizer> for Authorizer {
                     return Err(emit_fail(ctx, e).await);
                 };
             }
-            AuthorizerMessage::NetworkResponse { sn } => {
-                let authorization_path = ctx.path().parent();
-                let authorization_actor: Option<ActorRef<Authorization>> =
-                    ctx.system().get_actor(&authorization_path).await;
+            UpdaterMessage::NetworkResponse { sn } => {
+                let update_path = ctx.path().parent();
+                let update_actor: Option<ActorRef<Update>> =
+                    ctx.system().get_actor(&update_path).await;
 
                 
-                if let Some(authorization_actor) = authorization_actor {
-                    if let Err(e) = authorization_actor
-                        .tell(AuthorizationMessage::Response {
+                if let Some(update_actor) = update_actor {
+                    if let Err(e) = update_actor
+                        .tell(UpdateMessage::Response {
                             sender: self.node.clone(),
                             sn,
                         })
@@ -134,7 +133,7 @@ impl Handler<Authorizer> for Authorizer {
                         return Err(emit_fail(ctx, e).await);
                     }
                 } else {
-                    let e = ActorError::NotFound(authorization_path);
+                    let e = ActorError::NotFound(update_path);
                     return Err(emit_fail(ctx, e).await);
                 }
 
@@ -163,19 +162,19 @@ impl Handler<Authorizer> for Authorizer {
     async fn on_child_error(
         &mut self,
         error: ActorError,
-        ctx: &mut ActorContext<Authorizer>,
+        ctx: &mut ActorContext<Updater>,
     ) {
         match error {
             ActorError::ReTry => {
-                let authorization_path = ctx.path().parent();
+                let update_path = ctx.path().parent();
 
                 // Evaluation actor.
-                let authorization_actor: Option<ActorRef<Authorization>> =
-                    ctx.system().get_actor(&authorization_path).await;
+                let update_actor: Option<ActorRef<Update>> =
+                    ctx.system().get_actor(&update_path).await;
 
-                if let Some(authorization_actor) = authorization_actor {
-                    if let Err(e) = authorization_actor
-                        .tell(AuthorizationMessage::Response {
+                if let Some(update_actor) = update_actor {
+                    if let Err(e) = update_actor
+                        .tell(UpdateMessage::Response {
                             sender: self.node.clone(),
                             sn: 0,
                         })
@@ -184,7 +183,7 @@ impl Handler<Authorizer> for Authorizer {
                         emit_fail(ctx, e).await;
                     }
                 } else {
-                    let e = ActorError::NotFound(authorization_path);
+                    let e = ActorError::NotFound(update_path);
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
@@ -193,5 +192,14 @@ impl Handler<Authorizer> for Authorizer {
                 // TODO Error inesperado.
             }
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Updater>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }

@@ -27,6 +27,7 @@ pub enum ValidationRes {
     Signature(Signature),
     TimeOut(TimeOutResponse),
     Error(String),
+    Reboot
 }
 
 impl HashId for ValidationRes {

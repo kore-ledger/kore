@@ -1,18 +1,11 @@
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
+    Actor, ActorContext, ActorPath, Error as ActorError, Handler,
     Message, Response,
 };
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    approval::approver::{
-        ApprovalState, ApprovalStateRes, Approver, ApproverMessage,
-    },
-    helpers::db::{ExternalDB, Querys},
-    request::state,
-};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeKey {

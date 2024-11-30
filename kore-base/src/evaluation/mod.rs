@@ -13,23 +13,31 @@ mod runner;
 pub mod schema;
 
 use crate::{
-    auth::{Auth, AuthMessage}, governance::{model::Roles, Quorum}, model::{
-        common::{emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version, try_to_update},
+    auth::{Auth, AuthMessage},
+    governance::{model::Roles, Quorum},
+    model::{
+        common::{
+            emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version,
+            send_reboot_to_req, try_to_update,
+        },
         event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesNode,
-    }, request::manager::{RequestManager, RequestManagerMessage}, subject::{Metadata, Subject, SubjectMessage, SubjectResponse}, Error, DIGEST_DERIVATOR
+    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
+    Error, DIGEST_DERIVATOR,
 };
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    Event, Handler, Message, Response,
 };
 
 use async_trait::async_trait;
 use evaluator::{Evaluator, EvaluatorMessage};
 use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
 };
 use request::{EvaluationReq, SubjectContext};
 use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
@@ -55,6 +63,8 @@ pub struct Evaluation {
     errors: String,
 
     eval_req: Option<EvaluationReq>,
+
+    reboot: bool,
 }
 
 impl Evaluation {
@@ -62,6 +72,15 @@ impl Evaluation {
         Evaluation {
             node_key,
             ..Default::default()
+        }
+    }
+
+    async fn end_evaluators(&self, ctx: &mut ActorContext<Evaluation>) {
+        for evaluator  in self.evaluators.clone() {
+            let child: Option<ActorRef<Evaluator>> = ctx.get_child(&evaluator.to_string()).await;
+            if let Some(child) = child {
+                child.stop().await;
+            }
         }
     }
 
@@ -141,7 +160,10 @@ impl Evaluation {
         set.len() == 1
     }
 
-    async fn fail_evaluation(&self, ctx: &mut ActorContext<Evaluation>) -> Result<EvalLedgerResponse, ActorError> {
+    async fn fail_evaluation(
+        &self,
+        ctx: &mut ActorContext<Evaluation>,
+    ) -> Result<EvalLedgerResponse, ActorError> {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
@@ -151,19 +173,27 @@ impl Evaluation {
         let (state, subject_id) = if let Some(req) = self.eval_req.clone() {
             (req.context.state, req.context.subject_id)
         } else {
-            return Err(ActorError::FunctionalFail("Can not get eval request".to_owned()));
+            return Err(ActorError::FunctionalFail(
+                "Can not get eval request".to_owned(),
+            ));
         };
 
         let state_hash = match state.hash_id(derivator) {
             Ok(state_hash) => state_hash,
-            Err(e) => return Err(ActorError::FunctionalFail(format!("Can not obtaing state hash: {}", e))),
+            Err(e) => {
+                return Err(ActorError::FunctionalFail(format!(
+                    "Can not obtaing state hash: {}",
+                    e
+                )))
+            }
         };
 
         let mut error = self.errors.clone();
         if self.errors.is_empty() {
             "who: ALL, error: No evaluator was able to evaluate the event."
                 .clone_into(&mut error);
-            try_to_update(self.evaluators_signatures.clone(), ctx, subject_id).await?;
+            try_to_update(self.evaluators_signatures.clone(), ctx, subject_id)
+                .await?;
         }
 
         Ok(EvalLedgerResponse {
@@ -190,7 +220,9 @@ impl Evaluation {
         let request = if let Some(req) = self.eval_req.clone() {
             req
         } else {
-            return Err(ActorError::FunctionalFail("Can not get eval request".to_owned()));
+            return Err(ActorError::FunctionalFail(
+                "Can not get eval request".to_owned(),
+            ));
         };
 
         if let Some(req_actor) = req_actor {
@@ -259,7 +291,9 @@ impl Handler<Evaluation> for Evaluation {
                 {
                     event.subject_id
                 } else {
-                    let e = ActorError::FunctionalFail("Only can eval Fact requests".to_owned());
+                    let e = ActorError::FunctionalFail(
+                        "Only can eval Fact requests".to_owned(),
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -277,21 +311,21 @@ impl Handler<Evaluation> for Evaluation {
                     metadata.governance_id.clone()
                 };
 
-                let (signers, quorum, gov_version) = match
-                    get_signers_quorum_gov_version(
+                let (signers, quorum, gov_version) =
+                    match get_signers_quorum_gov_version(
                         ctx,
                         &governance.to_string(),
                         &metadata.schema_id,
                         metadata.namespace.clone(),
-                        Roles::EVALUATOR
+                        Roles::EVALUATOR,
                     )
                     .await
-                {
-                    Ok(data) => data,
-                    Err(e) => {
-                        return Err(emit_fail(ctx, e).await);
-                    }
-                };
+                    {
+                        Ok(data) => data,
+                        Err(e) => {
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    };
 
                 let eval_req = self.create_evaluation_req(
                     request,
@@ -339,77 +373,117 @@ impl Handler<Evaluation> for Evaluation {
                 sender,
                 signature,
             } => {
-                // If node is in evaluator list
-                if self.check_evaluator(sender.clone()) {
-                    // Check type of validation
-                    match evaluation_res {
-                        EvaluationRes::Response(response) => {
-                            if let Some(signature) = signature {
-                                self.evaluators_signatures.push(
-                                    ProtocolsSignatures::Signature(signature),
-                                );
-                            } else {
-                                unreachable!();
+                if !self.reboot {
+                    // If node is in evaluator list
+                    if self.check_evaluator(sender.clone()) {
+                        // Check type of validation
+                        match evaluation_res {
+                            EvaluationRes::Response(response) => {
+                                if let Some(signature) = signature {
+                                    self.evaluators_signatures.push(
+                                        ProtocolsSignatures::Signature(
+                                            signature,
+                                        ),
+                                    );
+                                } else {
+                                    unreachable!();
+                                }
+                                self.evaluators_response.push(response);
                             }
-                            self.evaluators_response.push(response);
-                        }
-                        EvaluationRes::TimeOut(timeout) => self
-                            .evaluators_signatures
-                            .push(ProtocolsSignatures::TimeOut(timeout)),
-                        EvaluationRes::Error(error) => {
-                            self.errors = format!(
-                                "{} who: {}, error: {}.",
-                                self.errors, sender, error
-                            );
-                        }
-                    };
+                            EvaluationRes::TimeOut(timeout) => self
+                                .evaluators_signatures
+                                .push(ProtocolsSignatures::TimeOut(timeout)),
+                            EvaluationRes::Error(error) => {
+                                self.errors = format!(
+                                    "{} who: {}, error: {}.",
+                                    self.errors, sender, error
+                                );
+                            }
+                            EvaluationRes::Reboot => {
+                                let governance_id = if let Some(req) =
+                                    self.eval_req.clone()
+                                {
+                                    req.context.governance_id
+                                } else {
+                                    let e = ActorError::FunctionalFail(
+                                        "Can not get eval request".to_owned(),
+                                    );
+                                    return Err(emit_fail(ctx, e).await);
+                                };
 
-                    if self.quorum.check_quorum(
-                        self.evaluators_quantity,
-                        self.evaluators_response.len() as u32,
-                    ) {
-                        let response = if self.check_responses() {
-                            EvalLedgerResponse::from(
-                                self.evaluators_response[0].clone(),
-                            )
-                        } else {
-                            self.errors = format!(
-                                "{} who: ALL, error: Several evaluations were correct, but there are some different.",
-                                self.errors
-                            );
-                            match self.fail_evaluation(ctx).await {
+                                if let Err(e) = send_reboot_to_req(
+                                    ctx,
+                                    &self.request_id,
+                                    governance_id,
+                                )
+                                .await
+                                {
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                                self.reboot = true;
+
+                                self.end_evaluators(ctx).await;
+                                return Ok(());
+                            }
+                        };
+
+                        if self.quorum.check_quorum(
+                            self.evaluators_quantity,
+                            self.evaluators_response.len() as u32,
+                        ) {
+                            let response = if self.check_responses() {
+                                EvalLedgerResponse::from(
+                                    self.evaluators_response[0].clone(),
+                                )
+                            } else {
+                                self.errors = format!(
+                                    "{} who: ALL, error: Several evaluations were correct, but there are some different.",
+                                    self.errors
+                                );
+                                match self.fail_evaluation(ctx).await {
+                                    Ok(res) => res,
+                                    Err(e) => {
+                                        return Err(emit_fail(ctx, e).await);
+                                    }
+                                }
+                            };
+
+                            if let Err(e) =
+                                self.send_evaluation_to_req(ctx, response).await
+                            {
+                                return Err(emit_fail(ctx, e).await);
+                            };
+                        } else if self.evaluators.is_empty() {
+                            let response = match self.fail_evaluation(ctx).await
+                            {
                                 Ok(res) => res,
                                 Err(e) => {
                                     return Err(emit_fail(ctx, e).await);
                                 }
-                            }
-                        };
-
-                        if let Err(e) =
-                            self.send_evaluation_to_req(ctx, response).await
-                        {
-                            return Err(emit_fail(ctx, e).await);
-                        };
-                    } else if self.evaluators.is_empty() {
-                        let response = match self.fail_evaluation(ctx).await {
-                            Ok(res) => res,
-                            Err(e) => {
+                            };
+                            if let Err(e) =
+                                self.send_evaluation_to_req(ctx, response).await
+                            {
                                 return Err(emit_fail(ctx, e).await);
-                            }
-                        };
-                        if let Err(e) =
-                            self.send_evaluation_to_req(ctx, response).await
-                        {
-                            return Err(emit_fail(ctx, e).await);
-                        };
+                            };
+                        }
+                    } else {
+                        // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                     }
-                } else {
-                    // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                 }
             }
         }
 
         Ok(())
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Evaluation>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }
 

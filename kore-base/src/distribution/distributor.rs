@@ -1,9 +1,7 @@
 use std::time::Duration;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
-    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
-    Strategy, SystemEvent,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage, Strategy, SystemEvent
 };
 use async_std::task::AccessError;
 use async_trait::async_trait;
@@ -292,7 +290,6 @@ impl Distributor {
                     return Err(ActorError::NotHelper("network".to_owned()));
                 };
 
-                // TODO firmar la respuesta. Por ahora no, ya que si no tengo la gov en la última versión no puedo saber si es un testigo.
                 helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
@@ -1190,19 +1187,17 @@ impl Handler<Distributor> for Distributor {
                     ctx.system().get_actor(&distribuiton_path).await;
 
                 if let Some(distribuiton_actor) = distribuiton_actor {
-                    if let Err(_e) = distribuiton_actor
+                    if let Err(e) = distribuiton_actor
                         .tell(DistributionMessage::Response {
                             sender: self.node.clone(),
                         })
                         .await
                     {
-                        // TODO error, no se puede enviar la response
-                        // return Err(_e);
+                        emit_fail(ctx, e).await;
                     }
                 } else {
-                    // TODO no se puede obtener evaluation! Parar.
-                    // Can not obtain parent actor
-                    // return Err(ActorError::Exists(evaluation_path));
+                    let e = ActorError::NotFound(distribuiton_path);
+                    emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
             },
@@ -1210,5 +1205,14 @@ impl Handler<Distributor> for Distributor {
                 // TODO error inesperado
             }
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Distributor>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }
