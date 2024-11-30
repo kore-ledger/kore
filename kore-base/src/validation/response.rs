@@ -27,7 +27,7 @@ pub enum ValidationRes {
     Signature(Signature),
     TimeOut(TimeOutResponse),
     Error(String),
-    Reboot
+    Reboot,
 }
 
 impl HashId for ValidationRes {
@@ -36,7 +36,7 @@ impl HashId for ValidationRes {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |e| Error::HashID(format!("HashId for ValidationRes fails: {}", e))
+            |e| Error::HashID(format!("HashId for ValidationRes fails: {}", e)),
         )
     }
 }

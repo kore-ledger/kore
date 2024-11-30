@@ -1,11 +1,16 @@
 use crate::{
-    approval::approver::{Approver, ApproverMessage}, distribution::distributor::{Distributor, DistributorMessage}, evaluation::{
+    approval::approver::{Approver, ApproverMessage},
+    distribution::distributor::{Distributor, DistributorMessage},
+    evaluation::{
         evaluator::{Evaluator, EvaluatorMessage},
         schema::{EvaluationSchema, EvaluationSchemaMessage},
-    }, update::updater::{Updater, UpdaterMessage}, validation::{
+    },
+    update::updater::{Updater, UpdaterMessage},
+    validation::{
         schema::{ValidationSchema, ValidationSchemaMessage},
         validator::{Validator, ValidatorMessage},
-    }, Error
+    },
+    Error,
 };
 
 use super::ActorMessage;
@@ -17,9 +22,9 @@ use network::CommandHelper as Command;
 use network::{PeerId, PublicKey, PublicKeyEd25519, PublicKeysecp256k1};
 use rmp_serde::Deserializer;
 use serde::Deserialize;
-use tokio_util::sync::CancellationToken;
 use std::io::Cursor;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct Intermediary {
@@ -27,7 +32,7 @@ pub struct Intermediary {
     network_sender: mpsc::Sender<NetworkCommand>,
     derivator: KeyDerivator,
     system: SystemRef,
-    token: CancellationToken
+    token: CancellationToken,
 }
 
 impl Intermediary {
@@ -35,7 +40,7 @@ impl Intermediary {
         network_sender: mpsc::Sender<NetworkCommand>,
         derivator: KeyDerivator,
         system: SystemRef,
-        token: CancellationToken
+        token: CancellationToken,
     ) -> Self {
         let (command_sender, command_receiver) = mpsc::channel(10000);
 
@@ -46,7 +51,7 @@ impl Intermediary {
             derivator,
             network_sender,
             system,
-            token
+            token,
         }
         .spawn_command_receiver(command_receiver)
     }
@@ -57,7 +62,7 @@ impl Intermediary {
 
     fn spawn_command_receiver(
         &mut self,
-        mut command_receiver: mpsc::Receiver<Command<NetworkMessage>>
+        mut command_receiver: mpsc::Receiver<Command<NetworkMessage>>,
     ) -> Self {
         let clone = self.clone();
 
@@ -109,7 +114,10 @@ impl Intermediary {
                     })
                     .await
                 {
-                    return Err(Error::Network(format!("Can not send message to network: {}",error)));
+                    return Err(Error::Network(format!(
+                        "Can not send message to network: {}",
+                        error
+                    )));
                 };
             }
             Command::ReceivedMessage { message } => {
@@ -120,10 +128,13 @@ impl Intermediary {
                     match Deserialize::deserialize(&mut de) {
                         Ok(message) => message,
                         Err(e) => {
-                            return Err(Error::NetworkHelper(format!("Can not deserialize message: {}",e)));
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not deserialize message: {}",
+                                e
+                            )));
                         }
                     };
-                
+
                 match message.message {
                     ActorMessage::DistributionGetLastSn { subject_id } => {
                         let distributor_path =
@@ -139,10 +150,16 @@ impl Intermediary {
                                 })
                                 .await
                             {
-                                return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",distributor_path, e)));
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    distributor_path, e
+                                )));
                             };
                         } else {
-                            return Err(Error::NetworkHelper(format!("Can not get Actor: {}", distributor_path)));
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not get Actor: {}",
+                                distributor_path
+                            )));
                         };
                     }
                     ActorMessage::AuthLastSn { sn } => {
@@ -155,12 +172,18 @@ impl Intermediary {
                             if let Err(e) = authorizer_actor
                                 .tell(UpdaterMessage::NetworkResponse { sn })
                                 .await
-                                {
-                                    return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",authorizer_path, e)));
-                                };
-                            } else {
-                                return Err(Error::NetworkHelper(format!("Can not get Actor: {}", authorizer_path)));
+                            {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    authorizer_path, e
+                                )));
                             };
+                        } else {
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not get Actor: {}",
+                                authorizer_path
+                            )));
+                        };
                     }
                     ActorMessage::ValidationReq { req } => {
                         // Validator path.
@@ -179,12 +202,18 @@ impl Intermediary {
                                         info: message.info,
                                     })
                                     .await
-                                    {
-                                        return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",validator_path, e)));
-                                    };
-                                } else {
-                                    return Err(Error::NetworkHelper(format!("Can not get Actor: {}", validator_path)));
+                                {
+                                    return Err(Error::NetworkHelper(format!(
+                                        "Can not send a message to {}: {}",
+                                        validator_path, e
+                                    )));
                                 };
+                            } else {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not get Actor: {}",
+                                    validator_path
+                                )));
+                            };
                         } else {
                             let validator_actor: Option<
                                 ActorRef<ValidationSchema>,
@@ -201,9 +230,12 @@ impl Intermediary {
                                     {
                                         return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",validator_path, e)));
                                     };
-                                } else {
-                                    return Err(Error::NetworkHelper(format!("Can not get Actor: {}", validator_path)));
-                                };
+                            } else {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not get Actor: {}",
+                                    validator_path
+                                )));
+                            };
                         }
                     }
                     ActorMessage::EvaluationReq { req } => {
@@ -224,12 +256,18 @@ impl Intermediary {
                                         info: message.info,
                                     })
                                     .await
-                                    {
-                                        return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",evaluator_path, e)));
-                                    };
-                                } else {
-                                    return Err(Error::NetworkHelper(format!("Can not get Actor: {}", evaluator_path)));
+                                {
+                                    return Err(Error::NetworkHelper(format!(
+                                        "Can not send a message to {}: {}",
+                                        evaluator_path, e
+                                    )));
                                 };
+                            } else {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not get Actor: {}",
+                                    evaluator_path
+                                )));
+                            };
                         } else {
                             // Evaluator actor.
                             let evaluator_actor: Option<
@@ -247,9 +285,12 @@ impl Intermediary {
                             {
                                 return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",evaluator_path, e)));
                             };
-                        } else {
-                            return Err(Error::NetworkHelper(format!("Can not get Actor: {}", evaluator_path)));
-                        };
+                            } else {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not get Actor: {}",
+                                    evaluator_path
+                                )));
+                            };
                         }
                     }
                     ActorMessage::ApprovalReq { req } => {
@@ -268,12 +309,18 @@ impl Intermediary {
                                     info: message.info,
                                 })
                                 .await
-                                {
-                                    return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",approver_path, e)));
-                                };
-                            } else {
-                                return Err(Error::NetworkHelper(format!("Can not get Actor: {}", approver_path)));
+                            {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    approver_path, e
+                                )));
                             };
+                        } else {
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not get Actor: {}",
+                                approver_path
+                            )));
+                        };
                     }
                     ActorMessage::DistributionLastEventReq {
                         event,
@@ -305,7 +352,10 @@ impl Intermediary {
                             {
                                 node_distributor_actor
                             } else {
-                                return Err(Error::NetworkHelper(format!("Can not get Actor: {}", node_distributor_path)));
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not get Actor: {}",
+                                    node_distributor_path
+                                )));
                             }
                         };
 
@@ -318,7 +368,11 @@ impl Intermediary {
                             })
                             .await
                         {
-                            return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",distributor_actor.path(), e)));
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not send a message to {}: {}",
+                                distributor_actor.path(),
+                                e
+                            )));
                         };
                     }
                     ActorMessage::DistributionLedgerReq {
@@ -341,12 +395,18 @@ impl Intermediary {
                                     info: message.info,
                                 })
                                 .await
-                                {
-                                    return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",distributor_path, e)));
-                                };
-                            } else {
-                                return Err(Error::NetworkHelper(format!("Can not get Actor: {}", distributor_path)));
+                            {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    distributor_path, e
+                                )));
                             };
+                        } else {
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not get Actor: {}",
+                                distributor_path
+                            )));
+                        };
                     }
                     ActorMessage::ValidationRes { res } => {
                         // Validator path.
@@ -364,12 +424,18 @@ impl Intermediary {
                                     request_id: message.info.request_id,
                                 })
                                 .await
-                                {
-                                    return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",validator_path, e)));
-                                };
-                            } else {
-                                return Err(Error::NetworkHelper(format!("Can not get Actor: {}", validator_path)));
+                            {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    validator_path, e
+                                )));
                             };
+                        } else {
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not get Actor: {}",
+                                validator_path
+                            )));
+                        };
                     }
                     ActorMessage::EvaluationRes { res } => {
                         // Validator path.
@@ -387,12 +453,18 @@ impl Intermediary {
                                     request_id: message.info.request_id,
                                 })
                                 .await
-                                {
-                                    return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",evaluator_path, e)));
-                                };
-                            } else {
-                                return Err(Error::NetworkHelper(format!("Can not get Actor: {}", evaluator_path)));
-                            }
+                            {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    evaluator_path, e
+                                )));
+                            };
+                        } else {
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not get Actor: {}",
+                                evaluator_path
+                            )));
+                        }
                     }
                     ActorMessage::ApprovalRes { res } => {
                         // Validator path.
@@ -410,12 +482,18 @@ impl Intermediary {
                                     request_id: message.info.request_id,
                                 })
                                 .await
-                                {
-                                    return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",approver_path, e)));
-                                };
-                            } else {
-                                return Err(Error::NetworkHelper(format!("Can not get Actor: {}", approver_path)));
-                            }
+                            {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    approver_path, e
+                                )));
+                            };
+                        } else {
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not get Actor: {}",
+                                approver_path
+                            )));
+                        }
                     }
                     ActorMessage::DistributionLedgerRes {
                         ledger,
@@ -447,7 +525,10 @@ impl Intermediary {
                             {
                                 node_distributor_actor
                             } else {
-                                return Err(Error::NetworkHelper(format!("Can not get Actor: {}", node_distributor_path)));
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not get Actor: {}",
+                                    node_distributor_path
+                                )));
                             }
                         };
 
@@ -460,7 +541,11 @@ impl Intermediary {
                             })
                             .await
                         {
-                            return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",distributor_actor.path(), e)));
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not send a message to {}: {}",
+                                distributor_actor.path(),
+                                e
+                            )));
                         };
                     }
                     ActorMessage::DistributionLastEventRes { signer } => {
@@ -478,12 +563,18 @@ impl Intermediary {
                                     signer,
                                 })
                                 .await
-                                {
-                                    return Err(Error::NetworkHelper(format!("Can not send a message to {}: {}",distributor_path, e)));
-                                };
-                            } else {
-                                return Err(Error::NetworkHelper(format!("Can not get Actor: {}", distributor_path)));
-                            }
+                            {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    distributor_path, e
+                                )));
+                            };
+                        } else {
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not get Actor: {}",
+                                distributor_path
+                            )));
+                        }
                     }
                 }
             }
@@ -527,7 +618,8 @@ impl Intermediary {
     ) -> Result<(), ActorError> {
         self.service
             .send_command(command)
-            .await.map_err(|e| ActorError::Functional(e.to_string()))
+            .await
+            .map_err(|e| ActorError::Functional(e.to_string()))
     }
 }
 

@@ -2,18 +2,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event, Handler, Message, Response
+    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event,
+    Handler, Message, Response,
 };
 use async_trait::async_trait;
-use identity::identifier::{DigestIdentifier, KeyIdentifier,
-};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use store::store::PersistentActor;
 
 use crate::{
-    db::Storable, intermediary::Intermediary, model::common::{emit_fail, get_gov, get_metadata, UpdateData}, update::{Update, UpdateMessage, UpdateNew}, ActorMessage, NetworkMessage
+    db::Storable,
+    intermediary::Intermediary,
+    model::common::{emit_fail, get_gov, get_metadata, UpdateData},
+    update::{Update, UpdateMessage, UpdateNew},
+    ActorMessage, NetworkMessage,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -183,11 +187,13 @@ impl Handler<Auth> for Auth {
                 let witness = self.auth.get(&subject_id.to_string());
                 if let Some(witness) = witness {
                     let (sn, request, schema_id) =
-                        match Auth::create_req_schema(ctx, subject_id.clone()).await {
+                        match Auth::create_req_schema(ctx, subject_id.clone())
+                            .await
+                        {
                             Ok(data) => data,
                             Err(e) => {
                                 return Err(emit_fail(ctx, e).await);
-                            },
+                            }
                         };
 
                     match witness {
@@ -207,7 +213,8 @@ impl Handler<Auth> for Auth {
                                 ctx.system().get_helper("network").await;
 
                             let Some(mut helper) = helper else {
-                                let e = ActorError::NotHelper("network".to_owned());
+                                let e =
+                                    ActorError::NotHelper("network".to_owned());
                                 return Err(emit_fail(ctx, e).await);
                             };
 
@@ -227,11 +234,17 @@ impl Handler<Auth> for Auth {
                         }
                         AuthWitness::Many(vec) => {
                             let witnesses = vec.iter().cloned().collect();
-                            let data = UpdateNew { subject_id: subject_id.clone(), our_key: self.our_node.clone(), sn, witnesses, schema_id, request, update_type: crate::update::UpdateType::Auth };
+                            let data = UpdateNew {
+                                subject_id: subject_id.clone(),
+                                our_key: self.our_node.clone(),
+                                sn,
+                                witnesses,
+                                schema_id,
+                                request,
+                                update_type: crate::update::UpdateType::Auth,
+                            };
 
-                            let authorization = Update::new(
-                                data
-                            );
+                            let authorization = Update::new(data);
                             let child = ctx
                                 .create_child(
                                     &subject_id.to_string(),
@@ -239,7 +252,10 @@ impl Handler<Auth> for Auth {
                                 )
                                 .await;
                             let Ok(child) = child else {
-                                let e = ActorError::Create(ctx.path().clone(), subject_id.to_string());
+                                let e = ActorError::Create(
+                                    ctx.path().clone(),
+                                    subject_id.to_string(),
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             };
 

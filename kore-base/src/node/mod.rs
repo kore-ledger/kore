@@ -17,7 +17,10 @@ use crate::{
     distribution::distributor::Distributor,
     helpers::db::ExternalDB,
     model::{
-        common::emit_fail, event::Ledger, signature::{Signature, Signed}, HashId, SignTypesNode
+        common::emit_fail,
+        event::Ledger,
+        signature::{Signature, Signed},
+        HashId, SignTypesNode,
     },
     subject::CreateSubjectData,
     Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR,
@@ -31,7 +34,8 @@ use identity::{
 };
 
 use actor::{
-    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event, Handler, Message, Response, Sink, SystemEvent
+    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event,
+    Handler, Message, Response, Sink, SystemEvent,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -372,7 +376,8 @@ impl Handler<Node> for Node {
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
-                let subject = Subject::from_event(None, &ledger).map_err(|e| ActorError::Functional(e.to_string()))?;
+                let subject = Subject::from_event(None, &ledger)
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
 
                 let subject_actor = ctx
                     .create_child(
@@ -381,10 +386,8 @@ impl Handler<Node> for Node {
                     )
                     .await?;
 
-                let sink = Sink::new(
-                    subject_actor.subscribe(),
-                    ext_db.get_subject(),
-                );
+                let sink =
+                    Sink::new(subject_actor.subscribe(), ext_db.get_subject());
                 ctx.system().run_sink(sink).await;
 
                 self.on_event(
@@ -394,7 +397,6 @@ impl Handler<Node> for Node {
                     ctx,
                 )
                 .await;
-                
 
                 let response = subject_actor
                     .ask(SubjectMessage::UpdateLedger {
@@ -422,7 +424,10 @@ impl Handler<Node> for Node {
                     }
                     _ => {
                         ctx.system().send_event(SystemEvent::StopSystem).await;
-                        let e = ActorError::UnexpectedResponse(subject_actor.path(), "SubjectResponse::LastSn".to_owned());
+                        let e = ActorError::UnexpectedResponse(
+                            subject_actor.path(),
+                            "SubjectResponse::LastSn".to_owned(),
+                        );
                         return Err(e);
                     }
                 }
@@ -440,19 +445,16 @@ impl Handler<Node> for Node {
                 let child = ctx
                     .create_child(&format!("{}", data.subject_id), subject)
                     .await?;
-                
-                let sink =
-                            Sink::new(child.subscribe(), ext_db.get_subject());
-                        ctx.system().run_sink(sink).await;
 
-                        self.on_event(
-                            NodeEvent::TemporalSubject(
-                                data.subject_id.to_string(),
-                            ),
-                            ctx,
-                        )
-                        .await;
-                        Ok(NodeResponse::SonWasCreated)
+                let sink = Sink::new(child.subscribe(), ext_db.get_subject());
+                ctx.system().run_sink(sink).await;
+
+                self.on_event(
+                    NodeEvent::TemporalSubject(data.subject_id.to_string()),
+                    ctx,
+                )
+                .await;
+                Ok(NodeResponse::SonWasCreated)
             }
             NodeMessage::SignRequest(content) => {
                 let sign = match content {
@@ -488,7 +490,13 @@ impl Handler<Node> for Node {
                     }
                     SignTypesNode::Ledger(ledger) => self.sign(&ledger),
                     SignTypesNode::Event(event) => self.sign(&event),
-                }.map_err(|e| ActorError::FunctionalFail(format!("Can not sign event: {}", e)))?;
+                }
+                .map_err(|e| {
+                    ActorError::FunctionalFail(format!(
+                        "Can not sign event: {}",
+                        e
+                    ))
+                })?;
 
                 Ok(NodeResponse::SignRequest(sign))
             }
@@ -532,20 +540,27 @@ impl Handler<Node> for Node {
                     let res = match auth.ask(AuthMessage::GetAuths).await {
                         Ok(res) => res,
                         Err(e) => {
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            ctx.system()
+                                .send_event(SystemEvent::StopSystem)
+                                .await;
                             return Err(e);
                         }
                     };
-                    let AuthResponse::Auths { subjects } =res
-                    else {
+                    let AuthResponse::Auths { subjects } = res else {
                         ctx.system().send_event(SystemEvent::StopSystem).await;
-                        let e = ActorError::UnexpectedResponse(ActorPath::from(format!("{}/auth", ctx.path())), "AuthResponse::Auths".to_owned());
+                        let e = ActorError::UnexpectedResponse(
+                            ActorPath::from(format!("{}/auth", ctx.path())),
+                            "AuthResponse::Auths".to_owned(),
+                        );
                         return Err(e);
                     };
                     subjects
                 } else {
                     ctx.system().send_event(SystemEvent::StopSystem).await;
-                    let e = ActorError::NotFound(ActorPath::from(format!("{}/auth", ctx.path())));
+                    let e = ActorError::NotFound(ActorPath::from(format!(
+                        "{}/auth",
+                        ctx.path()
+                    )));
                     return Err(e);
                 };
 
@@ -568,16 +583,15 @@ impl Handler<Node> for Node {
             }
         }
     }
-    
-        async fn on_child_fault(
-            &mut self,
-            error: ActorError,
-            ctx: &mut ActorContext<Node>,
-        ) -> ChildAction {
-            ctx.system().send_event(SystemEvent::StopSystem).await;
-            ChildAction::Stop
-        }
-    
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Node>,
+    ) -> ChildAction {
+        ctx.system().send_event(SystemEvent::StopSystem).await;
+        ChildAction::Stop
+    }
 
     async fn on_event(
         &mut self,

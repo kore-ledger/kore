@@ -8,7 +8,10 @@ use crate::{
     governance::Schema,
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
-        common::{check_request_owner, emit_fail, get_gov, get_metadata, get_sign, update_ledger_network, UpdateData},
+        common::{
+            check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
+            update_ledger_network, UpdateData,
+        },
         network::{RetryNetwork, TimeOutResponse},
         HashId, SignTypesNode, TimeStamp,
     },
@@ -20,13 +23,17 @@ use crate::{
 use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
+use identity::identifier::{
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+};
 
 use json_patch::diff;
 use network::ComunicateInfo;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage, Strategy, SystemEvent
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
+    Strategy, SystemEvent,
 };
 
 use serde_json::Value;
@@ -63,7 +70,8 @@ impl Evaluator {
         compiled_contract: Contract,
         is_owner: bool,
     ) -> Result<RunnerResponse, ActorError> {
-        let runner_actor = ctx.create_child("runner", Runner::default()).await?;
+        let runner_actor =
+            ctx.create_child("runner", Runner::default()).await?;
 
         runner_actor
             .ask(RunnerMessage {
@@ -95,20 +103,20 @@ impl Evaluator {
                 "/user/node/{}/{}_compiler",
                 governance_id, schema.id
             ));
-            let compiler_actor: Option<ActorRef<Compiler>> = ctx.system().get_actor(&compiler_path).await;
+            let compiler_actor: Option<ActorRef<Compiler>> =
+                ctx.system().get_actor(&compiler_path).await;
 
-            
             if let Some(compiler_actor) = compiler_actor {
-                    compiler_actor
-                .ask(CompilerMessage::Compile {
-                    contract: schema.contract.raw.clone(),
-                    initial_value: schema.initial_value.clone(),
-                    contract_path: format!("{}_{}", governance_id, id),
-                })
-                .await?
-                } else {
-                    return Err(ActorError::NotFound(compiler_path));
-                };        
+                compiler_actor
+                    .ask(CompilerMessage::Compile {
+                        contract: schema.contract.raw.clone(),
+                        initial_value: schema.initial_value.clone(),
+                        contract_path: format!("{}_{}", governance_id, id),
+                    })
+                    .await?
+            } else {
+                return Err(ActorError::NotFound(compiler_path));
+            };
         }
         Ok(())
     }
@@ -118,7 +126,7 @@ impl Evaluator {
         ctx: &mut ActorContext<Evaluator>,
         governance_id: DigestIdentifier,
         gov_version: u64,
-        other_node: KeyIdentifier
+        other_node: KeyIdentifier,
     ) -> Result<bool, ActorError> {
         let governance_string = governance_id.to_string();
         let governance = get_gov(ctx, &governance_string).await?;
@@ -138,7 +146,9 @@ impl Evaluator {
                     other_node,
                 };
                 update_ledger_network(ctx, data).await?;
-                let e = ActorError::Functional("Abort evaluation, update is required".to_owned());
+                let e = ActorError::Functional(
+                    "Abort evaluation, update is required".to_owned(),
+                );
                 return Err(e);
             }
             std::cmp::Ordering::Less => {
@@ -167,7 +177,9 @@ impl Evaluator {
             )) {
                 Contract::CompiledContract(contract.clone())
             } else {
-                return Err(ActorError::FunctionalFail("Contract not found".to_owned()))
+                return Err(ActorError::FunctionalFail(
+                    "Contract not found".to_owned(),
+                ));
             }
         };
 
@@ -182,7 +194,10 @@ impl Evaluator {
             )
             .await?;
 
-        if response.result.success && is_governance && !response.compilations.is_empty() {
+        if response.result.success
+            && is_governance
+            && !response.compilations.is_empty()
+        {
             let governance_data = serde_json::from_value::<GovernanceData>(
                 response.result.final_state.0.clone(),
             )
@@ -199,11 +214,11 @@ impl Evaluator {
                 &response.compilations,
                 &governance_id.to_string(),
             )
-            .await {
+            .await
+            {
                 Ok(new_compilers) => new_compilers,
-                Err(e) => return Err(ActorError::Functional(format!("{}", e)))
+                Err(e) => return Err(ActorError::Functional(format!("{}", e))),
             };
-            
 
             self.compile_contracts(
                 ctx,
@@ -223,10 +238,8 @@ impl Evaluator {
         gov: &str,
     ) -> Result<Vec<String>, ActorError> {
         let subject_path = ActorPath::from(format!("/user/node/{}", gov));
-        let subject: Option<ActorRef<Subject>> = ctx
-            .system()
-            .get_actor(&subject_path)
-            .await;
+        let subject: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&subject_path).await;
 
         let response = if let Some(subject) = subject {
             subject
@@ -238,7 +251,12 @@ impl Evaluator {
 
         match response {
             SubjectResponse::NewCompilers(new_compilers) => Ok(new_compilers),
-            _ => return Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::NewCompilers".to_owned())),
+            _ => {
+                return Err(ActorError::UnexpectedResponse(
+                    subject_path,
+                    "SubjectResponse::NewCompilers".to_owned(),
+                ))
+            }
         }
     }
 
@@ -284,7 +302,9 @@ impl Evaluator {
                 appr_required: evaluation.approval_required,
             });
         }
-        return EvaluationRes::Error("The evaluation was not success".to_string())
+        return EvaluationRes::Error(
+            "The evaluation was not success".to_string(),
+        );
     }
 }
 
@@ -337,10 +357,11 @@ impl Handler<Evaluator> for Evaluator {
                     &evaluation_req.event_request.content
                 else {
                     let e = ActorError::FunctionalFail("The only event that can be evaluated is the Fact event".to_owned());
-                    return Err(emit_fail(ctx, e).await)
+                    return Err(emit_fail(ctx, e).await);
                 };
 
-                let is_governance = evaluation_req.context.schema_id == "governance";
+                let is_governance =
+                    evaluation_req.context.schema_id == "governance";
 
                 // Get governance id
                 let governance_id = if is_governance {
@@ -348,9 +369,15 @@ impl Handler<Evaluator> for Evaluator {
                 } else {
                     evaluation_req.context.governance_id.clone()
                 };
-        
+
                 let evaluation = match self
-                    .evaluate(ctx, &evaluation_req, state_data, governance_id, is_governance)
+                    .evaluate(
+                        ctx,
+                        &evaluation_req,
+                        state_data,
+                        governance_id,
+                        is_governance,
+                    )
                     .await
                 {
                     Ok(evaluation) => {
@@ -360,7 +387,7 @@ impl Handler<Evaluator> for Evaluator {
                         if let ActorError::Functional(_) = e {
                             EvaluationRes::Error(e.to_string())
                         } else {
-                            return Err(emit_fail(ctx, e).await)
+                            return Err(emit_fail(ctx, e).await);
                         }
                     }
                 };
@@ -444,14 +471,14 @@ impl Handler<Evaluator> for Evaluator {
                         "retry",
                         retry_actor,
                     )
-                    .await {
-                        Ok(retry) => retry,
-                        Err(e) => return Err(emit_fail(ctx, e).await),
-
-                    };
+                    .await
+                {
+                    Ok(retry) => retry,
+                    Err(e) => return Err(emit_fail(ctx, e).await),
+                };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
-                    return Err(emit_fail(ctx, e).await)
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
             EvaluatorMessage::NetworkResponse {
@@ -461,11 +488,16 @@ impl Handler<Evaluator> for Evaluator {
                 if request_id == self.request_id {
                     if self.node != evaluation_res.signature.signer {
                         // Nos llegó a una validación de un nodo incorrecto!
-                        return Err(ActorError::Functional("Invalid signer".to_owned()));
+                        return Err(ActorError::Functional(
+                            "Invalid signer".to_owned(),
+                        ));
                     }
 
                     if let Err(e) = evaluation_res.verify() {
-                        return Err(ActorError::Functional(format!("Can not verify signature: {}", e)));
+                        return Err(ActorError::Functional(format!(
+                            "Can not verify signature: {}",
+                            e
+                        )));
                     }
 
                     // Evaluation path.
@@ -484,11 +516,11 @@ impl Handler<Evaluator> for Evaluator {
                             })
                             .await
                         {
-                            return Err(emit_fail(ctx, e).await)
+                            return Err(emit_fail(ctx, e).await);
                         }
                     } else {
                         let e = ActorError::NotFound(evaluation_path);
-                        return Err(emit_fail(ctx, e).await)
+                        return Err(emit_fail(ctx, e).await);
                     }
 
                     'retry: {
@@ -518,7 +550,7 @@ impl Handler<Evaluator> for Evaluator {
                 let EventRequest::Fact(state_data) =
                     &evaluation_req.content.event_request.content
                 else {
-                    return Err(ActorError::Functional("The only event that can be evaluated is the Fact event".to_owned()))
+                    return Err(ActorError::Functional("The only event that can be evaluated is the Fact event".to_owned()));
                 };
 
                 let info_subject_path =
@@ -530,13 +562,20 @@ impl Handler<Evaluator> for Evaluator {
                 {
                     return Err(ActorError::Functional("We received an evaluation where the request indicates one subject but the info indicates another.".to_owned()));
                 }
-                
+
                 if info.schema == "governance" {
-                    if let Err(e) = check_request_owner(ctx, &evaluation_req.content.context.subject_id.to_string(), &evaluation_req.signature.signer.to_string(), evaluation_req.clone()).await {
+                    if let Err(e) = check_request_owner(
+                        ctx,
+                        &evaluation_req.content.context.subject_id.to_string(),
+                        &evaluation_req.signature.signer.to_string(),
+                        evaluation_req.clone(),
+                    )
+                    .await
+                    {
                         if let ActorError::Functional(_) = e {
                             return Err(e);
                         } else {
-                            return Err(emit_fail(ctx, e).await)
+                            return Err(emit_fail(ctx, e).await);
                         }
                     };
                 }
@@ -549,7 +588,8 @@ impl Handler<Evaluator> for Evaluator {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                let is_governance = evaluation_req.content.context.schema_id == "governance";
+                let is_governance =
+                    evaluation_req.content.context.schema_id == "governance";
 
                 // Get governance id
                 let governance_id = if is_governance {
@@ -558,7 +598,15 @@ impl Handler<Evaluator> for Evaluator {
                     evaluation_req.content.context.governance_id.clone()
                 };
 
-                let reboot = match self.check_governance(ctx, governance_id.clone(), evaluation_req.content.gov_version, info.sender.clone()).await {
+                let reboot = match self
+                    .check_governance(
+                        ctx,
+                        governance_id.clone(),
+                        evaluation_req.content.gov_version,
+                        info.sender.clone(),
+                    )
+                    .await
+                {
                     Ok(reboot) => reboot,
                     Err(e) => {
                         if let ActorError::Functional(_) = e {
@@ -572,8 +620,14 @@ impl Handler<Evaluator> for Evaluator {
                 let evaluation = if reboot {
                     EvaluationRes::Reboot
                 } else {
-                        match self
-                        .evaluate(ctx, &evaluation_req.content, state_data, governance_id, is_governance)
+                    match self
+                        .evaluate(
+                            ctx,
+                            &evaluation_req.content,
+                            state_data,
+                            governance_id,
+                            is_governance,
+                        )
                         .await
                     {
                         Ok(evaluation) => {
@@ -587,7 +641,7 @@ impl Handler<Evaluator> for Evaluator {
                             if let ActorError::Functional(_) = e {
                                 EvaluationRes::Error(e.to_string())
                             } else {
-                                return Err(emit_fail(ctx, e).await)
+                                return Err(emit_fail(ctx, e).await);
                             }
                         }
                     }
@@ -600,9 +654,7 @@ impl Handler<Evaluator> for Evaluator {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => {
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 let new_info = ComunicateInfo {
@@ -679,7 +731,7 @@ impl Handler<Evaluator> for Evaluator {
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
-            },
+            }
             _ => {
                 // TODO error inesperado
             }

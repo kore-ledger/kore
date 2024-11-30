@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Handler, Message
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    Handler, Message,
 };
 use async_trait::async_trait;
 use distributor::{Distributor, DistributorMessage};
@@ -9,7 +10,10 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use crate::{
     governance::model::Roles,
-    model::{common::{emit_fail, get_gov, get_metadata}, event::Ledger},
+    model::{
+        common::{emit_fail, get_gov, get_metadata},
+        event::Ledger,
+    },
     request::manager::{RequestManager, RequestManagerMessage},
     subject::Metadata,
     Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage,
@@ -130,15 +134,17 @@ impl Handler<Distribution> for Distribution {
                 self.request_id = request_id;
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
-                let governance = match get_gov(ctx, &subject_id.to_string()).await {
-                    Ok(gov) => gov,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
-                };
+                let governance =
+                    match get_gov(ctx, &subject_id.to_string()).await {
+                        Ok(gov) => gov,
+                        Err(e) => return Err(emit_fail(ctx, e).await),
+                    };
 
-                let metadata = match get_metadata(ctx, &subject_id.to_string()).await {
-                    Ok(metadata) => metadata,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
-                };
+                let metadata =
+                    match get_metadata(ctx, &subject_id.to_string()).await {
+                        Ok(metadata) => metadata,
+                        Err(e) => return Err(emit_fail(ctx, e).await),
+                    };
 
                 let witnesses = if metadata.schema_id == "governance" {
                     governance.members_to_key_identifier()
@@ -173,7 +179,7 @@ impl Handler<Distribution> for Distribution {
             DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) && self.witnesses.is_empty() {
                     if let Err(e) = self.end_request(ctx).await {
-                        return Err(emit_fail(ctx, e).await)
+                        return Err(emit_fail(ctx, e).await);
                     };
                 }
             }

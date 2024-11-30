@@ -15,7 +15,9 @@ use tracing::error;
 use wasmtime::{Caller, Config, Engine, ExternType, Linker, Module, Store};
 
 use crate::{
-    governance::json_schema::JsonSchema, model::common::{generate_linker, MemoryManager}, Error, HashId, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR
+    governance::json_schema::JsonSchema,
+    model::common::{generate_linker, MemoryManager},
+    Error, HashId, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR,
 };
 
 #[derive(
@@ -219,14 +221,20 @@ impl Compiler {
         let _main_contract_entrypoint = instance
             .get_typed_func::<(u32, u32, u32), u32>(&mut store, "main_function")
             .map_err(|e| {
-                Error::Compiler(format!("Contract entry point not found: {}", e))
+                Error::Compiler(format!(
+                    "Contract entry point not found: {}",
+                    e
+                ))
             })?;
 
         // Get access to contract
         let init_contract_entrypoint = instance
             .get_typed_func::<u32, u32>(&mut store, "init_check_function")
             .map_err(|e| {
-                Error::Compiler(format!("Contract entry point not found: {}", e))
+                Error::Compiler(format!(
+                    "Contract entry point not found: {}",
+                    e
+                ))
             })?;
 
         // Contract execution
@@ -257,7 +265,10 @@ impl Compiler {
         if contract_result.success {
             Ok(())
         } else {
-            return Err(Error::Compiler("Contract execution in compilation was not successful".to_owned()))
+            return Err(Error::Compiler(
+                "Contract execution in compilation was not successful"
+                    .to_owned(),
+            ));
         }
     }
 
@@ -301,7 +312,6 @@ pub enum CompilerEvent {}
 
 impl Event for CompilerEvent {}
 
-
 #[async_trait]
 impl Actor for Compiler {
     type Event = CompilerEvent;
@@ -333,7 +343,12 @@ impl Handler<Compiler> for Compiler {
                 let contract_wrapper = ValueWrapper(json!({"raw": contract}));
                 let contract_hash = match contract_wrapper.hash_id(derivator) {
                     Ok(hash) => hash,
-                    Err(e) => return Err(ActorError::Functional(format!("Can not hash contract: {}", e.to_string()))),
+                    Err(e) => {
+                        return Err(ActorError::Functional(format!(
+                            "Can not hash contract: {}",
+                            e.to_string()
+                        )))
+                    }
                 };
 
                 if contract_hash != self.contract {
@@ -350,7 +365,9 @@ impl Handler<Compiler> for Compiler {
                     .await
                     {
                         Ok(contract) => contract,
-                        Err(e) => return Err(ActorError::Functional(e.to_string())),
+                        Err(e) => {
+                            return Err(ActorError::Functional(e.to_string()))
+                        }
                     };
 
                     {

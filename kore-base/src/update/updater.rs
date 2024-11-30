@@ -4,7 +4,9 @@
 use std::time::Duration;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, FixedIntervalStrategy, Handler, Message, Response, RetryActor, RetryMessage, Strategy, SystemEvent
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    FixedIntervalStrategy, Handler, Message, Response, RetryActor,
+    RetryMessage, Strategy, SystemEvent,
 };
 
 use async_trait::async_trait;
@@ -12,10 +14,12 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use crate::{model::{common::emit_fail, network::RetryNetwork}, ActorMessage, NetworkMessage};
+use crate::{
+    model::{common::emit_fail, network::RetryNetwork},
+    ActorMessage, NetworkMessage,
+};
 
 use super::{Update, UpdateMessage};
-
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Updater {
@@ -108,7 +112,10 @@ impl Handler<Updater> for Updater {
                 {
                     retry
                 } else {
-                    let e = ActorError::Create(ctx.path().clone(), "retry".to_owned());
+                    let e = ActorError::Create(
+                        ctx.path().clone(),
+                        "retry".to_owned(),
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -121,7 +128,6 @@ impl Handler<Updater> for Updater {
                 let update_actor: Option<ActorRef<Update>> =
                     ctx.system().get_actor(&update_path).await;
 
-                
                 if let Some(update_actor) = update_actor {
                     if let Err(e) = update_actor
                         .tell(UpdateMessage::Response {
@@ -187,7 +193,7 @@ impl Handler<Updater> for Updater {
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
-            },
+            }
             _ => {
                 // TODO Error inesperado.
             }

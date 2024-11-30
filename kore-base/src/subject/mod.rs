@@ -22,7 +22,8 @@ use crate::{
     helpers::db::ExternalDB,
     model::{
         common::{
-            delete_relation, emit_fail, get_gov, get_last_event, get_quantity, register_relation, verify_protocols_state
+            delete_relation, emit_fail, get_gov, get_last_event, get_quantity,
+            register_relation, verify_protocols_state,
         },
         event::{Event as KoreEvent, Ledger, LedgerValue},
         request::EventRequest,
@@ -43,7 +44,8 @@ use crate::{
 };
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response, Sink, SystemEvent
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    Event, Handler, Message, Response, Sink, SystemEvent,
 };
 use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
 use identity::{
@@ -246,7 +248,10 @@ impl Subject {
         // We handle the possible responses of node
         match response {
             NodeKeyResponse::KeyIdentifier(key) => Ok(key),
-            _ => Err(ActorError::UnexpectedResponse(node_key_path, "NodeKeyResponse::KeyIdentifier".to_owned()))
+            _ => Err(ActorError::UnexpectedResponse(
+                node_key_path,
+                "NodeKeyResponse::KeyIdentifier".to_owned(),
+            )),
         }
     }
 
@@ -343,7 +348,10 @@ impl Subject {
             DigestDerivator::Blake3_256
         };
 
-        let keys = self.keys.clone().ok_or(Error::Signature("Can not get Subject Keys".to_owned()))?;
+        let keys = self
+            .keys
+            .clone()
+            .ok_or(Error::Signature("Can not get Subject Keys".to_owned()))?;
 
         Signature::new(content, &keys, derivator)
             .map_err(|e| Error::Signature(format!("{}", e)))
@@ -357,8 +365,7 @@ impl Subject {
         let owner = our_key == self.owner;
 
         if owner {
-            Self::up_owner_not_gov(ctx, our_key)
-                .await?;
+            Self::up_owner_not_gov(ctx, our_key).await?;
         }
         Ok(())
     }
@@ -368,16 +375,13 @@ impl Subject {
         our_key: KeyIdentifier,
     ) -> Result<(), ActorError> {
         let validation = Validation::new(our_key.clone());
-        ctx.create_child("validation", validation)
-            .await?;
+        ctx.create_child("validation", validation).await?;
 
         let evaluation = Evaluation::new(our_key.clone());
-        ctx.create_child("evaluation", evaluation)
-            .await?;
+        ctx.create_child("evaluation", evaluation).await?;
 
         let distribution = Distribution::new(our_key);
-        ctx.create_child("distribution", distribution)
-            .await?;
+        ctx.create_child("distribution", distribution).await?;
 
         Ok(())
     }
@@ -390,7 +394,10 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            return Err(ActorError::NotFound(ActorPath::from(format!("{}/validation", ctx.path().to_string()))));
+            return Err(ActorError::NotFound(ActorPath::from(format!(
+                "{}/validation",
+                ctx.path().to_string()
+            ))));
         }
 
         let actor: Option<ActorRef<Evaluation>> =
@@ -398,7 +405,10 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            return Err(ActorError::NotFound(ActorPath::from(format!("{}/evaluation", ctx.path().to_string()))));
+            return Err(ActorError::NotFound(ActorPath::from(format!(
+                "{}/evaluation",
+                ctx.path().to_string()
+            ))));
         }
 
         let actor: Option<ActorRef<Distribution>> =
@@ -406,7 +416,10 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            return Err(ActorError::NotFound(ActorPath::from(format!("{}/distribution", ctx.path().to_string()))));
+            return Err(ActorError::NotFound(ActorPath::from(format!(
+                "{}/distribution",
+                ctx.path().to_string()
+            ))));
         }
 
         Ok(())
@@ -446,8 +459,7 @@ impl Subject {
         }
 
         let schemas = gov.schemas(Roles::EVALUATOR, &our_key.to_string());
-        Self::up_schemas(ctx, schemas, self.subject_id.clone())
-            .await?;
+        Self::up_schemas(ctx, schemas, self.subject_id.clone()).await?;
 
         let (our_roles, creators) =
             gov.subjects_schemas_rol_namespace(&our_key.to_string());
@@ -464,7 +476,8 @@ impl Subject {
             }
             match rol {
                 crate::governance::model::Roles::EVALUATOR => {
-                    let eval_actor = EvaluationSchema::new(valid_users, gov.version);
+                    let eval_actor =
+                        EvaluationSchema::new(valid_users, gov.version);
                     ctx.create_child(
                         &format!("{}_evaluation", schema),
                         eval_actor,
@@ -499,8 +512,7 @@ impl Subject {
         ) {
             // If we are a validator
             let validator = Validator::default();
-            ctx.create_child("validator", validator)
-                .await?;
+            ctx.create_child("validator", validator).await?;
         }
 
         if gov.has_this_role(
@@ -511,8 +523,7 @@ impl Subject {
         ) {
             // If we are a evaluator
             let evaluator = Evaluator::default();
-            ctx.create_child("evaluator", evaluator)
-                .await?;
+            ctx.create_child("evaluator", evaluator).await?;
         }
 
         if gov.has_this_role(
@@ -534,9 +545,7 @@ impl Subject {
                 subject_id.to_string(),
                 VotationType::from(config.always_accept),
             );
-            let approver_actor = ctx
-                .create_child("approver", approver)
-                .await?;
+            let approver_actor = ctx.create_child("approver", approver).await?;
 
             let sink =
                 Sink::new(approver_actor.subscribe(), ext_db.get_approver());
@@ -563,7 +572,10 @@ impl Subject {
             if let Some(actor) = actor {
                 actor.stop().await;
             } else {
-                return Err(ActorError::NotFound(ActorPath::from(format!("{}/validator", ctx.path().to_string()))));
+                return Err(ActorError::NotFound(ActorPath::from(format!(
+                    "{}/validator",
+                    ctx.path().to_string()
+                ))));
             }
         }
 
@@ -578,7 +590,10 @@ impl Subject {
             if let Some(actor) = actor {
                 actor.stop().await;
             } else {
-                return Err(ActorError::NotFound(ActorPath::from(format!("{}/evaluator", ctx.path().to_string()))));
+                return Err(ActorError::NotFound(ActorPath::from(format!(
+                    "{}/evaluator",
+                    ctx.path().to_string()
+                ))));
             }
         }
 
@@ -593,7 +608,10 @@ impl Subject {
             if let Some(actor) = actor {
                 actor.stop().await;
             } else {
-                return Err(ActorError::NotFound(ActorPath::from(format!("{}/approver", ctx.path().to_string()))));
+                return Err(ActorError::NotFound(ActorPath::from(format!(
+                    "{}/approver",
+                    ctx.path().to_string()
+                ))));
             }
         }
 
@@ -619,8 +637,7 @@ impl Subject {
         ctx.create_child("evaluation", evaluation).await?;
 
         let approval = Approval::new(our_key.clone());
-        ctx.create_child("approval", approval)
-            .await?;
+        ctx.create_child("approval", approval).await?;
 
         let approver = Approver::new(
             "".to_owned(),
@@ -628,27 +645,29 @@ impl Subject {
             subject_id.to_string(),
             VotationType::from(config.always_accept),
         );
-        let approver_actor = ctx
-            .create_child("approver", approver)
-            .await?;
+        let approver_actor = ctx.create_child("approver", approver).await?;
 
         let sink = Sink::new(approver_actor.subscribe(), ext_db.get_approver());
         ctx.system().run_sink(sink).await;
 
         let distribution = Distribution::new(our_key.clone());
-        ctx.create_child("distribution", distribution)
-            .await?;
+        ctx.create_child("distribution", distribution).await?;
 
         Ok(())
     }
 
-    async fn down_owner(ctx: &mut ActorContext<Subject>) -> Result<(), ActorError> {
+    async fn down_owner(
+        ctx: &mut ActorContext<Subject>,
+    ) -> Result<(), ActorError> {
         let actor: Option<ActorRef<Validation>> =
             ctx.get_child("validation").await;
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            let e = ActorError::NotFound(ActorPath::from(format!("{}/validation", ctx.path())));
+            let e = ActorError::NotFound(ActorPath::from(format!(
+                "{}/validation",
+                ctx.path()
+            )));
             return Err(emit_fail(ctx, e).await);
         }
 
@@ -657,7 +676,10 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            let e = ActorError::NotFound(ActorPath::from(format!("{}/evaluation", ctx.path())));
+            let e = ActorError::NotFound(ActorPath::from(format!(
+                "{}/evaluation",
+                ctx.path()
+            )));
             return Err(emit_fail(ctx, e).await);
         }
 
@@ -665,7 +687,10 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            let e = ActorError::NotFound(ActorPath::from(format!("{}/approval", ctx.path())));
+            let e = ActorError::NotFound(ActorPath::from(format!(
+                "{}/approval",
+                ctx.path()
+            )));
             return Err(emit_fail(ctx, e).await);
         }
 
@@ -673,7 +698,10 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            let e = ActorError::NotFound(ActorPath::from(format!("{}/approver", ctx.path())));
+            let e = ActorError::NotFound(ActorPath::from(format!(
+                "{}/approver",
+                ctx.path()
+            )));
             return Err(emit_fail(ctx, e).await);
         }
 
@@ -682,7 +710,10 @@ impl Subject {
         if let Some(actor) = actor {
             actor.stop().await;
         } else {
-            let e = ActorError::NotFound(ActorPath::from(format!("{}/distribution", ctx.path())));
+            let e = ActorError::NotFound(ActorPath::from(format!(
+                "{}/distribution",
+                ctx.path()
+            )));
             return Err(emit_fail(ctx, e).await);
         }
 
@@ -723,7 +754,11 @@ impl Subject {
             if let Some(actor) = actor {
                 actor.stop().await;
             } else {
-            return Err(ActorError::NotFound(ActorPath::from(format!("{}/{}_compiler", ctx.path().to_string(), schema.id))));
+                return Err(ActorError::NotFound(ActorPath::from(format!(
+                    "{}/{}_compiler",
+                    ctx.path().to_string(),
+                    schema.id
+                ))));
             }
         }
 
@@ -747,7 +782,11 @@ impl Subject {
                     })
                     .await?;
             } else {
-                return Err(ActorError::NotFound(ActorPath::from(format!("{}/{}_compiler", ctx.path().to_string(), schema.id))))
+                return Err(ActorError::NotFound(ActorPath::from(format!(
+                    "{}/{}_compiler",
+                    ctx.path().to_string(),
+                    schema.id
+                ))));
             }
         }
 
@@ -789,7 +828,10 @@ impl Subject {
 
         match response {
             SubjectResponse::Governance(gov) => Ok(gov),
-            _ => Err(ActorError::UnexpectedResponse(governance_path, "SubjectResponse::Governance".to_owned()))
+            _ => Err(ActorError::UnexpectedResponse(
+                governance_path,
+                "SubjectResponse::Governance".to_owned(),
+            )),
         }
     }
 
@@ -808,8 +850,13 @@ impl Subject {
 
         match response {
             StoreResponse::LastEvent(event) => Ok(event),
-            StoreResponse::Error(e) => Err(ActorError::FunctionalFail(e.to_string())),
-            _ => Err(ActorError::UnexpectedResponse(path, "StoreResponse::LastEvent".to_string())),
+            StoreResponse::Error(e) => {
+                Err(ActorError::FunctionalFail(e.to_string()))
+            }
+            _ => Err(ActorError::UnexpectedResponse(
+                path,
+                "StoreResponse::LastEvent".to_string(),
+            )),
         }
     }
 
@@ -832,7 +879,7 @@ impl Subject {
                 })
                 .await?;
         } else {
-            return Err(ActorError::NotFound(node_path))
+            return Err(ActorError::NotFound(node_path));
         }
         Ok(())
     }
@@ -844,30 +891,43 @@ impl Subject {
     ) -> Result<(), Error> {
         // Si no sigue activo
         if !self.active {
-            return Err(Error::Subject("Subject is not active".to_owned()))
+            return Err(Error::Subject("Subject is not active".to_owned()));
         }
 
         // SI no es el dueño el que firmó el evento
         if new_ledger.signature.signer != self.owner {
-            return Err(Error::Subject("Signer of the event is not the owner".to_owned()))
+            return Err(Error::Subject(
+                "Signer of the event is not the owner".to_owned(),
+            ));
         }
 
         match new_ledger.content.event_request.content.clone() {
-            EventRequest::Transfer(..) |
-            EventRequest::Confirm(..) | 
-            EventRequest::EOL(..)
-            => if new_ledger.content.event_request.signature.signer != self.owner {
-                return Err(Error::Subject("Signer of the request is not the owner".to_owned()))
-            },
+            EventRequest::Transfer(..)
+            | EventRequest::Confirm(..)
+            | EventRequest::EOL(..) => {
+                if new_ledger.content.event_request.signature.signer
+                    != self.owner
+                {
+                    return Err(Error::Subject(
+                        "Signer of the request is not the owner".to_owned(),
+                    ));
+                }
+            }
             _ => {}
         };
 
         if let Err(e) = new_ledger.verify() {
-            return Err(Error::Subject(format!("In new event, event signature: {}", e.to_string())));
+            return Err(Error::Subject(format!(
+                "In new event, event signature: {}",
+                e.to_string()
+            )));
         }
 
         if let Err(e) = new_ledger.content.event_request.verify() {
-            return Err(Error::Subject(format!("In new event request, request signature: {}", e.to_string())));
+            return Err(Error::Subject(format!(
+                "In new event request, request signature: {}",
+                e.to_string()
+            )));
         }
 
         // Mirar que sea el siguiente sn
@@ -906,16 +966,17 @@ impl Subject {
             } else if let EventRequest::EOL(_end) =
                 last_ledger.content.event_request.content.clone()
             {
-                return Err(Error::Subject("The last event was EOL, no more events can be received".to_owned()));
+                return Err(Error::Subject(
+                    "The last event was EOL, no more events can be received"
+                        .to_owned(),
+                ));
             } else if last_ledger.signature.signer
                 != new_ledger.signature.signer
             {
                 return Err(Error::Subject("The signer of the new event and the previous one should be the same".to_owned()));
             }
         } else {
-            if last_ledger.signature.signer
-                != new_ledger.signature.signer
-            {
+            if last_ledger.signature.signer != new_ledger.signature.signer {
                 return Err(Error::Subject("The signer of the new event and the previous one should be the same".to_owned()));
             }
         }
@@ -943,12 +1004,20 @@ impl Subject {
                         return Err(Error::Subject("The event was successful but does not have a json patch to apply".to_owned()));
                     };
 
-                    let patch_json =
-                        serde_json::from_value::<Patch>(json_patch.0)
-                            .map_err(|e| Error::Subject(format!("Failed to extract event patch: {}", e)))?;
+                    let patch_json = serde_json::from_value::<Patch>(
+                        json_patch.0,
+                    )
+                    .map_err(|e| {
+                        Error::Subject(format!(
+                            "Failed to extract event patch: {}",
+                            e
+                        ))
+                    })?;
                     let mut propierties = self.properties.0.clone();
                     let Ok(()) = patch(&mut propierties, &patch_json) else {
-                        return Err(Error::Subject("Failed to apply event patch".to_owned()));
+                        return Err(Error::Subject(
+                            "Failed to apply event patch".to_owned(),
+                        ));
                     };
 
                     let hash_state_after_patch = ValueWrapper(propierties)
@@ -1001,29 +1070,45 @@ impl Subject {
                 return Err(Error::Subject("In create event, governance_id must be empty, namespace must be empty and gov version must be 0".to_owned()));
             }
         } else {
-            return Err(Error::Subject("First event is not a create event".to_owned()));
+            return Err(Error::Subject(
+                "First event is not a create event".to_owned(),
+            ));
         };
 
         if event.signature.signer != self.owner
             || event.content.event_request.signature.signer != self.owner
         {
-            return Err(Error::Subject("In create event, owner must sign request and event.".to_owned()));
+            return Err(Error::Subject(
+                "In create event, owner must sign request and event."
+                    .to_owned(),
+            ));
         }
 
         if let Err(e) = event.verify() {
-            return Err(Error::Subject(format!("In create event, event signature: {}", e.to_string())));
+            return Err(Error::Subject(format!(
+                "In create event, event signature: {}",
+                e.to_string()
+            )));
         }
 
         if let Err(e) = event.content.event_request.verify() {
-            return Err(Error::Subject(format!("In create event, request signature: {}", e.to_string())));
+            return Err(Error::Subject(format!(
+                "In create event, request signature: {}",
+                e.to_string()
+            )));
         }
 
         if event.content.sn != 0 {
-            return Err(Error::Subject("In create event, sn must be 0.".to_owned()));
+            return Err(Error::Subject(
+                "In create event, sn must be 0.".to_owned(),
+            ));
         }
 
         if !event.content.hash_prev_event.is_empty() {
-            return Err(Error::Subject("In create event, previous hash event must be empty.".to_owned()));
+            return Err(Error::Subject(
+                "In create event, previous hash event must be empty."
+                    .to_owned(),
+            ));
         }
 
         if verify_protocols_state(
@@ -1035,7 +1120,9 @@ impl Subject {
         )? {
             Ok(())
         } else {
-            return Err(Error::Subject("Create event fail in validation protocol".to_owned()));
+            return Err(Error::Subject(
+                "Create event fail in validation protocol".to_owned(),
+            ));
         }
     }
 
@@ -1045,10 +1132,8 @@ impl Subject {
         active: bool,
     ) -> Result<(), ActorError> {
         let register_path = ActorPath::from("/user/node/register");
-        let register: Option<ActorRef<Register>> = ctx
-            .system()
-            .get_actor(&register_path)
-            .await;
+        let register: Option<ActorRef<Register>> =
+            ctx.system().get_actor(&register_path).await;
         if let Some(register) = register {
             let message = if self.governance_id.is_empty() {
                 RegisterMessage::RegisterGov {
@@ -1168,19 +1253,21 @@ impl Subject {
             &self.schema_id,
             self.namespace.clone(),
         ) else {
-            return Err(ActorError::Functional("The number of subjects that can be created has not been found".to_owned()));
+            return Err(ActorError::Functional(
+                "The number of subjects that can be created has not been found"
+                    .to_owned(),
+            ));
         };
 
         let mut last_ledger = if let Some(last_ledger) = last_ledger {
             last_ledger
         } else {
-            self
-                .register_relation(
-                    ctx,
-                    events[0].signature.signer.to_string(),
-                    max_quantity,
-                )
-                .await?;
+            self.register_relation(
+                ctx,
+                events[0].signature.signer.to_string(),
+                max_quantity,
+            )
+            .await?;
 
             if let Err(e) =
                 self.verify_first_ledger_event(events[0].clone()).await
@@ -1209,13 +1296,12 @@ impl Subject {
 
             match event.content.event_request.content.clone() {
                 EventRequest::Confirm(_confirm_request) => {
-                    self
-                        .register_relation(
-                            ctx,
-                            event.signature.signer.to_string(),
-                            max_quantity,
-                        )
-                        .await?;
+                    self.register_relation(
+                        ctx,
+                        event.signature.signer.to_string(),
+                        max_quantity,
+                    )
+                    .await?;
                 }
                 EventRequest::Transfer(transfer_request) => {
                     delete_relation(
@@ -1267,7 +1353,7 @@ impl Subject {
             if let Err(e) = self.verify_new_ledger_events_gov(ctx, events).await
             {
                 if let ActorError::Functional(e) = e {
-                    println!("{}",e);
+                    println!("{}", e);
                     // TODO falló pero pudo aplicar algún evento entonces seguimos.
                 } else {
                     return Err(e);
@@ -1275,7 +1361,8 @@ impl Subject {
             };
 
             if current_sn < self.sn {
-                let old_gov = Governance::try_from(current_properties).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+                let old_gov = Governance::try_from(current_properties)
+                    .map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
                 if !self.active {
                     if current_owner == our_key {
                         Self::down_owner(ctx).await?;
@@ -1310,7 +1397,9 @@ impl Subject {
                         if let Some(actor) = actor {
                             actor.stop().await;
                         } else {
-                            let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_evaluation", ctx.path(), schema)));
+                            let e = ActorError::NotFound(ActorPath::from(
+                                format!("{}/{}_evaluation", ctx.path(), schema),
+                            ));
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -1322,20 +1411,26 @@ impl Subject {
                         if let Some(actor) = actor {
                             actor.stop().await;
                         } else {
-                            let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_validation", ctx.path(), schema)));
+                            let e = ActorError::NotFound(ActorPath::from(
+                                format!("{}/{}_validation", ctx.path(), schema),
+                            ));
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
                 } else {
-                    let new_gov =
-                        Governance::try_from(self.properties.clone()).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+                    let new_gov = Governance::try_from(self.properties.clone())
+                        .map_err(|e| {
+                            ActorError::FunctionalFail(e.to_string())
+                        })?;
 
                     // Si cambió el dueño
                     if current_owner != self.owner {
                         let Some(ext_db): Option<ExternalDB> =
                             ctx.system().get_helper("ext_db").await
                         else {
-                            return Err(ActorError::NotHelper("config".to_owned()));
+                            return Err(ActorError::NotHelper(
+                                "config".to_owned(),
+                            ));
                         };
 
                         if self.owner == our_key {
@@ -1442,12 +1537,20 @@ impl Subject {
                                             return Err(emit_fail(ctx, e).await);
                                         }
                                     } else {
-                                        let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_evaluation", ctx.path(), schema)));
+                                        let e = ActorError::NotFound(
+                                            ActorPath::from(format!(
+                                                "{}/{}_evaluation",
+                                                ctx.path(),
+                                                schema
+                                            )),
+                                        );
                                         return Err(emit_fail(ctx, e).await);
                                     }
                                 } else {
-                                    let eval_actor =
-                                        EvaluationSchema::new(valid_users, new_gov.version);
+                                    let eval_actor = EvaluationSchema::new(
+                                        valid_users,
+                                        new_gov.version,
+                                    );
                                     ctx.create_child(
                                         &format!("{}_evaluation", schema),
                                         eval_actor,
@@ -1474,12 +1577,20 @@ impl Subject {
                                             return Err(emit_fail(ctx, e).await);
                                         }
                                     } else {
-                                        let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_validation", ctx.path(), schema)));
+                                        let e = ActorError::NotFound(
+                                            ActorPath::from(format!(
+                                                "{}/{}_validation",
+                                                ctx.path(),
+                                                schema
+                                            )),
+                                        );
                                         return Err(emit_fail(ctx, e).await);
                                     }
                                 } else {
-                                    let actor =
-                                        ValidationSchema::new(valid_users, new_gov.version);
+                                    let actor = ValidationSchema::new(
+                                        valid_users,
+                                        new_gov.version,
+                                    );
                                     ctx.create_child(
                                         &format!("{}_validation", schema),
                                         actor,
@@ -1498,7 +1609,9 @@ impl Subject {
                         if let Some(actor) = actor {
                             actor.stop().await;
                         } else {
-                            let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_evaluation", ctx.path(), schema)));
+                            let e = ActorError::NotFound(ActorPath::from(
+                                format!("{}/{}_evaluation", ctx.path(), schema),
+                            ));
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -1510,7 +1623,9 @@ impl Subject {
                         if let Some(actor) = actor {
                             actor.stop().await;
                         } else {
-                            let e = ActorError::NotFound(ActorPath::from(format!("{}/{}_validation", ctx.path(), schema)));
+                            let e = ActorError::NotFound(ActorPath::from(
+                                format!("{}/{}_validation", ctx.path(), schema),
+                            ));
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -1553,7 +1668,10 @@ impl Subject {
                 return Err(e);
             }
         } else {
-            return Err(ActorError::NotFound(ActorPath::from(format!("{}/sink_data", ctx.path()))));
+            return Err(ActorError::NotFound(ActorPath::from(format!(
+                "{}/sink_data",
+                ctx.path()
+            ))));
         }
 
         Ok(())
@@ -1574,16 +1692,20 @@ impl Subject {
                 })
                 .await?
         } else {
-            return Err(ActorError::NotFound(ActorPath::from(format!("{}/store", ctx.path()))));
+            return Err(ActorError::NotFound(ActorPath::from(format!(
+                "{}/store",
+                ctx.path()
+            ))));
         };
 
         match response {
             StoreResponse::Events(events) => Ok(events),
-            _ => Err(ActorError::UnexpectedResponse(ActorPath::from(format!("{}/store", ctx.path())), "StoreResponse::Events".to_owned())),
+            _ => Err(ActorError::UnexpectedResponse(
+                ActorPath::from(format!("{}/store", ctx.path())),
+                "StoreResponse::Events".to_owned(),
+            )),
         }
     }
-
-   
 
     async fn create_compilers(
         ctx: &mut ActorContext<Subject>,
@@ -1597,12 +1719,11 @@ impl Subject {
             if child.is_none() {
                 new_compilers.push(compiler.clone());
 
-                ctx
-                    .create_child(
-                        &format!("{}_compiler", compiler),
-                        Compiler::default(),
-                    )
-                    .await?;
+                ctx.create_child(
+                    &format!("{}_compiler", compiler),
+                    Compiler::default(),
+                )
+                .await?;
             }
         }
 
@@ -1681,9 +1802,7 @@ impl Actor for Subject {
         debug!("Starting subject actor with init store.");
         self.init_store("subject", None, true, ctx).await?;
 
-        let our_key = self
-            .get_node_key(ctx)
-            .await?;
+        let our_key = self.get_node_key(ctx).await?;
 
         let Some(ext_db): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
@@ -1745,15 +1864,18 @@ impl Handler<Subject> for Subject {
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
             SubjectMessage::CreateCompilers(compilers) => {
-                let new_compilers = Self::create_compilers(ctx, &compilers).await?;
+                let new_compilers =
+                    Self::create_compilers(ctx, &compilers).await?;
                 Ok(SubjectResponse::NewCompilers(new_compilers))
             }
             SubjectMessage::GetLedger { last_sn } => {
                 let ledger = self.get_ledger(ctx, last_sn).await?;
 
                 if ledger.len() < 100 {
-                    let last_event = get_last_event(ctx, &self.subject_id.to_string()).await?;
-                    Ok(SubjectResponse::Ledger((ledger,Some(last_event))))
+                    let last_event =
+                        get_last_event(ctx, &self.subject_id.to_string())
+                            .await?;
+                    Ok(SubjectResponse::Ledger((ledger, Some(last_event))))
                 } else {
                     Ok(SubjectResponse::Ledger((ledger, None)))
                 }
@@ -1765,7 +1887,8 @@ impl Handler<Subject> for Subject {
                 Ok(SubjectResponse::Metadata(self.get_metadata()))
             }
             SubjectMessage::UpdateLedger { events } => {
-                self.verify_new_ledger_events(ctx, events.as_slice()).await?;
+                self.verify_new_ledger_events(ctx, events.as_slice())
+                    .await?;
                 Ok(SubjectResponse::LastSn(self.sn))
             }
             SubjectMessage::SignRequest(content) => {
@@ -1773,7 +1896,13 @@ impl Handler<Subject> for Subject {
                     SignTypesSubject::Validation(validation) => {
                         self.sign(&validation)
                     }
-                }.map_err(|e| ActorError::FunctionalFail(format!("Can not sign event: {}", e)))?;
+                }
+                .map_err(|e| {
+                    ActorError::FunctionalFail(format!(
+                        "Can not sign event: {}",
+                        e
+                    ))
+                })?;
                 Ok(SubjectResponse::SignRequest(sign))
             }
             SubjectMessage::GetGovernance => {
@@ -1781,11 +1910,17 @@ impl Handler<Subject> for Subject {
                 if self.governance_id.is_empty() {
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
-                        Err(e) => return Err(ActorError::FunctionalFail(e.to_string()))
+                        Err(e) => {
+                            return Err(ActorError::FunctionalFail(
+                                e.to_string(),
+                            ))
+                        }
                     }
                 }
                 // If is not a governance
-                return Ok(SubjectResponse::Governance(self.get_governance_from_other_subject(ctx).await?));
+                return Ok(SubjectResponse::Governance(
+                    self.get_governance_from_other_subject(ctx).await?,
+                ));
             }
         }
     }
@@ -1830,9 +1965,9 @@ impl PersistentActor for Subject {
         ) {
             Ok(is_ok) => is_ok,
             Err(e) => {
-                println!("{}",e);
-                return
-            },
+                println!("{}", e);
+                return;
+            }
         };
 
         if valid_event {
@@ -1843,9 +1978,9 @@ impl PersistentActor for Subject {
                     {
                         Ok(hash) => hash,
                         Err(e) => {
-                            println!("{}",e);
-                            return
-                        },
+                            println!("{}", e);
+                            return;
+                        }
                     };
 
                     self.last_event_hash = last_event_hash;
@@ -1855,24 +1990,23 @@ impl PersistentActor for Subject {
                     let json_patch = match event.content.value.clone() {
                         LedgerValue::Patch(value_wrapper) => value_wrapper,
                         LedgerValue::Error(e) => {
-                            println!("{:?}",e);
-                            return
-                        },
+                            println!("{:?}", e);
+                            return;
+                        }
                     };
 
                     let patch_json =
                         match serde_json::from_value::<Patch>(json_patch.0) {
                             Ok(patch) => patch,
                             Err(e) => {
-                                println!("{}",e);
-                                return
+                                println!("{}", e);
+                                return;
                             }
                         };
 
-                    if let Err(e) = patch(&mut self.properties.0, &patch_json)
-                    {
-                        println!("{}",e);
-                        return
+                    if let Err(e) = patch(&mut self.properties.0, &patch_json) {
+                        println!("{}", e);
+                        return;
                     };
                 }
                 EventRequest::Transfer(transfer_request) => {
@@ -1890,17 +2024,17 @@ impl PersistentActor for Subject {
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => gov,
                         Err(e) => {
-                            println!("{}",e);
-                            return
-                        },
+                            println!("{}", e);
+                            return;
+                        }
                     };
 
                 gov.version += 1;
                 let gov_value = match to_value(gov) {
                     Ok(value) => value,
                     Err(e) => {
-                        println!("{}",e);
-                        return
+                        println!("{}", e);
+                        return;
                     }
                 };
 
@@ -1912,9 +2046,9 @@ impl PersistentActor for Subject {
             match event.hash_id(event.signature.content_hash.derivator) {
                 Ok(hash) => hash,
                 Err(e) => {
-                    println!("{}",e);
-                    return
-                },
+                    println!("{}", e);
+                    return;
+                }
             };
 
         self.last_event_hash = last_event_hash;

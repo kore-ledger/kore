@@ -736,7 +736,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                     } else {
                         // TODO: No se puede comunicar con el helper, se debe cerrar
                         self.cancel.cancel();
-                        return ;
+                        return;
                     };
                 if result.is_err() {
                     error!(

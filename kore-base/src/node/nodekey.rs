@@ -1,11 +1,10 @@
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Handler,
-    Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
+    Response,
 };
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeKey {

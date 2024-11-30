@@ -8,7 +8,10 @@ use identity::identifier::KeyIdentifier;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use crate::{model::common::{emit_fail, try_to_update_schema}, Signed};
+use crate::{
+    model::common::{emit_fail, try_to_update_schema},
+    Signed,
+};
 
 use super::{
     evaluator::{Evaluator, EvaluatorMessage},
@@ -23,7 +26,10 @@ pub struct EvaluationSchema {
 
 impl EvaluationSchema {
     pub fn new(creators: HashSet<KeyIdentifier>, gov_version: u64) -> Self {
-        EvaluationSchema { creators, gov_version }
+        EvaluationSchema {
+            creators,
+            gov_version,
+        }
     }
 }
 
@@ -59,19 +65,29 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 info,
             } => {
                 if self.gov_version < evaluation_req.content.gov_version {
-                    if let Err(e) = try_to_update_schema(ctx, evaluation_req.content.context.subject_id.clone()).await {
-                        return Err(emit_fail(ctx, e).await)
+                    if let Err(e) = try_to_update_schema(
+                        ctx,
+                        evaluation_req.content.context.subject_id.clone(),
+                    )
+                    .await
+                    {
+                        return Err(emit_fail(ctx, e).await);
                     }
                 }
-            
+
                 let creator =
                     self.creators.get(&evaluation_req.signature.signer);
                 if creator.is_none() {
-                    return Err(ActorError::Functional("Sender is not a Creator".to_owned()));
+                    return Err(ActorError::Functional(
+                        "Sender is not a Creator".to_owned(),
+                    ));
                 };
 
                 if let Err(e) = evaluation_req.verify() {
-                    return Err(ActorError::Functional(format!("Can not verify evaluation request: {}.", e)));
+                    return Err(ActorError::Functional(format!(
+                        "Can not verify evaluation request: {}.",
+                        e
+                    )));
                 }
 
                 let child = ctx
@@ -96,7 +112,10 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     })
                     .await?
             }
-            EvaluationSchemaMessage::UpdateEvaluators(creators, gov_version) => {
+            EvaluationSchemaMessage::UpdateEvaluators(
+                creators,
+                gov_version,
+            ) => {
                 self.creators = creators;
                 self.gov_version = gov_version;
             }

@@ -63,8 +63,7 @@ impl EventRequest {
     pub fn is_fact_event(&self) -> bool {
         match self {
             EventRequest::Fact(_fact_request) => true,
-            _ => false
-            
+            _ => false,
         }
     }
 }

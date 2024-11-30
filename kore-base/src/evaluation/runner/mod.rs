@@ -9,8 +9,7 @@ use borsh::{to_vec, BorshDeserialize};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use types::{
-    Contract, ContractResult, GovernanceData, GovernanceEvent,
-    RunnerResult,
+    Contract, ContractResult, GovernanceData, GovernanceEvent, RunnerResult,
 };
 use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
 
@@ -19,7 +18,10 @@ use crate::{
         model::{Roles, SchemaEnum},
         Member, Policy, Role, Schema, Who,
     },
-    model::{common::{generate_linker, MemoryManager}, patch::apply_patch},
+    model::{
+        common::{generate_linker, MemoryManager},
+        patch::apply_patch,
+    },
     Error, ValueWrapper, GOVERNANCE,
 };
 
@@ -133,13 +135,16 @@ impl Runner {
                     if let Some(lock) = GOVERNANCE.get() {
                         let schema = lock.read().await;
                         if !schema.fast_validate(&final_state.0) {
-                            return Err(Error::Runner("Fail in JSON Schema validation".to_owned()));
+                            return Err(Error::Runner(
+                                "Fail in JSON Schema validation".to_owned(),
+                            ));
                         }
                     } else {
-                        return Err(Error::Runner("Can not get governance JSOn Schema".to_owned()));
+                        return Err(Error::Runner(
+                            "Can not get governance JSOn Schema".to_owned(),
+                        ));
                     };
                 }
-                
 
                 Ok((
                     RunnerResult {
@@ -415,7 +420,6 @@ impl Runner {
         Ok(())
     }
 
-
     fn generate_context(
         state: &ValueWrapper,
         event: &ValueWrapper,
@@ -454,7 +458,9 @@ impl Runner {
         if contract_result.success {
             Ok(contract_result)
         } else {
-            return Err(Error::Compiler("Contract execution in running was not successful".to_owned()))
+            return Err(Error::Compiler(
+                "Contract execution in running was not successful".to_owned(),
+            ));
         }
     }
 }
@@ -503,8 +509,12 @@ impl Handler<Runner> for Runner {
             msg.compiled_contract,
             msg.is_owner,
         )
-        .await.map_err(|e| ActorError::Functional(e.to_string()))?;
+        .await
+        .map_err(|e| ActorError::Functional(e.to_string()))?;
 
-        Ok(RunnerResponse { result, compilations })
+        Ok(RunnerResponse {
+            result,
+            compilations,
+        })
     }
 }

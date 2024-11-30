@@ -16,7 +16,8 @@ use crate::{
     governance::{model::Roles, Quorum},
     model::{
         common::{
-            emit_fail, get_sign, get_signers_quorum_gov_version, send_reboot_to_req, try_to_update
+            emit_fail, get_sign, get_signers_quorum_gov_version,
+            send_reboot_to_req, try_to_update,
         },
         event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
@@ -88,8 +89,9 @@ impl Validation {
     }
 
     async fn end_validators(&self, ctx: &mut ActorContext<Validation>) {
-        for validator  in self.validators.clone() {
-            let child: Option<ActorRef<Validator>> = ctx.get_child(&validator.to_string()).await;
+        for validator in self.validators.clone() {
+            let child: Option<ActorRef<Validator>> =
+                ctx.get_child(&validator.to_string()).await;
             if let Some(child) = child {
                 child.stop().await;
             }
@@ -387,7 +389,8 @@ impl Handler<Validation> for Validation {
                                 );
                             }
                             ValidationRes::Reboot => {
-                                let governance_id = self.actual_proof.governance_id.clone();
+                                let governance_id =
+                                    self.actual_proof.governance_id.clone();
                                 if let Err(e) = send_reboot_to_req(
                                     ctx,
                                     &self.request_id,

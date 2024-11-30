@@ -38,7 +38,6 @@ pub struct ApprovalReq {
     pub subject_id: DigestIdentifier,
 }
 
-
 impl HashId for ApprovalReq {
     fn hash_id(
         &self,

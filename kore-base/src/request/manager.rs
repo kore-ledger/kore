@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    Event, Handler, Message, Response,
 };
 use async_trait::async_trait;
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
+use identity::identifier::{
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -13,23 +16,37 @@ use store::store::PersistentActor;
 use tracing::error;
 
 use crate::{
-    approval::{Approval, ApprovalMessage}, auth::{Auth, AuthMessage, AuthResponse, AuthWitness}, db::Storable, distribution::{Distribution, DistributionMessage}, evaluation::{
+    approval::{Approval, ApprovalMessage},
+    auth::{Auth, AuthMessage, AuthResponse, AuthWitness},
+    db::Storable,
+    distribution::{Distribution, DistributionMessage},
+    evaluation::{
         request::EvaluationReq, response::EvalLedgerResponse, Evaluation,
         EvaluationMessage,
-    }, intermediary::Intermediary, model::{
+    },
+    intermediary::Intermediary,
+    model::{
         common::{
-            change_temp_subj, emit_fail, get_gov, get_metadata, get_sign, update_event
+            change_temp_subj, emit_fail, get_gov, get_metadata, get_sign,
+            update_event,
         },
         event::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
             ProtocolsSignatures,
         },
         SignTypesNode,
-    }, update::{Update, UpdateMessage, UpdateNew, UpdateType}, validation::proof::EventProof, ActorMessage, Error, Event as KoreEvent, EventRequest, HashId, NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
+    },
+    update::{Update, UpdateMessage, UpdateNew, UpdateType},
+    validation::proof::EventProof,
+    ActorMessage, Error, Event as KoreEvent, EventRequest, HashId,
+    NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse,
+    Validation, ValidationInfo, ValidationMessage, ValueWrapper,
+    DIGEST_DERIVATOR,
 };
 
 use super::{
-    reboot::Reboot, state::RequestManagerState, RequestHandler, RequestHandlerMessage
+    reboot::Reboot, state::RequestManagerState, RequestHandler,
+    RequestHandlerMessage,
 };
 
 #[derive(Default)]
@@ -331,8 +348,7 @@ impl RequestManager {
         )
         .await;
 
-        self
-            .init_distribution(ctx, signed_event, signed_ledger)
+        self.init_distribution(ctx, signed_event, signed_ledger)
             .await
     }
 
@@ -387,7 +403,10 @@ impl RequestManager {
 
         match response {
             SubjectResponse::LastSn(_) => Ok(()),
-            _ => Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::LastSn".to_owned())),
+            _ => Err(ActorError::UnexpectedResponse(
+                subject_path,
+                "SubjectResponse::LastSn".to_owned(),
+            )),
         }
     }
 
@@ -435,7 +454,12 @@ impl RequestManager {
         let state_hash = if let Some(state_hash) = state_hash {
             state_hash
         } else {
-            metadata.properties.hash_id(derivator).map_err(|e| ActorError::FunctionalFail(format!("Can not obtain hash id for metadata propierties: {}", e.to_string())))?
+            metadata.properties.hash_id(derivator).map_err(|e| {
+                ActorError::FunctionalFail(format!(
+                    "Can not obtain hash id for metadata propierties: {}",
+                    e.to_string()
+                ))
+            })?
         };
 
         let sn = if let Some(sn) = sn {
@@ -466,27 +490,42 @@ impl RequestManager {
         })
     }
 
-    async fn get_witnesses(ctx: &mut ActorContext<RequestManager>, governance_id: DigestIdentifier) -> Result<AuthWitness, ActorError> {
+    async fn get_witnesses(
+        ctx: &mut ActorContext<RequestManager>,
+        governance_id: DigestIdentifier,
+    ) -> Result<AuthWitness, ActorError> {
         let auth_path = ActorPath::from("/user/node/auth");
-        let auth_actor: Option<ActorRef<Auth>> = ctx.system().get_actor(&auth_path).await;
+        let auth_actor: Option<ActorRef<Auth>> =
+            ctx.system().get_actor(&auth_path).await;
 
         let response = if let Some(auth_actor) = auth_actor {
-            auth_actor.ask(AuthMessage::GetAuth { subject_id: governance_id }).await?
+            auth_actor
+                .ask(AuthMessage::GetAuth {
+                    subject_id: governance_id,
+                })
+                .await?
         } else {
             return Err(ActorError::NotFound(auth_path));
         };
 
         match response {
             AuthResponse::Witnesses(witnesses) => Ok(witnesses),
-            _ => Err(ActorError::UnexpectedResponse(auth_path, "AuthResponse::Witnesses".to_owned())),
+            _ => Err(ActorError::UnexpectedResponse(
+                auth_path,
+                "AuthResponse::Witnesses".to_owned(),
+            )),
         }
     }
 
-    async fn init_reboot(&self, ctx: &mut ActorContext<RequestManager>, governance_id: DigestIdentifier) -> Result<(), ActorError>{
+    async fn init_reboot(
+        &self,
+        ctx: &mut ActorContext<RequestManager>,
+        governance_id: DigestIdentifier,
+    ) -> Result<(), ActorError> {
         let governance_string = governance_id.to_string();
         let witnesses = Self::get_witnesses(ctx, governance_id.clone()).await?;
         let metadata = get_metadata(ctx, &governance_string).await?;
-        let gov  = get_gov(ctx,&governance_string).await?;
+        let gov = get_gov(ctx, &governance_string).await?;
 
         let request = ActorMessage::DistributionLedgerReq {
             gov_version: Some(gov.version),
@@ -496,7 +535,7 @@ impl RequestManager {
 
         match witnesses {
             AuthWitness::One(key_identifier) => {
-                
+
                 let info = ComunicateInfo {
                     reciver: key_identifier.clone(),
                     sender: self.our_key.clone(),
@@ -507,7 +546,7 @@ impl RequestManager {
                     ),
                     schema: "governance".to_owned(),
                 };
-                
+
                 let helper: Option<Intermediary> =
                     ctx.system().get_helper("network").await;
 
@@ -573,7 +612,7 @@ impl RequestManager {
 pub enum RequestManagerMessage {
     Run,
     Reboot {
-        governance_id: DigestIdentifier
+        governance_id: DigestIdentifier,
     },
     FinishReboot,
     Fact,
@@ -635,9 +674,7 @@ impl Handler<RequestManager> for RequestManager {
         ctx: &mut actor::ActorContext<RequestManager>,
     ) -> Result<(), ActorError> {
         match msg {
-            RequestManagerMessage::Reboot {
-                governance_id
-            } => {
+            RequestManagerMessage::Reboot { governance_id } => {
                 if let RequestManagerState::Reboot = self.state.clone() {
                     let reboot = Reboot::new(governance_id);
                     if let Err(e) = ctx.create_child("reboot", reboot).await {
@@ -656,7 +693,10 @@ impl Handler<RequestManager> for RequestManager {
                         if let ActorError::Functional(_) = e {
                             let actor = ctx.reference().await;
                             if let Some(actor) = actor {
-                                if let Err(e) = actor.tell(RequestManagerMessage::FinishRequest ).await {
+                                if let Err(e) = actor
+                                    .tell(RequestManagerMessage::FinishRequest)
+                                    .await
+                                {
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             } else {
@@ -669,8 +709,7 @@ impl Handler<RequestManager> for RequestManager {
                         }
                     }
                 }
-                
-            },
+            }
             RequestManagerMessage::FinishReboot => {
                 match self.request.content {
                     EventRequest::Fact(_) => {
@@ -703,7 +742,8 @@ impl Handler<RequestManager> for RequestManager {
             }
             RequestManagerMessage::Run => {
                 match self.state.clone() {
-                    RequestManagerState::Starting | RequestManagerState::Reboot => {
+                    RequestManagerState::Starting
+                    | RequestManagerState::Reboot => {
                         match self.request.content {
                             EventRequest::Fact(_) => {
                                 if let Err(e) = self.evaluation(ctx).await {
@@ -726,11 +766,12 @@ impl Handler<RequestManager> for RequestManager {
                                     .await
                                 {
                                     Ok(data) => data,
-                                    Err(e) => return Err(emit_fail(ctx, e).await),
+                                    Err(e) => {
+                                        return Err(emit_fail(ctx, e).await)
+                                    }
                                 };
 
-                                if let Err(e) =
-                                    self.validation(ctx, data).await
+                                if let Err(e) = self.validation(ctx, data).await
                                 {
                                     return Err(emit_fail(ctx, e).await);
                                 };
@@ -779,7 +820,9 @@ impl Handler<RequestManager> for RequestManager {
                     {
                         (eval_req, eval_res, eval_signatures)
                     } else {
-                        let e = ActorError::FunctionalFail("Invalid request state".to_owned());
+                        let e = ActorError::FunctionalFail(
+                            "Invalid request state".to_owned(),
+                        );
                         return Err(emit_fail(ctx, e).await);
                     };
 
@@ -816,7 +859,9 @@ impl Handler<RequestManager> for RequestManager {
             } => {
                 if let RequestManagerState::Evaluation = self.state.clone() {
                 } else {
-                    let e = ActorError::FunctionalFail("Invalid request state".to_owned());
+                    let e = ActorError::FunctionalFail(
+                        "Invalid request state".to_owned(),
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -859,10 +904,13 @@ impl Handler<RequestManager> for RequestManager {
                 }
             }
             RequestManagerMessage::FinishRequest => {
-                if let RequestManagerState::Distribution { .. } | RequestManagerState::Reboot =
-                    self.state.clone()
-                {} else  {
-                    let e = ActorError::FunctionalFail("Invalid request state".to_owned());
+                if let RequestManagerState::Distribution { .. }
+                | RequestManagerState::Reboot = self.state.clone()
+                {
+                } else {
+                    let e = ActorError::FunctionalFail(
+                        "Invalid request state".to_owned(),
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -884,7 +932,9 @@ impl Handler<RequestManager> for RequestManager {
                     {
                         state
                     } else {
-                        let e = ActorError::FunctionalFail("Invalid request state".to_owned());
+                        let e = ActorError::FunctionalFail(
+                            "Invalid request state".to_owned(),
+                        );
                         return Err(emit_fail(ctx, e).await);
                     };
 
@@ -895,8 +945,7 @@ impl Handler<RequestManager> for RequestManager {
                     &errors,
                 );
 
-                if let Err(e) =
-                    self.safe_ledger_event(ctx, event, ledger).await
+                if let Err(e) = self.safe_ledger_event(ctx, event, ledger).await
                 {
                     return Err(emit_fail(ctx, e).await);
                 }
@@ -904,7 +953,9 @@ impl Handler<RequestManager> for RequestManager {
             RequestManagerMessage::Fact => {
                 if let RequestManagerState::Starting = self.state {
                 } else {
-                    let e = ActorError::FunctionalFail("Invalid request state".to_owned());
+                    let e = ActorError::FunctionalFail(
+                        "Invalid request state".to_owned(),
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -915,7 +966,9 @@ impl Handler<RequestManager> for RequestManager {
             RequestManagerMessage::Other => {
                 if let RequestManagerState::Starting = self.state {
                 } else {
-                    let e = ActorError::FunctionalFail("Invalid request state".to_owned());
+                    let e = ActorError::FunctionalFail(
+                        "Invalid request state".to_owned(),
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -955,7 +1008,7 @@ impl Handler<RequestManager> for RequestManager {
 
         if let Err(e) = ctx.publish_event(event).await {};
     }
-    
+
     async fn on_child_fault(
         &mut self,
         error: ActorError,

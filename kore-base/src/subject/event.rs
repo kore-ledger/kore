@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
 use crate::{
-    model::{common::{emit_fail, verify_protocols_state}, event::ProtocolsSignatures},
+    model::{
+        common::{emit_fail, verify_protocols_state},
+        event::ProtocolsSignatures,
+    },
     EventRequestType,
 };
 use actor::{
@@ -101,7 +104,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
             LedgerEventMessage::UpdateLastEvent { event } => {
                 if let Some(last_event) = self.last_event.clone() {
                     if last_event.content.sn >= event.content.sn {
-                        return Err(ActorError::Functional("An attempt was made to update the event ledger with an event prior to the one already saved.".to_owned()))
+                        return Err(ActorError::Functional("An attempt was made to update the event ledger with an event prior to the one already saved.".to_owned()));
                     }
                 };
 
@@ -115,7 +118,9 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     event.content.vali_success,
                 ) {
                     Ok(is_ok) => is_ok,
-                    Err(e) => return Err(ActorError::Functional(e.to_string())),
+                    Err(e) => {
+                        return Err(ActorError::Functional(e.to_string()))
+                    }
                 };
 
                 if valid_event {
@@ -174,11 +179,11 @@ impl Handler<LedgerEvent> for LedgerEvent {
                                 .tell(ApproverMessage::MakeObsolete)
                                 .await
                             {
-                                return Err(emit_fail(ctx, e).await)
+                                return Err(emit_fail(ctx, e).await);
                             }
                         } else {
                             let e = ActorError::NotFound(approver_path);
-                            return Err(emit_fail(ctx, e).await)
+                            return Err(emit_fail(ctx, e).await);
                         }
                     };
                 }
@@ -190,7 +195,9 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     if let Some(last_event) = self.last_event.clone() {
                         last_event
                     } else {
-                        return Err(ActorError::Functional("Can not get last event".to_owned()));
+                        return Err(ActorError::Functional(
+                            "Can not get last event".to_owned(),
+                        ));
                     };
 
                 Ok(LedgerEventResponse::LastEvent(last_event))

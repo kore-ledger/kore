@@ -1,18 +1,30 @@
 use std::collections::{HashMap, HashSet};
 
-use actor::{Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler, SystemEvent};
+use actor::{
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
+    SystemEvent,
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
-    auth::{Auth, AuthMessage}, governance::{model::Roles, Quorum}, intermediary::Intermediary, model::SignTypesNode, node::relationship::{
+    auth::{Auth, AuthMessage},
+    governance::{model::Roles, Quorum},
+    intermediary::Intermediary,
+    model::SignTypesNode,
+    node::relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
-    }, request::manager::{RequestManager, RequestManagerMessage}, subject::{
+    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
         Metadata,
-    }, ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance, NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse, SubjectsTypes
+    },
+    ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
+    NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
+    Subject, SubjectMessage, SubjectResponse, SubjectsTypes,
 };
 
 use super::{event::ProtocolsSignatures, HashId, Namespace};
@@ -93,7 +105,10 @@ where
 
     match response {
         SubjectResponse::Governance(gov) => Ok(gov),
-        _ => Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Governance".to_owned())),
+        _ => Err(ActorError::UnexpectedResponse(
+            subject_path,
+            "SubjectResponse::Governance".to_owned(),
+        )),
     }
 }
 
@@ -116,7 +131,10 @@ where
 
     match response {
         SubjectResponse::Metadata(metadata) => Ok(metadata),
-        _ => Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Metadata".to_owned())),
+        _ => Err(ActorError::UnexpectedResponse(
+            subject_path,
+            "SubjectResponse::Metadata".to_owned(),
+        )),
     }
 }
 
@@ -140,9 +158,10 @@ where
 
     match node_response {
         NodeResponse::SignRequest(signature) => Ok(signature),
-        _ => {
-            Err(ActorError::UnexpectedResponse(node_path, "NodeResponse::SignRequest".to_owned()))
-        },
+        _ => Err(ActorError::UnexpectedResponse(
+            node_path,
+            "NodeResponse::SignRequest".to_owned(),
+        )),
     }
 }
 
@@ -169,7 +188,10 @@ where
     };
 
     if let LedgerEventResponse::LastEvent(_) = response {
-        return Err(ActorError::UnexpectedResponse(ledger_event_path, "LedgerEventResponse::Ok".to_owned()));
+        return Err(ActorError::UnexpectedResponse(
+            ledger_event_path,
+            "LedgerEventResponse::Ok".to_owned(),
+        ));
     }
 
     Ok(())
@@ -230,7 +252,10 @@ where
     if let RelationShipResponse::Count(quantity) = response {
         Ok(quantity)
     } else {
-        Err(ActorError::UnexpectedResponse(relation_path, "RelationShipResponse::Count".to_owned()))
+        Err(ActorError::UnexpectedResponse(
+            relation_path,
+            "RelationShipResponse::Count".to_owned(),
+        ))
     }
 }
 
@@ -269,7 +294,10 @@ where
 
     match response {
         RelationShipResponse::None => Ok(()),
-        _ => Err(ActorError::UnexpectedResponse(relation_path, "RelationShipResponse::None".to_owned())),
+        _ => Err(ActorError::UnexpectedResponse(
+            relation_path,
+            "RelationShipResponse::None".to_owned(),
+        )),
     }
 }
 
@@ -307,7 +335,10 @@ where
     if let RelationShipResponse::None = response {
         Ok(())
     } else {
-        Err(ActorError::UnexpectedResponse(relation_path, "RelationShipResponse::None".to_owned()))
+        Err(ActorError::UnexpectedResponse(
+            relation_path,
+            "RelationShipResponse::None".to_owned(),
+        ))
     }
 }
 
@@ -329,12 +360,14 @@ pub fn verify_protocols_state(
             Ok(val)
         }
         EventRequestType::Fact => {
-            let Some(eval) = eval else { 
-                return Err(Error::Protocols("In Fact even eval must be Some".to_owned()));
+            let Some(eval) = eval else {
+                return Err(Error::Protocols(
+                    "In Fact even eval must be Some".to_owned(),
+                ));
             };
 
             if approval_require {
-                 let Some(approve) = approve else {
+                let Some(approve) = approve else {
                     return Err(Error::Protocols("In Fact even if approval was required, approve must be Some".to_owned()));
                 };
                 Ok(eval && approve && val)
@@ -349,19 +382,19 @@ pub fn verify_protocols_state(
     }
 }
 
-
 pub async fn get_signers_quorum_gov_version<A>(
     ctx: &mut ActorContext<A>,
     governance: &str,
     schema_id: &str,
     namespace: Namespace,
-    role: Roles
-) -> Result<(HashSet<KeyIdentifier>, Quorum, u64), ActorError> 
-where 
+    role: Roles,
+) -> Result<(HashSet<KeyIdentifier>, Quorum, u64), ActorError>
+where
     A: Actor + Handler<A>,
 {
     let gov = get_gov(ctx, governance).await?;
-    let (signers, quorum) = gov.get_quorum_and_signers(role, schema_id, namespace)?;
+    let (signers, quorum) =
+        gov.get_quorum_and_signers(role, schema_id, namespace)?;
     Ok((signers, quorum, gov.version))
 }
 
@@ -378,21 +411,27 @@ where
     error
 }
 
-pub async fn try_to_update_schema<A>(ctx: &mut ActorContext<A>, subject_id: DigestIdentifier) -> Result<(), ActorError> 
-where 
+pub async fn try_to_update_schema<A>(
+    ctx: &mut ActorContext<A>,
+    subject_id: DigestIdentifier,
+) -> Result<(), ActorError>
+where
     A: Actor + Handler<A>,
 {
-        let auth_path = ActorPath::from("/user/node/auth");
-        let auth_actor: Option<ActorRef<Auth>> = ctx.system().get_actor(&auth_path).await;
+    let auth_path = ActorPath::from("/user/node/auth");
+    let auth_actor: Option<ActorRef<Auth>> =
+        ctx.system().get_actor(&auth_path).await;
 
-        if let Some(auth_actor) = auth_actor {
-            if let Err(e) = auth_actor.tell(AuthMessage::Update { subject_id }).await {
-                return Err(e);
-            }
-        } else {
-            return Err(ActorError::NotFound(auth_path));
+    if let Some(auth_actor) = auth_actor {
+        if let Err(e) =
+            auth_actor.tell(AuthMessage::Update { subject_id }).await
+        {
+            return Err(e);
         }
-    
+    } else {
+        return Err(ActorError::NotFound(auth_path));
+    }
+
     Ok(())
 }
 
@@ -467,22 +506,31 @@ pub fn generate_linker(
     Ok(linker)
 }
 
-pub async fn try_to_update<A>(vec: Vec<ProtocolsSignatures>, ctx: &mut ActorContext<A>, subject_id: DigestIdentifier) -> Result<(), ActorError> 
-where 
+pub async fn try_to_update<A>(
+    vec: Vec<ProtocolsSignatures>,
+    ctx: &mut ActorContext<A>,
+    subject_id: DigestIdentifier,
+) -> Result<(), ActorError>
+where
     A: Actor + Handler<A>,
 {
-    let all_time_out  = vec.iter().all(|x| if let ProtocolsSignatures::TimeOut(_) = x {
-        true
-    } else {
-        false
+    let all_time_out = vec.iter().all(|x| {
+        if let ProtocolsSignatures::TimeOut(_) = x {
+            true
+        } else {
+            false
+        }
     });
 
     if all_time_out {
         let auth_path = ActorPath::from("/user/node/auth");
-        let auth_actor: Option<ActorRef<Auth>> = ctx.system().get_actor(&auth_path).await;
+        let auth_actor: Option<ActorRef<Auth>> =
+            ctx.system().get_actor(&auth_path).await;
 
         if let Some(auth_actor) = auth_actor {
-            if let Err(e) = auth_actor.tell(AuthMessage::Update { subject_id }).await {
+            if let Err(e) =
+                auth_actor.tell(AuthMessage::Update { subject_id }).await
+            {
                 return Err(e);
             }
         } else {
@@ -492,16 +540,18 @@ where
     Ok(())
 }
 
-pub async fn check_request_owner<A, T>(ctx: &mut ActorContext<A>, subject_id: &str, owner: &str, req: Signed<T>) -> Result<(), ActorError>
-where 
+pub async fn check_request_owner<A, T>(
+    ctx: &mut ActorContext<A>,
+    subject_id: &str,
+    owner: &str,
+    req: Signed<T>,
+) -> Result<(), ActorError>
+where
     A: Actor + Handler<A>,
-    T: BorshSerialize + BorshDeserialize + Clone + HashId
+    T: BorshSerialize + BorshDeserialize + Clone + HashId,
 {
     // Aquí hay que comprobar que el owner del subject es el que envía la req.
-    let subject_path = ActorPath::from(format!(
-        "/user/node/{}",
-        subject_id
-    ));
+    let subject_path = ActorPath::from(format!("/user/node/{}", subject_id));
     let subject_actor: Option<ActorRef<Subject>> =
         ctx.system().get_actor(&subject_path).await;
 
@@ -509,23 +559,31 @@ where
     let response = if let Some(subject_actor) = subject_actor {
         subject_actor.ask(SubjectMessage::GetOwner).await?
     } else {
-        return Err(ActorError::NotFound(subject_path))
+        return Err(ActorError::NotFound(subject_path));
     };
 
     let subject_owner = match response {
         SubjectResponse::Owner(owner) => owner,
         _ => {
-            return Err(ActorError::UnexpectedResponse(subject_path, "SubjectResponse::Owner".to_owned()))
-        },
+            return Err(ActorError::UnexpectedResponse(
+                subject_path,
+                "SubjectResponse::Owner".to_owned(),
+            ))
+        }
     };
 
     if subject_owner.to_string() != owner {
         // TODO ver si tengo la última version de la gov.
-        return Err(ActorError::Functional("Evaluation req signer and owner are not the same".to_owned()));
+        return Err(ActorError::Functional(
+            "Evaluation req signer and owner are not the same".to_owned(),
+        ));
     }
 
     if let Err(e) = req.verify() {
-        return Err(ActorError::Functional(format!("Can not verify signature: {}", e.to_string())));
+        return Err(ActorError::Functional(format!(
+            "Can not verify signature: {}",
+            e.to_string()
+        )));
     }
 
     Ok(())
@@ -539,9 +597,12 @@ pub struct UpdateData {
     pub other_node: KeyIdentifier,
 }
 
-pub async fn update_ledger_network<A>(ctx: &mut ActorContext<A>, data: UpdateData) -> Result<(), ActorError> 
-where 
-    A: Actor + Handler<A>
+pub async fn update_ledger_network<A>(
+    ctx: &mut ActorContext<A>,
+    data: UpdateData,
+) -> Result<(), ActorError>
+where
+    A: Actor + Handler<A>,
 {
     let subject_string = data.subject_id.to_string();
     let request = ActorMessage::DistributionLedgerReq {
@@ -554,15 +615,11 @@ where
         reciver: data.other_node,
         sender: data.our_node,
         request_id: String::default(),
-        reciver_actor: format!(
-            "/user/node/{}/distributor",
-            subject_string
-        ),
+        reciver_actor: format!("/user/node/{}/distributor", subject_string),
         schema: "governance".to_string(),
     };
 
-    let helper: Option<Intermediary> =
-        ctx.system().get_helper("network").await;
+    let helper: Option<Intermediary> = ctx.system().get_helper("network").await;
 
     let Some(mut helper) = helper else {
         let e = ActorError::NotHelper("network".to_owned());
@@ -570,14 +627,12 @@ where
     };
 
     if let Err(e) = helper
-        .send_command(
-            network::CommandHelper::SendMessage {
-                message: NetworkMessage {
-                    info,
-                    message: request,
-                },
+        .send_command(network::CommandHelper::SendMessage {
+            message: NetworkMessage {
+                info,
+                message: request,
             },
-        )
+        })
         .await
     {
         return Err(e);
@@ -586,10 +641,12 @@ where
     Ok(())
 }
 
-
-pub async fn update_ledger_local<A>(ctx: &mut ActorContext<A>, data: UpdateData) -> Result<(), ActorError> 
-where 
-    A: Actor + Handler<A>
+pub async fn update_ledger_local<A>(
+    ctx: &mut ActorContext<A>,
+    data: UpdateData,
+) -> Result<(), ActorError>
+where
+    A: Actor + Handler<A>,
 {
     let subject_string = data.subject_id.to_string();
     let request = ActorMessage::DistributionLedgerReq {
@@ -602,15 +659,11 @@ where
         reciver: data.other_node,
         sender: data.our_node,
         request_id: String::default(),
-        reciver_actor: format!(
-            "/user/node/{}/distributor",
-            subject_string
-        ),
+        reciver_actor: format!("/user/node/{}/distributor", subject_string),
         schema: "governance".to_string(),
     };
 
-    let helper: Option<Intermediary> =
-        ctx.system().get_helper("network").await;
+    let helper: Option<Intermediary> = ctx.system().get_helper("network").await;
 
     let Some(mut helper) = helper else {
         let e = ActorError::NotHelper("network".to_owned());
@@ -618,14 +671,12 @@ where
     };
 
     if let Err(e) = helper
-        .send_command(
-            network::CommandHelper::SendMessage {
-                message: NetworkMessage {
-                    info,
-                    message: request,
-                },
+        .send_command(network::CommandHelper::SendMessage {
+            message: NetworkMessage {
+                info,
+                message: request,
             },
-        )
+        })
         .await
     {
         return Err(e);
@@ -636,15 +687,13 @@ where
 
 pub async fn get_last_event<A>(
     ctx: &mut ActorContext<A>,
-    subject_id: &str
-) -> Result<Signed<KoreEvent>, ActorError> 
+    subject_id: &str,
+) -> Result<Signed<KoreEvent>, ActorError>
 where
-    A: Actor + Handler<A>
+    A: Actor + Handler<A>,
 {
-    let ledger_event_path = ActorPath::from(format!(
-        "/user/node/{}/ledger_event",
-        subject_id
-    ));
+    let ledger_event_path =
+        ActorPath::from(format!("/user/node/{}/ledger_event", subject_id));
     let ledger_event_actor: Option<ActorRef<LedgerEvent>> =
         ctx.system().get_actor(&ledger_event_path).await;
 
@@ -658,7 +707,10 @@ where
 
     match response {
         LedgerEventResponse::LastEvent(event) => Ok(event),
-        _ => Err(ActorError::UnexpectedResponse(ledger_event_path, "LedgerEventResponse::LastEvent".to_owned())),
+        _ => Err(ActorError::UnexpectedResponse(
+            ledger_event_path,
+            "LedgerEventResponse::LastEvent".to_owned(),
+        )),
     }
 }
 
@@ -666,20 +718,17 @@ pub async fn send_reboot_to_req<A>(
     ctx: &mut ActorContext<A>,
     request_id: &str,
     governance_id: DigestIdentifier,
-) -> Result<(), ActorError> 
-where 
-    A: Actor + Handler<A>
+) -> Result<(), ActorError>
+where
+    A: Actor + Handler<A>,
 {
-    let req_path =
-        ActorPath::from(format!("/user/request/{}", request_id));
+    let req_path = ActorPath::from(format!("/user/request/{}", request_id));
     let req_actor: Option<ActorRef<RequestManager>> =
         ctx.system().get_actor(&req_path).await;
 
     if let Some(req_actor) = req_actor {
         if let Err(e) = req_actor
-            .tell(RequestManagerMessage::Reboot {
-                governance_id
-            })
+            .tell(RequestManagerMessage::Reboot { governance_id })
             .await
         {
             return Err(e);

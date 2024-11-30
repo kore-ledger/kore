@@ -15,10 +15,10 @@ mod helpers;
 mod model;
 mod node;
 mod query;
-mod update;
 mod request;
 mod subject;
 pub(crate) mod system;
+mod update;
 mod validation;
 
 use actor::{ActorPath, ActorRef, Sink};
@@ -164,7 +164,7 @@ impl Api {
             worker.service().sender().clone(),
             KeyDerivator::Ed25519,
             system.clone(),
-            token.clone()
+            token.clone(),
         );
 
         let peer_id = worker.local_peer_id().to_string();
@@ -214,7 +214,7 @@ impl Api {
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),
-            
+
             _ => Err(Error::RequestHandler(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -241,7 +241,7 @@ impl Api {
 
         let signature = match response {
             NodeResponse::SignRequest(signature) => signature,
-            
+
             _ => {
                 return Err(Error::Node(
                     "A response was received that was not the expected one"
@@ -270,7 +270,7 @@ impl Api {
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),
-            
+
             _ => Err(Error::RequestHandler(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -297,7 +297,7 @@ impl Api {
 
         match response {
             QueryResponse::RequestState(state) => Ok(state),
-            
+
             _ => Err(Error::Query(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -326,7 +326,7 @@ impl Api {
             QueryResponse::ApprovalState { request, state } => {
                 Ok((request, state))
             }
-            
+
             _ => Err(Error::Query(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -359,7 +359,7 @@ impl Api {
 
         match response {
             RequestHandlerResponse::Response(res) => Ok(res),
-            
+
             _ => Err(Error::RequestHandler(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -459,7 +459,7 @@ impl Api {
 
         match response {
             AuthResponse::None => Ok("Update in progress".to_owned()),
-            
+
             _ => Err(Error::Auth(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -540,7 +540,7 @@ impl Api {
             QueryResponse::Events { events, paginator } => {
                 Ok((events, paginator))
             }
-            
+
             _ => Err(Error::Query(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -593,7 +593,7 @@ impl Api {
 
         match response {
             QueryResponse::Signatures { signatures } => Ok(signatures),
-            
+
             _ => Err(Error::Query(
                 "A response was received that was not the expected one"
                     .to_owned(),

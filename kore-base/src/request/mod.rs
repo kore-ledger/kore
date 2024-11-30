@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response, Sink, SystemEvent
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    Event, Handler, Message, Response, Sink, SystemEvent,
 };
 use async_trait::async_trait;
 use identity::{
@@ -30,8 +31,8 @@ use crate::{
 };
 
 pub mod manager;
-pub mod state;
 pub mod reboot;
+pub mod state;
 
 #[derive(Debug, Clone)]
 pub struct RequestData {
@@ -73,7 +74,10 @@ impl RequestHandler {
 
         match response {
             NodeResponse::AmIOwner(owner) => Ok(owner),
-            _ => Err(ActorError::UnexpectedResponse(node_path, "NodeResponse::AmIOwner".to_owned())),
+            _ => Err(ActorError::UnexpectedResponse(
+                node_path,
+                "NodeResponse::AmIOwner".to_owned(),
+            )),
         }
     }
 
@@ -114,7 +118,9 @@ impl RequestHandler {
             DigestDerivator::Blake3_256
         };
 
-        let subject_id = subject_id.hash_id(derivator).map_err(|e| ActorError::Functional(e.to_string()))?;
+        let subject_id = subject_id
+            .hash_id(derivator)
+            .map_err(|e| ActorError::Functional(e.to_string()))?;
 
         let data = if create_req.schema_id == "governance" {
             CreateSubjectData {
@@ -128,7 +134,9 @@ impl RequestHandler {
         } else {
             let governance =
                 get_gov(ctx, &create_req.governance_id.to_string()).await?;
-            let value = governance.get_init_state(&create_req.schema_id).map_err(|e| ActorError::Functional(e.to_string()))?;
+            let value = governance
+                .get_init_state(&create_req.schema_id)
+                .map_err(|e| ActorError::Functional(e.to_string()))?;
 
             CreateSubjectData {
                 keys,
@@ -154,7 +162,10 @@ impl RequestHandler {
 
         match response {
             NodeResponse::SonWasCreated => Ok(data.subject_id),
-            _ => Err(ActorError::UnexpectedResponse(node_path, "NodeResponse::SonWasCreated".to_owned())),
+            _ => Err(ActorError::UnexpectedResponse(
+                node_path,
+                "NodeResponse::SonWasCreated".to_owned(),
+            )),
         }
     }
 
@@ -205,7 +216,7 @@ impl Message for RequestHandlerMessage {}
 pub enum RequestHandlerResponse {
     Ok(RequestData),
     Response(String),
-    None
+    None,
 }
 
 impl Response for RequestHandlerResponse {}
@@ -246,7 +257,7 @@ impl Actor for RequestHandler {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         self.init_store("request", None, false, ctx).await?;
-        
+
         let Some(ext_db): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
@@ -254,16 +265,23 @@ impl Actor for RequestHandler {
         };
 
         for (subject_id, (request_id, request)) in self.handling.clone() {
-            let request_manager =
-                RequestManager::new(self.node_key.clone(), request_id.clone(), subject_id, request);
-            let request_manager_actor = ctx.create_child(&request_id, request_manager).await?;
+            let request_manager = RequestManager::new(
+                self.node_key.clone(),
+                request_id.clone(),
+                subject_id,
+                request,
+            );
+            let request_manager_actor =
+                ctx.create_child(&request_id, request_manager).await?;
             let sink = Sink::new(
                 request_manager_actor.subscribe(),
                 ext_db.get_request_manager(),
             );
             ctx.system().run_sink(sink).await;
 
-            request_manager_actor.tell(RequestManagerMessage::Run).await?;
+            request_manager_actor
+                .tell(RequestManagerMessage::Run)
+                .await?;
         }
 
         Ok(())
@@ -294,9 +312,8 @@ impl Handler<RequestHandler> for RequestHandler {
                     "RespondedAccepted" | "RespondedRejected" => {}
                     _ => {
                         return Err(ActorError::Functional(
-                                "Invalid Response".to_owned(),
-                            ),
-                        )
+                            "Invalid Response".to_owned(),
+                        ))
                     }
                 };
 
@@ -304,10 +321,8 @@ impl Handler<RequestHandler> for RequestHandler {
                     "/user/node/{}/approver",
                     subject_id
                 ));
-                let approver_actor: Option<ActorRef<Approver>> = ctx
-                    .system()
-                    .get_actor(&approver_path)
-                    .await;
+                let approver_actor: Option<ActorRef<Approver>> =
+                    ctx.system().get_actor(&approver_path).await;
 
                 if let Some(approver_actor) = approver_actor {
                     if let Err(e) = approver_actor
@@ -331,7 +346,10 @@ impl Handler<RequestHandler> for RequestHandler {
             }
             RequestHandlerMessage::NewRequest { request } => {
                 if let Err(e) = request.verify() {
-                    return Err(ActorError::Functional(format!("Can not verify request signature {}", e)));
+                    return Err(ActorError::Functional(format!(
+                        "Can not verify request signature {}",
+                        e
+                    )));
                 };
 
                 let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
@@ -346,10 +364,9 @@ impl Handler<RequestHandler> for RequestHandler {
                         // verificar que el firmante sea el nodo.
                         if request.signature.signer != self.node_key {
                             return Err(ActorError::Functional(
-                                    "Only the node can sign creation events."
-                                        .to_owned(),
-                                ),
-                            );
+                                "Only the node can sign creation events."
+                                    .to_owned(),
+                            ));
                         }
 
                         if create_request.schema_id == "governance" {
@@ -392,7 +409,15 @@ impl Handler<RequestHandler> for RequestHandler {
                             Err(e) => return Err(ActorError::Functional(format!("An error has occurred and the subject could not be created: {}", e)))
                         };
 
-                        let request_id = request.hash_id(derivator).map_err(|e| ActorError::Functional(format!("Can not obtain request hash id: {}", e)))?.to_string();
+                        let request_id = request
+                            .hash_id(derivator)
+                            .map_err(|e| {
+                                ActorError::Functional(format!(
+                                    "Can not obtain request hash id: {}",
+                                    e
+                                ))
+                            })?
+                            .to_string();
 
                         self.on_event(
                             RequestHandlerEvent::EventToQueue {
@@ -410,7 +435,9 @@ impl Handler<RequestHandler> for RequestHandler {
                         )
                         .await
                         {
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            ctx.system()
+                                .send_event(SystemEvent::StopSystem)
+                                .await;
                             return Err(e);
                         }
 
@@ -423,30 +450,26 @@ impl Handler<RequestHandler> for RequestHandler {
                     EventRequest::Transfer(transfer_request) => {
                         if request.signature.signer != self.node_key {
                             return Err(ActorError::Functional(
-                                    "Only the node can sign creation events."
-                                        .to_owned(),
-                                ),
-                            );
+                                "Only the node can sign creation events."
+                                    .to_owned(),
+                            ));
                         }
                         transfer_request.subject_id
                     }
                     EventRequest::Confirm(confirm_request) => {
                         if request.signature.signer != self.node_key {
                             return Err(ActorError::Functional(
-                                    "Only the node can sign confirm events."
-                                        .to_owned(),
-                                ),
-                            );
+                                "Only the node can sign confirm events."
+                                    .to_owned(),
+                            ));
                         }
                         confirm_request.subject_id
                     }
                     EventRequest::EOL(eol_request) => {
                         if request.signature.signer != self.node_key {
                             return Err(ActorError::Functional(
-                                    "Only the node can sign eol events."
-                                        .to_owned(),
-                                ),
-                            );
+                                "Only the node can sign eol events.".to_owned(),
+                            ));
                         }
                         eol_request.subject_id
                     }
@@ -454,9 +477,8 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 if subject_id.is_empty() {
                     return Err(ActorError::Functional(
-                            "Subject_id cannot be empty.".to_owned(),
-                        ),
-                    );
+                        "Subject_id cannot be empty.".to_owned(),
+                    ));
                 }
 
                 // Primero check que seamos el owner.
@@ -467,10 +489,9 @@ impl Handler<RequestHandler> for RequestHandler {
                         Ok(owner) => owner,
                         Err(e) => {
                             return Err(ActorError::Functional(format!(
-                                    "An error has occurred: {}",
-                                    e
-                                )),
-                            )
+                                "An error has occurred: {}",
+                                e
+                            )))
                         }
                     };
 
@@ -484,16 +505,24 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 }
 
-                let metadata = get_metadata(ctx, &subject_id.to_string()).await?;
+                let metadata =
+                    get_metadata(ctx, &subject_id.to_string()).await?;
 
                 if !metadata.active {
                     return Err(ActorError::Functional(
-                            "The subject is no longer active.".to_owned(),
-                        ),
-                    );
+                        "The subject is no longer active.".to_owned(),
+                    ));
                 }
 
-                let request_id = request.hash_id(derivator).map_err(|e| ActorError::Functional(format!("Can not obtain request id hash id: {}", e)))?.to_string();
+                let request_id = request
+                    .hash_id(derivator)
+                    .map_err(|e| {
+                        ActorError::Functional(format!(
+                            "Can not obtain request id hash id: {}",
+                            e
+                        ))
+                    })?
+                    .to_string();
 
                 self.on_event(
                     RequestHandlerEvent::EventToQueue {
@@ -549,21 +578,25 @@ impl Handler<RequestHandler> for RequestHandler {
                     Ok(request_id) => request_id.to_string(),
                     Err(e) => {
                         // YA previamente se ha generado el request id, por lo que no debería haber problema
-                        let e = ActorError::Functional(format!("Can not obtain request id hash id: {}", e));
+                        let e = ActorError::Functional(format!(
+                            "Can not obtain request id hash id: {}",
+                            e
+                        ));
                         ctx.system().send_event(SystemEvent::StopSystem).await;
                         return Err(e);
-                    },
+                    }
                 };
 
-                let metadata =
-                    match get_metadata(ctx, &subject_id.to_string()).await {
-                        Ok(metadata) => metadata,
-                        Err(e) => {
-                            // YA previamente se ha obtenido la metadata, por lo que no debería haber problema
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
-                            return Err(e);
-                        },
-                    };
+                let metadata = match get_metadata(ctx, &subject_id.to_string())
+                    .await
+                {
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        // YA previamente se ha obtenido la metadata, por lo que no debería haber problema
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Err(e);
+                    }
+                };
 
                 if metadata.owner != event.signature.signer {
                     if let Err(e) = self
@@ -578,10 +611,9 @@ impl Handler<RequestHandler> for RequestHandler {
                 }
 
                 if !metadata.active {
-                    if let Err(e) =
-                        self
-                            .error_queue_handling(ctx, &request_id, &subject_id)
-                            .await
+                    if let Err(e) = self
+                        .error_queue_handling(ctx, &request_id, &subject_id)
+                        .await
                     {
                         ctx.system().send_event(SystemEvent::StopSystem).await;
                         return Err(e);
@@ -596,8 +628,7 @@ impl Handler<RequestHandler> for RequestHandler {
                         return Err(ActorError::Functional(format!(
                             "It has not been possible to obtain governance: {}",
                             e
-                        )),
-                        )
+                        )))
                     }
                 };
 
@@ -628,7 +659,11 @@ impl Handler<RequestHandler> for RequestHandler {
                                             )
                                             .await
                                         {
-                                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                                            ctx.system()
+                                                .send_event(
+                                                    SystemEvent::StopSystem,
+                                                )
+                                                .await;
                                             return Err(e);
                                         }
 
@@ -647,7 +682,9 @@ impl Handler<RequestHandler> for RequestHandler {
                                         )
                                         .await
                                     {
-                                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                                        ctx.system()
+                                            .send_event(SystemEvent::StopSystem)
+                                            .await;
                                         return Err(e);
                                     }
 
@@ -662,7 +699,9 @@ impl Handler<RequestHandler> for RequestHandler {
                                     )
                                     .await
                                 {
-                                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                                    ctx.system()
+                                        .send_event(SystemEvent::StopSystem)
+                                        .await;
                                     return Err(e);
                                 }
 
@@ -694,7 +733,9 @@ impl Handler<RequestHandler> for RequestHandler {
                                 )
                                 .await
                             {
-                                ctx.system().send_event(SystemEvent::StopSystem).await;
+                                ctx.system()
+                                    .send_event(SystemEvent::StopSystem)
+                                    .await;
                                 return Err(e);
                             }
 
@@ -719,8 +760,8 @@ impl Handler<RequestHandler> for RequestHandler {
                     Ok(request_actor) => request_actor,
                     Err(e) => {
                         ctx.system().send_event(SystemEvent::StopSystem).await;
-                        return Err(e)
-                    },
+                        return Err(e);
+                    }
                 };
 
                 let Some(ext_db): Option<ExternalDB> =

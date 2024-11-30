@@ -2,18 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Handler,
-    Message, Response, SystemEvent,
+    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
+    Response, SystemEvent,
 };
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 
-use crate::
-    helpers::db::{
-        EventDB, ExternalDB, Paginator, Querys, SignaturesDB, SubjectDB,
-    }
-;
+use crate::helpers::db::{
+    EventDB, ExternalDB, Paginator, Querys, SignaturesDB, SubjectDB,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Query {
@@ -108,11 +106,17 @@ impl Handler<Query> for Query {
 
         match msg {
             QueryMessage::GetSignatures { subject_id } => {
-                let signatures = helper.get_signatures(&subject_id).await.map_err(|e| ActorError::Functional(e.to_string()))?;
+                let signatures = helper
+                    .get_signatures(&subject_id)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
                 Ok(QueryResponse::Signatures { signatures })
             }
             QueryMessage::GetSubject { subject_id } => {
-                let subject = helper.get_subject_state(&subject_id).await.map_err(|e| ActorError::Functional(e.to_string()))?;
+                let subject = helper
+                    .get_subject_state(&subject_id)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
                 Ok(QueryResponse::Subject { subject })
             }
             QueryMessage::GetEvents {
@@ -120,15 +124,24 @@ impl Handler<Query> for Query {
                 quantity,
                 page,
             } => {
-                let (events, paginator) = helper.get_events(&subject_id, quantity, page).await.map_err(|e| ActorError::Functional(e.to_string()))?;
+                let (events, paginator) = helper
+                    .get_events(&subject_id, quantity, page)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
                 Ok(QueryResponse::Events { events, paginator })
             }
             QueryMessage::GetRequestState { request_id } => {
-                let res =  helper.get_request_id_status(&request_id).await.map_err(|e| ActorError::Functional(e.to_string()))?;
+                let res = helper
+                    .get_request_id_status(&request_id)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
                 Ok(QueryResponse::RequestState(res))
             }
             QueryMessage::GetApproval { subject_id } => {
-                let (request, state) = helper.get_approve_req(&subject_id).await.map_err(|e| ActorError::Functional(e.to_string()))?;
+                let (request, state) = helper
+                    .get_approve_req(&subject_id)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
                 Ok(QueryResponse::ApprovalState { request, state })
             }
         }

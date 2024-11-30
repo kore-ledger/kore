@@ -76,8 +76,9 @@ impl Evaluation {
     }
 
     async fn end_evaluators(&self, ctx: &mut ActorContext<Evaluation>) {
-        for evaluator  in self.evaluators.clone() {
-            let child: Option<ActorRef<Evaluator>> = ctx.get_child(&evaluator.to_string()).await;
+        for evaluator in self.evaluators.clone() {
+            let child: Option<ActorRef<Evaluator>> =
+                ctx.get_child(&evaluator.to_string()).await;
             if let Some(child) = child {
                 child.stop().await;
             }
