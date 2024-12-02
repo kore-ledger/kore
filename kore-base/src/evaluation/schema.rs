@@ -9,7 +9,7 @@ use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    model::common::{emit_fail, try_to_update_schema},
+    model::common::{emit_fail, try_to_update_subject},
     Signed,
 };
 
@@ -65,9 +65,9 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 info,
             } => {
                 if self.gov_version < evaluation_req.content.gov_version {
-                    if let Err(e) = try_to_update_schema(
+                    if let Err(e) = try_to_update_subject(
                         ctx,
-                        evaluation_req.content.context.subject_id.clone(),
+                        evaluation_req.content.context.governance_id.clone(),
                     )
                     .await
                     {

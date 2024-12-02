@@ -131,19 +131,22 @@ impl Runner {
                         .map_err(|e| Error::Runner(e.to_string()))?,
                 );
 
-                {
+
+
+                let schema = {
                     if let Some(lock) = GOVERNANCE.get() {
-                        let schema = lock.read().await;
-                        if !schema.fast_validate(&final_state.0) {
-                            return Err(Error::Runner(
-                                "Fail in JSON Schema validation".to_owned(),
-                            ));
-                        }
+                        lock.read().await
                     } else {
                         return Err(Error::Runner(
                             "Can not get governance JSOn Schema".to_owned(),
                         ));
-                    };
+                    }
+                };
+
+                if !schema.fast_validate(&final_state.0) {
+                    return Err(Error::Runner(
+                        "Fail in JSON Schema validation".to_owned(),
+                    ));
                 }
 
                 Ok((

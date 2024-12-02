@@ -12,18 +12,12 @@ use register::Register;
 use relationship::RelationShip;
 
 use crate::{
-    auth::{Auth, AuthMessage, AuthResponse},
-    db::Storable,
-    distribution::distributor::Distributor,
-    helpers::db::ExternalDB,
-    model::{
+    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, helpers::db::ExternalDB, model::{
         common::emit_fail,
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    },
-    subject::CreateSubjectData,
-    Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR,
+    }, subject::CreateSubjectData, Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -157,10 +151,18 @@ impl Node {
             .map_err(|e| Error::Signature(format!("{}", e)))
     }
 
-    async fn build_compilation_dir() -> Result<(), Error> {
-        if !Path::new("contracts").exists() {
-            fs::create_dir("contracts").await.map_err(|e| {
-                Error::Node(format!("Can not create contracts dir: {}", e))
+    async fn build_compilation_dir(ctx: &mut ActorContext<Self>) -> Result<(), ActorError> {
+        let Some(config): Option<Config> =
+                ctx.system().get_helper("config").await
+            else {
+                return Err(ActorError::NotHelper("config".to_owned()));
+            };
+        
+        let dir = format!("{}/contracts", config.contracts_dir);
+        
+        if !Path::new(&dir).exists() {
+            fs::create_dir_all(&dir).await.map_err(|e| {
+                ActorError::FunctionalFail(format!("Can not create contracts dir: {}", e))
             })?;
         }
         Ok(())
@@ -251,9 +253,7 @@ impl Actor for Node {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        if let Err(e) = Self::build_compilation_dir().await {
-            return Err(ActorError::FunctionalFail(e.to_string()));
-        };
+        Self::build_compilation_dir(ctx).await?;
 
         // Start store
         debug!("Creating Node store");

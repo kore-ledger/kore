@@ -18,7 +18,7 @@ use crate::{
         schema::{EvaluationSchema, EvaluationSchemaMessage},
         Evaluation,
     },
-    governance::{model::Roles, Schema},
+    governance::{init::init_state, model::Roles, Schema},
     helpers::db::ExternalDB,
     model::{
         common::{
@@ -197,14 +197,10 @@ impl Subject {
         if let EventRequest::Create(request) =
             &ledger.content.event_request.content
         {
-            let properties = if let LedgerValue::Patch(patch) =
-                ledger.content.value.clone()
-            {
-                patch
+            let properties = if request.schema_id == "governance" {
+                init_state(&ledger.content.event_request.signature.signer.to_string())
             } else {
-                return Err(Error::Subject(
-                    "Invalid create event request".to_string(),
-                ));
+                todo!()
             };
 
             let subject = Subject {
@@ -725,6 +721,12 @@ impl Subject {
         schemas: Vec<Schema>,
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
+        let Some(config): Option<Config> =
+        ctx.system().get_helper("config").await
+    else {
+        return Err(ActorError::NotHelper("config".to_owned()));
+    };
+
         for schema in schemas {
             let actor = Compiler::default();
             let actor = ctx
@@ -734,9 +736,10 @@ impl Subject {
                 .await?;
             actor
                 .tell(CompilerMessage::Compile {
+                    contract_name: format!("{}_{}", subject_id, schema.id),
                     contract: schema.contract.raw.clone(),
                     initial_value: schema.initial_value.clone(),
-                    contract_path: format!("{}_{}", subject_id, schema.id),
+                    contract_path: format!("{}/contracts/{}_{}", config.contracts_dir, subject_id, schema.id),
                 })
                 .await?;
         }
@@ -770,15 +773,22 @@ impl Subject {
         schemas: Vec<Schema>,
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
+        let Some(config): Option<Config> =
+        ctx.system().get_helper("config").await
+    else {
+        return Err(ActorError::NotHelper("config".to_owned()));
+    };
+
         for schema in schemas {
             let actor: Option<ActorRef<Compiler>> =
                 ctx.get_child(&format!("{}_compiler", schema.id)).await;
             if let Some(actor) = actor {
                 actor
                     .tell(CompilerMessage::Compile {
+                        contract_name: format!("{}_{}", subject_id, schema.id),
                         contract: schema.contract.raw.clone(),
                         initial_value: schema.initial_value.clone(),
-                        contract_path: format!("{}_{}", subject_id, schema.id),
+                        contract_path: format!("{}/contracts/{}_{}", config.contracts_dir, subject_id, schema.id),
                     })
                     .await?;
             } else {

@@ -60,6 +60,12 @@ pub enum EventRequest {
 }
 
 impl EventRequest {
+    pub fn is_create_event(&self) ->  bool {
+        match self {
+            EventRequest::Create(_create_request) => true,
+            _ => false,
+        }
+    }
     pub fn is_fact_event(&self) -> bool {
         match self {
             EventRequest::Fact(_fact_request) => true,

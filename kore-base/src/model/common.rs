@@ -411,7 +411,7 @@ where
     error
 }
 
-pub async fn try_to_update_schema<A>(
+pub async fn try_to_update_subject<A>(
     ctx: &mut ActorContext<A>,
     subject_id: DigestIdentifier,
 ) -> Result<(), ActorError>

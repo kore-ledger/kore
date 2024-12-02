@@ -16,7 +16,7 @@ use wasmtime::{Caller, Config, Engine, ExternType, Linker, Module, Store};
 
 use crate::{
     governance::json_schema::JsonSchema,
-    model::common::{generate_linker, MemoryManager},
+    model::common::{emit_fail, generate_linker, MemoryManager},
     Error, HashId, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR,
 };
 
@@ -71,8 +71,8 @@ impl Compiler {
             )));
         };
 
-        if !Path::new(&format!("contracts/{}/src", contract_path)).exists() {
-            fs::create_dir_all(&format!("contracts/{}/src", contract_path))
+        if !Path::new(&format!("{}/src", contract_path)).exists() {
+            fs::create_dir_all(&format!("{}/src", contract_path))
                 .await
                 .map_err(|e| {
                     Error::Node(format!("Can not create src dir: {}", e))
@@ -81,20 +81,20 @@ impl Compiler {
 
         let toml: String = Self::compilation_toml();
         // We write cargo.toml
-        fs::write(format!("contracts/{}/Cargo.toml", contract_path), toml)
+        fs::write(format!("{}/Cargo.toml", contract_path), toml)
             .await
             .map_err(|e| {
                 Error::Node(format!("Can not create Cargo.toml file: {}", e))
             })?;
 
         fs::write(
-            format!("contracts/{}/src/lib.rs", contract_path),
+            format!("{}/src/lib.rs", contract_path),
             decode_base64,
         )
         .await
         .map_err(|e| {
             Error::Compiler(format!(
-                "Can not create contracts/{}/src/lib.rs file: {}",
+                "Can not create {}/src/lib.rs file: {}",
                 contract_path, e
             ))
         })?;
@@ -103,7 +103,7 @@ impl Compiler {
         let status = Command::new("cargo")
             .arg("build")
             .arg(format!(
-                "--manifest-path=contracts/{}/Cargo.toml",
+                "--manifest-path={}/Cargo.toml",
                 contract_path
             ))
             .arg("--target")
@@ -113,7 +113,7 @@ impl Compiler {
             // Does not show stdout. Generates child process and waits
             .map_err(|e| {
                 Error::Compiler(format!(
-                    "Can not compile contract contracts/{}/src/lib.rs: {}",
+                    "Can not compile contract {}/src/lib.rs: {}",
                     contract_path, e
                 ))
             })?;
@@ -121,7 +121,7 @@ impl Compiler {
         // Is success
         if !status.status.success() {
             return Err(Error::Compiler(format!(
-                "Can not compile contracts/{}/src/lib.rs",
+                "Can not compile {}/src/lib.rs",
                 contract_path
             )));
         }
@@ -135,7 +135,7 @@ impl Compiler {
     ) -> Result<Vec<u8>, Error> {
         // Read compile contract
         let file = fs::read(format!(
-            "contracts/{}/target/wasm32-unknown-unknown/release/contract.wasm",
+            "{}/target/wasm32-unknown-unknown/release/contract.wasm",
             contract_path
         ))
         .await
@@ -300,6 +300,7 @@ impl Compiler {
 pub enum CompilerMessage {
     Compile {
         contract: String,
+        contract_name: String,
         initial_value: Value,
         contract_path: String,
     },
@@ -330,6 +331,7 @@ impl Handler<Compiler> for Compiler {
         match msg {
             CompilerMessage::Compile {
                 contract,
+                contract_name,
                 contract_path,
                 initial_value,
             } => {
@@ -372,7 +374,7 @@ impl Handler<Compiler> for Compiler {
 
                     {
                         let mut contracts = CONTRACTS.write().await;
-                        contracts.insert(contract_path.clone(), contract);
+                        contracts.insert(contract_name.clone(), contract);
                     }
 
                     self.contract = contract_hash;

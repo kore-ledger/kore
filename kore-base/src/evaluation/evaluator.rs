@@ -4,20 +4,14 @@
 use std::time::Duration;
 
 use crate::{
-    evaluation::response::Response as EvalRes,
-    governance::Schema,
-    helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{
+    config::Config, evaluation::response::Response as EvalRes, governance::Schema, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
         common::{
             check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
             update_ledger_network, UpdateData,
         },
         network::{RetryNetwork, TimeOutResponse},
         HashId, SignTypesNode, TimeStamp,
-    },
-    subject::{self, SubjectMessage, SubjectResponse},
-    Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
-    DIGEST_DERIVATOR,
+    }, subject::{self, SubjectMessage, SubjectResponse}, Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR
 };
 
 use crate::helpers::network::ActorMessage;
@@ -90,6 +84,12 @@ impl Evaluator {
         schemas: Vec<Schema>,
         governance_id: &str,
     ) -> Result<(), ActorError> {
+        let Some(config): Option<Config> =
+        ctx.system().get_helper("config").await
+    else {
+        return Err(ActorError::NotHelper("config".to_owned()));
+    };
+    
         for id in ids {
             let schema = if let Some(schema) =
                 schemas.iter().find(|x| x.id.clone() == id.clone())
@@ -109,9 +109,10 @@ impl Evaluator {
             if let Some(compiler_actor) = compiler_actor {
                 compiler_actor
                     .ask(CompilerMessage::Compile {
+                        contract_name: format!("{}_{}", governance_id, id),
                         contract: schema.contract.raw.clone(),
                         initial_value: schema.initial_value.clone(),
-                        contract_path: format!("{}_{}", governance_id, id),
+                        contract_path: format!("{}/contracts/{}_{}", config.contracts_dir, governance_id, id),
                     })
                     .await?
             } else {
@@ -170,7 +171,11 @@ impl Evaluator {
         let contract: Contract = if is_governance {
             Contract::GovContract
         } else {
-            let contracts = CONTRACTS.read().await;
+
+            let contracts = {
+                CONTRACTS.read().await
+            };
+            
             if let Some(contract) = contracts.get(&format!(
                 "{}_{}",
                 governance_id, execute_contract.context.schema_id

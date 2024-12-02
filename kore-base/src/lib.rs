@@ -4,22 +4,22 @@
 pub mod config;
 pub mod error;
 
-mod approval;
-mod auth;
-mod db;
-mod distribution;
-mod evaluation;
-mod external_db;
-mod governance;
-mod helpers;
-mod model;
-mod node;
-mod query;
-mod request;
-mod subject;
+pub mod approval;
+pub mod auth;
+pub mod db;
+pub mod distribution;
+pub mod evaluation;
+pub mod external_db;
+pub mod governance;
+pub mod helpers;
+pub mod model;
+pub mod node;
+pub mod query;
+pub mod request;
+pub mod subject;
 pub(crate) mod system;
-mod update;
-mod validation;
+pub mod update;
+pub mod validation;
 
 use actor::{ActorPath, ActorRef, Sink};
 use approval::approver::ApprovalStateRes;
@@ -97,6 +97,7 @@ impl Api {
         let schema = JsonSchema::compile(&schema())?;
 
         if let Err(_e) = GOVERNANCE.set(RwLock::new(schema)) {
+            #[cfg(test)]
             return Err(Error::System("An error occurred with the governance schema, it could not be initialized globally".to_owned()));
         };
 
@@ -270,7 +271,6 @@ impl Api {
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),
-
             _ => Err(Error::RequestHandler(
                 "A response was received that was not the expected one"
                     .to_owned(),
