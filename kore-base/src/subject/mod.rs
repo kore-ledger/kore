@@ -1349,10 +1349,10 @@ impl Subject {
         events: &[Signed<Ledger>],
     ) -> Result<(), ActorError> {
         let our_key = self.get_node_key(ctx).await?;
+        let current_sn = self.sn;
 
         if self.governance_id.is_empty() {
             let current_owner = self.owner.clone();
-            let current_sn = self.sn;
             let current_properties = self.properties.clone();
 
             if let Err(e) = self.verify_new_ledger_events_gov(ctx, events).await
@@ -1638,7 +1638,6 @@ impl Subject {
             }
         } else {
             let current_owner = self.owner.clone();
-            let current_sn = self.sn;
 
             if let Err(e) =
                 self.verify_new_ledger_events_not_gov(ctx, events).await
@@ -1668,7 +1667,8 @@ impl Subject {
             }
         }
 
-        let sink_data: Option<ActorRef<SinkData>> =
+        if current_sn < self.sn || current_sn == 0{
+            let sink_data: Option<ActorRef<SinkData>> =
             ctx.get_child("sink_data").await;
         if let Some(sink_data) = sink_data {
             if let Err(e) = sink_data
@@ -1682,6 +1682,7 @@ impl Subject {
                 "{}/sink_data",
                 ctx.path()
             ))));
+        }
         }
 
         Ok(())

@@ -259,8 +259,37 @@ async fn test_governance_copy() {
 
     tokio::time::sleep(Duration::from_secs(2)).await;
     let response = node2
-        .get_subject(DigestIdentifier::from_str(&data.subject_id).unwrap())
+        .get_subject(subject_id.clone())
         .await
         .unwrap();
+
+    let response = node1
+    .get_subject(subject_id.clone())
+    .await
+    .unwrap();
+
+    let json = json!({
+        "ModOne": {
+            "data": 100,
+        }
+    });
+
+    let request = EventRequest::Fact(FactRequest {
+        subject_id: subject_id.clone(),
+        payload: ValueWrapper(json),
+    });
+
+    let data = node2.own_request(request).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let response = node2
+        .get_events(subject_id.clone(), None, None)
+        .await
+        .unwrap();
+    println!("{:?}", response);
+
+    let response = node1
+    .get_subject(subject_id.clone())
+    .await
+    .unwrap();
     println!("{:?}", response);
 }

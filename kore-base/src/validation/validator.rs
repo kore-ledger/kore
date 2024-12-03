@@ -132,7 +132,7 @@ impl Validator {
         ctx: &mut ActorContext<Validator>,
         governance_id: DigestIdentifier,
         gov_version: u64,
-        other_node: KeyIdentifier,
+        our_node: KeyIdentifier,
     ) -> Result<bool, ActorError> {
         let governance_string = governance_id.to_string();
         let governance = get_gov(ctx, &governance_string).await?;
@@ -148,8 +148,8 @@ impl Validator {
                     sn: metadata.sn,
                     gov_version: governance.version,
                     subject_id: governance_id,
-                    our_node: self.node.clone(),
-                    other_node,
+                    our_node,
+                    other_node: self.node.clone(),
                 };
                 update_ledger_network(ctx, data).await?;
                 let e = ActorError::Functional(
@@ -430,7 +430,8 @@ impl Handler<Validator> for Validator {
                     .await
                 {
                     Ok(retry) => retry,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
+                    Err(e) => {
+                        return Err(emit_fail(ctx, e).await)},
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
@@ -541,7 +542,7 @@ impl Handler<Validator> for Validator {
                         ctx,
                         validation_req.content.proof.governance_id.clone(),
                         validation_req.content.proof.governance_version,
-                        info.sender.clone(),
+                        info.reciver.clone(),
                     )
                     .await
                 {

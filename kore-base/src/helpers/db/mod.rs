@@ -46,6 +46,7 @@ pub struct EventDB {
     pub subject_id: String,
     pub sn: u64,
     pub data: String,
+    pub event_req: String,
     pub succes: String,
 }
 

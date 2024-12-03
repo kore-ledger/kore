@@ -127,7 +127,7 @@ impl Evaluator {
         ctx: &mut ActorContext<Evaluator>,
         governance_id: DigestIdentifier,
         gov_version: u64,
-        other_node: KeyIdentifier,
+        our_node: KeyIdentifier,
     ) -> Result<bool, ActorError> {
         let governance_string = governance_id.to_string();
         let governance = get_gov(ctx, &governance_string).await?;
@@ -143,8 +143,8 @@ impl Evaluator {
                     sn: metadata.sn,
                     gov_version: governance.version,
                     subject_id: governance_id,
-                    our_node: self.node.clone(),
-                    other_node,
+                    our_node: our_node,
+                    other_node: self.node.clone(),
                 };
                 update_ledger_network(ctx, data).await?;
                 let e = ActorError::Functional(
@@ -608,7 +608,7 @@ impl Handler<Evaluator> for Evaluator {
                         ctx,
                         governance_id.clone(),
                         evaluation_req.content.gov_version,
-                        info.sender.clone(),
+                        info.reciver.clone(),
                     )
                     .await
                 {

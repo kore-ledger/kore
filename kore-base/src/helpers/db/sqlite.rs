@@ -1,5 +1,6 @@
 use actor::{ActorRef, Subscriber};
 use async_trait::async_trait;
+use serde_json::json;
 use tokio_rusqlite::{params, Connection, OpenFlags, Result as SqliteError};
 use tracing::Event;
 
@@ -154,7 +155,8 @@ impl Querys for SqliteLocal {
                         subject_id: row.get(0)?,
                         sn: row.get(1)?,
                         data: row.get(2)?,
-                        succes: row.get(3)?,
+                        event_req: row.get(3)?,
+                        succes: row.get(4)?,
                     })
                 })?.map(|x| {
                     match x {
@@ -300,7 +302,7 @@ impl SqliteLocal {
             let sql = "CREATE TABLE IF NOT EXISTS validations (subject_id TEXT NOT NULL, validators TEXT NOT NULL, PRIMARY KEY (subject_id))";
             let _ = conn.execute(sql, ())?;
 
-            let sql = "CREATE TABLE IF NOT EXISTS events (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, data TEXT NOT NULL, succes TEXT NOT NULL, PRIMARY KEY (subject_id, sn))";
+            let sql = "CREATE TABLE IF NOT EXISTS events (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, data TEXT NOT NULL, event_req TEXT NOT NULL, succes TEXT NOT NULL, PRIMARY KEY (subject_id, sn))";
             let _ = conn.execute(sql, ())?;
 
             let sql = "CREATE TABLE IF NOT EXISTS subjects (subject_id TEXT NOT NULL, governance_id TEXT NOT NULL, genesis_gov_version INTEGER NOT NULL, namespace TEXT NOT NULL, schema_id TEXT NOT NULL, owner TEXT NOT NULL, creator TEXT NOT NULL, active TEXT NOT NULL, sn INTEGER NOT NULL, properties TEXT NOT NULL, PRIMARY KEY (subject_id))";
@@ -563,9 +565,24 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
     async fn notify(&self, event: Signed<Ledger>) {
         let subject_id = event.content.subject_id.to_string();
         let sn = event.content.sn;
-        let mut succes = "false".to_owned();
+        let succes ;
+        let Ok(event_req) = serde_json::to_string(&json!(event.content.event_request.content)) else {
+            let e = Error::ExtDB(
+                "Can not Serialize protocols_error as String"
+                    .to_owned(),
+            );
+            if let Err(e) =
+                self.manager.tell(DBManagerMessage::Error(e)).await
+            {
+                println!("{}", e);
+            }
+            return;
+        };
         let data = match event.content.value {
-            LedgerValue::Patch(value_wrapper) => value_wrapper.0.to_string(),
+            LedgerValue::Patch(value_wrapper) => {
+                succes = "true".to_owned();
+                value_wrapper.0.to_string()
+            },
             LedgerValue::Error(protocols_error) => {
                 let Ok(string) = serde_json::to_string(&protocols_error) else {
                     let e = Error::ExtDB(
@@ -579,7 +596,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
                     }
                     return;
                 };
-                succes = "true".to_owned();
+                succes = "false".to_owned();
                 string
             }
         };
@@ -588,7 +605,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
             .conn
             .call(move |conn| {
                 let _ =
-                    conn.execute("INSERT INTO events (subject_id, sn, data, succes) VALUES (?1, ?2, ?3, ?4)", params![subject_id, sn, data, succes])?;
+                    conn.execute("INSERT INTO events (subject_id, sn, data, event_req, succes) VALUES (?1, ?2, ?3, ?4, ?5)", params![subject_id, sn, data, event_req, succes])?;
 
                 Ok(())
             })

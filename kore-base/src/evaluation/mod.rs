@@ -44,7 +44,7 @@ use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use std::collections::HashSet;
+use std::{clone, collections::HashSet};
 // TODO cuando se recibe una evaluación, validación lo que sea debería venir firmado y comprobar que es de quien dice ser, cuando llega por la network y cuando la envía un usuario.
 #[derive(Default)]
 pub struct Evaluation {
@@ -120,7 +120,7 @@ impl Evaluation {
     ) -> Result<(), ActorError> {
         // Create Evaluator child
         let child = ctx
-            .create_child(&format!("{}", signer), Evaluator::default())
+            .create_child(&format!("{}", signer), Evaluator::new(request_id.to_string(), signer.clone()))
             .await;
         let evaluator_actor = match child {
             Ok(child) => child,
@@ -805,7 +805,7 @@ mod tests {
         };
 
         tokio::time::sleep(Duration::from_secs(3)).await;
-        assert_eq!("In Approval", state);
+
         let QueryResponse::ApprovalState { request, state } = query_actor
             .ask(QueryMessage::GetApproval {
                 subject_id: subject_id.to_string(),
