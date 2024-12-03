@@ -506,7 +506,7 @@ impl Handler<Validator> for Validator {
                 // Nos llegó una eval donde en la request se indica un sujeto pero en el info otro
                 // Posible ataque.
                 if info_subject_path
-                    != validation_req.content.proof.subject_id.to_string()
+                    != validation_req.content.proof.governance_id.to_string()
                 {
                     return Err(ActorError::Functional("We received an evaluation where the request indicates one subject but the info indicates another.".to_owned()));
                 }

@@ -102,7 +102,11 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
 
                 let evaluator_actor = match child {
                     Ok(child) => child,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
+                    Err(e) => if let ActorError::Exists(_) = e {
+                        return Ok(());
+                    } else {
+                        return Err(emit_fail(ctx, e).await)
+                    },
                 };
 
                 evaluator_actor

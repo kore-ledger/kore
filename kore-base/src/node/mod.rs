@@ -12,12 +12,12 @@ use register::Register;
 use relationship::RelationShip;
 
 use crate::{
-    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, helpers::db::ExternalDB, model::{
-        common::emit_fail,
+    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, governance::init::init_state, helpers::db::ExternalDB, model::{
+        common::{emit_fail, get_gov},
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    }, subject::CreateSubjectData, Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
+    }, subject::CreateSubjectData, Error, EventRequest, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -376,8 +376,18 @@ impl Handler<Node> for Node {
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
-                let subject = Subject::from_event(None, &ledger)
-                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                let subject = if let EventRequest::Create(create_event) = ledger.content.event_request.content.clone() {
+                    let properties = if create_event.schema_id == "governance" {
+                        init_state(&ledger.content.event_request.signature.signer.to_string())
+                    } else {
+                        let governance = get_gov(ctx, &create_event.governance_id.to_string()).await?;
+                        governance.get_init_state(&create_event.schema_id)
+                            .map_err(|e| ActorError::Functional(e.to_string()))?
+                    };
+                    Subject::from_event(None, &ledger, properties).map_err(|e| ActorError::Functional(e.to_string()))?
+                } else {
+                    return Err(ActorError::Functional("trying to create a subject without create event".to_owned()));
+                };          
 
                 let subject_actor = ctx
                     .create_child(

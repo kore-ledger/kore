@@ -325,7 +325,11 @@ impl RequestManager {
             signature: signature_event,
         };
 
-        update_event(ctx, signed_event.clone()).await?;
+        if let Err(e) = update_event(ctx, signed_event.clone()).await {
+            if let ActorError::Functional(_) = e {} else {
+                return Err(emit_fail(ctx, e).await);
+            }
+        };
 
         if let EventRequest::Create(_) = self.request.content {
             change_temp_subj(

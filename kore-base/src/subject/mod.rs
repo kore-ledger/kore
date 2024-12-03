@@ -193,16 +193,11 @@ impl Subject {
     pub fn from_event(
         subject_keys: Option<KeyPair>,
         ledger: &Signed<Ledger>,
+        properties: ValueWrapper
     ) -> Result<Self, Error> {
         if let EventRequest::Create(request) =
             &ledger.content.event_request.content
         {
-            let properties = if request.schema_id == "governance" {
-                init_state(&ledger.content.event_request.signature.signer.to_string())
-            } else {
-                todo!()
-            };
-
             let subject = Subject {
                 keys: subject_keys,
                 subject_id: ledger.content.subject_id.clone(),
@@ -1648,7 +1643,12 @@ impl Subject {
             if let Err(e) =
                 self.verify_new_ledger_events_not_gov(ctx, events).await
             {
-                // Hay que ver el fallo TODO, porque se pudieron aplicar X eventos y hay que realizar acutalizaciones.
+                if let ActorError::Functional(e) = e {
+                    println!("{}", e);
+                    // TODO falló pero pudo aplicar algún evento entonces seguimos.
+                } else {
+                    return Err(e);
+                }
             };
 
             if current_sn < self.sn {
@@ -2129,7 +2129,7 @@ mod tests {
         };
 
         let subject =
-            Subject::from_event(Some(keys.clone()), &signed_ledger).unwrap();
+            Subject::from_event(Some(keys.clone()), &signed_ledger, init_state(&signed_ledger.signature.signer.to_string())).unwrap();
 
         let subject_actor = system
             .get_or_create_actor(
@@ -2339,7 +2339,7 @@ mod tests {
             signature,
         };
 
-        let subject = Subject::from_event(Some(keys), &signed_ledger).unwrap();
+        let subject = Subject::from_event(Some(keys), &signed_ledger, init_state(&signed_ledger.signature.signer.to_string())).unwrap();
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
@@ -2410,7 +2410,7 @@ mod tests {
         };
 
         let subject_a =
-            Subject::from_event(Some(keys), &signed_ledger).unwrap();
+            Subject::from_event(Some(keys), &signed_ledger, init_state(&signed_ledger.signature.signer.to_string())).unwrap();
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

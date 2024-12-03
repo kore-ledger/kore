@@ -47,6 +47,7 @@ impl Distribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         signer: KeyIdentifier,
+        schema_id: &str
     ) -> Result<(), ActorError> {
         let child = ctx
             .create_child(
@@ -58,7 +59,7 @@ impl Distribution {
             .await;
         let distributor_actor = match child {
             Ok(child) => child,
-            Err(_e) => return Err(_e),
+            Err(e) => return Err(e),
         };
 
         let our_key = self.node_key.clone();
@@ -70,6 +71,7 @@ impl Distribution {
                     event,
                     node_key: signer,
                     our_key,
+                    schema_id: schema_id.to_string()
                 })
                 .await?
         }
@@ -162,6 +164,7 @@ impl Handler<Distribution> for Distribution {
                     if let Err(e) = self.end_request(ctx).await {
                         return Err(emit_fail(ctx, e).await);
                     };
+                    return Ok(());
                 }
 
                 self.witnesses = witnesses.clone();
@@ -172,6 +175,7 @@ impl Handler<Distribution> for Distribution {
                         event.clone(),
                         ledger.clone(),
                         witness,
+                        &metadata.schema_id
                     )
                     .await?
                 }

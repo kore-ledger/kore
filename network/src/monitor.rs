@@ -6,7 +6,6 @@ use actor::{
 use crate::Event as NetworkEvent;
 
 use async_trait::async_trait;
-use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

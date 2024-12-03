@@ -253,7 +253,7 @@ impl Distributor {
                         "Signer is not a creator".to_string(),
                     ));
                 }
-    
+
                 if !gov.has_this_role(
                     &our_key.to_string(),
                     Roles::WITNESS,
@@ -459,6 +459,7 @@ pub enum DistributorMessage {
         ledger: Signed<Ledger>,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
+        schema_id: String
     },
     // El nodo al que le enviamos la replica la recivió, parar los reintentos.
     NetworkResponse {
@@ -658,6 +659,7 @@ impl Handler<Distributor> for Distributor {
                 node_key,
                 our_key,
                 ledger,
+                schema_id
             } => {
                 let reciver_actor = format!(
                     "/user/node/{}/distributor",
@@ -670,7 +672,7 @@ impl Handler<Distributor> for Distributor {
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
-                        schema: "".to_owned(),
+                        schema: schema_id,
                     },
                     message: ActorMessage::DistributionLastEventReq {
                         ledger,
@@ -759,7 +761,6 @@ impl Handler<Distributor> for Distributor {
 
                 // Ahora hay que crear el sujeto si no existe sn = 0, o aplicar los eventos
                 // verificando los hashes y aplicando el patch.
-
                 if ledger.content.event_request.content.is_create_event() {
                     // Creamos el sujeto.
                     if let Err(e) = self.create_subject(ctx, ledger).await {
@@ -859,7 +860,10 @@ impl Handler<Distributor> for Distributor {
                 }
 
                 if let Err(e) = update_event(ctx, event.clone()).await {
-                    return Err(emit_fail(ctx, e).await);
+                    if let ActorError::Functional(_) = e {
+                    } else {
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let new_info = ComunicateInfo {

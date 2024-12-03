@@ -36,7 +36,7 @@ pub async fn system(
     let encrypted_pass = EncryptedPass::new(password)?;
     system.add_helper("encrypted_pass", encrypted_pass).await;
 
-    let db_manager = DBManager::new(Duration::from_secs(5));
+    let db_manager = DBManager::new(config.garbage_collector);
     let db_manager_actor = system
         .create_root_actor("db_manager", db_manager)
         .await

@@ -183,7 +183,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                             }
                         } else {
                             let e = ActorError::NotFound(approver_path);
-                            return Err(emit_fail(ctx, e).await);
+                            return Err(ActorError::Functional(e.to_string()));
                         }
                     };
                 }

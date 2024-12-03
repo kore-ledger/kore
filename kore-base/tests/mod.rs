@@ -14,7 +14,7 @@ use kore_base::{
     }, Api
 };
 use network::{Config as NetworkConfig, RoutingNode};
-use prometheus_client::registry::{self, Registry};
+use prometheus_client::registry::Registry;
 use serde_json::json;
 use serial_test::serial;
 use tokio_util::sync::CancellationToken;
@@ -221,6 +221,7 @@ async fn test_governance_copy() {
                     }
                 }
     ]}});
+    
     let request = EventRequest::Fact(FactRequest {
         subject_id: governance_id.clone(),
         payload: ValueWrapper(json),
@@ -243,7 +244,23 @@ async fn test_governance_copy() {
     .unwrap();
     println!("{}", response);
 
-    tokio::time::sleep(Duration::from_secs(15)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
     let response = node2.get_subject(governance_id.clone()).await.unwrap();
+    //println!("{:?}", response);
+
+    let request = EventRequest::Create(CreateRequest {
+        governance_id: governance_id.clone(),
+        schema_id: "Example".to_owned(),
+        namespace: Namespace::new(),
+    });
+    
+    let data = node2.own_request(request).await.unwrap();
+    let subject_id = DigestIdentifier::from_str(&data.subject_id).unwrap();
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let response = node2
+        .get_subject(DigestIdentifier::from_str(&data.subject_id).unwrap())
+        .await
+        .unwrap();
     println!("{:?}", response);
 }

@@ -21,7 +21,7 @@ pub(crate) mod system;
 pub mod update;
 pub mod validation;
 
-use actor::{ActorPath, ActorRef, Sink};
+use actor::{ActorPath, ActorRef, Sink, SystemRef};
 use approval::approver::ApprovalStateRes;
 use async_std::sync::RwLock;
 use auth::{Auth, AuthMessage, AuthResponse, AuthWitness};
@@ -202,8 +202,7 @@ impl Api {
         &self,
         request: Signed<EventRequest>,
     ) -> Result<RequestData, Error> {
-        let Ok(response) = self
-            .request
+        let Ok(response) = self.request
             .ask(RequestHandlerMessage::NewRequest { request })
             .await
         else {
@@ -256,18 +255,11 @@ impl Api {
             signature,
         };
 
-        let Ok(response) = self
-            .request
-            .ask(RequestHandlerMessage::NewRequest {
-                request: signed_event_req,
-            })
-            .await
-        else {
-            return Err(Error::RequestHandler(
-                "The Actor in charge of the request is not able to respond"
-                    .to_owned(),
-            ));
-        };
+        let response = self.request
+        .ask(RequestHandlerMessage::NewRequest {
+            request: signed_event_req,
+        })
+        .await.map_err(|e| Error::RequestHandler(e.to_string()))?;
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),

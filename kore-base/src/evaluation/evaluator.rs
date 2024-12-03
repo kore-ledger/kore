@@ -563,7 +563,7 @@ impl Handler<Evaluator> for Evaluator {
                 // Nos llegó una eval donde en la request se indica un sujeto pero en el info otro
                 // Posible ataque.
                 if info_subject_path
-                    != evaluation_req.content.context.subject_id.to_string()
+                    != evaluation_req.content.context.governance_id.to_string()
                 {
                     return Err(ActorError::Functional("We received an evaluation where the request indicates one subject but the info indicates another.".to_owned()));
                 }
