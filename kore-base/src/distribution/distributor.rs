@@ -1,22 +1,25 @@
-use std::time::Duration;
+use std::{clone, time::Duration};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
     Strategy, SystemEvent,
 };
+use async_std::task::AccessError;
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use jsonschema::error;
 use network::ComunicateInfo;
 
 use crate::{
-    governance::model::Roles,
+    governance::{model::Roles, Governance},
     intermediary::Intermediary,
     model::{
-        common::{emit_fail, get_gov, get_metadata, get_quantity, update_event},
+        common::{
+            emit_fail, get_gov, get_metadata, get_quantity, try_to_update_subject, update_event
+        },
         event::Ledger,
-        network::RetryNetwork,
+        network::RetryNetwork, Namespace,
     },
     ActorMessage, Error, Event as KoreEvent, EventRequest, NetworkMessage,
     Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
@@ -25,113 +28,11 @@ use crate::{
 
 use super::{Distribution, DistributionMessage};
 
-enum CheckGovernance {
-    Continue,
-    Finish,
-}
-
 pub struct Distributor {
     pub node: KeyIdentifier,
 }
 
 impl Distributor {
-    async fn check_first_event(
-        &self,
-        ctx: &mut ActorContext<Distributor>,
-        ledger: Ledger,
-        our_key: KeyIdentifier,
-        signer: KeyIdentifier,
-        schema: &str,
-    ) -> Result<bool, Error> {
-        let subject_id = ledger.subject_id;
-
-        let know = if let Ok(know) =
-            self.authorized_subj(ctx, &subject_id.to_string()).await
-        {
-            know
-        } else {
-            todo!()
-        };
-
-        // path del sujeto
-        let subject_path =
-            ActorPath::from(format!("/user/node/{}", subject_id));
-
-        // Sujeto
-        let subject_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&subject_path).await;
-
-        // Si el sujeto existe.
-        let (namespace, create) = if let Some(subject_actor) = subject_actor {
-            let response =
-                match subject_actor.ask(SubjectMessage::GetMetadata).await {
-                    Ok(response) => response,
-                    Err(_e) => todo!(),
-                };
-
-            let metadata = match response {
-                SubjectResponse::Metadata(metadata) => metadata,
-                _ => todo!(),
-            };
-            (metadata.namespace, false)
-            // Si el sujeto no existe.
-        } else {
-            // El primero evento tiene que ser de creación sí o sí
-            if let EventRequest::Create(request) =
-                ledger.event_request.content.clone()
-            {
-                (request.namespace, true)
-            } else {
-                // Error, no existe el sujeto y el primer evento no es de creación.
-                todo!()
-            }
-        };
-
-        if !know && schema != "governance" {
-            let gov = if create {
-                // El primero evento tiene que ser de creación sí o sí
-                if let EventRequest::Create(request) =
-                    ledger.event_request.content
-                {
-                    get_gov(ctx, &request.governance_id.to_string()).await
-                } else {
-                    // Error, no existe el sujeto y el primer evento no es de creación.
-                    todo!()
-                }
-            } else {
-                get_gov(ctx, &subject_id.to_string()).await
-            };
-
-            let gov = match gov {
-                Ok(gov) => gov,
-                Err(_e) => todo!(),
-            };
-            if !gov.has_this_role(
-                &signer.to_string(),
-                Roles::CREATOR { quantity: 0 },
-                schema,
-                namespace.clone(),
-            ) {
-                todo!()
-            }
-
-            if !gov.has_this_role(
-                &our_key.to_string(),
-                Roles::WITNESS,
-                schema,
-                namespace,
-            ) {
-                todo!()
-            }
-            // Comprobar que soy testigo para ese schema y esa governanza.
-        } else if !know && schema == "governance" {
-            // No hay que guardarla
-            todo!()
-        }
-
-        Ok(create)
-    }
-
     async fn get_subject(
         &self,
         ctx: &mut ActorContext<Distributor>,
@@ -144,7 +45,7 @@ impl Distributor {
         {
             subject_actor
         } else {
-            return Err(ActorError::NotFound(subject_path))
+            return Err(ActorError::NotFound(subject_path));
         };
 
         Ok(subject_actor)
@@ -155,12 +56,12 @@ impl Distributor {
         ctx: &mut ActorContext<Distributor>,
         ledger: Signed<Ledger>,
     ) -> Result<(), ActorError> {
-        // TODO refactorizar.
         if let EventRequest::Create(request) =
             ledger.content.event_request.content.clone()
         {
             if request.schema_id != "governance" {
-                let gov = get_gov(ctx, &request.governance_id.to_string()).await?;
+                let gov =
+                    get_gov(ctx, &request.governance_id.to_string()).await?;
 
                 if let Some(max_quantity) = gov.max_creations(
                     &ledger.signature.signer.to_string(),
@@ -198,28 +99,10 @@ impl Distributor {
         };
         match response {
             NodeResponse::SonWasCreated => Ok(()),
-            NodeResponse::Error(e) => Err(ActorError::FunctionalFail(e.to_string())),
-            _ => Err(ActorError::UnexpectedMessage(node_path, "NodeResponse::SonWasCreated".to_owned())),
-        }
-    }
-
-    async fn authorized_subj(
-        &self,
-        ctx: &mut ActorContext<Distributor>,
-        subject_id: &str,
-    ) -> Result<bool, ActorError> {
-        let node_path = ActorPath::from("/user/node");
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        let response = if let Some(node_actor) = node_actor {
-            node_actor.ask(NodeMessage::IsAuthorized(subject_id.to_owned())).await?
-        } else {
-            return Err(ActorError::NotFound(node_path));
-        };
-        match response {
-            NodeResponse::IsAuthorized(know) => Ok(know),
-            _ => Err(ActorError::UnexpectedMessage(node_path, "NodeResponse::IsAuthorized".to_owned())),
+            _ => Err(ActorError::UnexpectedResponse(
+                node_path,
+                "NodeResponse::SonWasCreated".to_owned(),
+            )),
         }
     }
 
@@ -228,7 +111,8 @@ impl Distributor {
         ctx: &mut ActorContext<Distributor>,
         subject_id: &str,
         last_sn: u64,
-    ) -> Result<(Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>), ActorError> {
+    ) -> Result<(Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>), ActorError>
+    {
         let subject_path =
             ActorPath::from(format!("/user/node/{}", subject_id));
         let subject_actor: Option<ActorRef<Subject>> =
@@ -245,36 +129,159 @@ impl Distributor {
 
         match response {
             SubjectResponse::Ledger(data) => Ok(data),
-            _ => Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Ledger".to_owned()))
+            _ => Err(ActorError::UnexpectedResponse(
+                subject_path,
+                "SubjectResponse::Ledger".to_owned(),
+            )),
         }
     }
 
-    async fn check_gov_version_ledger(
+    async fn authorized_subj(
+        &self,
         ctx: &mut ActorContext<Distributor>,
-        info: ComunicateInfo,
-        gov_version: u64,
-        event: EventRequest,
-        subject_id: DigestIdentifier,
-    ) -> Result<CheckGovernance, ActorError> {
-        let (gov, gov_id) = if let EventRequest::Create(event_req) = event {
-            let gov = get_gov(ctx, &event_req.governance_id.to_string()).await;
-            (gov, event_req.governance_id)
+        subject_id: &str,
+    ) -> Result<bool, ActorError> {
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+
+        let response = if let Some(node_actor) = node_actor {
+            node_actor
+                .ask(NodeMessage::IsAuthorized(subject_id.to_owned()))
+                .await?
         } else {
-            let gov = get_gov(ctx, &subject_id.to_string()).await;
-            let metadata =
-                match get_metadata(ctx, &subject_id.to_string()).await {
-                    Ok(metadata) => metadata,
-                    Err(_e) => todo!(),
-                };
-
-            (gov, metadata.governance_id)
+            return Err(ActorError::NotFound(node_path));
         };
-        // SOlo a no governanzas, el sujeto puede no existir.
+        match response {
+            NodeResponse::IsAuthorized(know) => Ok(know),
+            _ => Err(ActorError::UnexpectedResponse(
+                node_path,
+                "NodeResponse::IsAuthorized".to_owned(),
+            )),
+        }
+    }
 
-        let gov = match gov {
-            Ok(gov) => gov,
-            Err(_e) => todo!(),
+    async fn check_auth(
+        &self,
+        ctx: &mut ActorContext<Distributor>,
+        signer: KeyIdentifier,
+        info: ComunicateInfo,
+        ledger: Ledger,
+        gov_version: Option<u64>
+    ) -> Result<(), ActorError> {
+        let our_key = info.reciver.clone();
+        let subject_id = ledger.subject_id.clone();
+        let schema = info.schema.clone();
+        let know = self.authorized_subj(ctx, &subject_id.to_string()).await?;
+
+        let (namespace, governance_id) = match get_metadata(
+            ctx,
+            &subject_id.to_string(),
+        )
+        .await
+        {
+            Ok(metadata) => (metadata.namespace, metadata.governance_id),
+            Err(e) => {
+                if let ActorError::NotFound(_) = e {
+                    if let EventRequest::Create(request) =
+                        ledger.event_request.content.clone()
+                    {
+                        (request.namespace, request.governance_id)
+                    } else {
+                        println!("ME llegó pero no tengo nada");
+                        try_to_update_subject(
+                            ctx,
+                            subject_id,
+                        )
+                        .await?;
+                        return Err(ActorError::Functional("Updating subject".to_owned()));
+                    }
+                } else {
+                    return Err(e);
+                }
+            }
         };
+
+        if governance_id.is_empty() {
+            if know {
+                return Ok(());
+            } else {
+                return Err(ActorError::Functional(
+                    "Governance is not authorized".to_owned(),
+                ));
+            }
+        } else {
+            // SI no es una gov
+            let governance_id_string = governance_id.to_string();
+            let gov = if self.authorized_subj(ctx, &governance_id_string).await? {
+                match get_gov(ctx, &governance_id_string).await {
+                    Ok(gov) => gov,
+                    Err(e) => {
+                        if let ActorError::NotFound(_) = e {
+                            try_to_update_subject(
+                                ctx,
+                                governance_id,
+                            )
+                            .await?;
+                            return Err(ActorError::Functional("Updating governance".to_owned()));
+                        }
+                        return Err(e);
+                    }
+                }
+            } else {
+                return Err(ActorError::Functional(
+                    "Governance is not authorized".to_owned(),
+                ));
+            };
+
+            if let Some(gov_version) = gov_version {
+                Self::cmp_govs(ctx, gov.clone(), gov_version, governance_id, info).await?;
+            }
+            
+
+            if know {
+                return Ok(());
+            } else if !know && schema != "governance" {
+    
+                if !gov.has_this_role(
+                    &signer.to_string(),
+                    Roles::CREATOR { quantity: 0 },
+                    &schema,
+                    namespace.clone(),
+                ) {
+                    return Err(ActorError::Functional(
+                        "Signer is not a creator".to_string(),
+                    ));
+                }
+
+                if !gov.has_this_role(
+                    &our_key.to_string(),
+                    Roles::WITNESS,
+                    &schema,
+                    namespace,
+                ) {
+                    return Err(ActorError::Functional(
+                        "We are not witness".to_string(),
+                    ));
+                }
+    
+                return Ok(());
+            } else {
+                return Err(ActorError::Functional(
+                    "Governance is not authorized".to_owned(),
+                ));
+            }
+        }
+    }
+
+    async fn cmp_govs(
+        ctx: &mut ActorContext<Distributor>,
+        gov: Governance,
+        gov_version: u64,
+        governance_id: DigestIdentifier,
+        info: ComunicateInfo
+    ) -> Result<(), ActorError> {
+        let governance_id_string = governance_id.to_string();
 
         let our_gov_version = gov.version;
         match our_gov_version.cmp(&gov_version) {
@@ -284,7 +291,7 @@ impl Distributor {
                     reciver: info.sender,
                     sender: info.reciver,
                     request_id: info.request_id,
-                    reciver_actor: format!("/user/node/{}/distributor", gov_id),
+                    reciver_actor: format!("/user/node/{}/distributor", governance_id_string),
                     schema: "governance".to_owned(),
                 };
 
@@ -295,7 +302,6 @@ impl Distributor {
                     return Err(ActorError::NotHelper("network".to_owned()));
                 };
 
-                // TODO firmar la respuesta. Por ahora no, ya que si no tengo la gov en la última versión no puedo saber si es un testigo.
                 helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
@@ -303,13 +309,13 @@ impl Distributor {
                             message: ActorMessage::DistributionLedgerReq {
                                 gov_version: Some(our_gov_version),
                                 actual_sn: Some(our_gov_version),
-                                subject_id: gov_id,
+                                subject_id: governance_id,
                             },
                         },
                     })
                     .await?;
 
-                return Ok(CheckGovernance::Finish);
+                    return Err(ActorError::Functional("My gov version is less than his gov version".to_owned()));
             }
             std::cmp::Ordering::Equal => {}
             std::cmp::Ordering::Greater => {
@@ -322,41 +328,38 @@ impl Distributor {
                         request_id: info.request_id,
                         reciver_actor: format!(
                             "/user/node/{}/distributor",
-                            gov_id
+                            governance_id_string
                         ),
                         schema: "governance".to_owned(),
                     };
 
                     let distributor_path = ActorPath::from(format!(
                         "/user/node/{}/distributor",
-                        gov_id
+                        governance_id_string
                     ));
-                    let distributor_actor: ActorRef<Distributor> =
-                        if let Some(distributor_actor) =
-                            ctx.system().get_actor(&distributor_path).await
-                        {
-                            distributor_actor
-                        } else {
-                            todo!()
-                        };
 
-                    if let Err(_e) = distributor_actor
+                    let Some(distributor_actor): Option<ActorRef<Distributor>> =
+                        ctx.system().get_actor(&distributor_path).await
+                    else {
+                        let e = ActorError::NotFound(distributor_path);
+                        return Err(emit_fail(ctx, e).await);
+                    };
+
+                    distributor_actor
                         .tell(DistributorMessage::SendDistribution {
                             gov_version: Some(gov_version),
                             actual_sn: Some(gov_version),
-                            subject_id: gov_id.to_string(),
+                            subject_id: governance_id_string,
                             info: new_info,
                         })
-                        .await
-                    {
-                        todo!()
-                    }
-                    return Ok(CheckGovernance::Finish);
+                        .await?;
+
+                    return Err(ActorError::Functional("His gov version is less than my gov version".to_owned()));
                 }
             }
         }
 
-        Ok(CheckGovernance::Continue)
+        Ok(())
     }
 
     async fn check_gov_version(
@@ -365,121 +368,54 @@ impl Distributor {
         subject_id: &str,
         gov_version: Option<u64>,
         info: ComunicateInfo,
-    ) -> Result<CheckGovernance, ActorError> {
+    ) -> Result<(), ActorError> {
         let gov = match get_gov(ctx, subject_id).await {
             Ok(gov) => gov,
-            Err(_e) => todo!(),
+            Err(e) => {
+                if let ActorError::NotFound(_) = e {
+                    return Err(ActorError::Functional(
+                        "Can not get governance".to_owned(),
+                    ));
+                } else {
+                    return Err(e);
+                }
+            }
         };
 
         let metadata = match get_metadata(ctx, subject_id).await {
             Ok(metadata) => metadata,
-            Err(_e) => todo!(),
-        };
-
-        let our_gov_version = gov.version;
-
-        if let Some(gov_version) = gov_version {
-            // Comprobar versión de la gobernanza, si no es la misma le digo que se actualice o me actualizo.
-            match our_gov_version.cmp(&gov_version) {
-                std::cmp::Ordering::Less => {
-                    let gov_id = if info.schema != "governance" {
-                        metadata.governance_id
-                    } else {
-                        metadata.subject_id
-                    };
-
-                    // Mi version es menor, me actualizo. y no le envío nada
-                    let new_info = ComunicateInfo {
-                        reciver: info.sender,
-                        sender: info.reciver,
-                        request_id: info.request_id,
-                        reciver_actor: format!(
-                            "/user/node/{}/distributor",
-                            gov_id
-                        ),
-                        schema: "governance".to_owned(),
-                    };
-
-                    let helper: Option<Intermediary> =
-                        ctx.system().get_helper("network").await;
-
-                    let Some(mut helper) = helper else {
-                        return Err(ActorError::NotHelper("network".to_owned()));
-                    };
-
-                    // TODO firmar la respuesta. Por ahora no, ya que si no tengo la gov en la última versión no puedo saber si es un testigo.
-                    if let Err(_e) = helper
-                        .send_command(network::CommandHelper::SendMessage {
-                            message: NetworkMessage {
-                                info: new_info,
-                                message: ActorMessage::DistributionLedgerReq {
-                                    gov_version: Some(our_gov_version),
-                                    actual_sn: Some(our_gov_version),
-                                    subject_id: gov_id,
-                                },
-                            },
-                        })
-                        .await
-                    {
-                        todo!()
-                        // error al enviar mensaje, propagar hacia arriba
-                    };
-
-                    return Ok(CheckGovernance::Finish);
-                }
-                std::cmp::Ordering::Equal => {}
-                std::cmp::Ordering::Greater => {
-                    // Su version es menor. Traslado la solicitud de actualización
-                    // a mi distributor gov.
-                    if info.schema != "governance" {
-                        let new_info = ComunicateInfo {
-                            reciver: info.reciver,
-                            sender: info.sender,
-                            request_id: info.request_id,
-                            reciver_actor: format!(
-                                "/user/node/{}/distributor",
-                                metadata.governance_id
-                            ),
-                            schema: "governance".to_owned(),
-                        };
-
-                        let distributor_path = ActorPath::from(format!(
-                            "/user/node/{}/distributor",
-                            metadata.governance_id
-                        ));
-                        let distributor_actor: ActorRef<Distributor> =
-                            if let Some(distributor_actor) =
-                                ctx.system().get_actor(&distributor_path).await
-                            {
-                                distributor_actor
-                            } else {
-                                todo!()
-                            };
-
-                        if let Err(_e) = distributor_actor
-                            .tell(DistributorMessage::SendDistribution {
-                                gov_version: Some(gov_version),
-                                actual_sn: Some(gov_version),
-                                subject_id: metadata.governance_id.to_string(),
-                                info: new_info,
-                            })
-                            .await
-                        {
-                            todo!()
-                        }
-                        return Ok(CheckGovernance::Finish);
-                    }
+            Err(e) => {
+                if let ActorError::NotFound(_) = e {
+                    return Err(ActorError::Functional(
+                        "Can not get metadata".to_owned(),
+                    ));
+                } else {
+                    return Err(e);
                 }
             }
+        };
+
+        let governance_id = if metadata.governance_id.is_empty() {
+            metadata.subject_id
+        } else {
+            metadata.governance_id
+        };
+
+        if let Some(gov_version) = gov_version {
+            Self::cmp_govs(ctx, gov.clone(), gov_version, governance_id, info.clone()).await?;
+
         } else if info.schema != "governance" {
+            // TODO Revisar esto
             // Error me estás pidiendo el ledger para un sujeto que no es una governanza
             // Y no me pasas la versión de la gov
-            todo!()
+            return Err(ActorError::Functional(
+                "Governance version was not provided".to_owned(),
+            ));
         }
 
         // Si el owner nos pide la copia.
         if metadata.owner == info.sender {
-            return Ok(CheckGovernance::Continue);
+            return Ok(());
         }
 
         if !gov.has_this_role(
@@ -488,11 +424,12 @@ impl Distributor {
             &metadata.schema_id.clone(),
             metadata.namespace.clone(),
         ) {
-            // Se podría dar que sí sea testigo pero que yo no tenga la última versión.
-            todo!()
+            return Err(ActorError::Functional(
+                "Sender is not a witness".to_owned(),
+            ));
         };
 
-        Ok(CheckGovernance::Continue)
+        Ok(())
     }
 }
 
@@ -522,6 +459,7 @@ pub enum DistributorMessage {
         ledger: Signed<Ledger>,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
+        schema_id: String
     },
     // El nodo al que le enviamos la replica la recivió, parar los reintentos.
     NetworkResponse {
@@ -552,14 +490,20 @@ impl Handler<Distributor> for Distributor {
     ) -> Result<(), ActorError> {
         match msg {
             DistributorMessage::GetLastSn { subject_id, info } => {
-                let Ok(metadata) = get_metadata(ctx, &subject_id).await else {
-                    // Me está pidiendo info de un sujeto que no tengo
-                    todo!()
+                let metadata = match get_metadata(ctx, &subject_id).await {
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        if let ActorError::NotFound(_) = e {
+                            return Err(e);
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    }
                 };
 
                 let gov = match get_gov(ctx, &subject_id).await {
                     Ok(gov) => gov,
-                    Err(_e) => todo!(),
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 if metadata.owner != info.sender
@@ -570,7 +514,9 @@ impl Handler<Distributor> for Distributor {
                         metadata.namespace.clone(),
                     )
                 {
-                    todo!()
+                    return Err(ActorError::Functional(
+                        "Sender neither the owned nor a witness".to_owned(),
+                    ));
                 }
 
                 let new_info = ComunicateInfo {
@@ -592,8 +538,7 @@ impl Handler<Distributor> for Distributor {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                // TODO firmar la respuesta.
-                if let Err(_e) = helper
+                if let Err(e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
@@ -604,7 +549,7 @@ impl Handler<Distributor> for Distributor {
                     })
                     .await
                 {
-                    todo!()
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
             DistributorMessage::SendDistribution {
@@ -614,15 +559,21 @@ impl Handler<Distributor> for Distributor {
                 subject_id,
             } => {
                 if info.schema.is_empty() {
-                    let Ok(metadata) = get_metadata(ctx, &subject_id).await
-                    else {
-                        // Me está pidiendo info de un sujeto que no tengo
-                        todo!()
+                    let metadata = match get_metadata(ctx, &subject_id).await {
+                        Ok(metadata) => metadata,
+                        Err(e) => {
+                            if let ActorError::NotFound(_) = e {
+                                return Err(e);
+                            } else {
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        }
                     };
 
+                    // Si tiene el sujeto tiene que tener la gov.
                     let gov = match get_gov(ctx, &subject_id).await {
                         Ok(gov) => gov,
-                        Err(_e) => todo!(),
+                        Err(e) => return Err(emit_fail(ctx, e).await),
                     };
 
                     if metadata.owner != info.sender
@@ -633,21 +584,26 @@ impl Handler<Distributor> for Distributor {
                             metadata.namespace.clone(),
                         )
                     {
-                        todo!()
+                        return Err(ActorError::Functional(
+                            "Sender neither the owned nor a witness".to_owned(),
+                        ));
                     }
 
                     info.schema = metadata.schema_id;
                 } else {
-                    if let CheckGovernance::Finish = self
-                        .check_gov_version(
-                            ctx,
-                            &subject_id,
-                            gov_version,
-                            info.clone(),
-                        )
-                        .await?
-                    {
-                        return Ok(());
+                    if let Err(e) = self
+                    .check_gov_version(
+                        ctx,
+                        &subject_id,
+                        gov_version,
+                        info.clone(),
+                    )
+                    .await {
+                        if let ActorError::Functional(_) = e {
+                            return Err(e)
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        };
                     };
                 }
 
@@ -661,7 +617,7 @@ impl Handler<Distributor> for Distributor {
                 let (ledger, last_event) =
                     match self.get_ledger(ctx, &subject_id, sn).await {
                         Ok(res) => res,
-                        Err(_e) => todo!(),
+                        Err(e) => return Err(emit_fail(ctx, e).await),
                     };
 
                 let new_info = ComunicateInfo {
@@ -683,8 +639,7 @@ impl Handler<Distributor> for Distributor {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                // TODO firmar la respuesta.
-                if let Err(_e) = helper
+                if let Err(e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
@@ -696,7 +651,7 @@ impl Handler<Distributor> for Distributor {
                     })
                     .await
                 {
-                    todo!()
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
             DistributorMessage::NetworkDistribution {
@@ -704,6 +659,7 @@ impl Handler<Distributor> for Distributor {
                 node_key,
                 our_key,
                 ledger,
+                schema_id
             } => {
                 let reciver_actor = format!(
                     "/user/node/{}/distributor",
@@ -716,7 +672,7 @@ impl Handler<Distributor> for Distributor {
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
-                        schema: "".to_owned(),
+                        schema: schema_id,
                     },
                     message: ActorMessage::DistributionLastEventReq {
                         ledger,
@@ -731,21 +687,20 @@ impl Handler<Distributor> for Distributor {
                 );
 
                 let retry_actor = RetryActor::new(target, message, strategy);
-
-                let retry = if let Ok(retry) = ctx
+                
+                let retry = match ctx
                     .create_child::<RetryActor<RetryNetwork>>(
                         "retry",
                         retry_actor,
                     )
                     .await
                 {
-                    retry
-                } else {
-                    todo!()
+                    Ok(retry) => retry,
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
-                if let Err(_e) = retry.tell(RetryMessage::Retry).await {
-                    todo!()
+                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
             DistributorMessage::NetworkResponse { signer } => {
@@ -756,28 +711,34 @@ impl Handler<Distributor> for Distributor {
                         ctx.system().get_actor(&distribution_path).await;
 
                     if let Some(distribution_actor) = distribution_actor {
-                        if let Err(_e) = distribution_actor
+                        if let Err(e) = distribution_actor
                             .tell(DistributionMessage::Response {
                                 sender: self.node.clone(),
                             })
                             .await
                         {
-                            todo!()
+                            return Err(emit_fail(ctx, e).await);
                         }
                     } else {
-                        todo!()
+                        let e = ActorError::NotFound(distribution_path);
+                        return Err(emit_fail(ctx, e).await);
                     }
 
-                    let retry = if let Some(retry) =
-                        ctx.get_child::<RetryActor<RetryNetwork>>("retry").await
-                    {
-                        retry
-                    } else {
-                        todo!()
-                    };
-                    if let Err(_e) = retry.tell(RetryMessage::End).await {
-                        todo!()
-                    };
+                    'retry: {
+                        let Some(retry) = ctx
+                            .get_child::<RetryActor<RetryNetwork>>("retry")
+                            .await
+                        else {
+                            // Aquí me da igual, porque al parar este actor para el hijo
+                            break 'retry;
+                        };
+
+                        if let Err(_e) = retry.tell(RetryMessage::End).await {
+                            // Aquí me da igual, porque al parar este actor para el hijo
+                            break 'retry;
+                        };
+                    }
+
                     ctx.stop().await;
                 }
             }
@@ -786,43 +747,28 @@ impl Handler<Distributor> for Distributor {
                 ledger,
                 info,
             } => {
-                if let Ok(CheckGovernance::Finish) =
-                    Distributor::check_gov_version_ledger(
-                        ctx,
-                        info.clone(),
-                        ledger.content.gov_version,
-                        ledger.content.event_request.content.clone(),
-                        ledger.content.subject_id.clone(),
-                    )
-                    .await
-                {
-                    return Ok(());
+                if let Err(e) = self.check_auth(ctx, event.signature.signer.clone(), info.clone(), ledger.content.clone(), Some(ledger.content.gov_version)).await {
+                    if let ActorError::Functional(_) = e {
+                        return Err(e);
+                    } else {
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
-                let new_subject = match self
-                    .check_first_event(
-                        ctx,
-                        ledger.content.clone(),
-                        info.reciver.clone(),
-                        event.signature.signer.clone(),
-                        &info.schema,
-                    )
-                    .await
-                {
-                    Ok(new) => new,
-                    Err(_e) => todo!(),
-                };
                 // Llegados a este punto hemos verificado si es la primera copia o no,
                 // Si es una gobernanza y está authorizada o el firmante del evento tiene el rol
                 // de creator.
 
                 // Ahora hay que crear el sujeto si no existe sn = 0, o aplicar los eventos
                 // verificando los hashes y aplicando el patch.
-
-                if new_subject {
+                if ledger.content.event_request.content.is_create_event() {
                     // Creamos el sujeto.
-                    if let Err(_e) = self.create_subject(ctx, ledger).await {
-                        todo!()
+                    if let Err(e) = self.create_subject(ctx, ledger).await {
+                        if let ActorError::Functional(_) = e {
+                            return Err(e);
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
                 } else {
                     let subject_ref = match self
@@ -830,7 +776,7 @@ impl Handler<Distributor> for Distributor {
                         .await
                     {
                         Ok(subject) => subject,
-                        Err(_e) => todo!(),
+                        Err(e) => return Err(emit_fail(ctx, e).await),
                     };
 
                     let response = match subject_ref
@@ -840,7 +786,7 @@ impl Handler<Distributor> for Distributor {
                         .await
                     {
                         Ok(res) => res,
-                        Err(_e) => todo!(),
+                        Err(e) => return Err(emit_fail(ctx, e).await),
                     };
 
                     match response {
@@ -855,7 +801,9 @@ impl Handler<Distributor> for Distributor {
                                 .await
                                 {
                                     Ok(gov) => gov,
-                                    Err(_e) => todo!(),
+                                    Err(e) => {
+                                        return Err(emit_fail(ctx, e).await)
+                                    }
                                 };
 
                                 let our_gov_version = gov.version;
@@ -875,12 +823,14 @@ impl Handler<Distributor> for Distributor {
                                     ctx.system().get_helper("network").await;
 
                                 let Some(mut helper) = helper else {
-                                    let e = ActorError::NotHelper("network".to_owned());
+                                    let e = ActorError::NotHelper(
+                                        "network".to_owned(),
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 };
 
                                 // Pedimos copia del ledger.
-                                if let Err(_e) = helper.send_command(network::CommandHelper::SendMessage {
+                                if let Err(e) = helper.send_command(network::CommandHelper::SendMessage {
                                     message: NetworkMessage {
                                     info: new_info,
                                     message: ActorMessage::DistributionLedgerReq {
@@ -890,20 +840,30 @@ impl Handler<Distributor> for Distributor {
                                     },
                                 },
                             }).await {
-                                todo!()
-                                // error al enviar mensaje, propagar hacia arriba
+                                return Err(emit_fail(ctx, e).await);
                             };
 
                                 return Ok(());
                             }
                         }
-                        SubjectResponse::Error(e) => todo!(),
-                        _ => todo!(),
+                        _ => {
+                            let e = ActorError::UnexpectedResponse(
+                                ActorPath::from(format!(
+                                    "/user/node/{}",
+                                    ledger.content.subject_id
+                                )),
+                                "SubjectResponse::LastSn".to_owned(),
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
                 }
 
-                if let Err(_e) = update_event(ctx, event.clone()).await {
-                    todo!()
+                if let Err(e) = update_event(ctx, event.clone()).await {
+                    if let ActorError::Functional(_) = e {
+                    } else {
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let new_info = ComunicateInfo {
@@ -926,7 +886,7 @@ impl Handler<Distributor> for Distributor {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                if let Err(_e) = helper
+                if let Err(e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
@@ -937,7 +897,7 @@ impl Handler<Distributor> for Distributor {
                     })
                     .await
                 {
-                    todo!()
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
             DistributorMessage::LedgerDistribution {
@@ -946,44 +906,30 @@ impl Handler<Distributor> for Distributor {
                 last_event,
             } => {
                 if events.is_empty() {
-                    todo!()
+                    return Err(ActorError::Functional(
+                        "Events is empty".to_owned(),
+                    ));
                 }
+                if let Err(e) = self.check_auth(ctx, events[0].signature.signer.clone(), info.clone(), events[0].content.clone(), None).await {
+                    if let ActorError::Functional(_) = e {
+                        return Err(e);
+                    } else {
+                        return Err(emit_fail(ctx, e).await);
+                    }
+                };
 
                 let subject_id = events[0].content.subject_id.clone();
 
-                if let Ok(CheckGovernance::Finish) =
-                    Distributor::check_gov_version_ledger(
-                        ctx,
-                        info.clone(),
-                        events[0].content.gov_version,
-                        events[0].content.event_request.content.clone(),
-                        subject_id.clone(),
-                    )
-                    .await
-                {
-                    return Ok(());
-                };
-
-                let new_subject = match self
-                    .check_first_event(
-                        ctx,
-                        events[0].content.clone(),
-                        info.reciver.clone(),
-                        events[0].signature.signer.clone(),
-                        &info.schema,
-                    )
-                    .await
-                {
-                    Ok(new) => new,
-                    Err(_e) => todo!(),
-                };
-
-                if new_subject {
+                if events[0].content.event_request.content.is_create_event() {
                     // Creamos el sujeto.
-                    if let Err(_e) =
+                    if let Err(e) =
                         self.create_subject(ctx, events[0].clone()).await
                     {
-                        todo!()
+                        if let ActorError::Functional(_) = e {
+                            return Err(e);
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
 
                     let _ = events.remove(0);
@@ -998,25 +944,34 @@ impl Handler<Distributor> for Distributor {
                     .await
                 {
                     Ok(subject) => subject,
-                    Err(_e) => todo!(),
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 // Obtenemos el last_sn para saber si nos vale la pena intentar actualizar el ledger
                 let response =
                     match subject_ref.ask(SubjectMessage::GetMetadata).await {
                         Ok(res) => res,
-                        Err(_e) => todo!(),
+                        Err(e) => return Err(emit_fail(ctx, e).await),
                     };
 
                 let metadata = match response {
                     SubjectResponse::Metadata(data) => data,
-                    _ => todo!(),
+                    _ => {
+                        let e = ActorError::UnexpectedResponse(
+                            ActorPath::from(format!(
+                                "/user/node/{}",
+                                subject_id
+                            )),
+                            "SubjectResponse::Metadata".to_owned(),
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let last_sn_events = if let Some(last_ledger) = events.last() {
                     last_ledger.content.sn
                 } else {
-                    todo!()
+                    unreachable!();
                 };
 
                 let last_sn = if last_sn_events > metadata.sn {
@@ -1025,13 +980,21 @@ impl Handler<Distributor> for Distributor {
                         .await
                     {
                         Ok(res) => res,
-                        Err(_e) => todo!(),
+                        Err(e) => return Err(emit_fail(ctx, e).await),
                     };
 
                     match response {
                         SubjectResponse::LastSn(last_sn) => last_sn,
-                        SubjectResponse::Error(e) => todo!(),
-                        _ => todo!(),
+                        _ => {
+                            let e = ActorError::UnexpectedResponse(
+                                ActorPath::from(format!(
+                                    "/user/node/{}",
+                                    subject_id
+                                )),
+                                "SubjectResponse::LastSn".to_owned(),
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     }
                 } else {
                     metadata.sn
@@ -1044,8 +1007,12 @@ impl Handler<Distributor> for Distributor {
                     // Si me actualicé ya no le digo nada más.
                     match last_sn.cmp(&last_sn_events) {
                         std::cmp::Ordering::Less => {
-                            if let Err(_e) = update_event(ctx, event).await {
-                                todo!()
+                            if let Err(e) = update_event(ctx, event).await {
+                                if let ActorError::Functional(_) = e {
+                                    return Err(e);
+                                } else {
+                                    return Err(emit_fail(ctx, e).await);
+                                }
                             };
                         }
                         std::cmp::Ordering::Equal => {}
@@ -1057,7 +1024,7 @@ impl Handler<Distributor> for Distributor {
                             let our_actor: Option<ActorRef<Distributor>> =
                                 ctx.system().get_actor(&our_path).await;
                             if let Some(our_actor) = our_actor {
-                                if let Err(_e) = our_actor
+                                if let Err(e) = our_actor
                                     .tell(
                                         DistributorMessage::SendDistribution {
                                             gov_version: Some(
@@ -1070,10 +1037,11 @@ impl Handler<Distributor> for Distributor {
                                     )
                                     .await
                                 {
-                                    todo!()
+                                    return Err(emit_fail(ctx, e).await);
                                 }
                             } else {
-                                todo!()
+                                let e = ActorError::NotFound(our_path);
+                                return Err(emit_fail(ctx, e).await);
                             }
                         }
                     };
@@ -1087,9 +1055,10 @@ impl Handler<Distributor> for Distributor {
                     metadata.governance_id
                 };
 
-                let gov = match get_gov(ctx, &gov_id.to_string()).await {
-                    Ok(gov) => gov,
-                    Err(_e) => todo!(),
+                let gov_version = match get_gov(ctx, &gov_id.to_string()).await
+                {
+                    Ok(gov) => gov.version,
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 let new_info = ComunicateInfo {
@@ -1111,12 +1080,12 @@ impl Handler<Distributor> for Distributor {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                if let Err(_e) = helper
+                if let Err(e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
                             message: ActorMessage::DistributionLedgerReq {
-                                gov_version: Some(gov.version),
+                                gov_version: Some(gov_version),
                                 actual_sn: Some(last_sn),
                                 subject_id,
                             },
@@ -1124,7 +1093,7 @@ impl Handler<Distributor> for Distributor {
                     })
                     .await
                 {
-                    todo!()
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
         };
@@ -1146,25 +1115,32 @@ impl Handler<Distributor> for Distributor {
                     ctx.system().get_actor(&distribuiton_path).await;
 
                 if let Some(distribuiton_actor) = distribuiton_actor {
-                    if let Err(_e) = distribuiton_actor
+                    if let Err(e) = distribuiton_actor
                         .tell(DistributionMessage::Response {
                             sender: self.node.clone(),
                         })
                         .await
                     {
-                        // TODO error, no se puede enviar la response
-                        // return Err(_e);
+                        emit_fail(ctx, e).await;
                     }
                 } else {
-                    // TODO no se puede obtener evaluation! Parar.
-                    // Can not obtain parent actor
-                    // return Err(ActorError::Exists(evaluation_path));
+                    let e = ActorError::NotFound(distribuiton_path);
+                    emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
-            },
+            }
             _ => {
                 // TODO error inesperado
             }
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Distributor>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }

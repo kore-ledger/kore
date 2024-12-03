@@ -8,7 +8,10 @@ use identity::identifier::KeyIdentifier;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use crate::Signed;
+use crate::{
+    model::common::{emit_fail, try_to_update_subject},
+    Signed,
+};
 
 use super::{
     evaluator::{Evaluator, EvaluatorMessage},
@@ -17,12 +20,16 @@ use super::{
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct EvaluationSchema {
+    gov_version: u64,
     creators: HashSet<KeyIdentifier>,
 }
 
 impl EvaluationSchema {
-    pub fn new(creators: HashSet<KeyIdentifier>) -> Self {
-        EvaluationSchema { creators }
+    pub fn new(creators: HashSet<KeyIdentifier>, gov_version: u64) -> Self {
+        EvaluationSchema {
+            creators,
+            gov_version,
+        }
     }
 }
 
@@ -32,7 +39,7 @@ pub enum EvaluationSchemaMessage {
         evaluation_req: Signed<EvaluationReq>,
         info: ComunicateInfo,
     },
-    UpdateEvaluators(HashSet<KeyIdentifier>),
+    UpdateEvaluators(HashSet<KeyIdentifier>, u64),
 }
 
 impl Message for EvaluationSchemaMessage {}
@@ -57,18 +64,30 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 evaluation_req,
                 info,
             } => {
-                // TODO lo primero que hay que hacer es comprobar la versión de la governanza,
-                // para comprobar que sea un creator, si estamos desactualizados, puede ser un creator
-                // nuevo.
+                if self.gov_version < evaluation_req.content.gov_version {
+                    if let Err(e) = try_to_update_subject(
+                        ctx,
+                        evaluation_req.content.context.governance_id.clone(),
+                    )
+                    .await
+                    {
+                        return Err(emit_fail(ctx, e).await);
+                    }
+                }
+
                 let creator =
                     self.creators.get(&evaluation_req.signature.signer);
                 if creator.is_none() {
-                    todo!()
+                    return Err(ActorError::Functional(
+                        "Sender is not a Creator".to_owned(),
+                    ));
                 };
 
-                if let Err(_e) = evaluation_req.verify() {
-                    // Hay errores criptográficos
-                    todo!()
+                if let Err(e) = evaluation_req.verify() {
+                    return Err(ActorError::Functional(format!(
+                        "Can not verify evaluation request: {}.",
+                        e
+                    )));
                 }
 
                 let child = ctx
@@ -83,7 +102,11 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
 
                 let evaluator_actor = match child {
                     Ok(child) => child,
-                    Err(_e) => todo!(),
+                    Err(e) => if let ActorError::Exists(_) = e {
+                        return Ok(());
+                    } else {
+                        return Err(emit_fail(ctx, e).await)
+                    },
                 };
 
                 evaluator_actor
@@ -93,8 +116,12 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     })
                     .await?
             }
-            EvaluationSchemaMessage::UpdateEvaluators(creators) => {
+            EvaluationSchemaMessage::UpdateEvaluators(
+                creators,
+                gov_version,
+            ) => {
                 self.creators = creators;
+                self.gov_version = gov_version;
             }
         };
         Ok(())

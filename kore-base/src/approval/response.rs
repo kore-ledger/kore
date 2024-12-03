@@ -34,7 +34,7 @@ impl HashId for ApprovalRes {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| Error::Evaluation("HashId for ApprovalRes fails".to_string()),
+            |e| Error::HashID(format!("HashId for ApprovalRes fails: {}", e)),
         )
     }
 }
@@ -60,10 +60,11 @@ impl HashId for ApprovalSignature {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| {
-                Error::Evaluation(
-                    "HashId for ApprovalSignature fails".to_string(),
-                )
+            |e| {
+                Error::HashID(format!(
+                    "HashId for ApprovalSignature fails: {}",
+                    e
+                ))
             },
         )
     }

@@ -2,22 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
-    Message, Response, SystemEvent,
+    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
+    Response, SystemEvent,
 };
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    approval::approver::{
-        ApprovalState, ApprovalStateRes, Approver, ApproverMessage,
-    },
-    error::Error,
-    helpers::db::{
-        EventDB, ExternalDB, Paginator, Querys, SignaturesDB, SubjectDB,
-    },
-    request::state,
+use crate::helpers::db::{
+    EventDB, ExternalDB, Paginator, Querys, SignaturesDB, SubjectDB,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -71,7 +64,6 @@ pub enum QueryResponse {
         request: String,
         state: String,
     },
-    Error(Error),
 }
 
 impl Response for QueryResponse {}
@@ -114,42 +106,43 @@ impl Handler<Query> for Query {
 
         match msg {
             QueryMessage::GetSignatures { subject_id } => {
-                match helper.get_signatures(&subject_id).await {
-                    Ok(signatures) => {
-                        Ok(QueryResponse::Signatures { signatures })
-                    }
-                    Err(e) => Ok(QueryResponse::Error(e)),
-                }
+                let signatures = helper
+                    .get_signatures(&subject_id)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                Ok(QueryResponse::Signatures { signatures })
             }
             QueryMessage::GetSubject { subject_id } => {
-                match helper.get_subject_state(&subject_id).await {
-                    Ok(subject) => Ok(QueryResponse::Subject { subject }),
-                    Err(e) => Ok(QueryResponse::Error(e)),
-                }
+                let subject = helper
+                    .get_subject_state(&subject_id)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                Ok(QueryResponse::Subject { subject })
             }
             QueryMessage::GetEvents {
                 subject_id,
                 quantity,
                 page,
-            } => match helper.get_events(&subject_id, quantity, page).await {
-                Ok((events, paginator)) => {
-                    Ok(QueryResponse::Events { events, paginator })
-                }
-                Err(e) => Ok(QueryResponse::Error(e)),
-            },
+            } => {
+                let (events, paginator) = helper
+                    .get_events(&subject_id, quantity, page)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                Ok(QueryResponse::Events { events, paginator })
+            }
             QueryMessage::GetRequestState { request_id } => {
-                match helper.get_request_id_status(&request_id).await {
-                    Ok(res) => Ok(QueryResponse::RequestState(res)),
-                    Err(e) => Ok(QueryResponse::Error(e)),
-                }
+                let res = helper
+                    .get_request_id_status(&request_id)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                Ok(QueryResponse::RequestState(res))
             }
             QueryMessage::GetApproval { subject_id } => {
-                match helper.get_approve_req(&subject_id).await {
-                    Ok((request, state)) => {
-                        Ok(QueryResponse::ApprovalState { request, state })
-                    }
-                    Err(e) => Ok(QueryResponse::Error(e)),
-                }
+                let (request, state) = helper
+                    .get_approve_req(&subject_id)
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                Ok(QueryResponse::ApprovalState { request, state })
             }
         }
     }

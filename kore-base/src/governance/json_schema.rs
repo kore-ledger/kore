@@ -10,7 +10,6 @@ pub struct JsonSchema {
     json_schema: Validator,
 }
 
-// TODO revisar esto.
 impl JsonSchema {
     pub fn compile(schema: &Value) -> Result<Self, Error> {
         match jsonschema::options()

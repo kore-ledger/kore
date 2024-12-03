@@ -1,0 +1,187 @@
+use std::time::Duration;
+
+use actor::{
+    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
+    Response,
+};
+use async_trait::async_trait;
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use serde::{Deserialize, Serialize};
+
+use crate::model::common::{emit_fail, get_last_event, get_metadata};
+
+use super::manager::{RequestManager, RequestManagerMessage};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Reboot {
+    governance_id: DigestIdentifier,
+    sn_ledger: u64,
+    sn_event: u64,
+}
+
+impl Reboot {
+    pub fn new(governance_id: DigestIdentifier) -> Self {
+        Self {
+            governance_id,
+            sn_ledger: 0,
+            sn_event: 0,
+        }
+    }
+
+    async fn update_event_sn(
+        &mut self,
+        ctx: &mut actor::ActorContext<Reboot>,
+    ) -> Result<(), ActorError> {
+        let last_event =
+            get_last_event(ctx, &self.governance_id.to_string()).await?;
+        self.sn_ledger = last_event.content.sn;
+
+        Ok(())
+    }
+
+    async fn update_ledger_sn(
+        &mut self,
+        ctx: &mut actor::ActorContext<Reboot>,
+    ) -> Result<(), ActorError> {
+        let metadata =
+            get_metadata(ctx, &self.governance_id.to_string()).await?;
+        self.sn_ledger = metadata.sn;
+
+        Ok(())
+    }
+
+    async fn sleep(
+        &self,
+        ctx: &mut actor::ActorContext<Reboot>,
+    ) -> Result<(), ActorError> {
+        let actor = ctx.reference().await;
+        if let Some(actor) = actor {
+            let request = RebootMessage::Update {
+                last_sn_event: self.sn_event,
+                last_sn_ledger: self.sn_ledger,
+            };
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                if let Err(e) = actor.tell(request).await {
+                    // TODO
+                }
+            });
+        } else {
+            let path = ctx.path().clone();
+            return Err(ActorError::NotFound(path));
+        }
+
+        todo!()
+    }
+
+    async fn finish(
+        ctx: &mut actor::ActorContext<Reboot>,
+    ) -> Result<(), ActorError> {
+        let request_actor: Option<actor::ActorRef<RequestManager>> =
+            ctx.parent().await;
+
+        if let Some(request_actor) = request_actor {
+            if let Err(e) = request_actor
+                .tell(RequestManagerMessage::FinishReboot)
+                .await
+            {
+                return Err(e);
+            }
+        } else {
+            let path = ctx.path().parent();
+            return Err(ActorError::NotFound(path));
+        }
+
+        ctx.stop().await;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum RebootMessage {
+    Init,
+    Update {
+        last_sn_event: u64,
+        last_sn_ledger: u64,
+    },
+}
+
+impl Message for RebootMessage {}
+
+#[async_trait]
+impl Actor for Reboot {
+    type Message = RebootMessage;
+    type Event = ();
+    type Response = ();
+
+    async fn pre_start(
+        &mut self,
+        _ctx: &mut actor::ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        Ok(())
+    }
+
+    async fn pre_stop(
+        &mut self,
+        _ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Handler<Reboot> for Reboot {
+    async fn handle_message(
+        &mut self,
+        _sender: ActorPath,
+        msg: RebootMessage,
+        ctx: &mut actor::ActorContext<Reboot>,
+    ) -> Result<(), ActorError> {
+        match msg {
+            RebootMessage::Init => {
+                if let Err(e) = self.update_event_sn(ctx).await {
+                    return Err(emit_fail(ctx, e).await);
+                };
+
+                if let Err(e) = self.update_ledger_sn(ctx).await {
+                    return Err(emit_fail(ctx, e).await);
+                };
+
+                if let Err(e) = self.sleep(ctx).await {
+                    return Err(emit_fail(ctx, e).await);
+                };
+            }
+            RebootMessage::Update {
+                last_sn_event,
+                last_sn_ledger,
+            } => {
+                if let Err(e) = self.update_event_sn(ctx).await {
+                    return Err(emit_fail(ctx, e).await);
+                };
+
+                if self.sn_event > last_sn_event {
+                    if let Err(e) = Self::finish(ctx).await {
+                        return Err(emit_fail(ctx, e).await);
+                    }
+                    return Ok(());
+                }
+
+                if let Err(e) = self.update_ledger_sn(ctx).await {
+                    return Err(emit_fail(ctx, e).await);
+                };
+
+                if self.sn_ledger > last_sn_ledger {
+                    if let Err(e) = self.sleep(ctx).await {
+                        return Err(emit_fail(ctx, e).await);
+                    };
+                }
+
+                if let Err(e) = Self::finish(ctx).await {
+                    return Err(emit_fail(ctx, e).await);
+                }
+            }
+        };
+
+        Ok(())
+    }
+}

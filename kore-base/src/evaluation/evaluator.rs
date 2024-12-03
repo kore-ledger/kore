@@ -4,29 +4,28 @@
 use std::time::Duration;
 
 use crate::{
-    evaluation::response::Response as EvalRes,
-    governance::Schema,
-    helpers::network::{intermediary::Intermediary, NetworkMessage},
-    model::{
-        common::{emit_fail, get_gov, get_sign},
+    config::Config, evaluation::response::Response as EvalRes, governance::Schema, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
+        common::{
+            check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
+            update_ledger_network, UpdateData,
+        },
         network::{RetryNetwork, TimeOutResponse},
         HashId, SignTypesNode, TimeStamp,
-    },
-    subject::{self, SubjectMessage, SubjectResponse},
-    Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
-    DIGEST_DERIVATOR,
+    }, subject::{self, SubjectMessage, SubjectResponse}, Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR
 };
 
 use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
-use identity::identifier::{derive::digest::DigestDerivator, KeyIdentifier};
+use identity::identifier::{
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+};
 
 use json_patch::diff;
 use network::ComunicateInfo;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
     Strategy, SystemEvent,
 };
@@ -65,7 +64,8 @@ impl Evaluator {
         compiled_contract: Contract,
         is_owner: bool,
     ) -> Result<RunnerResponse, ActorError> {
-        let runner_actor = ctx.create_child("runner", Runner::default()).await?;
+        let runner_actor =
+            ctx.create_child("runner", Runner::default()).await?;
 
         runner_actor
             .ask(RunnerMessage {
@@ -84,6 +84,12 @@ impl Evaluator {
         schemas: Vec<Schema>,
         governance_id: &str,
     ) -> Result<(), ActorError> {
+        let Some(config): Option<Config> =
+        ctx.system().get_helper("config").await
+    else {
+        return Err(ActorError::NotHelper("config".to_owned()));
+    };
+    
         for id in ids {
             let schema = if let Some(schema) =
                 schemas.iter().find(|x| x.id.clone() == id.clone())
@@ -97,22 +103,61 @@ impl Evaluator {
                 "/user/node/{}/{}_compiler",
                 governance_id, schema.id
             ));
-            let compiler_actor: Option<ActorRef<Compiler>> = ctx.system().get_actor(&compiler_path).await;
+            let compiler_actor: Option<ActorRef<Compiler>> =
+                ctx.system().get_actor(&compiler_path).await;
 
-            
             if let Some(compiler_actor) = compiler_actor {
-                    compiler_actor
-                .ask(CompilerMessage::Compile {
-                    contract: schema.contract.raw.clone(),
-                    initial_value: schema.initial_value.clone(),
-                    contract_path: format!("{}_{}", governance_id, id),
-                })
-                .await?
-                } else {
-                    return Err(ActorError::NotFound(compiler_path));
-                };        
+                compiler_actor
+                    .ask(CompilerMessage::Compile {
+                        contract_name: format!("{}_{}", governance_id, id),
+                        contract: schema.contract.raw.clone(),
+                        initial_value: schema.initial_value.clone(),
+                        contract_path: format!("{}/contracts/{}_{}", config.contracts_dir, governance_id, id),
+                    })
+                    .await?
+            } else {
+                return Err(ActorError::NotFound(compiler_path));
+            };
         }
         Ok(())
+    }
+
+    async fn check_governance(
+        &self,
+        ctx: &mut ActorContext<Evaluator>,
+        governance_id: DigestIdentifier,
+        gov_version: u64,
+        our_node: KeyIdentifier,
+    ) -> Result<bool, ActorError> {
+        let governance_string = governance_id.to_string();
+        let governance = get_gov(ctx, &governance_string).await?;
+        let metadata = get_metadata(ctx, &governance_string).await?;
+
+        match gov_version.cmp(&governance.version) {
+            std::cmp::Ordering::Equal => {
+                // If it is the same it means that we have the latest version of governance, we are up to date.
+            }
+            std::cmp::Ordering::Greater => {
+                // Me llega una versión mayor a la mía.
+                let data = UpdateData {
+                    sn: metadata.sn,
+                    gov_version: governance.version,
+                    subject_id: governance_id,
+                    our_node: our_node,
+                    other_node: self.node.clone(),
+                };
+                update_ledger_network(ctx, data).await?;
+                let e = ActorError::Functional(
+                    "Abort evaluation, update is required".to_owned(),
+                );
+                return Err(e);
+            }
+            std::cmp::Ordering::Less => {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     async fn evaluate(
@@ -120,50 +165,26 @@ impl Evaluator {
         ctx: &mut ActorContext<Evaluator>,
         execute_contract: &EvaluationReq,
         event: &FactRequest,
+        governance_id: DigestIdentifier,
+        is_governance: bool,
     ) -> Result<RunnerResult, ActorError> {
-        // TODO: En el original se usa el sn y no el gov version, revizar.
-
-        let is_governance = execute_contract.context.schema_id == "governance";
-
-        // Get governance id
-        let governance_id = if is_governance {
-            execute_contract.context.subject_id.clone()
-        } else {
-            execute_contract.context.governance_id.clone()
-        };
-
-        // Get governance
-        let governance = get_gov(ctx, &governance_id.to_string()).await?;
-        // Get governance version
-        let governance_version = governance.version;
-
-        match governance_version.cmp(&execute_contract.gov_version) {
-            std::cmp::Ordering::Equal => {
-                // If it is the same it means that we have the latest version of governance, we are up to date.
-            }
-            std::cmp::Ordering::Greater => {
-                // It is impossible to have a greater version of governance than the owner of the governance himself.
-                // The only possibility is that it is an old evaluation request.
-                // Hay que hacerlo TODO
-            }
-            std::cmp::Ordering::Less => {
-                // Si es un sujeto de traabilidad hay que darle una vuelta.
-                // Stop evaluation process, we need to update governance, we are out of date.
-                // Hay que hacerlo TODO
-            }
-        }
-
         let contract: Contract = if is_governance {
             Contract::GovContract
         } else {
-            let contracts = CONTRACTS.read().await;
+
+            let contracts = {
+                CONTRACTS.read().await
+            };
+            
             if let Some(contract) = contracts.get(&format!(
                 "{}_{}",
                 governance_id, execute_contract.context.schema_id
             )) {
                 Contract::CompiledContract(contract.clone())
             } else {
-                return Err(ActorError::FunctionalFail("Contract not found".to_owned()))
+                return Err(ActorError::FunctionalFail(
+                    "Contract not found".to_owned(),
+                ));
             }
         };
 
@@ -178,7 +199,10 @@ impl Evaluator {
             )
             .await?;
 
-        if response.result.success && is_governance && !response.compilations.is_empty() {
+        if response.result.success
+            && is_governance
+            && !response.compilations.is_empty()
+        {
             let governance_data = serde_json::from_value::<GovernanceData>(
                 response.result.final_state.0.clone(),
             )
@@ -190,14 +214,15 @@ impl Evaluator {
             })?;
 
             // TODO SI falla eliminar los new_compilers y borrar de CONTRACTS.
-            let Ok(new_compilers) = Evaluator::create_compilers(
+            let new_compilers = match Evaluator::create_compilers(
                 ctx,
                 &response.compilations,
                 &governance_id.to_string(),
             )
             .await
-            else {
-                todo!()
+            {
+                Ok(new_compilers) => new_compilers,
+                Err(e) => return Err(ActorError::Functional(format!("{}", e))),
             };
 
             self.compile_contracts(
@@ -216,28 +241,27 @@ impl Evaluator {
         ctx: &mut ActorContext<Evaluator>,
         ids: &[String],
         gov: &str,
-    ) -> Result<Vec<String>, Error> {
-        let subject: Option<ActorRef<Subject>> = ctx
-            .system()
-            .get_actor(&ActorPath::from(format!("/user/node/{}", gov)))
-            .await;
+    ) -> Result<Vec<String>, ActorError> {
+        let subject_path = ActorPath::from(format!("/user/node/{}", gov));
+        let subject: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&subject_path).await;
 
         let response = if let Some(subject) = subject {
-            let Ok(response) = subject
+            subject
                 .ask(SubjectMessage::CreateCompilers(ids.to_vec()))
-                .await
-            else {
-                todo!()
-            };
-            response
+                .await?
         } else {
-            todo!()
+            return Err(ActorError::NotFound(subject_path));
         };
 
         match response {
             SubjectResponse::NewCompilers(new_compilers) => Ok(new_compilers),
-            SubjectResponse::Error(e) => todo!(),
-            _ => todo!(),
+            _ => {
+                return Err(ActorError::UnexpectedResponse(
+                    subject_path,
+                    "SubjectResponse::NewCompilers".to_owned(),
+                ))
+            }
         }
     }
 
@@ -247,7 +271,7 @@ impl Evaluator {
     ) -> Result<Value, Error> {
         let patch = diff(prev_state, new_state);
         serde_json::to_value(patch).map_err(|e| {
-            Error::Evaluation(format!("Can not generate json patch {}", e))
+            Error::JSONPatch(format!("Can not generate json patch {}", e))
         })
     }
 
@@ -265,7 +289,7 @@ impl Evaluator {
         if evaluation.success {
             let state_hash = match evaluation.final_state.hash_id(derivator) {
                 Ok(state_hash) => state_hash,
-                Err(_e) => todo!(),
+                Err(e) => return EvaluationRes::Error(e.to_string()),
             };
 
             let patch = match Self::generate_json_patch(
@@ -273,7 +297,7 @@ impl Evaluator {
                 &evaluation.final_state.0,
             ) {
                 Ok(patch) => patch,
-                Err(_e) => todo!(),
+                Err(e) => return EvaluationRes::Error(e.to_string()),
             };
 
             return EvaluationRes::Response(EvalRes {
@@ -283,8 +307,9 @@ impl Evaluator {
                 appr_required: evaluation.approval_required,
             });
         }
-        // Retornar error.
-        todo!()
+        return EvaluationRes::Error(
+            "The evaluation was not success".to_string(),
+        );
     }
 }
 
@@ -336,21 +361,39 @@ impl Handler<Evaluator> for Evaluator {
                 let EventRequest::Fact(state_data) =
                     &evaluation_req.event_request.content
                 else {
-                    // Manejar, solo se evaluan los eventos de tipo fact TODO
-                    todo!()
+                    let e = ActorError::FunctionalFail("The only event that can be evaluated is the Fact event".to_owned());
+                    return Err(emit_fail(ctx, e).await);
+                };
+
+                let is_governance =
+                    evaluation_req.context.schema_id == "governance";
+
+                // Get governance id
+                let governance_id = if is_governance {
+                    evaluation_req.context.subject_id.clone()
+                } else {
+                    evaluation_req.context.governance_id.clone()
                 };
 
                 let evaluation = match self
-                    .evaluate(ctx, &evaluation_req, state_data)
+                    .evaluate(
+                        ctx,
+                        &evaluation_req,
+                        state_data,
+                        governance_id,
+                        is_governance,
+                    )
                     .await
                 {
                     Ok(evaluation) => {
                         Self::build_response(evaluation, evaluation_req).await
                     }
                     Err(e) => {
-                        // TODO si es un error Funtional es nuestra respuesta, si es un error de otro tipo
-                        // Parar al nodo
-                        todo!()
+                        if let ActorError::Functional(_) = e {
+                            EvaluationRes::Error(e.to_string())
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     }
                 };
 
@@ -361,7 +404,7 @@ impl Handler<Evaluator> for Evaluator {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(_e) => todo!(),
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 // Evaluatiob path.
@@ -428,20 +471,19 @@ impl Handler<Evaluator> for Evaluator {
 
                 let retry_actor = RetryActor::new(target, message, strategy);
 
-                let retry = if let Ok(retry) = ctx
+                let retry = match ctx
                     .create_child::<RetryActor<RetryNetwork>>(
                         "retry",
                         retry_actor,
                     )
                     .await
                 {
-                    retry
-                } else {
-                    todo!()
+                    Ok(retry) => retry,
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
-                if let Err(_e) = retry.tell(RetryMessage::Retry).await {
-                    todo!()
+                if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    return Err(emit_fail(ctx, e).await);
                 };
             }
             EvaluatorMessage::NetworkResponse {
@@ -451,12 +493,16 @@ impl Handler<Evaluator> for Evaluator {
                 if request_id == self.request_id {
                     if self.node != evaluation_res.signature.signer {
                         // Nos llegó a una validación de un nodo incorrecto!
-                        todo!()
+                        return Err(ActorError::Functional(
+                            "Invalid signer".to_owned(),
+                        ));
                     }
 
-                    if let Err(_e) = evaluation_res.verify() {
-                        // Hay error criptográfico en la respuesta
-                        todo!()
+                    if let Err(e) = evaluation_res.verify() {
+                        return Err(ActorError::Functional(format!(
+                            "Can not verify signature: {}",
+                            e
+                        )));
                     }
 
                     // Evaluation path.
@@ -467,7 +513,7 @@ impl Handler<Evaluator> for Evaluator {
                         ctx.system().get_actor(&evaluation_path).await;
 
                     if let Some(evaluation_actor) = evaluation_actor {
-                        if let Err(_e) = evaluation_actor
+                        if let Err(e) = evaluation_actor
                             .tell(EvaluationMessage::Response {
                                 evaluation_res: evaluation_res.content,
                                 sender: self.node.clone(),
@@ -475,23 +521,28 @@ impl Handler<Evaluator> for Evaluator {
                             })
                             .await
                         {
-                            // TODO error, no se puede enviar la response. Parar
+                            return Err(emit_fail(ctx, e).await);
                         }
                     } else {
-                        // TODO no se puede obtener evaluation! Parar.
-                        // Can not obtain parent actor
+                        let e = ActorError::NotFound(evaluation_path);
+                        return Err(emit_fail(ctx, e).await);
                     }
 
-                    let retry = if let Some(retry) =
-                        ctx.get_child::<RetryActor<RetryNetwork>>("retry").await
-                    {
-                        retry
-                    } else {
-                        todo!()
-                    };
-                    if let Err(_e) = retry.tell(RetryMessage::End).await {
-                        todo!()
-                    };
+                    'retry: {
+                        let Some(retry) = ctx
+                            .get_child::<RetryActor<RetryNetwork>>("retry")
+                            .await
+                        else {
+                            // Aquí me da igual, porque al parar este actor para el hijo
+                            break 'retry;
+                        };
+
+                        if let Err(_e) = retry.tell(RetryMessage::End).await {
+                            // Aquí me da igual, porque al parar este actor para el hijo
+                            break 'retry;
+                        };
+                    }
+
                     ctx.stop().await;
                 } else {
                     // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
@@ -501,40 +552,37 @@ impl Handler<Evaluator> for Evaluator {
                 evaluation_req,
                 info,
             } => {
+                let EventRequest::Fact(state_data) =
+                    &evaluation_req.content.event_request.content
+                else {
+                    return Err(ActorError::Functional("The only event that can be evaluated is the Fact event".to_owned()));
+                };
+
+                let info_subject_path =
+                    ActorPath::from(info.reciver_actor.clone()).parent().key();
+                // Nos llegó una eval donde en la request se indica un sujeto pero en el info otro
+                // Posible ataque.
+                if info_subject_path
+                    != evaluation_req.content.context.governance_id.to_string()
+                {
+                    return Err(ActorError::Functional("We received an evaluation where the request indicates one subject but the info indicates another.".to_owned()));
+                }
+
                 if info.schema == "governance" {
-                    // Aquí hay que comprobar que el owner del subject es el que envía la req.
-                    let subject_path = ActorPath::from(format!(
-                        "/user/node/{}",
-                        evaluation_req.content.context.subject_id.clone()
-                    ));
-                    let subject_actor: Option<ActorRef<Subject>> =
-                        ctx.system().get_actor(&subject_path).await;
-
-                    // We obtain the evaluator
-                    let response = if let Some(subject_actor) = subject_actor {
-                        match subject_actor.ask(SubjectMessage::GetOwner).await
-                        {
-                            Ok(response) => response,
-                            Err(_e) => todo!(),
+                    if let Err(e) = check_request_owner(
+                        ctx,
+                        &evaluation_req.content.context.subject_id.to_string(),
+                        &evaluation_req.signature.signer.to_string(),
+                        evaluation_req.clone(),
+                    )
+                    .await
+                    {
+                        if let ActorError::Functional(_) = e {
+                            return Err(e);
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
                         }
-                    } else {
-                        todo!()
                     };
-
-                    let subject_owner = match response {
-                        SubjectResponse::Owner(owner) => owner,
-                        _ => todo!(),
-                    };
-
-                    if subject_owner != evaluation_req.signature.signer {
-                        // Error nos llegó una evaluation req de un nodo el cual no es el dueño
-                        todo!()
-                    }
-
-                    if let Err(_e) = evaluation_req.verify() {
-                        // Hay errores criptográficos
-                        todo!()
-                    }
                 }
 
                 let helper: Option<Intermediary> =
@@ -545,29 +593,73 @@ impl Handler<Evaluator> for Evaluator {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                let EventRequest::Fact(state_data) =
-                    &evaluation_req.content.event_request.content
-                else {
-                    // Manejar, solo se evaluan los eventos de tipo fact TODO
-                    todo!()
+                let is_governance =
+                    evaluation_req.content.context.schema_id == "governance";
+
+                // Get governance id
+                let governance_id = if is_governance {
+                    evaluation_req.content.context.subject_id.clone()
+                } else {
+                    evaluation_req.content.context.governance_id.clone()
                 };
 
-                let evaluation = match self
-                    .evaluate(ctx, &evaluation_req.content, state_data)
+                let reboot = match self
+                    .check_governance(
+                        ctx,
+                        governance_id.clone(),
+                        evaluation_req.content.gov_version,
+                        info.reciver.clone(),
+                    )
                     .await
                 {
-                    Ok(evaluation) => {
-                        Self::build_response(
-                            evaluation,
-                            evaluation_req.content.clone(),
+                    Ok(reboot) => reboot,
+                    Err(e) => {
+                        if let ActorError::Functional(_) = e {
+                            return Err(e);
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    }
+                };
+
+                let evaluation = if reboot {
+                    EvaluationRes::Reboot
+                } else {
+                    match self
+                        .evaluate(
+                            ctx,
+                            &evaluation_req.content,
+                            state_data,
+                            governance_id,
+                            is_governance,
                         )
                         .await
+                    {
+                        Ok(evaluation) => {
+                            Self::build_response(
+                                evaluation,
+                                evaluation_req.content.clone(),
+                            )
+                            .await
+                        }
+                        Err(e) => {
+                            if let ActorError::Functional(_) = e {
+                                EvaluationRes::Error(e.to_string())
+                            } else {
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        }
                     }
-                    Err(_e) => {
-                        // TODO si es un error Funtional es nuestra respuesta, si es un error de otro tipo
-                        // Parar al nodo
-                        todo!()
-                    }
+                };
+
+                let signature = match get_sign(
+                    ctx,
+                    SignTypesNode::EvaluationRes(evaluation.clone()),
+                )
+                .await
+                {
+                    Ok(signature) => signature,
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 let new_info = ComunicateInfo {
@@ -582,21 +674,11 @@ impl Handler<Evaluator> for Evaluator {
                     schema: info.schema.clone(),
                 };
 
-                let signature = match get_sign(
-                    ctx,
-                    SignTypesNode::EvaluationRes(evaluation.clone()),
-                )
-                .await
-                {
-                    Ok(signature) => signature,
-                    Err(_e) => todo!(),
-                };
-
                 let signed_response: Signed<EvaluationRes> = Signed {
                     content: evaluation,
                     signature,
                 };
-                if let Err(_e) = helper
+                if let Err(e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
@@ -607,7 +689,7 @@ impl Handler<Evaluator> for Evaluator {
                     })
                     .await
                 {
-                    // error al enviar mensaje, propagar hacia arriba TODO
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 if info.schema != "governance" {
@@ -633,7 +715,7 @@ impl Handler<Evaluator> for Evaluator {
                     ctx.system().get_actor(&evaluation_path).await;
 
                 if let Some(evaluation_actor) = evaluation_actor {
-                    if let Err(_e) = evaluation_actor
+                    if let Err(e) = evaluation_actor
                         .tell(EvaluationMessage::Response {
                             evaluation_res: EvaluationRes::TimeOut(
                                 TimeOutResponse {
@@ -647,19 +729,26 @@ impl Handler<Evaluator> for Evaluator {
                         })
                         .await
                     {
-                        // TODO error, no se puede enviar la response
-                        // return Err(_e);
+                        emit_fail(ctx, e).await;
                     }
                 } else {
-                    // TODO no se puede obtener evaluation! Parar.
-                    // Can not obtain parent actor
-                    // return Err(ActorError::Exists(evaluation_path));
+                    let e = ActorError::NotFound(evaluation_path);
+                    emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
-            },
+            }
             _ => {
                 // TODO error inesperado
             }
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Evaluator>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }

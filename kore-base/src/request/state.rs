@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RequestManagerState {
+    Reboot,
     Starting,
     Evaluation,
     Approval {

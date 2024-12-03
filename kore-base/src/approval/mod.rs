@@ -4,7 +4,8 @@
 use std::collections::HashSet;
 
 use actor::{
-    Actor, ActorContext, ChildAction, Error as ActorError, Handler, Message, Response, SystemEvent
+    Actor, ActorContext, ChildAction, Error as ActorError, Handler, Message,
+    Response, SystemEvent,
 };
 use actor::{ActorPath, ActorRef, Event};
 use approver::{Approver, ApproverMessage, VotationType};
@@ -19,7 +20,9 @@ use tracing::{debug, error};
 
 use crate::evaluation::response::EvalLedgerResponse;
 use crate::governance::model::Roles;
-use crate::model::common::{emit_fail, get_sign, get_signers_quorum_gov_version};
+use crate::model::common::{
+    emit_fail, get_sign, get_signers_quorum_gov_version,
+};
 use crate::model::event::{LedgerValue, ProtocolsSignatures};
 use crate::model::{Namespace, SignTypesNode};
 use crate::request::manager::{RequestManager, RequestManagerMessage};
@@ -88,11 +91,18 @@ impl Approval {
 
         let prev_hash = match response {
             SubjectResponse::Metadata(metadata) => metadata.last_event_hash,
-            _ => return Err(ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Metadata".to_owned())),
+            _ => {
+                return Err(ActorError::UnexpectedResponse(
+                    subject_path,
+                    "SubjectResponse::Metadata".to_owned(),
+                ))
+            }
         };
 
-         let LedgerValue::Patch(patch) = eval_res.value else {
-            return Err(ActorError::FunctionalFail("Approvation can not be possible if eval fail".to_owned()));
+        let LedgerValue::Patch(patch) = eval_res.value else {
+            return Err(ActorError::FunctionalFail(
+                "Approvation can not be possible if eval fail".to_owned(),
+            ));
         };
 
         Ok(ApprovalReq {
@@ -120,10 +130,8 @@ impl Approval {
                 "/user/node/{}/approver",
                 approval_req.content.subject_id
             ));
-            let approver_actor: Option<ActorRef<Approver>> = ctx
-                .system()
-                .get_actor(&approver_path)
-                .await;
+            let approver_actor: Option<ActorRef<Approver>> =
+                ctx.system().get_actor(&approver_path).await;
             if let Some(approver_actor) = approver_actor {
                 approver_actor
                     .tell(ApproverMessage::LocalApproval {
@@ -147,11 +155,15 @@ impl Approval {
                         VotationType::Manual,
                     ),
                 )
-                .await else {
-                    return Err(ActorError::Create(ctx.path().clone(), signer.to_string()));
-                };
+                .await
+            else {
+                return Err(ActorError::Create(
+                    ctx.path().clone(),
+                    signer.to_string(),
+                ));
+            };
 
-                child
+            child
                 .tell(ApproverMessage::NetworkApproval {
                     request_id: request_id.to_owned(),
                     approval_req: approval_req.clone(),
@@ -227,18 +239,11 @@ pub enum ApprovalEvent {
 
 impl Event for ApprovalEvent {}
 
-#[derive(Debug, Clone)]
-pub enum ApprovalResponse {
-    Error(Error),
-    None,
-}
-impl Response for ApprovalResponse {}
-
 #[async_trait]
 impl Actor for Approval {
     type Event = ApprovalEvent;
     type Message = ApprovalMessage;
-    type Response = ApprovalResponse;
+    type Response = ();
 
     async fn pre_start(
         &mut self,
@@ -266,7 +271,7 @@ impl Handler<Approval> for Approval {
         __sender: ActorPath,
         msg: ApprovalMessage,
         ctx: &mut ActorContext<Self>,
-    ) -> Result<ApprovalResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             ApprovalMessage::Create {
                 request_id,
@@ -275,17 +280,19 @@ impl Handler<Approval> for Approval {
             } => {
                 if request_id == self.request_id {
                     let Some(request) = self.request.clone() else {
-                        return Ok(ApprovalResponse::None);
+                        return Ok(());
                     };
 
                     for signer in self.approvers.clone() {
-                        if let Err(e) = self.create_approvers(
-                            ctx,
-                            &self.request_id,
-                            request.clone(),
-                            signer,
-                        )
-                        .await {
+                        if let Err(e) = self
+                            .create_approvers(
+                                ctx,
+                                &self.request_id,
+                                request.clone(),
+                                signer,
+                            )
+                            .await
+                        {
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -301,21 +308,21 @@ impl Handler<Approval> for Approval {
                         }
                     };
                     // Get signers and quorum
-                    let (signers, quorum, _) = match
-                    get_signers_quorum_gov_version(
+                    let (signers, quorum, _) =
+                        match get_signers_quorum_gov_version(
                             ctx,
                             &eval_req.context.subject_id.to_string(),
                             &eval_req.context.schema_id,
                             Namespace::from(eval_req.context.namespace),
-                            Roles::APPROVER
+                            Roles::APPROVER,
                         )
                         .await
-                    {
-                        Ok(signers_quorum) => signers_quorum,
-                        Err(e) => {
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    };
+                        {
+                            Ok(signers_quorum) => signers_quorum,
+                            Err(e) => {
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        };
                     // Update quorum and validators
                     let request_id = request_id.to_string();
 
@@ -328,7 +335,7 @@ impl Handler<Approval> for Approval {
                         Ok(signature) => signature,
                         Err(e) => {
                             return Err(emit_fail(ctx, e).await);
-                        },
+                        }
                     };
 
                     let signed_approval_req: Signed<ApprovalReq> = Signed {
@@ -337,13 +344,15 @@ impl Handler<Approval> for Approval {
                     };
 
                     for signer in signers.clone() {
-                        if let Err(e) = self.create_approvers(
-                            ctx,
-                            &request_id,
-                            signed_approval_req.clone(),
-                            signer,
-                        )
-                        .await {
+                        if let Err(e) = self
+                            .create_approvers(
+                                ctx,
+                                &request_id,
+                                signed_approval_req.clone(),
+                                signer,
+                            )
+                            .await
+                        {
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -416,7 +425,7 @@ impl Handler<Approval> for Approval {
                 }
             }
         }
-        Ok(ApprovalResponse::None)
+        Ok(())
     }
 
     async fn on_event(

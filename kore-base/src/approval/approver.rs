@@ -2,7 +2,10 @@ use crate::{
     db::Storable,
     intermediary::Intermediary,
     model::{
-        common::{emit_fail, get_gov, get_sign},
+        common::{
+            check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
+            update_ledger_network, UpdateData,
+        },
         network::{RetryNetwork, TimeOutResponse},
         SignTypesNode, TimeStamp,
     },
@@ -10,12 +13,12 @@ use crate::{
     SubjectMessage, SubjectResponse,
 };
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    ExponentialBackoffStrategy, Handler, Message, Response, RetryActor,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    Event, ExponentialBackoffStrategy, Handler, Message, Response, RetryActor,
     RetryMessage, Strategy, SystemEvent,
 };
 use async_trait::async_trait;
-use identity::identifier::KeyIdentifier;
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
@@ -122,24 +125,33 @@ impl Approver {
     async fn check_governance(
         &self,
         ctx: &mut ActorContext<Approver>,
-        subject_id: &str,
+        governance_id: DigestIdentifier,
         gov_version: u64,
+        our_node: KeyIdentifier,
     ) -> Result<(), ActorError> {
-        let governance = get_gov(ctx, subject_id).await?;
+        let governance_string = governance_id.to_string();
+        let governance = get_gov(ctx, &governance_string).await?;
+        let metadata = get_metadata(ctx, &governance_string).await?;
 
         match gov_version.cmp(&governance.version) {
             std::cmp::Ordering::Equal => {
                 // If it is the same it means that we have the latest version of governance, we are up to date.
             }
             std::cmp::Ordering::Greater => {
-                // It is impossible to have a greater version of governance than the owner of the governance himself.
-                // The only possibility is that it is an old approval request.
-                // Hay que hacerlo TODO
+                // Me llega una versión mayor a la mía.
+                let data = UpdateData {
+                    sn: metadata.sn,
+                    gov_version: governance.version,
+                    subject_id: governance_id,
+                    our_node,
+                    other_node: self.node.clone(),
+                };
+                update_ledger_network(ctx, data).await?;
             }
             std::cmp::Ordering::Less => {
-                // Si es un sujeto de traabilidad hay que darle una vuelta.
-                // Stop evaluation process, we need to update governance, we are out of date.
-                // Hay que hacerlo TODO
+                // TODO Por ahora no vamos hacer nada, pero esto quiere decir que el owner perdió el ledger
+                // lo recuperó pero no recibió la última versión. Aquí se podría haber producido un fork.
+                // Esto ocurre solo en la aprobación porque solo se realiza en las gobernanzas.
             }
         }
 
@@ -190,7 +202,7 @@ impl Approver {
                 schema: info.schema.clone(),
             };
 
-            helper
+            if let Err(e) = helper
                 .send_command(network::CommandHelper::SendMessage {
                     message: NetworkMessage {
                         info: new_info,
@@ -199,7 +211,10 @@ impl Approver {
                         },
                     },
                 })
-                .await?;
+                .await
+            {
+                return Err(emit_fail(ctx, e).await);
+            };
         } else {
             // Approval Path
             let approval_path = ActorPath::from(format!(
@@ -278,13 +293,6 @@ pub enum ApproverEvent {
 
 impl Event for ApproverEvent {}
 
-#[derive(Debug, Clone)]
-pub enum ApproverResponse {
-    None,
-}
-
-impl Response for ApproverResponse {}
-
 #[async_trait]
 impl Actor for Approver {
     async fn pre_start(
@@ -303,7 +311,7 @@ impl Actor for Approver {
 
     type Event = ApproverEvent;
     type Message = ApproverMessage;
-    type Response = ApproverResponse;
+    type Response = ();
 }
 
 #[async_trait]
@@ -313,13 +321,13 @@ impl Handler<Approver> for Approver {
         _sender: ActorPath,
         msg: ApproverMessage,
         ctx: &mut ActorContext<Approver>,
-    ) -> Result<ApproverResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             ApproverMessage::MakeObsolete => {
                 let state = if let Some(state) = self.state.clone() {
                     state
                 } else {
-                    return Ok(ApproverResponse::None);
+                    return Ok(());
                 };
 
                 if state == ApprovalState::Pending {
@@ -335,7 +343,9 @@ impl Handler<Approver> for Approver {
             }
             ApproverMessage::ChangeResponse { response } => {
                 let Some(state) = self.state.clone() else {
-                    return Ok(ApproverResponse::None);
+                    return Err(ActorError::Functional(
+                        "Can not get approval state".to_owned(),
+                    ));
                 };
 
                 if state == ApprovalState::Pending {
@@ -357,7 +367,9 @@ impl Handler<Approver> for Approver {
                             };
 
                         let Some(approval_req) = self.request.clone() else {
-                            return Ok(ApproverResponse::None);
+                            return Err(ActorError::Functional(
+                                "Can not get approval request".to_owned(),
+                            ));
                         };
 
                         if let Err(e) = self
@@ -504,7 +516,10 @@ impl Handler<Approver> for Approver {
                     )
                     .await
                 else {
-                    let e = ActorError::Create(ctx.path().clone(), "retry".to_string());
+                    let e = ActorError::Create(
+                        ctx.path().clone(),
+                        "retry".to_string(),
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -519,12 +534,13 @@ impl Handler<Approver> for Approver {
             } => {
                 if request_id == self.request_id {
                     if self.node != approval_res.signature.signer {
-                        // Nos llegó a una aprobación de un nodo incorrecto!
-                        return Ok(ApproverResponse::None);
+                        return Err(ActorError::Functional("We received an approval from a node which we were not expecting to receive.".to_owned()));
                     }
-                    if let Err(_e) = approval_res.verify() {
-                        // Hay error criptográfico en la respuesta
-                        return Ok(ApproverResponse::None);
+                    if let Err(e) = approval_res.verify() {
+                        return Err(ActorError::Functional(format!(
+                            "Can not verify approval response signature: {}",
+                            e
+                        )));
                     }
 
                     // Approval path.
@@ -577,48 +593,24 @@ impl Handler<Approver> for Approver {
                 if info_subject_path
                     != approval_req.content.subject_id.to_string()
                 {
-                    return Ok(ApproverResponse::None);
+                    return Err(ActorError::Functional("We received an approvation where the request indicates one subject but the info indicates another.".to_owned()));
                 }
 
                 if info.request_id != self.request_id {
-                    let subject_path = ActorPath::from(format!(
-                        "/user/node/{}",
-                        approval_req.content.subject_id
-                    ));
-                    let subject_actor: Option<ActorRef<Subject>> =
-                        ctx.system().get_actor(&subject_path).await;
-
-                    // We obtain the evaluator
-                    let response = if let Some(subject_actor) = subject_actor {
-                        match subject_actor.ask(SubjectMessage::GetOwner).await
-                        {
-                            Ok(response) => response,
-                            Err(e) => {
-                                return Err(emit_fail(ctx, e).await);
-                            }
-                        }
-                    } else {
-                        let e = ActorError::NotFound(subject_path);
-                        return Err(emit_fail(ctx, e).await);
-                    };
-
-                    let subject_owner = match response {
-                        SubjectResponse::Owner(owner) => owner,
-                        _ => {
-                            let e = ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Owner".to_owned());
+                    if let Err(e) = check_request_owner(
+                        ctx,
+                        &approval_req.content.subject_id.to_string(),
+                        &approval_req.signature.signer.to_string(),
+                        approval_req.clone(),
+                    )
+                    .await
+                    {
+                        if let ActorError::Functional(_) = e {
+                            return Err(e);
+                        } else {
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
-
-                    if subject_owner != approval_req.signature.signer {
-                        // Error nos llegó una evaluation req de un nodo el cual no es el dueño
-                        return Ok(ApproverResponse::None);
-                    }
-
-                    if let Err(_e) = approval_req.verify() {
-                        // Hay errores criptográficos
-                        return Ok(ApproverResponse::None);
-                    }
 
                     if !approval_req
                         .content
@@ -626,18 +618,21 @@ impl Handler<Approver> for Approver {
                         .content
                         .is_fact_event()
                     {
-                        return Ok(ApproverResponse::None);
+                        let e = ActorError::Functional(
+                            "Only can approve fact requests".to_owned(),
+                        );
+                        return Err(e);
                     }
 
-                    if let Err(_e) = self
+                    if let Err(e) = self
                         .check_governance(
                             ctx,
-                            &approval_req.content.subject_id.to_string(),
+                            approval_req.content.subject_id.clone(),
                             approval_req.content.gov_version,
+                            info.reciver.clone(),
                         )
                         .await
                     {
-                        let e =  ActorError::UnexpectedMessage(subject_path, "SubjectResponse::Owner".to_owned());
                         return Err(emit_fail(ctx, e).await);
                     }
 
@@ -676,12 +671,14 @@ impl Handler<Approver> for Approver {
                         )
                         .await;
                     }
-                } else {
+                } else if !self.request_id.is_empty() {
                     let state = if let Some(state) = self.state.clone() {
                         state
                     } else {
-                        // Si tiene un request debería tener un state
-                        return Ok(ApproverResponse::None);
+                        let e = ActorError::FunctionalFail(
+                            "Can not get state".to_owned(),
+                        );
+                        return Err(emit_fail(ctx, e).await);
                     };
                     let response = if ApprovalState::RespondedAccepted == state
                     {
@@ -689,15 +686,17 @@ impl Handler<Approver> for Approver {
                     } else if ApprovalState::RespondedRejected == state {
                         false
                     } else {
-                        return Ok(ApproverResponse::None);
+                        return Ok(());
                     };
 
                     let approval_req =
                         if let Some(approval_req) = self.request.clone() {
                             approval_req
                         } else {
-                            // Si tiene un request debería tener un state
-                            return Ok(ApproverResponse::None);
+                            let e = ActorError::FunctionalFail(
+                                "Can not get approve request".to_owned(),
+                            );
+                            return Err(emit_fail(ctx, e).await);
                         };
 
                     if let Err(e) = self
@@ -709,7 +708,7 @@ impl Handler<Approver> for Approver {
                 }
             }
         }
-        Ok(ApproverResponse::None)
+        Ok(())
     }
 
     async fn on_event(
@@ -764,6 +763,15 @@ impl Handler<Approver> for Approver {
                 // TODO Error inesperado o que no debería ocurrir.
             }
         };
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Approver>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }
 

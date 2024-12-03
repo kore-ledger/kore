@@ -79,7 +79,7 @@ impl Handler<SinkData> for SinkData {
     ) {
         if let Err(e) = ctx.publish_event(event).await {
             println!("{}", e);
-            todo!()
+            // TODO
         };
     }
 }

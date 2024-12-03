@@ -36,7 +36,7 @@ pub async fn system(
     let encrypted_pass = EncryptedPass::new(password)?;
     system.add_helper("encrypted_pass", encrypted_pass).await;
 
-    let db_manager = DBManager::new(Duration::from_secs(5));
+    let db_manager = DBManager::new(config.garbage_collector);
     let db_manager_actor = system
         .create_root_actor("db_manager", db_manager)
         .await
@@ -111,16 +111,6 @@ pub mod tests {
             tempfile::tempdir().expect("Can not create temporal directory.");
         let path = dir.path().to_str().unwrap();
 
-        /*
-        key_derivator: KeyDerivator::Ed25519,
-            digest_derivator: DigestDerivator::Blake3_256,
-            kore_db: KoreDbConfig::build(kore_db_path),
-            external_db: ExternalDbConfig::build(external_db_path),
-            network,
-            contracts_dir: contracts_dir.to_owned(),
-            always_accept
-         */
-
         let newtork_config = NetworkConfig::new(
             network::NodeType::Bootstrap,
             vec![],
@@ -137,7 +127,7 @@ pub mod tests {
                 create_temp_dir()
             )),
             network: newtork_config,
-            contracts_dir: "./".to_owned(),
+            contracts_dir: create_temp_dir(),
             always_accept: false,
             garbage_collector: Duration::from_secs(500),
         };

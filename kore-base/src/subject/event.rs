@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
 use crate::{
-    model::{common::verify_protocols_state, event::ProtocolsSignatures},
+    model::{
+        common::{emit_fail, verify_protocols_state},
+        event::ProtocolsSignatures,
+    },
     EventRequestType,
 };
 use actor::{
@@ -57,7 +60,6 @@ impl Event for LedgerEventEvent {}
 
 #[derive(Debug, Clone)]
 pub enum LedgerEventResponse {
-    Error(Error),
     LastEvent(Signed<KoreEvent>),
     Ok,
 }
@@ -102,8 +104,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
             LedgerEventMessage::UpdateLastEvent { event } => {
                 if let Some(last_event) = self.last_event.clone() {
                     if last_event.content.sn >= event.content.sn {
-                        // NO Hay que actualizar
-                        todo!()
+                        return Err(ActorError::Functional("An attempt was made to update the event ledger with an event prior to the one already saved.".to_owned()));
                     }
                 };
 
@@ -117,7 +118,9 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     event.content.vali_success,
                 ) {
                     Ok(is_ok) => is_ok,
-                    Err(_e) => todo!(),
+                    Err(e) => {
+                        return Err(ActorError::Functional(e.to_string()))
+                    }
                 };
 
                 if valid_event {
@@ -162,10 +165,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     if let EventRequest::EOL(_) =
                         event.content.event_request.content
                     {
-                        // LLEga un evento de EOL, todo funciona bien, el sujeto va a bajar al approver,
-                        // Por lo tanto este no se va a poder marcar como obsoleta el último mensaje.
-                        // A no ser que como exección el approver lo baje este actor
-                        // TODO.
+                        return Ok(LedgerEventResponse::Ok);
                     } else {
                         let approver_path = ActorPath::from(format!(
                             "{}/approver",
@@ -175,14 +175,15 @@ impl Handler<LedgerEvent> for LedgerEvent {
                             ctx.system().get_actor(&approver_path).await;
 
                         if let Some(approver_actor) = approver_actor {
-                            if let Err(_e) = approver_actor
+                            if let Err(e) = approver_actor
                                 .tell(ApproverMessage::MakeObsolete)
                                 .await
                             {
-                                todo!()
+                                return Err(emit_fail(ctx, e).await);
                             }
                         } else {
-                            todo!()
+                            let e = ActorError::NotFound(approver_path);
+                            return Err(ActorError::Functional(e.to_string()));
                         }
                     };
                 }
@@ -194,7 +195,9 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     if let Some(last_event) = self.last_event.clone() {
                         last_event
                     } else {
-                        todo!()
+                        return Err(ActorError::Functional(
+                            "Can not get last event".to_owned(),
+                        ));
                     };
 
                 Ok(LedgerEventResponse::LastEvent(last_event))
@@ -213,7 +216,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
 
         if let Err(e) = ctx.publish_event(event).await {
             println!("{}", e);
-            todo!()
+            // TODO
         }
     }
 }

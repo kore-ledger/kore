@@ -4,23 +4,24 @@
 pub mod config;
 pub mod error;
 
-mod approval;
-mod auth;
-mod db;
-mod distribution;
-mod evaluation;
-mod external_db;
-mod governance;
-mod helpers;
-mod model;
-mod node;
-mod query;
-mod request;
-mod subject;
+pub mod approval;
+pub mod auth;
+pub mod db;
+pub mod distribution;
+pub mod evaluation;
+pub mod external_db;
+pub mod governance;
+pub mod helpers;
+pub mod model;
+pub mod node;
+pub mod query;
+pub mod request;
+pub mod subject;
 pub(crate) mod system;
-mod validation;
+pub mod update;
+pub mod validation;
 
-use actor::{ActorPath, ActorRef, Sink};
+use actor::{ActorPath, ActorRef, Sink, SystemRef};
 use approval::approver::ApprovalStateRes;
 use async_std::sync::RwLock;
 use auth::{Auth, AuthMessage, AuthResponse, AuthWitness};
@@ -32,7 +33,7 @@ use governance::{init::init_state, Governance};
 use helpers::db::{EventDB, ExternalDB, Paginator, SignaturesDB, SubjectDB};
 use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
-use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use identity::identifier::DigestIdentifier;
 use identity::keys::KeyPair;
 use intermediary::Intermediary;
 use model::event::Event;
@@ -96,6 +97,7 @@ impl Api {
         let schema = JsonSchema::compile(&schema())?;
 
         if let Err(_e) = GOVERNANCE.set(RwLock::new(schema)) {
+            #[cfg(test)]
             return Err(Error::System("An error occurred with the governance schema, it could not be initialized globally".to_owned()));
         };
 
@@ -163,6 +165,7 @@ impl Api {
             worker.service().sender().clone(),
             KeyDerivator::Ed25519,
             system.clone(),
+            token.clone(),
         );
 
         let peer_id = worker.local_peer_id().to_string();
@@ -199,8 +202,7 @@ impl Api {
         &self,
         request: Signed<EventRequest>,
     ) -> Result<RequestData, Error> {
-        let Ok(response) = self
-            .request
+        let Ok(response) = self.request
             .ask(RequestHandlerMessage::NewRequest { request })
             .await
         else {
@@ -212,7 +214,7 @@ impl Api {
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),
-            RequestHandlerResponse::Error(error) => Err(error),
+
             _ => Err(Error::RequestHandler(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -239,7 +241,7 @@ impl Api {
 
         let signature = match response {
             NodeResponse::SignRequest(signature) => signature,
-            NodeResponse::Error(error) => return Err(error),
+
             _ => {
                 return Err(Error::Node(
                     "A response was received that was not the expected one"
@@ -253,22 +255,14 @@ impl Api {
             signature,
         };
 
-        let Ok(response) = self
-            .request
-            .ask(RequestHandlerMessage::NewRequest {
-                request: signed_event_req,
-            })
-            .await
-        else {
-            return Err(Error::RequestHandler(
-                "The Actor in charge of the request is not able to respond"
-                    .to_owned(),
-            ));
-        };
+        let response = self.request
+        .ask(RequestHandlerMessage::NewRequest {
+            request: signed_event_req,
+        })
+        .await.map_err(|e| Error::RequestHandler(e.to_string()))?;
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),
-            RequestHandlerResponse::Error(error) => Err(error),
             _ => Err(Error::RequestHandler(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -295,7 +289,7 @@ impl Api {
 
         match response {
             QueryResponse::RequestState(state) => Ok(state),
-            QueryResponse::Error(e) => Err(e),
+
             _ => Err(Error::Query(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -324,7 +318,7 @@ impl Api {
             QueryResponse::ApprovalState { request, state } => {
                 Ok((request, state))
             }
-            QueryResponse::Error(e) => Err(e),
+
             _ => Err(Error::Query(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -357,7 +351,7 @@ impl Api {
 
         match response {
             RequestHandlerResponse::Response(res) => Ok(res),
-            RequestHandlerResponse::Error(error) => Err(error),
+
             _ => Err(Error::RequestHandler(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -419,7 +413,6 @@ impl Api {
 
         match response {
             AuthResponse::Witnesses(witnesses) => Ok(witnesses),
-            AuthResponse::Error(e) => Err(e),
             _ => Err(Error::Auth(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -458,7 +451,7 @@ impl Api {
 
         match response {
             AuthResponse::None => Ok("Update in progress".to_owned()),
-            AuthResponse::Error(e) => Err(e),
+
             _ => Err(Error::Auth(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -507,7 +500,6 @@ impl Api {
 
         match response {
             RegisterResponse::Subjs { subjects } => Ok(subjects),
-            RegisterResponse::Error(e) => Err(e),
             _ => Err(Error::Register(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -540,7 +532,7 @@ impl Api {
             QueryResponse::Events { events, paginator } => {
                 Ok((events, paginator))
             }
-            QueryResponse::Error(e) => Err(e),
+
             _ => Err(Error::Query(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -567,7 +559,6 @@ impl Api {
 
         match response {
             QueryResponse::Subject { subject } => Ok(subject),
-            QueryResponse::Error(e) => Err(e),
             _ => Err(Error::Query(
                 "A response was received that was not the expected one"
                     .to_owned(),
@@ -594,7 +585,7 @@ impl Api {
 
         match response {
             QueryResponse::Signatures { signatures } => Ok(signatures),
-            QueryResponse::Error(e) => Err(e),
+
             _ => Err(Error::Query(
                 "A response was received that was not the expected one"
                     .to_owned(),

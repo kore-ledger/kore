@@ -15,11 +15,10 @@ use tracing::error;
 use wasmtime::{Caller, Config, Engine, ExternType, Linker, Module, Store};
 
 use crate::{
-    governance::json_schema::JsonSchema, Error, HashId, ValueWrapper,
-    CONTRACTS, DIGEST_DERIVATOR,
+    governance::json_schema::JsonSchema,
+    model::common::{emit_fail, generate_linker, MemoryManager},
+    Error, HashId, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR,
 };
-
-use super::runner::types::MemoryManager;
 
 #[derive(
     Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug, Clone,
@@ -72,8 +71,8 @@ impl Compiler {
             )));
         };
 
-        if !Path::new(&format!("contracts/{}/src", contract_path)).exists() {
-            fs::create_dir_all(&format!("contracts/{}/src", contract_path))
+        if !Path::new(&format!("{}/src", contract_path)).exists() {
+            fs::create_dir_all(&format!("{}/src", contract_path))
                 .await
                 .map_err(|e| {
                     Error::Node(format!("Can not create src dir: {}", e))
@@ -82,20 +81,20 @@ impl Compiler {
 
         let toml: String = Self::compilation_toml();
         // We write cargo.toml
-        fs::write(format!("contracts/{}/Cargo.toml", contract_path), toml)
+        fs::write(format!("{}/Cargo.toml", contract_path), toml)
             .await
             .map_err(|e| {
                 Error::Node(format!("Can not create Cargo.toml file: {}", e))
             })?;
 
         fs::write(
-            format!("contracts/{}/src/lib.rs", contract_path),
+            format!("{}/src/lib.rs", contract_path),
             decode_base64,
         )
         .await
         .map_err(|e| {
             Error::Compiler(format!(
-                "Can not create contracts/{}/src/lib.rs file: {}",
+                "Can not create {}/src/lib.rs file: {}",
                 contract_path, e
             ))
         })?;
@@ -104,7 +103,7 @@ impl Compiler {
         let status = Command::new("cargo")
             .arg("build")
             .arg(format!(
-                "--manifest-path=contracts/{}/Cargo.toml",
+                "--manifest-path={}/Cargo.toml",
                 contract_path
             ))
             .arg("--target")
@@ -114,7 +113,7 @@ impl Compiler {
             // Does not show stdout. Generates child process and waits
             .map_err(|e| {
                 Error::Compiler(format!(
-                    "Can not compile contract contracts/{}/src/lib.rs: {}",
+                    "Can not compile contract {}/src/lib.rs: {}",
                     contract_path, e
                 ))
             })?;
@@ -122,7 +121,7 @@ impl Compiler {
         // Is success
         if !status.status.success() {
             return Err(Error::Compiler(format!(
-                "Can not compile contracts/{}/src/lib.rs",
+                "Can not compile {}/src/lib.rs",
                 contract_path
             )));
         }
@@ -136,7 +135,7 @@ impl Compiler {
     ) -> Result<Vec<u8>, Error> {
         // Read compile contract
         let file = fs::read(format!(
-            "contracts/{}/target/wasm32-unknown-unknown/release/contract.wasm",
+            "{}/target/wasm32-unknown-unknown/release/contract.wasm",
             contract_path
         ))
         .await
@@ -164,7 +163,7 @@ impl Compiler {
         let module = unsafe {
             Module::deserialize(&engine, contract_bytes.clone()).map_err(
                 |e| {
-                    Error::Runner(format!(
+                    Error::Compiler(format!(
                         "Error deserializing the contract in wastime: {}",
                         e
                     ))
@@ -207,7 +206,7 @@ impl Compiler {
         let mut store = Store::new(&engine, context);
 
         // Responsible for combining several object files into a single WebAssembly executable file (.wasm).
-        let linker = Self::generate_linker(&engine)?;
+        let linker = generate_linker(&engine)?;
 
         // Contract instance.
         let instance =
@@ -222,123 +221,55 @@ impl Compiler {
         let _main_contract_entrypoint = instance
             .get_typed_func::<(u32, u32, u32), u32>(&mut store, "main_function")
             .map_err(|e| {
-                Error::Runner(format!("Contract entry point not found: {}", e))
+                Error::Compiler(format!(
+                    "Contract entry point not found: {}",
+                    e
+                ))
             })?;
 
         // Get access to contract
         let init_contract_entrypoint = instance
             .get_typed_func::<u32, u32>(&mut store, "init_check_function")
             .map_err(|e| {
-                Error::Runner(format!("Contract entry point not found: {}", e))
+                Error::Compiler(format!(
+                    "Contract entry point not found: {}",
+                    e
+                ))
             })?;
 
         // Contract execution
         let result_ptr = init_contract_entrypoint
             .call(&mut store, state_ptr)
             .map_err(|e| {
-            Error::Runner(format!("Contract execution failed: {}", e))
+            Error::Compiler(format!("Contract execution failed: {}", e))
         })?;
 
-        let result = Self::get_result(&store, result_ptr)?;
-
-        if !result.success {
-            todo!()
-        }
+        Self::check_result(&store, result_ptr)?;
 
         Ok(contract_bytes)
     }
 
-    fn get_result(
+    fn check_result(
         store: &Store<MemoryManager>,
         pointer: u32,
-    ) -> Result<ContractResult, Error> {
+    ) -> Result<(), Error> {
         let bytes = store.data().read_data(pointer as usize)?;
         let contract_result: ContractResult =
             BorshDeserialize::try_from_slice(bytes).map_err(|e| {
-                Error::Runner(format!(
+                Error::Compiler(format!(
                     "Can not generate wasm contract result: {}",
                     e
                 ))
             })?;
 
         if contract_result.success {
-            Ok(contract_result)
+            Ok(())
         } else {
-            todo!()
+            return Err(Error::Compiler(
+                "Contract execution in compilation was not successful"
+                    .to_owned(),
+            ));
         }
-    }
-
-    // TODO SI todo funciona refactorizar este método que también está en el runner.
-    // Cambiar errores De Runner a Compiler
-    fn generate_linker(
-        engine: &Engine,
-    ) -> Result<Linker<MemoryManager>, Error> {
-        let mut linker: Linker<MemoryManager> = Linker::new(engine);
-
-        // functions are created for webasembly modules, the logic of which is programmed in Rust
-        linker
-            .func_wrap(
-                "env",
-                "pointer_len",
-                |caller: Caller<'_, MemoryManager>, pointer: i32| {
-                    return caller.data().get_pointer_len(pointer as usize)
-                        as u32;
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: pointer_len, {}", e))
-            })?;
-
-        linker
-            .func_wrap(
-                "env",
-                "alloc",
-                |mut caller: Caller<'_, MemoryManager>, len: u32| {
-                    return caller.data_mut().alloc(len as usize) as u32;
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: allow, {}", e))
-            })?;
-
-        linker
-            .func_wrap(
-                "env",
-                "write_byte",
-                |mut caller: Caller<'_, MemoryManager>, ptr: u32, offset: u32, data: u32| {
-                    return caller
-                        .data_mut()
-                        .write_byte(ptr as usize, offset as usize, data as u8);
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: write_byte, {}", e))
-            })?;
-
-        linker
-            .func_wrap(
-                "env",
-                "read_byte",
-                |caller: Caller<'_, MemoryManager>, index: i32| {
-                    return caller.data().read_byte(index as usize) as u32;
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: read_byte, {}", e))
-            })?;
-
-        linker
-            .func_wrap(
-                "env",
-                "cout",
-                |_caller: Caller<'_, MemoryManager>, ptr: u32| {
-                    println!("{}", ptr);
-                },
-            )
-            .map_err(|e| {
-                Error::Runner(format!("An error has occurred linking a function, module: env, name: cout, {}", e))
-            })?;
-        Ok(linker)
     }
 
     fn generate_context(
@@ -346,7 +277,7 @@ impl Compiler {
     ) -> Result<(MemoryManager, u32), Error> {
         let mut context = MemoryManager::new();
         let state_bytes = to_vec(&state).map_err(|e| {
-            Error::Runner(format!(
+            Error::Compiler(format!(
                 "Error when serializing the state using borsh: {}",
                 e
             ))
@@ -369,6 +300,7 @@ impl Compiler {
 pub enum CompilerMessage {
     Compile {
         contract: String,
+        contract_name: String,
         initial_value: Value,
         contract_path: String,
     },
@@ -380,7 +312,6 @@ impl Message for CompilerMessage {}
 pub enum CompilerEvent {}
 
 impl Event for CompilerEvent {}
-
 
 #[async_trait]
 impl Actor for Compiler {
@@ -400,6 +331,7 @@ impl Handler<Compiler> for Compiler {
         match msg {
             CompilerMessage::Compile {
                 contract,
+                contract_name,
                 contract_path,
                 initial_value,
             } => {
@@ -413,7 +345,12 @@ impl Handler<Compiler> for Compiler {
                 let contract_wrapper = ValueWrapper(json!({"raw": contract}));
                 let contract_hash = match contract_wrapper.hash_id(derivator) {
                     Ok(hash) => hash,
-                    Err(_e) => todo!(),
+                    Err(e) => {
+                        return Err(ActorError::Functional(format!(
+                            "Can not hash contract: {}",
+                            e.to_string()
+                        )))
+                    }
                 };
 
                 if contract_hash != self.contract {
@@ -430,12 +367,14 @@ impl Handler<Compiler> for Compiler {
                     .await
                     {
                         Ok(contract) => contract,
-                        Err(e) => return Err(ActorError::Functional(e.to_string())),
+                        Err(e) => {
+                            return Err(ActorError::Functional(e.to_string()))
+                        }
                     };
 
                     {
                         let mut contracts = CONTRACTS.write().await;
-                        contracts.insert(contract_path.clone(), contract);
+                        contracts.insert(contract_name.clone(), contract);
                     }
 
                     self.contract = contract_hash;

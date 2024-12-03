@@ -49,7 +49,6 @@ impl Message for RegisterMessage {}
 pub enum RegisterResponse {
     Govs { governances: Vec<String> },
     Subjs { subjects: Vec<String> },
-    Error(Error),
     None,
 }
 
@@ -124,9 +123,9 @@ impl Handler<Register> for Register {
 
                     return Ok(RegisterResponse::Subjs { subjects: subj });
                 } else {
-                    return Ok(RegisterResponse::Error(Error::Register(
+                    return Err(ActorError::Functional(
                         "Governance id is not registered".to_owned(),
-                    )));
+                    ));
                 }
             }
             RegisterMessage::RegisterGov { gov_id, active } => {

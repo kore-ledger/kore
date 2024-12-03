@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response, SystemEvent,
+    Handler, Message, SystemEvent,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -10,8 +10,8 @@ use store::store::PersistentActor;
 
 use crate::{
     db::Storable,
+    error::Error,
     helpers::db::{ExternalDB, Querys},
-    model::{common::emit_fail, TimeStamp},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -35,7 +35,6 @@ impl DBManager {
 
     async fn delete(
         &self,
-        ctx: &mut actor::ActorContext<DBManager>,
         delete: DeleteTypes,
         our_ref: ActorRef<DBManager>,
         helper: ExternalDB,
@@ -46,13 +45,20 @@ impl DBManager {
             tokio::time::sleep(time).await;
             match delete.clone() {
                 DeleteTypes::Request { id } => {
-                    let _ = helper.del_request(&id).await;
+                    if let Err(e) = helper.del_request(&id).await {
+                        if let Err(e) =
+                            our_ref.tell(DBManagerMessage::Error(e)).await
+                        {
+                            println!("{}", e);
+                        };
+                    };
                 }
             };
 
             if let Err(e) =
                 our_ref.tell(DBManagerMessage::ConfirmDelete(delete)).await
             {
+                println!("{}", e);
             };
         });
     }
@@ -61,19 +67,12 @@ impl DBManager {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DBManagerMessage {
     InitDelete,
-    Error(String),
+    Error(Error),
     Delete(DeleteTypes),
     ConfirmDelete(DeleteTypes),
 }
 
 impl Message for DBManagerMessage {}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum DBManagerResponse {
-    None,
-}
-
-impl Response for DBManagerResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DBManagerEvent {
@@ -87,13 +86,13 @@ impl Event for DBManagerEvent {}
 impl Actor for DBManager {
     type Message = DBManagerMessage;
     type Event = DBManagerEvent;
-    type Response = DBManagerResponse;
+    type Response = ();
 
     async fn pre_start(
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store("db_manager", None, false, ctx).await
+        self.init_store("ext_db", None, false, ctx).await
     }
 
     async fn pre_stop(
@@ -111,43 +110,47 @@ impl Handler<DBManager> for DBManager {
         _sender: ActorPath,
         msg: DBManagerMessage,
         ctx: &mut actor::ActorContext<DBManager>,
-    ) -> Result<DBManagerResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         let Some(helper): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
+            ctx.system().send_event(SystemEvent::StopSystem).await;
             let e = ActorError::NotHelper("ext_db".to_owned());
-            return Err(emit_fail(ctx, e).await);
+            return Err(e);
         };
-        
+
         match msg {
             DBManagerMessage::InitDelete => {
-                let Some(our_ref): Option<ActorRef<DBManager>> = ctx
-                    .system()
-                    .get_actor(&ActorPath::from("/user/db_manager"))
-                    .await
+                let Some(our_ref): Option<ActorRef<DBManager>> =
+                    ctx.reference().await
                 else {
-                    todo!()
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    let e = ActorError::NotFound(ctx.path().clone());
+                    return Err(e);
                 };
 
                 for req in self.delete_req.clone() {
-                    self.delete(ctx, req, our_ref.clone(), helper.clone())
-                        .await;
+                    self.delete(req, our_ref.clone(), helper.clone()).await;
                 }
             }
-            DBManagerMessage::Error(error) => todo!(),
+            DBManagerMessage::Error(error) => {
+                let e = ActorError::FunctionalFail(error.to_string());
+                ctx.system().send_event(SystemEvent::StopSystem).await;
+                return Err(e);
+            }
             DBManagerMessage::Delete(delete) => {
                 self.on_event(DBManagerEvent::DeleteReq(delete.clone()), ctx)
                     .await;
 
-                let Some(our_ref): Option<ActorRef<DBManager>> = ctx
-                    .system()
-                    .get_actor(&ActorPath::from("/user/db_manager"))
-                    .await
+                let Some(our_ref): Option<ActorRef<DBManager>> =
+                    ctx.reference().await
                 else {
-                    todo!()
+                    let e = ActorError::NotFound(ctx.path().clone());
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Err(e);
                 };
 
-                self.delete(ctx, delete, our_ref, helper).await;
+                self.delete(delete, our_ref, helper).await;
             }
             DBManagerMessage::ConfirmDelete(confirm) => {
                 self.on_event(DBManagerEvent::DeleteConfirm(confirm), ctx)
@@ -155,7 +158,7 @@ impl Handler<DBManager> for DBManager {
             }
         };
 
-        Ok(DBManagerResponse::None)
+        Ok(())
     }
 
     async fn on_event(

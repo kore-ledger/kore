@@ -12,17 +12,12 @@ use register::Register;
 use relationship::RelationShip;
 
 use crate::{
-    auth::{Auth, AuthMessage, AuthResponse},
-    db::Storable,
-    distribution::distributor::Distributor,
-    helpers::db::ExternalDB,
-    model::{
+    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, governance::init::init_state, helpers::db::ExternalDB, model::{
+        common::{emit_fail, get_gov},
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    },
-    subject::CreateSubjectData,
-    Error, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR,
+    }, subject::CreateSubjectData, Error, EventRequest, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -33,8 +28,8 @@ use identity::{
 };
 
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
-    Message, Response, Sink, SystemEvent,
+    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event,
+    Handler, Message, Response, Sink, SystemEvent,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -156,10 +151,18 @@ impl Node {
             .map_err(|e| Error::Signature(format!("{}", e)))
     }
 
-    async fn build_compilation_dir() -> Result<(), Error> {
-        if !Path::new("contracts").exists() {
-            fs::create_dir("contracts").await.map_err(|e| {
-                Error::Node(format!("Can not create contracts dir: {}", e))
+    async fn build_compilation_dir(ctx: &mut ActorContext<Self>) -> Result<(), ActorError> {
+        let Some(config): Option<Config> =
+                ctx.system().get_helper("config").await
+            else {
+                return Err(ActorError::NotHelper("config".to_owned()));
+            };
+        
+        let dir = format!("{}/contracts", config.contracts_dir);
+        
+        if !Path::new(&dir).exists() {
+            fs::create_dir_all(&dir).await.map_err(|e| {
+                ActorError::FunctionalFail(format!("Can not create contracts dir: {}", e))
             })?;
         }
         Ok(())
@@ -184,13 +187,6 @@ impl Node {
         Ok(())
     }
 }
-// Autorizar un sujeto y sus testigos, o si ya está autorizado acutalizar sus testigos
-// Obtener los nodos autorizados y los testigos.
-// Eliminar un sujeto autorizado.
-// Actualizar de forma manual el sujeto.
-// Obtener Todas las governanzas
-// Obtener todos los sujetos de una determinada governanza
-// Obtener todos los schemas de una determinada governanza
 
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -224,7 +220,6 @@ pub enum NodeResponse {
     Contract(Vec<u8>),
     IsAuthorized(bool),
     KnowSubject(bool),
-    Error(Error),
     None,
 }
 
@@ -258,9 +253,7 @@ impl Actor for Node {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        if let Err(_e) = Self::build_compilation_dir().await {
-            // TODO manejar este error.
-        };
+        Self::build_compilation_dir(ctx).await?;
 
         // Start store
         debug!("Creating Node store");
@@ -383,7 +376,18 @@ impl Handler<Node> for Node {
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
-                let subject = Subject::from_event(None, &ledger).map_err(|e| ActorError::Functional(e.to_string()))?;
+                let subject = if let EventRequest::Create(create_event) = ledger.content.event_request.content.clone() {
+                    let properties = if create_event.schema_id == "governance" {
+                        init_state(&ledger.content.event_request.signature.signer.to_string())
+                    } else {
+                        let governance = get_gov(ctx, &create_event.governance_id.to_string()).await?;
+                        governance.get_init_state(&create_event.schema_id)
+                            .map_err(|e| ActorError::Functional(e.to_string()))?
+                    };
+                    Subject::from_event(None, &ledger, properties).map_err(|e| ActorError::Functional(e.to_string()))?
+                } else {
+                    return Err(ActorError::Functional("trying to create a subject without create event".to_owned()));
+                };          
 
                 let subject_actor = ctx
                     .create_child(
@@ -392,10 +396,8 @@ impl Handler<Node> for Node {
                     )
                     .await?;
 
-                let sink = Sink::new(
-                    subject_actor.subscribe(),
-                    ext_db.get_subject(),
-                );
+                let sink =
+                    Sink::new(subject_actor.subscribe(), ext_db.get_subject());
                 ctx.system().run_sink(sink).await;
 
                 self.on_event(
@@ -405,7 +407,6 @@ impl Handler<Node> for Node {
                     ctx,
                 )
                 .await;
-                
 
                 let response = subject_actor
                     .ask(SubjectMessage::UpdateLedger {
@@ -414,7 +415,6 @@ impl Handler<Node> for Node {
                     .await?;
 
                 match response {
-                    SubjectResponse::Error(error) => todo!(),
                     SubjectResponse::LastSn(_) => {
                         self.on_event(
                             NodeEvent::ChangeTempSubj {
@@ -433,7 +433,12 @@ impl Handler<Node> for Node {
                         Ok(NodeResponse::SonWasCreated)
                     }
                     _ => {
-                        todo!()
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        let e = ActorError::UnexpectedResponse(
+                            subject_actor.path(),
+                            "SubjectResponse::LastSn".to_owned(),
+                        );
+                        return Err(e);
                     }
                 }
             }
@@ -450,19 +455,16 @@ impl Handler<Node> for Node {
                 let child = ctx
                     .create_child(&format!("{}", data.subject_id), subject)
                     .await?;
-                
-                let sink =
-                            Sink::new(child.subscribe(), ext_db.get_subject());
-                        ctx.system().run_sink(sink).await;
 
-                        self.on_event(
-                            NodeEvent::TemporalSubject(
-                                data.subject_id.to_string(),
-                            ),
-                            ctx,
-                        )
-                        .await;
-                        Ok(NodeResponse::SonWasCreated)
+                let sink = Sink::new(child.subscribe(), ext_db.get_subject());
+                ctx.system().run_sink(sink).await;
+
+                self.on_event(
+                    NodeEvent::TemporalSubject(data.subject_id.to_string()),
+                    ctx,
+                )
+                .await;
+                Ok(NodeResponse::SonWasCreated)
             }
             NodeMessage::SignRequest(content) => {
                 let sign = match content {
@@ -498,12 +500,15 @@ impl Handler<Node> for Node {
                     }
                     SignTypesNode::Ledger(ledger) => self.sign(&ledger),
                     SignTypesNode::Event(event) => self.sign(&event),
-                };
-
-                match sign {
-                    Ok(sign) => Ok(NodeResponse::SignRequest(sign)),
-                    Err(e) => Ok(NodeResponse::Error(e)),
                 }
+                .map_err(|e| {
+                    ActorError::FunctionalFail(format!(
+                        "Can not sign event: {}",
+                        e
+                    ))
+                })?;
+
+                Ok(NodeResponse::SignRequest(sign))
             }
             NodeMessage::AmISubjectOwner(subject_id) => {
                 Ok(NodeResponse::AmIOwner(
@@ -542,14 +547,31 @@ impl Handler<Node> for Node {
                 let auth: Option<actor::ActorRef<Auth>> =
                     ctx.get_child("auth").await;
                 let authorized_subjects = if let Some(auth) = auth {
-                    let Ok(AuthResponse::Auths { subjects }) =
-                        auth.ask(AuthMessage::GetAuths).await
-                    else {
-                        todo!()
+                    let res = match auth.ask(AuthMessage::GetAuths).await {
+                        Ok(res) => res,
+                        Err(e) => {
+                            ctx.system()
+                                .send_event(SystemEvent::StopSystem)
+                                .await;
+                            return Err(e);
+                        }
+                    };
+                    let AuthResponse::Auths { subjects } = res else {
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        let e = ActorError::UnexpectedResponse(
+                            ActorPath::from(format!("{}/auth", ctx.path())),
+                            "AuthResponse::Auths".to_owned(),
+                        );
+                        return Err(e);
                     };
                     subjects
                 } else {
-                    todo!();
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    let e = ActorError::NotFound(ActorPath::from(format!(
+                        "{}/auth",
+                        ctx.path()
+                    )));
+                    return Err(e);
                 };
 
                 let auth_subj =
@@ -570,6 +592,15 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::KnowSubject(know_subj || owned_subj))
             }
         }
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Node>,
+    ) -> ChildAction {
+        ctx.system().send_event(SystemEvent::StopSystem).await;
+        ChildAction::Stop
     }
 
     async fn on_event(

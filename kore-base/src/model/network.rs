@@ -55,11 +55,11 @@ impl Handler<RetryNetwork> for RetryNetwork {
             return Err(emit_fail(ctx, e).await);
         };
 
-        if let Err(_e) = helper
+        if let Err(e) = helper
             .send_command(network::CommandHelper::SendMessage { message: msg })
             .await
         {
-            // error al enviar mensaje, propagar hacia arriba TODO
+            return Err(emit_fail(ctx, e).await);
         };
         Ok(())
     }

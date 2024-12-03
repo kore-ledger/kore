@@ -1,5 +1,6 @@
 use actor::{ActorRef, Subscriber};
 use async_trait::async_trait;
+use serde_json::json;
 use tokio_rusqlite::{params, Connection, OpenFlags, Result as SqliteError};
 use tracing::Event;
 
@@ -52,7 +53,7 @@ impl Querys for SqliteLocal {
             .await
         {
             Ok(signatures) => signatures,
-            Err(e) => todo!(),
+            Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
         Ok(signatures)
@@ -90,7 +91,7 @@ impl Querys for SqliteLocal {
             .await
         {
             Ok(subject) => subject,
-            Err(e) => todo!(),
+            Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
         Ok(subject)
@@ -125,7 +126,7 @@ impl Querys for SqliteLocal {
             .await
         {
             Ok(state) => state,
-            Err(e) => todo!(),
+            Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
         let pages = if total % quantity == 0 {
@@ -154,7 +155,8 @@ impl Querys for SqliteLocal {
                         subject_id: row.get(0)?,
                         sn: row.get(1)?,
                         data: row.get(2)?,
-                        succes: row.get(3)?,
+                        event_req: row.get(3)?,
+                        succes: row.get(4)?,
                     })
                 })?.map(|x| {
                     match x {
@@ -168,7 +170,7 @@ impl Querys for SqliteLocal {
             .await
         {
             Ok(events) => events,
-            Err(e) => todo!(),
+            Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
         let prev = if page <= 1 { None } else { Some(page - 1) };
@@ -198,7 +200,7 @@ impl Querys for SqliteLocal {
             .await
         {
             Ok(state) => state,
-            Err(e) => todo!(),
+            Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
         Ok(state)
@@ -216,7 +218,7 @@ impl Querys for SqliteLocal {
             })
             .await
         {
-            todo!()
+            return Err(Error::ExtDB(e.to_string()));
         };
 
         Ok(())
@@ -243,10 +245,7 @@ impl Querys for SqliteLocal {
             .await
         {
             Ok(state) => state,
-            Err(e) => {
-                println!("{}", e);
-                todo!()
-            }
+            Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
         Ok(state)
@@ -273,7 +272,7 @@ impl Querys for SqliteLocal {
             .await
         {
             Ok(validators) => validators,
-            Err(e) => todo!(),
+            Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
         Ok(validators)
@@ -290,10 +289,7 @@ impl SqliteLocal {
             Connection::open_with_flags(path, flags)
                 .await
                 .map_err(|e| {
-                    Error::Database(format!(
-                        "SQLite fail open connection: {}",
-                        e
-                    ))
+                    Error::ExtDB(format!("SQLite fail open connection: {}", e))
                 })?;
 
         conn.call(|conn| {
@@ -306,7 +302,7 @@ impl SqliteLocal {
             let sql = "CREATE TABLE IF NOT EXISTS validations (subject_id TEXT NOT NULL, validators TEXT NOT NULL, PRIMARY KEY (subject_id))";
             let _ = conn.execute(sql, ())?;
 
-            let sql = "CREATE TABLE IF NOT EXISTS events (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, data TEXT NOT NULL, succes TEXT NOT NULL, PRIMARY KEY (subject_id, sn))";
+            let sql = "CREATE TABLE IF NOT EXISTS events (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, data TEXT NOT NULL, event_req TEXT NOT NULL, succes TEXT NOT NULL, PRIMARY KEY (subject_id, sn))";
             let _ = conn.execute(sql, ())?;
 
             let sql = "CREATE TABLE IF NOT EXISTS subjects (subject_id TEXT NOT NULL, governance_id TEXT NOT NULL, genesis_gov_version INTEGER NOT NULL, namespace TEXT NOT NULL, schema_id TEXT NOT NULL, owner TEXT NOT NULL, creator TEXT NOT NULL, active TEXT NOT NULL, sn INTEGER NOT NULL, properties TEXT NOT NULL, PRIMARY KEY (subject_id))";
@@ -315,7 +311,7 @@ impl SqliteLocal {
             let sql = "CREATE TABLE IF NOT EXISTS signatures (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, signatures_eval TEXT NOT NULL, signatures_appr TEXT NOT NULL, signatures_vali TEXT NOT NULL, PRIMARY KEY (subject_id))";
             let _ = conn.execute(sql, ())?;
             Ok(())
-        }).await.map_err(|e| Error::Database(format!("Can not create request table: {}",e)))?;
+        }).await.map_err(|e| Error::ExtDB(format!("Can not create request table: {}",e)))?;
 
         Ok(SqliteLocal { conn, manager })
     }
@@ -326,6 +322,7 @@ impl Subscriber<RequestManagerEvent> for SqliteLocal {
     async fn notify(&self, event: RequestManagerEvent) {
         let state = match event.state {
             RequestManagerState::Starting => return,
+            RequestManagerState::Reboot => "In Reboot".to_owned(),
             RequestManagerState::Evaluation => "In Evaluation".to_owned(),
             RequestManagerState::Approval { .. } => "In Approval".to_owned(),
             RequestManagerState::Validation(..) => "In Validation".to_owned(),
@@ -343,10 +340,13 @@ impl Subscriber<RequestManagerEvent> for SqliteLocal {
             })
             .await
             .map_err(|e| {
-                Error::Database(format!("Can not create request table: {}", e))
+                Error::ExtDB(format!("Can not update request state: {}", e))
             })
         {
-            todo!()
+            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
+            {
+                println!("{}", e);
+            }
         };
     }
 }
@@ -386,14 +386,16 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
             })
             .await
             .map_err(|e| {
-                Error::Database(format!(
+                Error::ExtDB(format!(
                     "Update request_id {} state {}: {}",
                     id, state, e
                 ))
             })
         {
-            println!("{}", e);
-            todo!()
+            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
+            {
+                println!("{}", e);
+            }
         };
 
         if state == "Finish" {
@@ -402,7 +404,7 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
                 .tell(DBManagerMessage::Delete(DeleteTypes::Request { id }))
                 .await
             {
-                todo!()
+                println!("{}", e);
             }
         }
     }
@@ -426,9 +428,11 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                         Ok(())
                     })
                     .await
-                    .map_err(|e| Error::Database(format!(": {}", e)))
+                    .map_err(|e| Error::ExtDB(format!(": {}", e)))
                 {
-                    todo!()
+                    if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
+                        println!("{}",e);
+                    }
                 };
             }
             ApproverEvent::SafeState {
@@ -449,11 +453,12 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                     })
                     .await
                     .map_err(|e| {
-                        Error::Database(format!(": {}", e))
+                        Error::ExtDB(format!(": {}", e))
                     })
                 {
-                    println!("{}", e);
-                    todo!()
+                    if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
+                        println!("{}",e);
+                    }
                 };
             }
         }
@@ -467,7 +472,15 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
             LedgerEventEvent::WithVal { validators, event } => {
                 let subject_id = event.content.subject_id.to_string();
                 let Ok(validators) = serde_json::to_string(&validators) else {
-                    todo!()
+                    let e = Error::ExtDB(
+                        "Can not Serialize validators as String".to_owned(),
+                    );
+                    if let Err(e) =
+                        self.manager.tell(DBManagerMessage::Error(e)).await
+                    {
+                        println!("{}", e);
+                    }
+                    return;
                 };
 
                 if let Err(e) = self
@@ -480,11 +493,12 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
                     })
                     .await
                     .map_err(|e| {
-                        Error::Database(format!(": {}", e))
+                        Error::ExtDB(format!(": {}", e))
                     })
                 {
-                    println!("{}", e);
-                    todo!()
+                    if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
+                        println!("{}",e);
+                    }
                 };
 
                 event
@@ -495,15 +509,36 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
         let subject_id = event.content.subject_id.to_string();
         let Ok(sig_eval) = serde_json::to_string(&event.content.evaluators)
         else {
-            todo!()
+            let e = Error::ExtDB(
+                "Can not Serialize evaluators as String".to_owned(),
+            );
+            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
+            {
+                println!("{}", e);
+            }
+            return;
         };
         let Ok(sig_appr) = serde_json::to_string(&event.content.approvers)
         else {
-            todo!()
+            let e = Error::ExtDB(
+                "Can not Serialize approvers as String".to_owned(),
+            );
+            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
+            {
+                println!("{}", e);
+            }
+            return;
         };
         let Ok(sig_vali) = serde_json::to_string(&event.content.validators)
         else {
-            todo!()
+            let e = Error::ExtDB(
+                "Can not Serialize validators as String".to_owned(),
+            );
+            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
+            {
+                println!("{}", e);
+            }
+            return;
         };
         if let Err(e) = self
             .conn
@@ -515,11 +550,12 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
             })
             .await
             .map_err(|e| {
-                Error::Database(format!(": {}", e))
+                Error::ExtDB(format!(": {}", e))
             })
         {
-            println!("{}", e);
-            todo!()
+            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
+                println!("{}",e);
+            }
         };
     }
 }
@@ -529,14 +565,38 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
     async fn notify(&self, event: Signed<Ledger>) {
         let subject_id = event.content.subject_id.to_string();
         let sn = event.content.sn;
-        let mut succes = "false".to_owned();
+        let succes ;
+        let Ok(event_req) = serde_json::to_string(&json!(event.content.event_request.content)) else {
+            let e = Error::ExtDB(
+                "Can not Serialize protocols_error as String"
+                    .to_owned(),
+            );
+            if let Err(e) =
+                self.manager.tell(DBManagerMessage::Error(e)).await
+            {
+                println!("{}", e);
+            }
+            return;
+        };
         let data = match event.content.value {
-            LedgerValue::Patch(value_wrapper) => value_wrapper.0.to_string(),
+            LedgerValue::Patch(value_wrapper) => {
+                succes = "true".to_owned();
+                value_wrapper.0.to_string()
+            },
             LedgerValue::Error(protocols_error) => {
                 let Ok(string) = serde_json::to_string(&protocols_error) else {
-                    todo!()
+                    let e = Error::ExtDB(
+                        "Can not Serialize protocols_error as String"
+                            .to_owned(),
+                    );
+                    if let Err(e) =
+                        self.manager.tell(DBManagerMessage::Error(e)).await
+                    {
+                        println!("{}", e);
+                    }
+                    return;
                 };
-                succes = "true".to_owned();
+                succes = "false".to_owned();
                 string
             }
         };
@@ -545,17 +605,18 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
             .conn
             .call(move |conn| {
                 let _ =
-                    conn.execute("INSERT INTO events (subject_id, sn, data, succes) VALUES (?1, ?2, ?3, ?4)", params![subject_id, sn, data, succes])?;
+                    conn.execute("INSERT INTO events (subject_id, sn, data, event_req, succes) VALUES (?1, ?2, ?3, ?4, ?5)", params![subject_id, sn, data, event_req, succes])?;
 
                 Ok(())
             })
             .await
             .map_err(|e| {
-                Error::Database(format!(": {}", e))
+                Error::ExtDB(format!(": {}", e))
             })
             {
-                println!("{}", e);
-                todo!()
+                if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
+                    println!("{}",e);
+                }
         };
     }
 }
@@ -584,11 +645,12 @@ impl Subscriber<SinkDataEvent> for SqliteLocal {
         })
         .await
         .map_err(|e| {
-            Error::Database(format!(": {}", e))
+            Error::ExtDB(format!(": {}", e))
         })
         {
-            println!("{}", e);
-            todo!()
+            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
+                println!("{}",e);
+            }
     };
     }
 }

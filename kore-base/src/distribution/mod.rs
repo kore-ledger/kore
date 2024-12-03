@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
-    Message,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    Handler, Message,
 };
 use async_trait::async_trait;
 use distributor::{Distributor, DistributorMessage};
@@ -10,7 +10,10 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use crate::{
     governance::model::Roles,
-    model::{common::{emit_fail, get_gov, get_metadata}, event::Ledger},
+    model::{
+        common::{emit_fail, get_gov, get_metadata},
+        event::Ledger,
+    },
     request::manager::{RequestManager, RequestManagerMessage},
     subject::Metadata,
     Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage,
@@ -44,6 +47,7 @@ impl Distribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         signer: KeyIdentifier,
+        schema_id: &str
     ) -> Result<(), ActorError> {
         let child = ctx
             .create_child(
@@ -55,7 +59,7 @@ impl Distribution {
             .await;
         let distributor_actor = match child {
             Ok(child) => child,
-            Err(_e) => return Err(_e),
+            Err(e) => return Err(e),
         };
 
         let our_key = self.node_key.clone();
@@ -67,6 +71,7 @@ impl Distribution {
                     event,
                     node_key: signer,
                     our_key,
+                    schema_id: schema_id.to_string()
                 })
                 .await?
         }
@@ -77,20 +82,16 @@ impl Distribution {
     async fn end_request(
         &self,
         ctx: &mut ActorContext<Distribution>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let req_path =
             ActorPath::from(format!("/user/request/{}", self.request_id));
         let req_actor: Option<ActorRef<RequestManager>> =
             ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
-            if let Err(_e) =
-                req_actor.tell(RequestManagerMessage::FinishRequest).await
-            {
-                todo!()
-            }
+            req_actor.tell(RequestManagerMessage::FinishRequest).await?;
         } else {
-            todo!()
+            return Err(ActorError::NotFound(req_path));
         };
 
         Ok(())
@@ -135,15 +136,17 @@ impl Handler<Distribution> for Distribution {
                 self.request_id = request_id;
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
-                let governance = match get_gov(ctx, &subject_id.to_string()).await {
-                    Ok(gov) => gov,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
-                };
+                let governance =
+                    match get_gov(ctx, &subject_id.to_string()).await {
+                        Ok(gov) => gov,
+                        Err(e) => return Err(emit_fail(ctx, e).await),
+                    };
 
-                let metadata = match get_metadata(ctx, &subject_id.to_string()).await {
-                    Ok(metadata) => metadata,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
-                };
+                let metadata =
+                    match get_metadata(ctx, &subject_id.to_string()).await {
+                        Ok(metadata) => metadata,
+                        Err(e) => return Err(emit_fail(ctx, e).await),
+                    };
 
                 let witnesses = if metadata.schema_id == "governance" {
                     governance.members_to_key_identifier()
@@ -159,8 +162,9 @@ impl Handler<Distribution> for Distribution {
 
                 if witnesses.len() == 1 && witnesses.contains(&self.node_key) {
                     if let Err(e) = self.end_request(ctx).await {
-                        todo!()
+                        return Err(emit_fail(ctx, e).await);
                     };
+                    return Ok(());
                 }
 
                 self.witnesses = witnesses.clone();
@@ -171,6 +175,7 @@ impl Handler<Distribution> for Distribution {
                         event.clone(),
                         ledger.clone(),
                         witness,
+                        &metadata.schema_id
                     )
                     .await?
                 }
@@ -178,12 +183,21 @@ impl Handler<Distribution> for Distribution {
             DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) && self.witnesses.is_empty() {
                     if let Err(e) = self.end_request(ctx).await {
-                        todo!()
+                        return Err(emit_fail(ctx, e).await);
                     };
                 }
             }
         }
 
         Ok(())
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Distribution>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }

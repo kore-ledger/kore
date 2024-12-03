@@ -13,9 +13,13 @@ mod runner;
 pub mod schema;
 
 use crate::{
+    auth::{Auth, AuthMessage},
     governance::{model::Roles, Quorum},
     model::{
-        common::{get_metadata, get_sign, get_signers_quorum_gov_version},
+        common::{
+            emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version,
+            send_reboot_to_req, try_to_update,
+        },
         event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
@@ -26,8 +30,8 @@ use crate::{
     Error, DIGEST_DERIVATOR,
 };
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+    Event, Handler, Message, Response,
 };
 
 use async_trait::async_trait;
@@ -40,7 +44,7 @@ use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use std::collections::HashSet;
+use std::{clone, collections::HashSet};
 // TODO cuando se recibe una evaluación, validación lo que sea debería venir firmado y comprobar que es de quien dice ser, cuando llega por la network y cuando la envía un usuario.
 #[derive(Default)]
 pub struct Evaluation {
@@ -59,6 +63,8 @@ pub struct Evaluation {
     errors: String,
 
     eval_req: Option<EvaluationReq>,
+
+    reboot: bool,
 }
 
 impl Evaluation {
@@ -66,6 +72,16 @@ impl Evaluation {
         Evaluation {
             node_key,
             ..Default::default()
+        }
+    }
+
+    async fn end_evaluators(&self, ctx: &mut ActorContext<Evaluation>) {
+        for evaluator in self.evaluators.clone() {
+            let child: Option<ActorRef<Evaluator>> =
+                ctx.get_child(&evaluator.to_string()).await;
+            if let Some(child) = child {
+                child.stop().await;
+            }
         }
     }
 
@@ -104,7 +120,7 @@ impl Evaluation {
     ) -> Result<(), ActorError> {
         // Create Evaluator child
         let child = ctx
-            .create_child(&format!("{}", signer), Evaluator::default())
+            .create_child(&format!("{}", signer), Evaluator::new(request_id.to_string(), signer.clone()))
             .await;
         let evaluator_actor = match child {
             Ok(child) => child,
@@ -145,31 +161,43 @@ impl Evaluation {
         set.len() == 1
     }
 
-    fn fail_evaluation(&self) -> EvalLedgerResponse {
+    async fn fail_evaluation(
+        &self,
+        ctx: &mut ActorContext<Evaluation>,
+    ) -> Result<EvalLedgerResponse, ActorError> {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
             error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
-        let state = if let Some(req) = self.eval_req.clone() {
-            req.context.state
+        let (state, subject_id) = if let Some(req) = self.eval_req.clone() {
+            (req.context.state, req.context.subject_id)
         } else {
-            todo!()
+            return Err(ActorError::FunctionalFail(
+                "Can not get eval request".to_owned(),
+            ));
         };
 
         let state_hash = match state.hash_id(derivator) {
             Ok(state_hash) => state_hash,
-            Err(_e) => todo!(),
+            Err(e) => {
+                return Err(ActorError::FunctionalFail(format!(
+                    "Can not obtaing state hash: {}",
+                    e
+                )))
+            }
         };
 
         let mut error = self.errors.clone();
         if self.errors.is_empty() {
             "who: ALL, error: No evaluator was able to evaluate the event."
                 .clone_into(&mut error);
+            try_to_update(self.evaluators_signatures.clone(), ctx, subject_id)
+                .await?;
         }
 
-        EvalLedgerResponse {
+        Ok(EvalLedgerResponse {
             value: LedgerValue::Error(ProtocolsError {
                 evaluation: Some(error),
                 validation: None,
@@ -177,14 +205,14 @@ impl Evaluation {
             state_hash,
             eval_success: false,
             appr_required: false,
-        }
+        })
     }
 
     async fn send_evaluation_to_req(
         &self,
         ctx: &mut ActorContext<Evaluation>,
         response: EvalLedgerResponse,
-    ) -> Result<(), Error> {
+    ) -> Result<(), ActorError> {
         let req_path =
             ActorPath::from(format!("/user/request/{}", self.request_id));
         let req_actor: Option<ActorRef<RequestManager>> =
@@ -193,11 +221,13 @@ impl Evaluation {
         let request = if let Some(req) = self.eval_req.clone() {
             req
         } else {
-            todo!()
+            return Err(ActorError::FunctionalFail(
+                "Can not get eval request".to_owned(),
+            ));
         };
 
         if let Some(req_actor) = req_actor {
-            if let Err(_e) = req_actor
+            if let Err(e) = req_actor
                 .tell(RequestManagerMessage::EvaluationRes {
                     request,
                     response,
@@ -205,28 +235,13 @@ impl Evaluation {
                 })
                 .await
             {
-                todo!()
+                return Err(e);
             }
         } else {
-            todo!()
+            return Err(ActorError::NotFound(req_path));
         };
 
         Ok(())
-    }
-
-    async fn try_to_update(&self, ctx: &mut ActorContext<Evaluation>) {
-        let mut all_time_out = true;
-
-        for response in self.evaluators_signatures.clone() {
-            if let ProtocolsSignatures::Signature(_) = response {
-                all_time_out = false;
-                break;
-            }
-        }
-
-        if all_time_out {
-            todo!()
-        }
     }
 }
 
@@ -251,19 +266,11 @@ pub struct EvaluationEvent {}
 
 impl Event for EvaluationEvent {}
 
-#[derive(Debug, Clone)]
-pub enum EvaluationResponse {
-    Error(Error),
-    None,
-}
-
-impl Response for EvaluationResponse {}
-
 #[async_trait]
 impl Actor for Evaluation {
     type Event = EvaluationEvent;
     type Message = EvaluationMessage;
-    type Response = EvaluationResponse;
+    type Response = ();
 }
 
 // TODO: revizar todos los errores, algunos pueden ser ActorError.
@@ -274,7 +281,7 @@ impl Handler<Evaluation> for Evaluation {
         _sender: ActorPath,
         msg: EvaluationMessage,
         ctx: &mut ActorContext<Evaluation>,
-    ) -> Result<EvaluationResponse, ActorError> {
+    ) -> Result<(), ActorError> {
         match msg {
             EvaluationMessage::Create {
                 request_id,
@@ -285,16 +292,17 @@ impl Handler<Evaluation> for Evaluation {
                 {
                     event.subject_id
                 } else {
-                    // Error evento incorrecto
-                    todo!()
+                    let e = ActorError::FunctionalFail(
+                        "Only can eval Fact requests".to_owned(),
+                    );
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 let metadata =
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
-                        Err(_e) => {
-                            // No se puede obtener la metadata
-                            todo!()
+                        Err(e) => {
+                            return Err(emit_fail(ctx, e).await);
                         }
                     };
 
@@ -304,22 +312,21 @@ impl Handler<Evaluation> for Evaluation {
                     metadata.governance_id.clone()
                 };
 
-                let (signers, quorum, gov_version) = match
-                    get_signers_quorum_gov_version(
+                let (signers, quorum, gov_version) =
+                    match get_signers_quorum_gov_version(
                         ctx,
                         &governance.to_string(),
                         &metadata.schema_id,
                         metadata.namespace.clone(),
-                        Roles::EVALUATOR
+                        Roles::EVALUATOR,
                     )
                     .await
-                {
-                    Ok(data) => data,
-                    Err(_e) => {
-                        // No se puede obtener signers, quorum y gov_ver
-                        todo!()
-                    }
-                };
+                    {
+                        Ok(data) => data,
+                        Err(e) => {
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    };
 
                 let eval_req = self.create_evaluation_req(
                     request,
@@ -343,7 +350,7 @@ impl Handler<Evaluation> for Evaluation {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(_e) => todo!(),
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 let signed_evaluation_req: Signed<EvaluationReq> = Signed {
@@ -367,65 +374,117 @@ impl Handler<Evaluation> for Evaluation {
                 sender,
                 signature,
             } => {
-                // TODO Al menos una validación tiene que ser válida, no solo errores y timeout.
-
-                // If node is in evaluator list
-                if self.check_evaluator(sender.clone()) {
-                    // Check type of validation
-                    match evaluation_res {
-                        EvaluationRes::Response(response) => {
-                            if let Some(signature) = signature {
-                                self.evaluators_signatures.push(
-                                    ProtocolsSignatures::Signature(signature),
-                                );
-                            } else {
-                                todo!()
+                if !self.reboot {
+                    // If node is in evaluator list
+                    if self.check_evaluator(sender.clone()) {
+                        // Check type of validation
+                        match evaluation_res {
+                            EvaluationRes::Response(response) => {
+                                if let Some(signature) = signature {
+                                    self.evaluators_signatures.push(
+                                        ProtocolsSignatures::Signature(
+                                            signature,
+                                        ),
+                                    );
+                                } else {
+                                    unreachable!();
+                                }
+                                self.evaluators_response.push(response);
                             }
-                            self.evaluators_response.push(response);
-                        }
-                        EvaluationRes::TimeOut(timeout) => self
-                            .evaluators_signatures
-                            .push(ProtocolsSignatures::TimeOut(timeout)),
-                        EvaluationRes::Error(error) => {
-                            self.errors = format!(
-                                "{} who: {}, error: {}.",
-                                self.errors, sender, error
-                            );
-                        }
-                    };
+                            EvaluationRes::TimeOut(timeout) => self
+                                .evaluators_signatures
+                                .push(ProtocolsSignatures::TimeOut(timeout)),
+                            EvaluationRes::Error(error) => {
+                                self.errors = format!(
+                                    "{} who: {}, error: {}.",
+                                    self.errors, sender, error
+                                );
+                            }
+                            EvaluationRes::Reboot => {
+                                let governance_id = if let Some(req) =
+                                    self.eval_req.clone()
+                                {
+                                    req.context.governance_id
+                                } else {
+                                    let e = ActorError::FunctionalFail(
+                                        "Can not get eval request".to_owned(),
+                                    );
+                                    return Err(emit_fail(ctx, e).await);
+                                };
 
-                    // Add validate response
-                    // self.evaluators_response.push(validate);
-                    if self.quorum.check_quorum(
-                        self.evaluators_quantity,
-                        self.evaluators_response.len() as u32,
-                    ) {
-                        let response = if self.check_responses() {
-                            EvalLedgerResponse::from(
-                                self.evaluators_response[0].clone(),
-                            )
-                        } else {
-                            self.fail_evaluation()
+                                if let Err(e) = send_reboot_to_req(
+                                    ctx,
+                                    &self.request_id,
+                                    governance_id,
+                                )
+                                .await
+                                {
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                                self.reboot = true;
+
+                                self.end_evaluators(ctx).await;
+                                return Ok(());
+                            }
                         };
 
-                        if let Err(_e) =
-                            self.send_evaluation_to_req(ctx, response).await
-                        {
-                        };
-                    } else if self.evaluators.is_empty() {
-                        let response = self.fail_evaluation();
-                        if let Err(_e) =
-                            self.send_evaluation_to_req(ctx, response).await
-                        {
-                        };
+                        if self.quorum.check_quorum(
+                            self.evaluators_quantity,
+                            self.evaluators_response.len() as u32,
+                        ) {
+                            let response = if self.check_responses() {
+                                EvalLedgerResponse::from(
+                                    self.evaluators_response[0].clone(),
+                                )
+                            } else {
+                                self.errors = format!(
+                                    "{} who: ALL, error: Several evaluations were correct, but there are some different.",
+                                    self.errors
+                                );
+                                match self.fail_evaluation(ctx).await {
+                                    Ok(res) => res,
+                                    Err(e) => {
+                                        return Err(emit_fail(ctx, e).await);
+                                    }
+                                }
+                            };
+
+                            if let Err(e) =
+                                self.send_evaluation_to_req(ctx, response).await
+                            {
+                                return Err(emit_fail(ctx, e).await);
+                            };
+                        } else if self.evaluators.is_empty() {
+                            let response = match self.fail_evaluation(ctx).await
+                            {
+                                Ok(res) => res,
+                                Err(e) => {
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                            };
+                            if let Err(e) =
+                                self.send_evaluation_to_req(ctx, response).await
+                            {
+                                return Err(emit_fail(ctx, e).await);
+                            };
+                        }
+                    } else {
+                        // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                     }
-                } else {
-                    // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
                 }
             }
         }
 
-        Ok(EvaluationResponse::None)
+        Ok(())
+    }
+
+    async fn on_child_fault(
+        &mut self,
+        error: ActorError,
+        ctx: &mut ActorContext<Evaluation>,
+    ) -> ChildAction {
+        emit_fail(ctx, error).await;
+        ChildAction::Stop
     }
 }
 
@@ -745,8 +804,8 @@ mod tests {
             panic!("Invalid response")
         };
 
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        assert_eq!("In Approval", state);
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
         let QueryResponse::ApprovalState { request, state } = query_actor
             .ask(QueryMessage::GetApproval {
                 subject_id: subject_id.to_string(),

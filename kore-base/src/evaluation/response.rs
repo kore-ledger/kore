@@ -27,6 +27,7 @@ pub enum EvaluationRes {
     Error(String),
     TimeOut(TimeOutResponse),
     Response(Response),
+    Reboot,
 }
 
 #[derive(
@@ -57,11 +58,7 @@ impl HashId for EvaluationRes {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| {
-                Error::Evaluation(
-                    "HashId for EvaluationResponse fails".to_string(),
-                )
-            },
+            |e| Error::HashID(format!("HashId for EvaluationRes fails: {}", e)),
         )
     }
 }

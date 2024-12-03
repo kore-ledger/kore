@@ -11,6 +11,21 @@ use serde::{Deserialize, Serialize};
 /// Error type.
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
+    /// HashID error.
+    #[error("HashID error: {0}")]
+    HashID(String),
+    /// JSONPatch error.
+    #[error("JSON patch error: {0}")]
+    JSONPatch(String),
+    /// NetworkHelper error.
+    #[error("NetworkHelper error: {0}")]
+    NetworkHelper(String),
+    /// Network error.
+    #[error("Network error: {0}")]
+    Network(String),
+    /// Ext_db schema error.
+    #[error("Ext DB error: {0}")]
+    ExtDB(String),
     /// JSON schema error.
     #[error("JSON schema error: {0}")]
     JSONSChema(String),
@@ -38,18 +53,9 @@ pub enum Error {
     /// Query error.
     #[error("Query error: {0}")]
     Query(String),
-    /// Init error.
-    #[error("Init error: {0}")]
-    Init(String),
-    /// RelationShip error.
-    #[error("NoRelationShipde error: {0}")]
-    RelationShip(String),
     /// Node error.
     #[error("Node error: {0}")]
     Node(String),
-    /// Database error.
-    #[error("Database error: {0}")]
-    Database(String),
     /// Store error.
     #[error("Store error: {0}")]
     Store(String),
@@ -62,9 +68,6 @@ pub enum Error {
     /// Password
     #[error("Password error: {0}")]
     Password(String),
-    /// Request event
-    #[error("Request event error: {0}")]
-    RequestEvent(String),
     /// Request Handler
     #[error("Request handler error: {0}")]
     RequestHandler(String),
@@ -80,20 +83,7 @@ pub enum Error {
     /// Validation error.
     #[error("Validation error: {0}")]
     Validation(String),
-    /// Evaluation error.
-    #[error("Evaluation error: {0}")]
-    Evaluation(String),
-
     /// Approval error.
     #[error("Approval error: {0}")]
     Approval(String),
-    /// Approval error.
-    #[error("InvalidQuorum error: {0}")]
-    InvalidQuorum(String),
-    /// NetworkHelper error.
-    #[error("NetworkHelper error: {0}")]
-    NetworkHelper(String),
-    /// Network error.
-    #[error("Network error: {0}")]
-    Network(String),
 }

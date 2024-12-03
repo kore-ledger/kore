@@ -2,33 +2,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Event, Handler, Message, Response, SystemEvent
+    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event,
+    Handler, Message, Response,
 };
 use async_trait::async_trait;
-use authorization::{Authorization, AuthorizationMessage};
-use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
-};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, HashSet},
-    process::Child,
-    str::FromStr,
-};
+use std::collections::HashMap;
 use store::store::PersistentActor;
 
 use crate::{
     db::Storable,
-    error::Error,
     intermediary::Intermediary,
-    model::common::{emit_fail, get_gov, get_metadata},
-    subject::{self, Subject, SubjectMessage, SubjectResponse},
+    model::common::{emit_fail, get_gov, get_metadata, UpdateData},
+    update::{Update, UpdateMessage, UpdateNew},
     ActorMessage, NetworkMessage,
 };
-
-pub mod authorization;
-pub mod authorizer;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum AuthWitness {
@@ -108,7 +98,6 @@ impl Message for AuthMessage {}
 pub enum AuthResponse {
     Auths { subjects: Vec<String> },
     Witnesses(AuthWitness),
-    Error(Error),
     None,
 }
 
@@ -162,9 +151,9 @@ impl Handler<Auth> for Auth {
                 {
                     return Ok(AuthResponse::Witnesses(witnesses.clone()));
                 } else {
-                    return Ok(AuthResponse::Error(Error::Auth(
+                    return Err(ActorError::Functional(
                         "The subject has not been authorized".to_owned(),
-                    )));
+                    ));
                 }
             }
             AuthMessage::DeleteAuth { subject_id } => {
@@ -198,11 +187,13 @@ impl Handler<Auth> for Auth {
                 let witness = self.auth.get(&subject_id.to_string());
                 if let Some(witness) = witness {
                     let (sn, request, schema_id) =
-                        match Auth::create_req_schema(ctx, subject_id.clone()).await {
+                        match Auth::create_req_schema(ctx, subject_id.clone())
+                            .await
+                        {
                             Ok(data) => data,
                             Err(e) => {
                                 return Err(emit_fail(ctx, e).await);
-                            },
+                            }
                         };
 
                     match witness {
@@ -222,7 +213,8 @@ impl Handler<Auth> for Auth {
                                 ctx.system().get_helper("network").await;
 
                             let Some(mut helper) = helper else {
-                                let e = ActorError::NotHelper("network".to_owned());
+                                let e =
+                                    ActorError::NotHelper("network".to_owned());
                                 return Err(emit_fail(ctx, e).await);
                             };
 
@@ -242,14 +234,17 @@ impl Handler<Auth> for Auth {
                         }
                         AuthWitness::Many(vec) => {
                             let witnesses = vec.iter().cloned().collect();
-                            let authorization = Authorization::new(
-                                subject_id.clone(),
-                                self.our_node.clone(),
+                            let data = UpdateNew {
+                                subject_id: subject_id.clone(),
+                                our_key: self.our_node.clone(),
                                 sn,
                                 witnesses,
                                 schema_id,
                                 request,
-                            );
+                                update_type: crate::update::UpdateType::Auth,
+                            };
+
+                            let authorization = Update::new(data);
                             let child = ctx
                                 .create_child(
                                     &subject_id.to_string(),
@@ -257,25 +252,28 @@ impl Handler<Auth> for Auth {
                                 )
                                 .await;
                             let Ok(child) = child else {
-                                let e = ActorError::Create(ctx.path().clone(), subject_id.to_string());
+                                let e = ActorError::Create(
+                                    ctx.path().clone(),
+                                    subject_id.to_string(),
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             };
 
                             if let Err(e) =
-                                child.tell(AuthorizationMessage::Create).await
+                                child.tell(UpdateMessage::Create).await
                             {
                                 return Err(emit_fail(ctx, e).await);
                             }
                         }
                         AuthWitness::None => {
                             // Not Witness to update state of subject.
-                            return Ok(AuthResponse::Error(Error::Auth("The subject has no witnesses to try to ask for an update.".to_owned())));
+                            return Err(ActorError::Functional("The subject has no witnesses to try to ask for an update.".to_owned()));
                         }
                     };
                 } else {
-                    return Ok(AuthResponse::Error(Error::Auth(
+                    return Err(ActorError::Functional(
                         "The subject has not been authorized".to_owned(),
-                    )));
+                    ));
                 }
             }
         };

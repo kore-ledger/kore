@@ -38,7 +38,6 @@ use time::OffsetDateTime;
 
 use std::hash::Hash;
 
-// TODO: Separar los tipos de firma, que el sujeto tenga los suyos y el nodo los suyos, solo en caso de que sean muy diferentes.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SignTypesNode {
     EventRequest(EventRequest),

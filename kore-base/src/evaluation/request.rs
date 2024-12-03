@@ -58,11 +58,7 @@ impl HashId for EvaluationReq {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| {
-                Error::Evaluation(
-                    "HashId for EvaluationRequest Fails".to_string(),
-                )
-            },
+            |e| Error::HashID(format!("HashId for EvaluationReq fails: {}", e)),
         )
     }
 }
