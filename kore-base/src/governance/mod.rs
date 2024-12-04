@@ -20,10 +20,9 @@ pub use schema::schema;
 
 pub use model::{Member, Policy, Quorum, RequestStage, Role, Schema, Who};
 
-use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use identity::identifier::KeyIdentifier;
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error};
 
 use std::{
     collections::{HashMap, HashSet},
@@ -57,7 +56,6 @@ impl Governance {
     ) -> Result<ValueWrapper, Error> {
         for schema in &self.schemas {
             if schema.id == schema_id {
-                debug!("Schema found: {}", schema_id);
                 return Ok(ValueWrapper(schema.initial_value.clone()));
             }
         }
@@ -69,12 +67,10 @@ impl Governance {
     ///
     pub fn get_schema(&self, schema_id: &str) -> Result<Schema, Error> {
         for schema in &self.schemas {
-            debug!("Schema found: {}", schema_id);
             if schema.id == schema_id {
                 return Ok(schema.clone());
             }
         }
-        error!("Schema not found: {}", schema_id);
         Err(Error::Governance("Schema not found.".to_owned()))
     }
 
@@ -130,7 +126,7 @@ impl Governance {
                         return true;
                     }
                     Who::ID { ID } => {
-                        if user.to_string() == ID {
+                        if user == ID {
                             return true;
                         }
                     }
@@ -187,7 +183,7 @@ impl Governance {
                         return Some(quantity as usize);
                     }
                     Who::ID { ID } => {
-                        if user.to_string() == ID {
+                        if user == ID {
                             return Some(quantity as usize);
                         }
                     }

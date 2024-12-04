@@ -19,8 +19,7 @@ use crate::{
         signature::Signature,
         SignTypesNode, TimeStamp,
     },
-    subject::{SubjectMessage, SubjectResponse},
-    Error, Signed, Subject,
+    Signed,
 };
 
 use super::{
@@ -41,10 +40,8 @@ use serde::{Deserialize, Serialize};
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
-    Strategy, SystemEvent,
+    Strategy,
 };
-
-use tracing::error;
 
 /// A struct representing a validator actor.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -170,7 +167,7 @@ impl Validator {
         ctx: &mut ActorContext<Validator>,
         validation_req: ValidationReq,
     ) -> Result<Signature, ActorError> {
-        if let Err(e) = validation_req
+        if let Err(_e) = validation_req
             .subject_signature
             .verify(&validation_req.proof)
         {
@@ -430,8 +427,7 @@ impl Handler<Validator> for Validator {
                     .await
                 {
                     Ok(retry) => retry,
-                    Err(e) => {
-                        return Err(emit_fail(ctx, e).await)},
+                    Err(e) => return Err(emit_fail(ctx, e).await),
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {

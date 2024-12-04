@@ -18,11 +18,11 @@ use crate::{
         schema::{EvaluationSchema, EvaluationSchemaMessage},
         Evaluation,
     },
-    governance::{init::init_state, model::Roles, Schema},
+    governance::{model::Roles, Schema},
     helpers::db::ExternalDB,
     model::{
         common::{
-            delete_relation, emit_fail, get_gov, get_last_event, get_quantity,
+            delete_relation, emit_fail, get_gov, get_last_event,
             register_relation, verify_protocols_state,
         },
         event::{Event as KoreEvent, Ledger, LedgerValue},
@@ -45,9 +45,9 @@ use crate::{
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, Handler, Message, Response, Sink, SystemEvent,
+    Event, Handler, Message, Response, Sink,
 };
-use event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse};
+use event::LedgerEvent;
 use identity::{
     identifier::{
         derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
@@ -62,7 +62,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_value;
 use sinkdata::{SinkData, SinkDataMessage};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
-use tracing::{debug, error};
 
 use std::{collections::HashSet, str::FromStr};
 
@@ -193,7 +192,7 @@ impl Subject {
     pub fn from_event(
         subject_keys: Option<KeyPair>,
         ledger: &Signed<Ledger>,
-        properties: ValueWrapper
+        properties: ValueWrapper,
     ) -> Result<Self, Error> {
         if let EventRequest::Create(request) =
             &ledger.content.event_request.content
@@ -214,7 +213,6 @@ impl Subject {
             };
             Ok(subject)
         } else {
-            error!("Invalid create event request");
             Err(Error::Subject("Invalid create event request".to_string()))
         }
     }
@@ -239,10 +237,6 @@ impl Subject {
         // We handle the possible responses of node
         match response {
             NodeKeyResponse::KeyIdentifier(key) => Ok(key),
-            _ => Err(ActorError::UnexpectedResponse(
-                node_key_path,
-                "NodeKeyResponse::KeyIdentifier".to_owned(),
-            )),
         }
     }
 
@@ -335,7 +329,6 @@ impl Subject {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
-            error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
 
@@ -387,7 +380,7 @@ impl Subject {
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/validation",
-                ctx.path().to_string()
+                ctx.path()
             ))));
         }
 
@@ -398,7 +391,7 @@ impl Subject {
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/evaluation",
-                ctx.path().to_string()
+                ctx.path()
             ))));
         }
 
@@ -409,7 +402,7 @@ impl Subject {
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/distribution",
-                ctx.path().to_string()
+                ctx.path()
             ))));
         }
 
@@ -565,7 +558,7 @@ impl Subject {
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/validator",
-                    ctx.path().to_string()
+                    ctx.path()
                 ))));
             }
         }
@@ -583,7 +576,7 @@ impl Subject {
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/evaluator",
-                    ctx.path().to_string()
+                    ctx.path()
                 ))));
             }
         }
@@ -601,7 +594,7 @@ impl Subject {
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/approver",
-                    ctx.path().to_string()
+                    ctx.path()
                 ))));
             }
         }
@@ -717,10 +710,10 @@ impl Subject {
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
-        ctx.system().get_helper("config").await
-    else {
-        return Err(ActorError::NotHelper("config".to_owned()));
-    };
+            ctx.system().get_helper("config").await
+        else {
+            return Err(ActorError::NotHelper("config".to_owned()));
+        };
 
         for schema in schemas {
             let actor = Compiler::default();
@@ -734,7 +727,10 @@ impl Subject {
                     contract_name: format!("{}_{}", subject_id, schema.id),
                     contract: schema.contract.raw.clone(),
                     initial_value: schema.initial_value.clone(),
-                    contract_path: format!("{}/contracts/{}_{}", config.contracts_dir, subject_id, schema.id),
+                    contract_path: format!(
+                        "{}/contracts/{}_{}",
+                        config.contracts_dir, subject_id, schema.id
+                    ),
                 })
                 .await?;
         }
@@ -754,7 +750,7 @@ impl Subject {
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/{}_compiler",
-                    ctx.path().to_string(),
+                    ctx.path(),
                     schema.id
                 ))));
             }
@@ -769,10 +765,10 @@ impl Subject {
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
-        ctx.system().get_helper("config").await
-    else {
-        return Err(ActorError::NotHelper("config".to_owned()));
-    };
+            ctx.system().get_helper("config").await
+        else {
+            return Err(ActorError::NotHelper("config".to_owned()));
+        };
 
         for schema in schemas {
             let actor: Option<ActorRef<Compiler>> =
@@ -783,13 +779,16 @@ impl Subject {
                         contract_name: format!("{}_{}", subject_id, schema.id),
                         contract: schema.contract.raw.clone(),
                         initial_value: schema.initial_value.clone(),
-                        contract_path: format!("{}/contracts/{}_{}", config.contracts_dir, subject_id, schema.id),
+                        contract_path: format!(
+                            "{}/contracts/{}_{}",
+                            config.contracts_dir, subject_id, schema.id
+                        ),
                     })
                     .await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/{}_compiler",
-                    ctx.path().to_string(),
+                    ctx.path(),
                     schema.id
                 ))));
             }
@@ -924,19 +923,23 @@ impl Subject {
         if let Err(e) = new_ledger.verify() {
             return Err(Error::Subject(format!(
                 "In new event, event signature: {}",
-                e.to_string()
+                e
             )));
         }
 
         if let Err(e) = new_ledger.content.event_request.verify() {
             return Err(Error::Subject(format!(
                 "In new event request, request signature: {}",
-                e.to_string()
+                e
             )));
         }
 
         // Mirar que sea el siguiente sn
         if last_ledger.content.sn + 1 != new_ledger.content.sn {
+            println!(
+                "ERROR SN {} {}",
+                last_ledger.content.sn, new_ledger.content.sn
+            );
             return Err(Error::Sn);
         }
 
@@ -980,10 +983,8 @@ impl Subject {
             {
                 return Err(Error::Subject("The signer of the new event and the previous one should be the same".to_owned()));
             }
-        } else {
-            if last_ledger.signature.signer != new_ledger.signature.signer {
-                return Err(Error::Subject("The signer of the new event and the previous one should be the same".to_owned()));
-            }
+        } else if last_ledger.signature.signer != new_ledger.signature.signer {
+            return Err(Error::Subject("The signer of the new event and the previous one should be the same".to_owned()));
         }
 
         let valid_new_event = verify_protocols_state(
@@ -1092,14 +1093,14 @@ impl Subject {
         if let Err(e) = event.verify() {
             return Err(Error::Subject(format!(
                 "In create event, event signature: {}",
-                e.to_string()
+                e
             )));
         }
 
         if let Err(e) = event.content.event_request.verify() {
             return Err(Error::Subject(format!(
                 "In create event, request signature: {}",
-                e.to_string()
+                e
             )));
         }
 
@@ -1125,9 +1126,9 @@ impl Subject {
         )? {
             Ok(())
         } else {
-            return Err(Error::Subject(
+            Err(Error::Subject(
                 "Create event fail in validation protocol".to_owned(),
-            ));
+            ))
         }
     }
 
@@ -1651,10 +1652,8 @@ impl Subject {
             };
 
             if current_sn < self.sn {
-                if !self.active {
-                    if current_owner == our_key {
-                        Self::down_owner_not_gov(ctx).await?;
-                    }
+                if !self.active && current_owner == our_key {
+                    Self::down_owner_not_gov(ctx).await?;
                 }
 
                 if current_owner != self.owner {
@@ -1667,22 +1666,19 @@ impl Subject {
             }
         }
 
-        if current_sn < self.sn || current_sn == 0{
+        if current_sn < self.sn || current_sn == 0 {
             let sink_data: Option<ActorRef<SinkData>> =
-            ctx.get_child("sink_data").await;
-        if let Some(sink_data) = sink_data {
-            if let Err(e) = sink_data
-                .tell(SinkDataMessage::SafeMetadata(self.get_metadata()))
-                .await
-            {
-                return Err(e);
+                ctx.get_child("sink_data").await;
+            if let Some(sink_data) = sink_data {
+                sink_data
+                    .tell(SinkDataMessage::SafeMetadata(self.get_metadata()))
+                    .await?
+            } else {
+                return Err(ActorError::NotFound(ActorPath::from(format!(
+                    "{}/sink_data",
+                    ctx.path()
+                ))));
             }
-        } else {
-            return Err(ActorError::NotFound(ActorPath::from(format!(
-                "{}/sink_data",
-                ctx.path()
-            ))));
-        }
         }
 
         Ok(())
@@ -1810,7 +1806,6 @@ impl Actor for Subject {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        debug!("Starting subject actor with init store.");
         self.init_store("subject", None, true, ctx).await?;
 
         let our_key = self.get_node_key(ctx).await?;
@@ -1859,7 +1854,6 @@ impl Actor for Subject {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        debug!("Stopping subject actor with stop store.");
         self.stop_store(ctx).await.map_err(|_| ActorError::Stop)?;
         Ok(())
     }
@@ -1941,14 +1935,12 @@ impl Handler<Subject> for Subject {
         event: Signed<Ledger>,
         ctx: &mut ActorContext<Subject>,
     ) {
-        debug!("Persisting subject event.");
         if let Err(err) = self.persist(&event, ctx).await {
-            error!("Error persisting subject event: {:?}", err);
             let _ = ctx.emit_error(err).await;
         };
 
         if let Err(e) = ctx.publish_event(event).await {
-            println!("{}", e);
+            println!("Errror {}", e);
             // TODO
         }
     }
@@ -2129,8 +2121,12 @@ mod tests {
             signature: signature_event,
         };
 
-        let subject =
-            Subject::from_event(Some(keys.clone()), &signed_ledger, init_state(&signed_ledger.signature.signer.to_string())).unwrap();
+        let subject = Subject::from_event(
+            Some(keys.clone()),
+            &signed_ledger,
+            init_state(&signed_ledger.signature.signer.to_string()),
+        )
+        .unwrap();
 
         let subject_actor = system
             .get_or_create_actor(
@@ -2309,6 +2305,7 @@ mod tests {
     }
 
     use actor::SystemRef;
+    use event::LedgerEventMessage;
     use identity::{
         identifier::derive::KeyDerivator,
         keys::{Ed25519KeyPair, KeyGenerator},
@@ -2340,7 +2337,12 @@ mod tests {
             signature,
         };
 
-        let subject = Subject::from_event(Some(keys), &signed_ledger, init_state(&signed_ledger.signature.signer.to_string())).unwrap();
+        let subject = Subject::from_event(
+            Some(keys),
+            &signed_ledger,
+            init_state(&signed_ledger.signature.signer.to_string()),
+        )
+        .unwrap();
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
@@ -2410,8 +2412,12 @@ mod tests {
             signature,
         };
 
-        let subject_a =
-            Subject::from_event(Some(keys), &signed_ledger, init_state(&signed_ledger.signature.signer.to_string())).unwrap();
+        let subject_a = Subject::from_event(
+            Some(keys),
+            &signed_ledger,
+            init_state(&signed_ledger.signature.signer.to_string()),
+        )
+        .unwrap();
 
         let bytes = bincode::serialize(&subject_a).unwrap();
 

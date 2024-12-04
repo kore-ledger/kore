@@ -7,7 +7,7 @@ pub(crate) mod error;
 #[cfg(feature = "secp256k1")]
 pub(crate) mod secp256k1;
 
-use std::{fmt::format, io::Read};
+use std::io::Read;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use identifier::error::Error;

@@ -8,10 +8,13 @@ use identity::{
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
 use kore_base::{
-    approval::approver::ApprovalStateRes, config::{Config, ExternalDbConfig, KoreDbConfig}, model::{
+    approval::approver::ApprovalStateRes,
+    config::{Config, ExternalDbConfig, KoreDbConfig},
+    model::{
         request::{CreateRequest, EventRequest, FactRequest},
         Namespace, ValueWrapper,
-    }, Api
+    },
+    Api,
 };
 use network::{Config as NetworkConfig, RoutingNode};
 use prometheus_client::registry::Registry;
@@ -114,7 +117,7 @@ async fn test_governance_copy() {
     let controller_node1 = node1.controller_id();
 
     let node2 = create_node2(&peer_node1).await;
-    let peer_node2 = node2.peer_id();
+    let _peer_node2 = node2.peer_id();
     let controller_node2 = node2.controller_id();
 
     let request = EventRequest::Create(CreateRequest {
@@ -143,7 +146,6 @@ async fn test_governance_copy() {
         .await
         .unwrap();
     println!("{}", response);
-
 
     let json = json!({"Patch": {
             "data": [
@@ -221,7 +223,7 @@ async fn test_governance_copy() {
                     }
                 }
     ]}});
-    
+
     let request = EventRequest::Fact(FactRequest {
         subject_id: governance_id.clone(),
         payload: ValueWrapper(json),
@@ -235,17 +237,20 @@ async fn test_governance_copy() {
         .unwrap();
     println!("{}", response);
 
-    node1.approve(governance_id.clone(), ApprovalStateRes::RespondedAccepted).await.unwrap();
+    node1
+        .approve(governance_id.clone(), ApprovalStateRes::RespondedAccepted)
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let response = node1
-    .request_state(DigestIdentifier::from_str(&data.request_id).unwrap())
-    .await
-    .unwrap();
+        .request_state(DigestIdentifier::from_str(&data.request_id).unwrap())
+        .await
+        .unwrap();
     println!("{}", response);
 
-    tokio::time::sleep(Duration::from_secs(2)).await;
-    let response = node2.get_subject(governance_id.clone()).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let _response = node2.get_subject(governance_id.clone()).await.unwrap();
     //println!("{:?}", response);
 
     let request = EventRequest::Create(CreateRequest {
@@ -253,20 +258,14 @@ async fn test_governance_copy() {
         schema_id: "Example".to_owned(),
         namespace: Namespace::new(),
     });
-    
+
     let data = node2.own_request(request).await.unwrap();
     let subject_id = DigestIdentifier::from_str(&data.subject_id).unwrap();
 
     tokio::time::sleep(Duration::from_secs(2)).await;
-    let response = node2
-        .get_subject(subject_id.clone())
-        .await
-        .unwrap();
+    let _response = node2.get_subject(subject_id.clone()).await.unwrap();
 
-    let response = node1
-    .get_subject(subject_id.clone())
-    .await
-    .unwrap();
+    let _response = node1.get_subject(subject_id.clone()).await.unwrap();
 
     let json = json!({
         "ModOne": {
@@ -279,17 +278,31 @@ async fn test_governance_copy() {
         payload: ValueWrapper(json),
     });
 
-    let data = node2.own_request(request).await.unwrap();
+    let _data = node2.own_request(request).await.unwrap();
     tokio::time::sleep(Duration::from_secs(2)).await;
     let response = node2
-        .get_events(subject_id.clone(), None, None)
+        .get_events(subject_id.clone(), Some(5), Some(1))
         .await
         .unwrap();
+    println!("");
+    println!("{:?}", response);
+    println!("");
+
+    let response = node1.get_subject(subject_id.clone()).await.unwrap();
     println!("{:?}", response);
 
-    let response = node1
-    .get_subject(subject_id.clone())
-    .await
-    .unwrap();
-    println!("{:?}", response);
+    for i in 0..250 {
+        let json = json!({
+            "ModTwo": {
+                "data": i + 1,
+            }
+        });
+
+        let request = EventRequest::Fact(FactRequest {
+            subject_id: subject_id.clone(),
+            payload: ValueWrapper(json),
+        });
+
+        let _data = node2.own_request(request).await.unwrap();
+    }
 }

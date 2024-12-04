@@ -29,20 +29,13 @@ use crate::{
 
 use super::{event::ProtocolsSignatures, HashId, Namespace};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MemoryManager {
     memory: Vec<u8>,
     map: HashMap<usize, usize>,
 }
 
 impl MemoryManager {
-    pub fn new() -> Self {
-        Self {
-            memory: vec![],
-            map: HashMap::new(),
-        }
-    }
-
     pub fn alloc(&mut self, len: usize) -> usize {
         let current_len = self.memory.len();
         self.memory.resize(current_len + len, 0);
@@ -405,7 +398,7 @@ pub async fn emit_fail<A>(
 where
     A: Actor + Handler<A>,
 {
-    if let Err(e) = ctx.emit_fail(error.clone()).await {
+    if let Err(_e) = ctx.emit_fail(error.clone()).await {
         ctx.system().send_event(SystemEvent::StopSystem).await;
     };
     error
@@ -423,11 +416,7 @@ where
         ctx.system().get_actor(&auth_path).await;
 
     if let Some(auth_actor) = auth_actor {
-        if let Err(e) =
-            auth_actor.tell(AuthMessage::Update { subject_id }).await
-        {
-            return Err(e);
-        }
+        auth_actor.tell(AuthMessage::Update { subject_id }).await?;
     } else {
         return Err(ActorError::NotFound(auth_path));
     }
@@ -514,13 +503,9 @@ pub async fn try_to_update<A>(
 where
     A: Actor + Handler<A>,
 {
-    let all_time_out = vec.iter().all(|x| {
-        if let ProtocolsSignatures::TimeOut(_) = x {
-            true
-        } else {
-            false
-        }
-    });
+    let all_time_out = vec
+        .iter()
+        .all(|x| matches!(x, ProtocolsSignatures::TimeOut(_)));
 
     if all_time_out {
         let auth_path = ActorPath::from("/user/node/auth");
@@ -528,11 +513,7 @@ where
             ctx.system().get_actor(&auth_path).await;
 
         if let Some(auth_actor) = auth_actor {
-            if let Err(e) =
-                auth_actor.tell(AuthMessage::Update { subject_id }).await
-            {
-                return Err(e);
-            }
+            auth_actor.tell(AuthMessage::Update { subject_id }).await?;
         } else {
             return Err(ActorError::NotFound(auth_path));
         }
@@ -582,7 +563,7 @@ where
     if let Err(e) = req.verify() {
         return Err(ActorError::Functional(format!(
             "Can not verify signature: {}",
-            e.to_string()
+            e
         )));
     }
 
@@ -626,7 +607,7 @@ where
         return Err(e);
     };
 
-    if let Err(e) = helper
+    helper
         .send_command(network::CommandHelper::SendMessage {
             message: NetworkMessage {
                 info,
@@ -634,11 +615,6 @@ where
             },
         })
         .await
-    {
-        return Err(e);
-    };
-
-    Ok(())
 }
 
 pub async fn update_ledger_local<A>(
@@ -670,7 +646,7 @@ where
         return Err(e);
     };
 
-    if let Err(e) = helper
+    helper
         .send_command(network::CommandHelper::SendMessage {
             message: NetworkMessage {
                 info,
@@ -678,11 +654,6 @@ where
             },
         })
         .await
-    {
-        return Err(e);
-    };
-
-    Ok(())
 }
 
 pub async fn get_last_event<A>(
@@ -727,12 +698,9 @@ where
         ctx.system().get_actor(&req_path).await;
 
     if let Some(req_actor) = req_actor {
-        if let Err(e) = req_actor
+        req_actor
             .tell(RequestManagerMessage::Reboot { governance_id })
-            .await
-        {
-            return Err(e);
-        }
+            .await?
     } else {
         return Err(ActorError::NotFound(req_path));
     };

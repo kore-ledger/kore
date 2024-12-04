@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    FixedIntervalStrategy, Handler, Message, Response, RetryActor,
-    RetryMessage, Strategy, SystemEvent,
+    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
+    Strategy,
 };
 
 use async_trait::async_trait;
@@ -54,14 +54,14 @@ impl Actor for Updater {
 
     async fn pre_start(
         &mut self,
-        ctx: &mut ActorContext<Self>,
+        _ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }
 
     async fn pre_stop(
         &mut self,
-        ctx: &mut ActorContext<Self>,
+        _ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }

@@ -3,7 +3,7 @@
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, Handler, Message, Response,
+    Event, Handler, Message,
 };
 use async_trait::async_trait;
 use identity::identifier::{
@@ -13,7 +13,6 @@ use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use store::store::PersistentActor;
-use tracing::error;
 
 use crate::{
     approval::{Approval, ApprovalMessage},
@@ -38,10 +37,9 @@ use crate::{
     },
     update::{Update, UpdateMessage, UpdateNew, UpdateType},
     validation::proof::EventProof,
-    ActorMessage, Error, Event as KoreEvent, EventRequest, HashId,
-    NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse,
-    Validation, ValidationInfo, ValidationMessage, ValueWrapper,
-    DIGEST_DERIVATOR,
+    ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage,
+    Signed, Subject, SubjectMessage, SubjectResponse, Validation,
+    ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR,
 };
 
 use super::{
@@ -95,15 +93,12 @@ impl RequestManager {
             ctx.system().get_actor(&validation_path).await;
 
         if let Some(validation_actor) = validation_actor {
-            if let Err(e) = validation_actor
+            validation_actor
                 .tell(ValidationMessage::Create {
                     request_id: self.id.clone(),
                     info: val_info,
                 })
-                .await
-            {
-                return Err(e);
-            }
+                .await?
         } else {
             return Err(ActorError::NotFound(validation_path));
         }
@@ -123,15 +118,12 @@ impl RequestManager {
             ctx.system().get_actor(&evaluation_path).await;
 
         if let Some(evaluation_actor) = evaluation_actor {
-            if let Err(e) = evaluation_actor
+            evaluation_actor
                 .tell(EvaluationMessage::Create {
                     request_id: self.id.clone(),
                     request: self.request.clone(),
                 })
-                .await
-            {
-                return Err(e);
-            }
+                .await?
         } else {
             return Err(ActorError::NotFound(evaluation_path));
         }
@@ -151,16 +143,13 @@ impl RequestManager {
             ctx.system().get_actor(&approval_path).await;
 
         if let Some(approval_actor) = approval_actor {
-            if let Err(e) = approval_actor
+            approval_actor
                 .tell(ApprovalMessage::Create {
                     request_id: self.id.clone(),
                     eval_req,
                     eval_res,
                 })
-                .await
-            {
-                return Err(e);
-            }
+                .await?
         } else {
             return Err(ActorError::NotFound(approval_path));
         }
@@ -326,7 +315,8 @@ impl RequestManager {
         };
 
         if let Err(e) = update_event(ctx, signed_event.clone()).await {
-            if let ActorError::Functional(_) = e {} else {
+            if let ActorError::Functional(_) = e {
+            } else {
                 return Err(emit_fail(ctx, e).await);
             }
         };
@@ -447,7 +437,6 @@ impl RequestManager {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
-            error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
 
@@ -461,23 +450,21 @@ impl RequestManager {
             metadata.properties.hash_id(derivator).map_err(|e| {
                 ActorError::FunctionalFail(format!(
                     "Can not obtain hash id for metadata propierties: {}",
-                    e.to_string()
+                    e
                 ))
             })?
         };
 
         let sn = if let Some(sn) = sn {
             sn
-        } else {
-            if metadata.sn == 0 {
-                if let EventRequest::Create(_) = self.request.content {
-                    metadata.sn
-                } else {
-                    metadata.sn + 1
-                }
+        } else if metadata.sn == 0 {
+            if let EventRequest::Create(_) = self.request.content {
+                metadata.sn
             } else {
                 metadata.sn + 1
             }
+        } else {
+            metadata.sn + 1
         };
 
         Ok(DataProofEvent {
@@ -558,7 +545,7 @@ impl RequestManager {
                     return Err(ActorError::NotHelper("network".to_owned()));
                 };
 
-                if let Err(e) = helper
+                helper
                     .send_command(
                         network::CommandHelper::SendMessage {
                             message: NetworkMessage {
@@ -567,16 +554,11 @@ impl RequestManager {
                             },
                         },
                     )
-                    .await
-                {
-                    return Err(e);
-                };
+                    .await?;
 
                 let actor = ctx.reference().await;
                 if let Some(actor) = actor {
-                    if let Err(e) = actor.tell(RequestManagerMessage::Reboot { governance_id }).await {
-                        return Err(e);
-                    }
+                    actor.tell(RequestManagerMessage::Reboot { governance_id }).await?
                 } else {
                     let path = ctx.path().clone();
                     return Err(ActorError::NotFound(path));
@@ -591,19 +573,14 @@ impl RequestManager {
                 );
                 let child = ctx
                     .create_child(
-                        &&governance_string,
+                        &governance_string,
                         update,
                     )
                     .await;
                 let Ok(child) = child else {
                     return Err(ActorError::Create(ctx.path().clone(), governance_string));
                 };
-
-                if let Err(e) =
-                    child.tell(UpdateMessage::Create).await
-                {
-                    return Err(e);
-                }
+                    child.tell(UpdateMessage::Create).await?
             }
             AuthWitness::None => return Err(ActorError::Functional("Attempts have been made to obtain witnesses to update governance but there are none authorized".to_owned())),
         };
@@ -1010,7 +987,7 @@ impl Handler<RequestManager> for RequestManager {
             // TODO Propagar error.
         };
 
-        if let Err(e) = ctx.publish_event(event).await {};
+        if let Err(_e) = ctx.publish_event(event).await {};
     }
 
     async fn on_child_fault(

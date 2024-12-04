@@ -100,10 +100,10 @@ impl BorshSerialize for ValueWrapper {
                         return BorshSerialize::serialize(&data, writer);
                     }
                 }
-                return Err(std::io::Error::new(
+                Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     "Invalid number type",
-                ));
+                ))
             }
             Value::String(data) => {
                 BorshSerialize::serialize(&2u8, writer)?;

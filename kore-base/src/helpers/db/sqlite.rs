@@ -1,8 +1,7 @@
 use actor::{ActorRef, Subscriber};
 use async_trait::async_trait;
 use serde_json::json;
-use tokio_rusqlite::{params, Connection, OpenFlags, Result as SqliteError};
-use tracing::Event;
+use tokio_rusqlite::{params, Connection, OpenFlags};
 
 use crate::approval::approver::ApproverEvent;
 use crate::error::Error;
@@ -14,7 +13,7 @@ use crate::request::state::RequestManagerState;
 use crate::request::RequestHandlerEvent;
 use crate::subject::event::LedgerEventEvent;
 use crate::subject::sinkdata::SinkDataEvent;
-use crate::{EventRequest, Signed};
+use crate::Signed;
 
 use super::{Paginator, Querys, SignaturesDB, SubjectDB};
 
@@ -37,7 +36,7 @@ impl Querys for SqliteLocal {
             .call(move |conn| {
                 let sql = "SELECT * FROM signatures WHERE subject_id = ?1";
 
-                match conn.query_row(&sql, params![subject_id], |row| {
+                match conn.query_row(sql, params![subject_id], |row| {
                     Ok(SignaturesDB {
                         subject_id: row.get(0)?,
                         sn: row.get(1)?,
@@ -70,7 +69,7 @@ impl Querys for SqliteLocal {
             .call(move |conn| {
                 let sql = "SELECT * FROM subjects WHERE subject_id = ?1";
 
-                match conn.query_row(&sql, params![subject_id], |row| {
+                match conn.query_row(sql, params![subject_id], |row| {
                     Ok(SubjectDB {
                         subject_id: row.get(0)?,
                         governance_id: row.get(1)?,
@@ -103,10 +102,13 @@ impl Querys for SqliteLocal {
         quantity: Option<u64>,
         page: Option<u64>,
     ) -> Result<(Vec<EventDB>, Paginator), Error> {
-        let quantity = quantity.unwrap_or(50);
+        let mut quantity = quantity.unwrap_or(50);
         let mut page = page.unwrap_or(1);
         if page == 0 {
             page = 1;
+        }
+        if quantity == 0 {
+            quantity = 1;
         }
 
         let subject_id_cloned = subject_id.to_owned();
@@ -116,7 +118,7 @@ impl Querys for SqliteLocal {
             .call(move |conn| {
                 let sql = "SELECT COUNT(*) FROM events WHERE subject_id = ?1";
 
-                match conn.query_row(&sql, params![subject_id_cloned], |row| {
+                match conn.query_row(sql, params![subject_id_cloned], |row| {
                     row.get(0)
                 }) {
                     Ok(result) => Ok(result),
@@ -190,8 +192,7 @@ impl Querys for SqliteLocal {
             .call(move |conn| {
                 let sql = "SELECT state FROM request WHERE id = ?1";
 
-                match conn
-                    .query_row(&sql, params![request_id], |row| row.get(0))
+                match conn.query_row(sql, params![request_id], |row| row.get(0))
                 {
                     Ok(result) => Ok(result),
                     Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
@@ -235,7 +236,7 @@ impl Querys for SqliteLocal {
                 let sql =
                     "SELECT data, state FROM approval WHERE subject_id = ?1";
 
-                match conn.query_row(&sql, params![subject_id], |row| {
+                match conn.query_row(sql, params![subject_id], |row| {
                     Ok((row.get(0)?, row.get(1)?))
                 }) {
                     Ok(result) => Ok(result),
@@ -262,8 +263,7 @@ impl Querys for SqliteLocal {
                 let sql =
                     "SELECT validators FROM validations WHERE subject_id = ?1";
 
-                match conn
-                    .query_row(&sql, params![subject_id], |row| row.get(0))
+                match conn.query_row(sql, params![subject_id], |row| row.get(0))
                 {
                     Ok(result) => Ok(result),
                     Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
@@ -565,14 +565,14 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
     async fn notify(&self, event: Signed<Ledger>) {
         let subject_id = event.content.subject_id.to_string();
         let sn = event.content.sn;
-        let succes ;
-        let Ok(event_req) = serde_json::to_string(&json!(event.content.event_request.content)) else {
+        let succes;
+        let Ok(event_req) =
+            serde_json::to_string(&json!(event.content.event_request.content))
+        else {
             let e = Error::ExtDB(
-                "Can not Serialize protocols_error as String"
-                    .to_owned(),
+                "Can not Serialize protocols_error as String".to_owned(),
             );
-            if let Err(e) =
-                self.manager.tell(DBManagerMessage::Error(e)).await
+            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
                 println!("{}", e);
             }
@@ -582,7 +582,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
             LedgerValue::Patch(value_wrapper) => {
                 succes = "true".to_owned();
                 value_wrapper.0.to_string()
-            },
+            }
             LedgerValue::Error(protocols_error) => {
                 let Ok(string) = serde_json::to_string(&protocols_error) else {
                     let e = Error::ExtDB(

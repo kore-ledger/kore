@@ -58,7 +58,7 @@ impl Handler<NodeKey> for NodeKey {
         &mut self,
         _sender: ActorPath,
         msg: NodeKeyMessage,
-        ctx: &mut actor::ActorContext<NodeKey>,
+        _ctx: &mut actor::ActorContext<NodeKey>,
     ) -> Result<NodeKeyResponse, ActorError> {
         match msg {
             NodeKeyMessage::GetKeyIdentifier => {

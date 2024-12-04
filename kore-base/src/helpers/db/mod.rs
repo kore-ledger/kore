@@ -1,5 +1,5 @@
 use crate::{
-    approval::approver::{ApprovalState, ApprovalStateRes, ApproverEvent},
+    approval::approver::ApproverEvent,
     error::Error,
     external_db::DBManager,
     model::event::Ledger,

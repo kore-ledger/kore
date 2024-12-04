@@ -71,11 +71,9 @@ impl Intermediary {
                 tokio::select! {
                     command = command_receiver.recv() => {
                         if let Some(command) = command{
-                            if let Err(error) = clone.handle_command(command).await {
-                                if let Error::Network(_) = error {
-                                    clone.token.cancel();
-                                    break;
-                                }
+                            if let Err(Error::Network(_)) = clone.handle_command(command).await {
+                                clone.token.cancel();
+                                break;
                             };
                         }
                     },

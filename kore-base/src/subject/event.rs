@@ -19,7 +19,7 @@ use store::store::PersistentActor;
 use crate::{
     approval::approver::{Approver, ApproverMessage},
     db::Storable,
-    Error, Event as KoreEvent, EventRequest, Signed,
+    Event as KoreEvent, EventRequest, Signed,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

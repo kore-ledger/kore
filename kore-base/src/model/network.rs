@@ -1,6 +1,4 @@
-use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Handler, SystemEvent,
-};
+use actor::{Actor, ActorContext, ActorPath, Error as ActorError, Handler};
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::KeyIdentifier;

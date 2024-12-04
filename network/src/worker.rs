@@ -242,6 +242,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         })
     }
 
+    /// Add sender helper
     pub fn add_helper_sender(
         &mut self,
         helper_sender: mpsc::Sender<CommandHelper<T>>,
@@ -1022,7 +1023,6 @@ mod tests {
     use identity::keys::KeyPair;
 
     use serial_test::serial;
-    use tokio::sync::mpsc::{self, Receiver};
 
     //use tracing_test::traced_test;
 

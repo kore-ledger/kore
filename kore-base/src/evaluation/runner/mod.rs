@@ -11,7 +11,7 @@ use serde_json::Value;
 use types::{
     Contract, ContractResult, GovernanceData, GovernanceEvent, RunnerResult,
 };
-use wasmtime::{Caller, Config, Engine, Linker, Module, Store};
+use wasmtime::{Config, Engine, Module, Store};
 
 use crate::{
     governance::{
@@ -130,8 +130,6 @@ impl Runner {
                     serde_json::to_value(patched_state)
                         .map_err(|e| Error::Runner(e.to_string()))?,
                 );
-
-
 
                 let schema = {
                     if let Some(lock) = GOVERNANCE.get() {
@@ -427,7 +425,7 @@ impl Runner {
         state: &ValueWrapper,
         event: &ValueWrapper,
     ) -> Result<(MemoryManager, u32, u32), Error> {
-        let mut context = MemoryManager::new();
+        let mut context = MemoryManager::default();
         let state_bytes = to_vec(&state).map_err(|e| {
             Error::Runner(format!(
                 "Error when serializing the state using borsh: {}",
@@ -461,9 +459,9 @@ impl Runner {
         if contract_result.success {
             Ok(contract_result)
         } else {
-            return Err(Error::Compiler(
+            Err(Error::Compiler(
                 "Contract execution in running was not successful".to_owned(),
-            ));
+            ))
         }
     }
 }

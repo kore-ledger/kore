@@ -1,6 +1,5 @@
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
-    Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
 };
 
 use crate::Event as NetworkEvent;
@@ -9,6 +8,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+/// Actor in charge of monitoring the network, allows communication between the actor system and the network.
 pub struct Monitor;
 
 impl Message for NetworkEvent {}
@@ -39,8 +39,8 @@ impl Handler<Monitor> for Monitor {
     async fn handle_message(
         &mut self,
         _sender: ActorPath,
-        msg: NetworkEvent,
-        ctx: &mut actor::ActorContext<Monitor>,
+        _msg: NetworkEvent,
+        _ctx: &mut actor::ActorContext<Monitor>,
     ) -> Result<(), ActorError> {
         Ok(())
     }

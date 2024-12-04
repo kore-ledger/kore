@@ -2,7 +2,7 @@ use std::{collections::HashSet, path::Path, process::Command};
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
-    Message, Response,
+    Message,
 };
 use async_std::fs;
 use async_trait::async_trait;
@@ -11,12 +11,11 @@ use borsh::{to_vec, BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tracing::error;
-use wasmtime::{Caller, Config, Engine, ExternType, Linker, Module, Store};
+
+use wasmtime::{Config, Engine, ExternType, Module, Store};
 
 use crate::{
-    governance::json_schema::JsonSchema,
-    model::common::{emit_fail, generate_linker, MemoryManager},
+    model::common::{generate_linker, MemoryManager},
     Error, HashId, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR,
 };
 
@@ -87,25 +86,19 @@ impl Compiler {
                 Error::Node(format!("Can not create Cargo.toml file: {}", e))
             })?;
 
-        fs::write(
-            format!("{}/src/lib.rs", contract_path),
-            decode_base64,
-        )
-        .await
-        .map_err(|e| {
-            Error::Compiler(format!(
-                "Can not create {}/src/lib.rs file: {}",
-                contract_path, e
-            ))
-        })?;
+        fs::write(format!("{}/src/lib.rs", contract_path), decode_base64)
+            .await
+            .map_err(|e| {
+                Error::Compiler(format!(
+                    "Can not create {}/src/lib.rs file: {}",
+                    contract_path, e
+                ))
+            })?;
 
         // Compiling contract
         let status = Command::new("cargo")
             .arg("build")
-            .arg(format!(
-                "--manifest-path={}/Cargo.toml",
-                contract_path
-            ))
+            .arg(format!("--manifest-path={}/Cargo.toml", contract_path))
             .arg("--target")
             .arg("wasm32-unknown-unknown")
             .arg("--release")
@@ -265,17 +258,17 @@ impl Compiler {
         if contract_result.success {
             Ok(())
         } else {
-            return Err(Error::Compiler(
+            Err(Error::Compiler(
                 "Contract execution in compilation was not successful"
                     .to_owned(),
-            ));
+            ))
         }
     }
 
     fn generate_context(
         state: ValueWrapper,
     ) -> Result<(MemoryManager, u32), Error> {
-        let mut context = MemoryManager::new();
+        let mut context = MemoryManager::default();
         let state_bytes = to_vec(&state).map_err(|e| {
             Error::Compiler(format!(
                 "Error when serializing the state using borsh: {}",
@@ -338,7 +331,6 @@ impl Handler<Compiler> for Compiler {
                 let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
                     *derivator
                 } else {
-                    error!("Error getting derivator");
                     DigestDerivator::Blake3_256
                 };
 
@@ -348,7 +340,7 @@ impl Handler<Compiler> for Compiler {
                     Err(e) => {
                         return Err(ActorError::Functional(format!(
                             "Can not hash contract: {}",
-                            e.to_string()
+                            e
                         )))
                     }
                 };

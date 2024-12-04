@@ -5,18 +5,15 @@ use std::collections::HashSet;
 
 use actor::{
     Actor, ActorContext, ChildAction, Error as ActorError, Handler, Message,
-    Response, SystemEvent,
 };
 use actor::{ActorPath, ActorRef, Event};
 use approver::{Approver, ApproverMessage, VotationType};
 use async_trait::async_trait;
-use identity::identifier::derive::digest::DigestDerivator;
-use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use identity::identifier::KeyIdentifier;
 use request::ApprovalReq;
 use response::ApprovalRes;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
-use tracing::{debug, error};
 
 use crate::evaluation::response::EvalLedgerResponse;
 use crate::governance::model::Roles;
@@ -26,14 +23,11 @@ use crate::model::common::{
 use crate::model::event::{LedgerValue, ProtocolsSignatures};
 use crate::model::{Namespace, SignTypesNode};
 use crate::request::manager::{RequestManager, RequestManagerMessage};
-use crate::subject::event::{
-    LedgerEvent, LedgerEventMessage, LedgerEventResponse,
-};
 use crate::{
     db::Storable, evaluation::request::EvaluationReq, governance::Quorum,
-    Error, Signed, Subject,
+    Signed, Subject,
 };
-use crate::{EventRequest, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR};
+use crate::{EventRequest, SubjectMessage, SubjectResponse};
 
 pub mod approver;
 pub mod request;
@@ -249,7 +243,6 @@ impl Actor for Approval {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        debug!("Starting approval actor with init store.");
         let prefix = ctx.path().parent().key();
         self.init_store("approval", Some(prefix), false, ctx).await
         // Una vez recuperado el estado debemos ver si el propio nodo ha recibido ya ha enviado la respuesta
@@ -259,7 +252,6 @@ impl Actor for Approval {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        debug!("Stopping approval actor with stop store.");
         self.stop_store(ctx).await
     }
 }

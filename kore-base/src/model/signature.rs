@@ -90,18 +90,12 @@ impl Signature {
             derivator,
         )
         .map_err(|e| {
-            Error::Signature(format!(
-                "Signature verify fails {}",
-                e.to_string()
-            ))
+            Error::Signature(format!("Signature verify fails {}", e))
         })?;
         self.signer
             .verify(&signature_hash.digest, &self.value)
             .map_err(|e| {
-                Error::Signature(format!(
-                    "Signature verify fails {}",
-                    e.to_string()
-                ))
+                Error::Signature(format!("Signature verify fails {}", e))
             })
     }
 }

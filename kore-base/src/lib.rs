@@ -21,7 +21,7 @@ pub(crate) mod system;
 pub mod update;
 pub mod validation;
 
-use actor::{ActorPath, ActorRef, Sink, SystemRef};
+use actor::{ActorPath, ActorRef, Sink};
 use approval::approver::ApprovalStateRes;
 use async_std::sync::RwLock;
 use auth::{Auth, AuthMessage, AuthResponse, AuthWitness};
@@ -114,13 +114,13 @@ impl Api {
             .get_actor(&ActorPath::from("/user/node/register"))
             .await;
         let Some(register_actor) = register else {
-            return Err(Error::System(format!("Can not get register actor")));
+            return Err(Error::System("Can not get register actor".to_owned()));
         };
 
         let auth: Option<ActorRef<Auth>> =
             system.get_actor(&ActorPath::from("/user/node/auth")).await;
         let Some(auth_actor) = auth else {
-            return Err(Error::System(format!("Can not get auth actor")));
+            return Err(Error::System("Can not get auth actor".to_owned()));
         };
 
         let request = RequestHandler::new(keys.key_identifier());
@@ -131,7 +131,7 @@ impl Api {
         let Some(ext_db): Option<ExternalDB> =
             system.get_helper("ext_db").await
         else {
-            return Err(Error::System(format!("Can not get ext_db helper")));
+            return Err(Error::System("Can not get ext_db helper".to_owned()));
         };
 
         let sink =
@@ -155,7 +155,7 @@ impl Api {
             keys.clone(),
             config.network.clone(),
             Some(newtork_monitor_actor),
-            config.key_derivator.clone(),
+            config.key_derivator,
             token.clone(),
         )
         .map_err(|e| Error::Network(e.to_string()))?;
@@ -202,7 +202,8 @@ impl Api {
         &self,
         request: Signed<EventRequest>,
     ) -> Result<RequestData, Error> {
-        let Ok(response) = self.request
+        let Ok(response) = self
+            .request
             .ask(RequestHandlerMessage::NewRequest { request })
             .await
         else {
@@ -255,11 +256,13 @@ impl Api {
             signature,
         };
 
-        let response = self.request
-        .ask(RequestHandlerMessage::NewRequest {
-            request: signed_event_req,
-        })
-        .await.map_err(|e| Error::RequestHandler(e.to_string()))?;
+        let response = self
+            .request
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req,
+            })
+            .await
+            .map_err(|e| Error::RequestHandler(e.to_string()))?;
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),

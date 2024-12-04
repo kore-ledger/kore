@@ -39,7 +39,7 @@ impl DBManager {
         our_ref: ActorRef<DBManager>,
         helper: ExternalDB,
     ) {
-        let time = self.time.clone();
+        let time = self.time;
 
         tokio::spawn(async move {
             tokio::time::sleep(time).await;

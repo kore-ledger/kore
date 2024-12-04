@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 
-use crate::{db::Storable, error::Error};
+use crate::db::Storable;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct OwnerSchema {
@@ -154,7 +154,7 @@ impl PersistentActor for RelationShip {
             RelationShipEvent::NewRegister { data, subject } => {
                 self.owner_subjects
                     .entry(data.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(subject.clone());
             }
             RelationShipEvent::DeleteSubject { data, subject } => {

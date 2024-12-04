@@ -13,7 +13,6 @@ mod runner;
 pub mod schema;
 
 use crate::{
-    auth::{Auth, AuthMessage},
     governance::{model::Roles, Quorum},
     model::{
         common::{
@@ -23,28 +22,25 @@ use crate::{
         event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
-        HashId, Namespace, SignTypesNode,
+        HashId, SignTypesNode,
     },
     request::manager::{RequestManager, RequestManagerMessage},
-    subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
-    Error, DIGEST_DERIVATOR,
+    subject::Metadata,
+    DIGEST_DERIVATOR,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, Handler, Message, Response,
+    Event, Handler, Message,
 };
 
 use async_trait::async_trait;
 use evaluator::{Evaluator, EvaluatorMessage};
-use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
-};
+use identity::identifier::{derive::digest::DigestDerivator, KeyIdentifier};
 use request::{EvaluationReq, SubjectContext};
 use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
 use serde::{Deserialize, Serialize};
-use tracing::error;
 
-use std::{clone, collections::HashSet};
+use std::collections::HashSet;
 // TODO cuando se recibe una evaluación, validación lo que sea debería venir firmado y comprobar que es de quien dice ser, cuando llega por la network y cuando la envía un usuario.
 #[derive(Default)]
 pub struct Evaluation {
@@ -120,7 +116,10 @@ impl Evaluation {
     ) -> Result<(), ActorError> {
         // Create Evaluator child
         let child = ctx
-            .create_child(&format!("{}", signer), Evaluator::new(request_id.to_string(), signer.clone()))
+            .create_child(
+                &format!("{}", signer),
+                Evaluator::new(request_id.to_string(), signer.clone()),
+            )
             .await;
         let evaluator_actor = match child {
             Ok(child) => child,
@@ -168,7 +167,6 @@ impl Evaluation {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
-            error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
         let (state, subject_id) = if let Some(req) = self.eval_req.clone() {
@@ -227,16 +225,13 @@ impl Evaluation {
         };
 
         if let Some(req_actor) = req_actor {
-            if let Err(e) = req_actor
+            req_actor
                 .tell(RequestManagerMessage::EvaluationRes {
                     request,
                     response,
                     signatures: self.evaluators_signatures.clone(),
                 })
-                .await
-            {
-                return Err(e);
-            }
+                .await?;
         } else {
             return Err(ActorError::NotFound(req_path));
         };
@@ -794,7 +789,7 @@ mod tests {
 
         tokio::time::sleep(Duration::from_secs(9)).await;
 
-        let QueryResponse::RequestState(state) = query_actor
+        let QueryResponse::RequestState(_state) = query_actor
             .ask(QueryMessage::GetRequestState {
                 request_id: request_id.request_id.clone(),
             })

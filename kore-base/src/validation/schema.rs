@@ -108,9 +108,9 @@ impl Handler<ValidationSchema> for ValidationSchema {
                         if let ActorError::Exists(_) = e {
                             return Ok(());
                         } else {
-                            return Err(emit_fail(ctx, e).await)
+                            return Err(emit_fail(ctx, e).await);
                         }
-                    },
+                    }
                 };
 
                 validator_actor

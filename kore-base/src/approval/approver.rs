@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::{
     db::Storable,
     intermediary::Intermediary,
@@ -9,13 +11,12 @@ use crate::{
         network::{RetryNetwork, TimeOutResponse},
         SignTypesNode, TimeStamp,
     },
-    ActorMessage, Error, EventRequest, NetworkMessage, Signed, Subject,
-    SubjectMessage, SubjectResponse,
+    ActorMessage, EventRequest, NetworkMessage, Signed,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, ExponentialBackoffStrategy, Handler, Message, Response, RetryActor,
-    RetryMessage, Strategy, SystemEvent,
+    Event, ExponentialBackoffStrategy, Handler, Message, RetryActor,
+    RetryMessage, Strategy,
 };
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
@@ -39,9 +40,9 @@ pub enum ApprovalStateRes {
     Obsolete,
 }
 
-impl ApprovalStateRes {
-    pub fn to_string(&self) -> String {
-        match self {
+impl Display for ApprovalStateRes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
             ApprovalStateRes::RespondedAccepted => {
                 "RespondedAccepted".to_owned()
             }
@@ -49,7 +50,8 @@ impl ApprovalStateRes {
                 "RespondedRejected".to_owned()
             }
             ApprovalStateRes::Obsolete => "Obsolete".to_owned(),
-        }
+        };
+        write!(f, "{}", string,)
     }
 }
 
@@ -66,14 +68,15 @@ pub enum ApprovalState {
     Obsolete,
 }
 
-impl ApprovalState {
-    pub fn to_string(&self) -> String {
-        match self {
+impl Display for ApprovalState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
             ApprovalState::RespondedAccepted => "RespondedAccepted".to_owned(),
             ApprovalState::RespondedRejected => "RespondedRejected".to_owned(),
             ApprovalState::Obsolete => "Obsolete".to_owned(),
             ApprovalState::Pending => "Pending".to_owned(),
-        }
+        };
+        write!(f, "{}", string,)
     }
 }
 
@@ -716,11 +719,11 @@ impl Handler<Approver> for Approver {
         event: ApproverEvent,
         ctx: &mut ActorContext<Approver>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(_e) = self.persist(&event, ctx).await {
             //TODO
         };
 
-        if let Err(e) = ctx.publish_event(event).await {
+        if let Err(_e) = ctx.publish_event(event).await {
             // TODO
         };
     }
@@ -790,7 +793,7 @@ impl PersistentActor for Approver {
                 request_id,
                 ..
             } => {
-                self.request_id = request_id.clone();
+                self.request_id.clone_from(request_id);
                 self.request = Some(request.clone());
                 self.state = Some(state.clone());
                 self.info.clone_from(info);

@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, Handler, Message, Response, SystemEvent,
+    Handler, Message,
 };
 
 use async_trait::async_trait;
@@ -85,14 +85,14 @@ impl Actor for Update {
 
     async fn pre_start(
         &mut self,
-        ctx: &mut ActorContext<Self>,
+        _ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }
 
     async fn pre_stop(
         &mut self,
-        ctx: &mut ActorContext<Self>,
+        _ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }

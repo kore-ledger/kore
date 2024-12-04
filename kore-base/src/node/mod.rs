@@ -12,12 +12,21 @@ use register::Register;
 use relationship::RelationShip;
 
 use crate::{
-    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, governance::init::init_state, helpers::db::ExternalDB, model::{
-        common::{emit_fail, get_gov},
+    auth::{Auth, AuthMessage, AuthResponse},
+    config::Config,
+    db::Storable,
+    distribution::distributor::Distributor,
+    governance::init::init_state,
+    helpers::db::ExternalDB,
+    model::{
+        common::get_gov,
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    }, subject::CreateSubjectData, Error, EventRequest, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
+    },
+    subject::CreateSubjectData,
+    Error, EventRequest, Subject, SubjectMessage, SubjectResponse,
+    DIGEST_DERIVATOR,
 };
 
 use identity::{
@@ -34,7 +43,6 @@ use actor::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
-use tracing::{debug, error};
 
 pub mod nodekey;
 pub mod register;
@@ -144,25 +152,29 @@ impl Node {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
-            error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
         Signature::new(content, &self.owner, derivator)
             .map_err(|e| Error::Signature(format!("{}", e)))
     }
 
-    async fn build_compilation_dir(ctx: &mut ActorContext<Self>) -> Result<(), ActorError> {
+    async fn build_compilation_dir(
+        ctx: &mut ActorContext<Self>,
+    ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
-                ctx.system().get_helper("config").await
-            else {
-                return Err(ActorError::NotHelper("config".to_owned()));
-            };
-        
+            ctx.system().get_helper("config").await
+        else {
+            return Err(ActorError::NotHelper("config".to_owned()));
+        };
+
         let dir = format!("{}/contracts", config.contracts_dir);
-        
+
         if !Path::new(&dir).exists() {
             fs::create_dir_all(&dir).await.map_err(|e| {
-                ActorError::FunctionalFail(format!("Can not create contracts dir: {}", e))
+                ActorError::FunctionalFail(format!(
+                    "Can not create contracts dir: {}",
+                    e
+                ))
             })?;
         }
         Ok(())
@@ -256,7 +268,6 @@ impl Actor for Node {
         Self::build_compilation_dir(ctx).await?;
 
         // Start store
-        debug!("Creating Node store");
         self.init_store("node", None, false, ctx).await?;
 
         let register = Register::default();
@@ -285,7 +296,6 @@ impl Actor for Node {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        debug!("Stopping Node store");
         self.stop_store(ctx).await?;
         Ok(())
     }
@@ -376,18 +386,38 @@ impl Handler<Node> for Node {
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
-                let subject = if let EventRequest::Create(create_event) = ledger.content.event_request.content.clone() {
+                let subject = if let EventRequest::Create(create_event) =
+                    ledger.content.event_request.content.clone()
+                {
                     let properties = if create_event.schema_id == "governance" {
-                        init_state(&ledger.content.event_request.signature.signer.to_string())
+                        init_state(
+                            &ledger
+                                .content
+                                .event_request
+                                .signature
+                                .signer
+                                .to_string(),
+                        )
                     } else {
-                        let governance = get_gov(ctx, &create_event.governance_id.to_string()).await?;
-                        governance.get_init_state(&create_event.schema_id)
-                            .map_err(|e| ActorError::Functional(e.to_string()))?
+                        let governance = get_gov(
+                            ctx,
+                            &create_event.governance_id.to_string(),
+                        )
+                        .await?;
+                        governance
+                            .get_init_state(&create_event.schema_id)
+                            .map_err(|e| {
+                                ActorError::Functional(e.to_string())
+                            })?
                     };
-                    Subject::from_event(None, &ledger, properties).map_err(|e| ActorError::Functional(e.to_string()))?
+                    Subject::from_event(None, &ledger, properties)
+                        .map_err(|e| ActorError::Functional(e.to_string()))?
                 } else {
-                    return Err(ActorError::Functional("trying to create a subject without create event".to_owned()));
-                };          
+                    return Err(ActorError::Functional(
+                        "trying to create a subject without create event"
+                            .to_owned(),
+                    ));
+                };
 
                 let subject_actor = ctx
                     .create_child(
@@ -596,7 +626,7 @@ impl Handler<Node> for Node {
 
     async fn on_child_fault(
         &mut self,
-        error: ActorError,
+        _error: ActorError,
         ctx: &mut ActorContext<Node>,
     ) -> ChildAction {
         ctx.system().send_event(SystemEvent::StopSystem).await;

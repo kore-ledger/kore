@@ -1,14 +1,12 @@
-use std::{clone, time::Duration};
+use std::time::Duration;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
-    Strategy, SystemEvent,
+    Strategy,
 };
-use async_std::task::AccessError;
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
-use jsonschema::error;
 use network::ComunicateInfo;
 
 use crate::{
@@ -16,13 +14,14 @@ use crate::{
     intermediary::Intermediary,
     model::{
         common::{
-            emit_fail, get_gov, get_metadata, get_quantity, try_to_update_subject, update_event
+            emit_fail, get_gov, get_metadata, get_quantity,
+            try_to_update_subject, update_event,
         },
         event::Ledger,
-        network::RetryNetwork, Namespace,
+        network::RetryNetwork,
     },
-    ActorMessage, Error, Event as KoreEvent, EventRequest, NetworkMessage,
-    Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
+    ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,
+    NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
     SubjectResponse,
 };
 
@@ -167,82 +166,80 @@ impl Distributor {
         signer: KeyIdentifier,
         info: ComunicateInfo,
         ledger: Ledger,
-        gov_version: Option<u64>
+        gov_version: Option<u64>,
     ) -> Result<(), ActorError> {
         let our_key = info.reciver.clone();
         let subject_id = ledger.subject_id.clone();
         let schema = info.schema.clone();
         let know = self.authorized_subj(ctx, &subject_id.to_string()).await?;
 
-        let (namespace, governance_id) = match get_metadata(
-            ctx,
-            &subject_id.to_string(),
-        )
-        .await
-        {
-            Ok(metadata) => (metadata.namespace, metadata.governance_id),
-            Err(e) => {
-                if let ActorError::NotFound(_) = e {
-                    if let EventRequest::Create(request) =
-                        ledger.event_request.content.clone()
-                    {
-                        (request.namespace, request.governance_id)
+        let (namespace, governance_id) =
+            match get_metadata(ctx, &subject_id.to_string()).await {
+                Ok(metadata) => (metadata.namespace, metadata.governance_id),
+                Err(e) => {
+                    if let ActorError::NotFound(_) = e {
+                        if let EventRequest::Create(request) =
+                            ledger.event_request.content.clone()
+                        {
+                            (request.namespace, request.governance_id)
+                        } else {
+                            try_to_update_subject(ctx, subject_id).await?;
+                            return Err(ActorError::Functional(
+                                "Updating subject".to_owned(),
+                            ));
+                        }
                     } else {
-                        println!("ME llegó pero no tengo nada");
-                        try_to_update_subject(
-                            ctx,
-                            subject_id,
-                        )
-                        .await?;
-                        return Err(ActorError::Functional("Updating subject".to_owned()));
+                        return Err(e);
                     }
-                } else {
-                    return Err(e);
                 }
-            }
-        };
+            };
 
         if governance_id.is_empty() {
             if know {
-                return Ok(());
+                Ok(())
             } else {
-                return Err(ActorError::Functional(
+                Err(ActorError::Functional(
                     "Governance is not authorized".to_owned(),
-                ));
+                ))
             }
         } else {
             // SI no es una gov
             let governance_id_string = governance_id.to_string();
-            let gov = if self.authorized_subj(ctx, &governance_id_string).await? {
-                match get_gov(ctx, &governance_id_string).await {
-                    Ok(gov) => gov,
-                    Err(e) => {
-                        if let ActorError::NotFound(_) = e {
-                            try_to_update_subject(
-                                ctx,
-                                governance_id,
-                            )
-                            .await?;
-                            return Err(ActorError::Functional("Updating governance".to_owned()));
+            let gov =
+                if self.authorized_subj(ctx, &governance_id_string).await? {
+                    match get_gov(ctx, &governance_id_string).await {
+                        Ok(gov) => gov,
+                        Err(e) => {
+                            if let ActorError::NotFound(_) = e {
+                                try_to_update_subject(ctx, governance_id)
+                                    .await?;
+                                return Err(ActorError::Functional(
+                                    "Updating governance".to_owned(),
+                                ));
+                            }
+                            return Err(e);
                         }
-                        return Err(e);
                     }
-                }
-            } else {
-                return Err(ActorError::Functional(
-                    "Governance is not authorized".to_owned(),
-                ));
-            };
+                } else {
+                    return Err(ActorError::Functional(
+                        "Governance is not authorized".to_owned(),
+                    ));
+                };
 
             if let Some(gov_version) = gov_version {
-                Self::cmp_govs(ctx, gov.clone(), gov_version, governance_id, info).await?;
+                Self::cmp_govs(
+                    ctx,
+                    gov.clone(),
+                    gov_version,
+                    governance_id,
+                    info,
+                )
+                .await?;
             }
-            
 
             if know {
-                return Ok(());
+                Ok(())
             } else if !know && schema != "governance" {
-    
                 if !gov.has_this_role(
                     &signer.to_string(),
                     Roles::CREATOR { quantity: 0 },
@@ -264,7 +261,7 @@ impl Distributor {
                         "We are not witness".to_string(),
                     ));
                 }
-    
+
                 return Ok(());
             } else {
                 return Err(ActorError::Functional(
@@ -279,7 +276,7 @@ impl Distributor {
         gov: Governance,
         gov_version: u64,
         governance_id: DigestIdentifier,
-        info: ComunicateInfo
+        info: ComunicateInfo,
     ) -> Result<(), ActorError> {
         let governance_id_string = governance_id.to_string();
 
@@ -291,7 +288,10 @@ impl Distributor {
                     reciver: info.sender,
                     sender: info.reciver,
                     request_id: info.request_id,
-                    reciver_actor: format!("/user/node/{}/distributor", governance_id_string),
+                    reciver_actor: format!(
+                        "/user/node/{}/distributor",
+                        governance_id_string
+                    ),
                     schema: "governance".to_owned(),
                 };
 
@@ -315,7 +315,9 @@ impl Distributor {
                     })
                     .await?;
 
-                    return Err(ActorError::Functional("My gov version is less than his gov version".to_owned()));
+                return Err(ActorError::Functional(
+                    "My gov version is less than his gov version".to_owned(),
+                ));
             }
             std::cmp::Ordering::Equal => {}
             std::cmp::Ordering::Greater => {
@@ -354,7 +356,10 @@ impl Distributor {
                         })
                         .await?;
 
-                    return Err(ActorError::Functional("His gov version is less than my gov version".to_owned()));
+                    return Err(ActorError::Functional(
+                        "His gov version is less than my gov version"
+                            .to_owned(),
+                    ));
                 }
             }
         }
@@ -402,8 +407,14 @@ impl Distributor {
         };
 
         if let Some(gov_version) = gov_version {
-            Self::cmp_govs(ctx, gov.clone(), gov_version, governance_id, info.clone()).await?;
-
+            Self::cmp_govs(
+                ctx,
+                gov.clone(),
+                gov_version,
+                governance_id,
+                info.clone(),
+            )
+            .await?;
         } else if info.schema != "governance" {
             // TODO Revisar esto
             // Error me estás pidiendo el ledger para un sujeto que no es una governanza
@@ -459,7 +470,7 @@ pub enum DistributorMessage {
         ledger: Signed<Ledger>,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
-        schema_id: String
+        schema_id: String,
     },
     // El nodo al que le enviamos la replica la recivió, parar los reintentos.
     NetworkResponse {
@@ -590,20 +601,19 @@ impl Handler<Distributor> for Distributor {
                     }
 
                     info.schema = metadata.schema_id;
-                } else {
-                    if let Err(e) = self
+                } else if let Err(e) = self
                     .check_gov_version(
                         ctx,
                         &subject_id,
                         gov_version,
                         info.clone(),
                     )
-                    .await {
-                        if let ActorError::Functional(_) = e {
-                            return Err(e)
-                        } else {
-                            return Err(emit_fail(ctx, e).await);
-                        };
+                    .await
+                {
+                    if let ActorError::Functional(_) = e {
+                        return Err(e);
+                    } else {
+                        return Err(emit_fail(ctx, e).await);
                     };
                 }
 
@@ -659,7 +669,7 @@ impl Handler<Distributor> for Distributor {
                 node_key,
                 our_key,
                 ledger,
-                schema_id
+                schema_id,
             } => {
                 let reciver_actor = format!(
                     "/user/node/{}/distributor",
@@ -687,7 +697,7 @@ impl Handler<Distributor> for Distributor {
                 );
 
                 let retry_actor = RetryActor::new(target, message, strategy);
-                
+
                 let retry = match ctx
                     .create_child::<RetryActor<RetryNetwork>>(
                         "retry",
@@ -747,7 +757,16 @@ impl Handler<Distributor> for Distributor {
                 ledger,
                 info,
             } => {
-                if let Err(e) = self.check_auth(ctx, event.signature.signer.clone(), info.clone(), ledger.content.clone(), Some(ledger.content.gov_version)).await {
+                if let Err(e) = self
+                    .check_auth(
+                        ctx,
+                        event.signature.signer.clone(),
+                        info.clone(),
+                        ledger.content.clone(),
+                        Some(ledger.content.gov_version),
+                    )
+                    .await
+                {
                     if let ActorError::Functional(_) = e {
                         return Err(e);
                     } else {
@@ -910,7 +929,16 @@ impl Handler<Distributor> for Distributor {
                         "Events is empty".to_owned(),
                     ));
                 }
-                if let Err(e) = self.check_auth(ctx, events[0].signature.signer.clone(), info.clone(), events[0].content.clone(), None).await {
+                if let Err(e) = self
+                    .check_auth(
+                        ctx,
+                        events[0].signature.signer.clone(),
+                        info.clone(),
+                        events[0].content.clone(),
+                        None,
+                    )
+                    .await
+                {
                     if let ActorError::Functional(_) = e {
                         return Err(e);
                     } else {

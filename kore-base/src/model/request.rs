@@ -60,17 +60,11 @@ pub enum EventRequest {
 }
 
 impl EventRequest {
-    pub fn is_create_event(&self) ->  bool {
-        match self {
-            EventRequest::Create(_create_request) => true,
-            _ => false,
-        }
+    pub fn is_create_event(&self) -> bool {
+        matches!(self, EventRequest::Create(_create_request))
     }
     pub fn is_fact_event(&self) -> bool {
-        match self {
-            EventRequest::Fact(_fact_request) => true,
-            _ => false,
-        }
+        matches!(self, EventRequest::Fact(_fact_request))
     }
 }
 
@@ -274,13 +268,13 @@ pub mod tests {
 
     use super::*;
 
-    use identity::keys::{KeyGenerator, KeyPair};
+    use identity::keys::KeyPair;
 
     // Mocks
 
     // Create governance request mock.
     pub fn create_start_request_mock(
-        issuer: &str,
+        _issuer: &str,
         keys: KeyPair,
     ) -> Signed<EventRequest> {
         let req = CreateRequest {

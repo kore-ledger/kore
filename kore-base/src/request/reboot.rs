@@ -2,10 +2,9 @@ use std::time::Duration;
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
-    Response,
 };
 use async_trait::async_trait;
-use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use identity::identifier::DigestIdentifier;
 use serde::{Deserialize, Serialize};
 
 use crate::model::common::{emit_fail, get_last_event, get_metadata};
@@ -62,7 +61,7 @@ impl Reboot {
             };
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(5)).await;
-                if let Err(e) = actor.tell(request).await {
+                if let Err(_e) = actor.tell(request).await {
                     // TODO
                 }
             });
@@ -81,12 +80,9 @@ impl Reboot {
             ctx.parent().await;
 
         if let Some(request_actor) = request_actor {
-            if let Err(e) = request_actor
+            request_actor
                 .tell(RequestManagerMessage::FinishReboot)
-                .await
-            {
-                return Err(e);
-            }
+                .await?
         } else {
             let path = ctx.path().parent();
             return Err(ActorError::NotFound(path));

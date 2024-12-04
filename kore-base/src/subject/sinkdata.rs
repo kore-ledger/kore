@@ -42,14 +42,14 @@ impl Actor for SinkData {
 
     async fn pre_start(
         &mut self,
-        ctx: &mut ActorContext<Self>,
+        _ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }
 
     async fn pre_stop(
         &mut self,
-        ctx: &mut ActorContext<Self>,
+        _ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }

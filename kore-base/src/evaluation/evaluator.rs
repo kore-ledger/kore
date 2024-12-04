@@ -4,14 +4,21 @@
 use std::time::Duration;
 
 use crate::{
-    config::Config, evaluation::response::Response as EvalRes, governance::Schema, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
+    config::Config,
+    evaluation::response::Response as EvalRes,
+    governance::Schema,
+    helpers::network::{intermediary::Intermediary, NetworkMessage},
+    model::{
         common::{
             check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
             update_ledger_network, UpdateData,
         },
         network::{RetryNetwork, TimeOutResponse},
         HashId, SignTypesNode, TimeStamp,
-    }, subject::{self, SubjectMessage, SubjectResponse}, Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR
+    },
+    subject::{SubjectMessage, SubjectResponse},
+    Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
+    DIGEST_DERIVATOR,
 };
 
 use crate::helpers::network::ActorMessage;
@@ -27,16 +34,15 @@ use network::ComunicateInfo;
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
-    Strategy, SystemEvent,
+    Strategy,
 };
 
 use serde_json::Value;
-use tracing::error;
 
 use super::{
     compiler::{Compiler, CompilerMessage},
     request::EvaluationReq,
-    response::{self, EvaluationRes},
+    response::EvaluationRes,
     runner::{
         types::{Contract, GovernanceData, RunnerResult},
         Runner, RunnerMessage, RunnerResponse,
@@ -85,11 +91,11 @@ impl Evaluator {
         governance_id: &str,
     ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
-        ctx.system().get_helper("config").await
-    else {
-        return Err(ActorError::NotHelper("config".to_owned()));
-    };
-    
+            ctx.system().get_helper("config").await
+        else {
+            return Err(ActorError::NotHelper("config".to_owned()));
+        };
+
         for id in ids {
             let schema = if let Some(schema) =
                 schemas.iter().find(|x| x.id.clone() == id.clone())
@@ -112,7 +118,10 @@ impl Evaluator {
                         contract_name: format!("{}_{}", governance_id, id),
                         contract: schema.contract.raw.clone(),
                         initial_value: schema.initial_value.clone(),
-                        contract_path: format!("{}/contracts/{}_{}", config.contracts_dir, governance_id, id),
+                        contract_path: format!(
+                            "{}/contracts/{}_{}",
+                            config.contracts_dir, governance_id, id
+                        ),
                     })
                     .await?
             } else {
@@ -143,7 +152,7 @@ impl Evaluator {
                     sn: metadata.sn,
                     gov_version: governance.version,
                     subject_id: governance_id,
-                    our_node: our_node,
+                    our_node,
                     other_node: self.node.clone(),
                 };
                 update_ledger_network(ctx, data).await?;
@@ -171,11 +180,8 @@ impl Evaluator {
         let contract: Contract = if is_governance {
             Contract::GovContract
         } else {
+            let contracts = { CONTRACTS.read().await };
 
-            let contracts = {
-                CONTRACTS.read().await
-            };
-            
             if let Some(contract) = contracts.get(&format!(
                 "{}_{}",
                 governance_id, execute_contract.context.schema_id
@@ -214,7 +220,7 @@ impl Evaluator {
             })?;
 
             // TODO SI falla eliminar los new_compilers y borrar de CONTRACTS.
-            let new_compilers = match Evaluator::create_compilers(
+            let _new_compilers = match Evaluator::create_compilers(
                 ctx,
                 &response.compilations,
                 &governance_id.to_string(),
@@ -256,12 +262,10 @@ impl Evaluator {
 
         match response {
             SubjectResponse::NewCompilers(new_compilers) => Ok(new_compilers),
-            _ => {
-                return Err(ActorError::UnexpectedResponse(
-                    subject_path,
-                    "SubjectResponse::NewCompilers".to_owned(),
-                ))
-            }
+            _ => Err(ActorError::UnexpectedResponse(
+                subject_path,
+                "SubjectResponse::NewCompilers".to_owned(),
+            )),
         }
     }
 
@@ -282,7 +286,6 @@ impl Evaluator {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
-            error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
 
@@ -307,9 +310,7 @@ impl Evaluator {
                 appr_required: evaluation.approval_required,
             });
         }
-        return EvaluationRes::Error(
-            "The evaluation was not success".to_string(),
-        );
+        EvaluationRes::Error("The evaluation was not success".to_string())
     }
 }
 

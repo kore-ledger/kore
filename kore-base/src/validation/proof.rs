@@ -14,8 +14,6 @@ use identity::identifier::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use tracing::{debug, error};
-
 #[allow(clippy::upper_case_acronyms)]
 #[derive(
     Debug, Clone, Serialize, Deserialize, Eq, BorshSerialize, BorshDeserialize,
@@ -130,13 +128,11 @@ impl ValidationProof {
         info: ValidationInfo,
         prev_event_hash: DigestIdentifier,
     ) -> Result<Self, Error> {
-        debug!("Creating validation proof from info");
         let request = &info.event_proof.content.event_proof;
 
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
-            error!("Error getting derivator");
             DigestDerivator::Blake3_256
         };
         let event_hash = info.event_proof.hash_id(derivator).map_err(|_| {

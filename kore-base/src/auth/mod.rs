@@ -15,7 +15,7 @@ use store::store::PersistentActor;
 use crate::{
     db::Storable,
     intermediary::Intermediary,
-    model::common::{emit_fail, get_gov, get_metadata, UpdateData},
+    model::common::{emit_fail, get_gov, get_metadata},
     update::{Update, UpdateMessage, UpdateNew},
     ActorMessage, NetworkMessage,
 };

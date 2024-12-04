@@ -6,7 +6,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use distributor::{Distributor, DistributorMessage};
-use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use identity::identifier::KeyIdentifier;
 
 use crate::{
     governance::model::Roles,
@@ -15,9 +15,7 @@ use crate::{
         event::Ledger,
     },
     request::manager::{RequestManager, RequestManagerMessage},
-    subject::Metadata,
-    Error, Event as KoreEvent, Governance, Signed, Subject, SubjectMessage,
-    SubjectResponse,
+    Event as KoreEvent, Signed,
 };
 
 pub mod distributor;
@@ -47,7 +45,7 @@ impl Distribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         signer: KeyIdentifier,
-        schema_id: &str
+        schema_id: &str,
     ) -> Result<(), ActorError> {
         let child = ctx
             .create_child(
@@ -71,7 +69,7 @@ impl Distribution {
                     event,
                     node_key: signer,
                     our_key,
-                    schema_id: schema_id.to_string()
+                    schema_id: schema_id.to_string(),
                 })
                 .await?
         }
@@ -167,7 +165,7 @@ impl Handler<Distribution> for Distribution {
                     return Ok(());
                 }
 
-                self.witnesses = witnesses.clone();
+                self.witnesses.clone_from(&witnesses);
 
                 for witness in witnesses {
                     self.create_distributors(
@@ -175,7 +173,7 @@ impl Handler<Distribution> for Distribution {
                         event.clone(),
                         ledger.clone(),
                         witness,
-                        &metadata.schema_id
+                        &metadata.schema_id,
                     )
                     .await?
                 }

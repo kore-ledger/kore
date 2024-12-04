@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use store::store::PersistentActor;
 
-use crate::{db::Storable, error::Error, request::state};
+use crate::db::Storable;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RegisterData {
@@ -106,7 +106,7 @@ impl Handler<Register> for Register {
                 if let Some(subjects) = subjects {
                     let mut subj = vec![];
                     for subject in subjects {
-                        if let Some(active) = active.clone() {
+                        if let Some(active) = active {
                             if subject.active != active {
                                 continue;
                             };
@@ -160,12 +160,12 @@ impl PersistentActor for Register {
     fn apply(&mut self, event: &Self::Event) {
         match event {
             RegisterEvent::RegisterGov { gov_id, active } => {
-                self.register_gov.insert(gov_id.clone(), active.clone());
+                self.register_gov.insert(gov_id.clone(), *active);
             }
             RegisterEvent::RegisterSubj { gov_id, data } => {
                 self.register_subj
                     .entry(gov_id.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(data.clone());
             }
         }

@@ -11,7 +11,6 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    auth::{Auth, AuthMessage},
     db::Storable,
     governance::{model::Roles, Quorum},
     model::{
@@ -21,18 +20,14 @@ use crate::{
         },
         event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
-        Namespace, SignTypesNode, SignTypesSubject,
+        SignTypesNode, SignTypesSubject,
     },
-    request::{
-        manager::{RequestManager, RequestManagerMessage},
-        reboot,
-    },
+    request::manager::{RequestManager, RequestManagerMessage},
     subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
-    Error,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, Handler, Message, Response,
+    Event, Handler, Message,
 };
 
 use async_trait::async_trait;
@@ -42,7 +37,6 @@ use request::ValidationReq;
 use response::ValidationRes;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
-use tracing::debug;
 use validator::{Validator, ValidatorMessage};
 
 use std::collections::HashSet;
@@ -278,7 +272,6 @@ impl Actor for Validation {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        debug!("Starting validation actor with init store.");
         let prefix = ctx.path().parent().key();
         self.init_store("validation", Some(prefix), false, ctx)
             .await
@@ -288,7 +281,6 @@ impl Actor for Validation {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        debug!("Stopping validation actor with stop store.");
         self.stop_store(ctx).await
     }
 }

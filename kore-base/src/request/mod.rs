@@ -16,7 +16,6 @@ use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use store::store::PersistentActor;
-use tracing::error;
 
 use crate::{
     approval::approver::{ApprovalStateRes, Approver, ApproverMessage},
@@ -26,8 +25,8 @@ use crate::{
     init_state,
     model::common::{get_gov, get_metadata, get_quantity},
     subject::{CreateSubjectData, SubjectID},
-    CreateRequest, Error, EventRequest, HashId, Node, NodeMessage,
-    NodeResponse, Signed, DIGEST_DERIVATOR,
+    CreateRequest, EventRequest, HashId, Node, NodeMessage, NodeResponse,
+    Signed, DIGEST_DERIVATOR,
 };
 
 pub mod manager;
@@ -126,7 +125,7 @@ impl RequestHandler {
             CreateSubjectData {
                 keys,
                 create_req,
-                subject_id: subject_id,
+                subject_id,
                 creator: request.signature.signer.clone(),
                 genesis_gov_version: 0,
                 value: init_state(&request.signature.signer.to_string()),
@@ -141,7 +140,7 @@ impl RequestHandler {
             CreateSubjectData {
                 keys,
                 create_req,
-                subject_id: subject_id,
+                subject_id,
                 creator: request.signature.signer.clone(),
                 genesis_gov_version: governance.version,
                 value,
@@ -340,8 +339,7 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 Ok(RequestHandlerResponse::Response(format!(
                     "The approval request for subject {} has changed to {}",
-                    subject_id,
-                    state.to_string()
+                    subject_id, state
                 )))
             }
             RequestHandlerMessage::NewRequest { request } => {
@@ -355,7 +353,6 @@ impl Handler<RequestHandler> for RequestHandler {
                 let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
                     *derivator
                 } else {
-                    error!("Error getting derivator");
                     DigestDerivator::Blake3_256
                 };
 
@@ -398,7 +395,7 @@ impl Handler<RequestHandler> for RequestHandler {
                                 };
 
                                 if quantity >= max_quantity {
-                                    return Err(ActorError::Functional(format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id.to_string() )));
+                                    return Err(ActorError::Functional(format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id)));
                                 }
                             } else {
                                 return Err(ActorError::Functional("The Scheme does not exist or does not have permissions for the creation of subjects, it needs to be assigned the creator role.".to_owned()));
@@ -557,7 +554,6 @@ impl Handler<RequestHandler> for RequestHandler {
                 let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
                     *derivator
                 } else {
-                    error!("Error getting derivator");
                     DigestDerivator::Blake3_256
                 };
 
@@ -650,7 +646,7 @@ impl Handler<RequestHandler> for RequestHandler {
                                 .await
                                 {
                                     Ok(quantity) => quantity,
-                                    Err(e) => {
+                                    Err(_e) => {
                                         if let Err(e) = self
                                             .error_queue_handling(
                                                 ctx,
@@ -785,7 +781,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 self.on_event(
                     RequestHandlerEvent::EventToHandling {
                         subject_id: subject_id.clone(),
-                        request_id: request_id,
+                        request_id,
                         event,
                     },
                     ctx,
@@ -818,7 +814,7 @@ impl Handler<RequestHandler> for RequestHandler {
 
     async fn on_child_fault(
         &mut self,
-        error: ActorError,
+        _error: ActorError,
         ctx: &mut ActorContext<RequestHandler>,
     ) -> ChildAction {
         ctx.system().send_event(SystemEvent::StopSystem).await;
@@ -830,8 +826,8 @@ impl Handler<RequestHandler> for RequestHandler {
         event: RequestHandlerEvent,
         ctx: &mut ActorContext<RequestHandler>,
     ) {
-        if let Err(_e) = self.persist(&event, ctx).await {
-            // TODO Propagar error.
+        if let Err(e) = self.persist(&event, ctx).await {
+            println!("ERROR: {}", e);
         };
 
         if let Err(e) = ctx.publish_event(event).await {

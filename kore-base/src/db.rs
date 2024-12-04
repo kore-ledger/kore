@@ -20,7 +20,6 @@ use store::{
 };
 
 use async_trait::async_trait;
-use tracing::{debug, error};
 
 #[derive(Clone)]
 pub enum Database {
@@ -149,12 +148,10 @@ pub trait Storable: PersistentActor {
         encrypt: bool,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        debug!("Creating store");
         // Gets database
         let db = match ctx.system().get_helper::<Database>("store").await {
             Some(db) => db,
             None => {
-                error!("Database not found");
                 return Err(ActorError::CreateStore(
                     "Database not found".to_string(),
                 ));
