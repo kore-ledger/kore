@@ -13,6 +13,7 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::{
     model::{common::emit_fail, network::RetryNetwork},
@@ -20,6 +21,8 @@ use crate::{
 };
 
 use super::{Update, UpdateMessage};
+
+const TARGET_UPDATER: &str = "Kore-Update-Updater";
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Updater {
@@ -103,23 +106,22 @@ impl Handler<Updater> for Updater {
 
                 let retry_actor = RetryActor::new(target, message, strategy);
 
-                let retry = if let Ok(retry) = ctx
+                let retry = match ctx
                     .create_child::<RetryActor<RetryNetwork>>(
                         "retry",
                         retry_actor,
                     )
                     .await
                 {
-                    retry
-                } else {
-                    let e = ActorError::Create(
-                        ctx.path().clone(),
-                        "retry".to_owned(),
-                    );
-                    return Err(emit_fail(ctx, e).await);
+                    Ok(retry) => retry,
+                    Err(e) => {
+                        error!(TARGET_UPDATER, "NetworkLastSn, can not create Retry actor: {}", e);
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    error!(TARGET_UPDATER, "NetworkLastSn, can not send retry to Retry actor: {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -136,10 +138,12 @@ impl Handler<Updater> for Updater {
                         })
                         .await
                     {
+                        error!(TARGET_UPDATER, "NetworkResponse, can not send response to Update actor: {}", e);
                         return Err(emit_fail(ctx, e).await);
                     }
                 } else {
                     let e = ActorError::NotFound(update_path);
+                    error!(TARGET_UPDATER, "NetworkResponse, can not obtain Update actor: {}", e);
                     return Err(emit_fail(ctx, e).await);
                 }
 
@@ -186,16 +190,18 @@ impl Handler<Updater> for Updater {
                         })
                         .await
                     {
+                        error!(TARGET_UPDATER, "OnChildError, can not send response to Update actor: {}", e);
                         emit_fail(ctx, e).await;
                     }
                 } else {
                     let e = ActorError::NotFound(update_path);
+                    error!(TARGET_UPDATER, "OnChildError, can not obtain Update actor: {}", e);
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
             }
             _ => {
-                // TODO Error inesperado.
+                error!(TARGET_UPDATER, "OnChildError, unexpected error");
             }
         };
     }
@@ -205,6 +211,7 @@ impl Handler<Updater> for Updater {
         error: ActorError,
         ctx: &mut ActorContext<Updater>,
     ) -> ChildAction {
+        error!(TARGET_UPDATER, "OnChildFault, {}", error);
         emit_fail(ctx, error).await;
         ChildAction::Stop
     }

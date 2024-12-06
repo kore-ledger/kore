@@ -12,6 +12,7 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 use updater::{Updater, UpdaterMessage};
 
 use crate::{
@@ -20,6 +21,8 @@ use crate::{
     request::manager::{RequestManager, RequestManagerMessage},
     ActorMessage, NetworkMessage,
 };
+
+const TARGET_UPDATE: &str = "Kore-Update";
 
 pub mod updater;
 
@@ -111,14 +114,13 @@ impl Handler<Update> for Update {
                 for witness in self.witnesses.clone() {
                     let updater = Updater::new(witness.clone());
                     let child =
-                        ctx.create_child(&witness.to_string(), updater).await;
-                    let Ok(child) = child else {
-                        let e = ActorError::Create(
-                            ctx.path().clone(),
-                            witness.to_string(),
-                        );
-                        return Err(emit_fail(ctx, e).await);
-                    };
+                        match ctx.create_child(&witness.to_string(), updater).await {
+                            Ok(child) => child,
+                            Err(e) => {
+                                error!(TARGET_UPDATE, "Create, can not create Retry actor: {}", e);
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        };
 
                     if let Err(e) = child
                         .tell(UpdaterMessage::NetworkLastSn {
@@ -128,6 +130,7 @@ impl Handler<Update> for Update {
                         })
                         .await
                     {
+                        error!(TARGET_UPDATE, "Create, can not send retry to Retry actor: {}", e);
                         return Err(emit_fail(ctx, e).await);
                     }
                 }
@@ -157,6 +160,7 @@ impl Handler<Update> for Update {
                             let Some(mut helper) = helper else {
                                 let e =
                                     ActorError::NotHelper("network".to_owned());
+                                error!(TARGET_UPDATE, "Response, can not obtain network helper");
                                 return Err(emit_fail(ctx, e).await);
                             };
 
@@ -171,6 +175,7 @@ impl Handler<Update> for Update {
                                 )
                                 .await
                             {
+                                error!(TARGET_UPDATE, "Response, can not send response to network: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             };
                         }
@@ -185,7 +190,7 @@ impl Handler<Update> for Update {
                             > = ctx.system().get_actor(&request_path).await;
 
                             if let Some(request_actor) = request_actor {
-                                let request = if self.better.is_some() {
+                                let request = if self.better.is_none() {
                                     RequestManagerMessage::FinishReboot
                                 } else {
                                     RequestManagerMessage::Reboot {
@@ -196,10 +201,12 @@ impl Handler<Update> for Update {
                                 if let Err(e) =
                                     request_actor.tell(request).await
                                 {
+                                    error!(TARGET_UPDATE, "Response, can not send response to Request actor: {}", e);
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             } else {
                                 let e = ActorError::NotFound(request_path);
+                                error!(TARGET_UPDATE, "Response, can not obtain Request actor: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
@@ -218,6 +225,7 @@ impl Handler<Update> for Update {
         error: ActorError,
         ctx: &mut ActorContext<Update>,
     ) -> ChildAction {
+        error!(TARGET_UPDATE, "OnChildFault, {}", error);
         emit_fail(ctx, error).await;
         ChildAction::Stop
     }
