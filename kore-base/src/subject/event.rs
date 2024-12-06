@@ -15,12 +15,15 @@ use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
+use tracing::{error, warn};
 
 use crate::{
     approval::approver::{Approver, ApproverMessage},
     db::Storable,
     Event as KoreEvent, EventRequest, Signed,
 };
+
+const TARGET_EVENT: &str = "Kore-Subject-Event";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LedgerEvent {
@@ -77,18 +80,14 @@ impl Actor for LedgerEvent {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         let prefix = ctx.path().parent().key();
-        self.init_store("event", Some(prefix), true, ctx).await?;
-
-        Ok(())
+        self.init_store("event", Some(prefix), true, ctx).await
     }
 
     async fn pre_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.stop_store(ctx).await.map_err(|_| ActorError::Stop)?;
-
-        Ok(())
+        self.stop_store(ctx).await
     }
 }
 
@@ -104,7 +103,9 @@ impl Handler<LedgerEvent> for LedgerEvent {
             LedgerEventMessage::UpdateLastEvent { event } => {
                 if let Some(last_event) = self.last_event.clone() {
                     if last_event.content.sn >= event.content.sn {
-                        return Err(ActorError::Functional("An attempt was made to update the event ledger with an event prior to the one already saved.".to_owned()));
+                        let e = "An attempt was made to update the event ledger with an event prior to the one already saved.";
+                        warn!(TARGET_EVENT, "UpdateLastEvent, {}", e);
+                        return Err(ActorError::Functional(e.to_owned()));
                     }
                 };
 
@@ -119,6 +120,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                 ) {
                     Ok(is_ok) => is_ok,
                     Err(e) => {
+                        warn!(TARGET_EVENT, "UpdateLastEvent, {}", e);
                         return Err(ActorError::Functional(e.to_string()))
                     }
                 };
@@ -179,10 +181,12 @@ impl Handler<LedgerEvent> for LedgerEvent {
                                 .tell(ApproverMessage::MakeObsolete)
                                 .await
                             {
+                                error!(TARGET_EVENT, "UpdateLastEvent, can not send message to Approver actor {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             }
                         } else {
                             let e = ActorError::NotFound(approver_path);
+                            warn!(TARGET_EVENT, "UpdateLastEvent, can not obtain Approver actor {}", e);
                             return Err(ActorError::Functional(e.to_string()));
                         }
                     };
@@ -195,6 +199,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     if let Some(last_event) = self.last_event.clone() {
                         last_event
                     } else {
+                        warn!(TARGET_EVENT, "GetLastEvent, can not get last event");
                         return Err(ActorError::Functional(
                             "Can not get last event".to_owned(),
                         ));
@@ -210,13 +215,14 @@ impl Handler<LedgerEvent> for LedgerEvent {
         event: LedgerEventEvent,
         ctx: &mut ActorContext<LedgerEvent>,
     ) {
-        if let Err(err) = self.persist(&event, ctx).await {
-            let _ = ctx.emit_error(err).await;
+        if let Err(e) = self.persist(&event, ctx).await {
+            error!(TARGET_EVENT, "OnEvent, can not persist information: {}", e);
+            let _ = ctx.emit_error(e).await;
         };
 
         if let Err(e) = ctx.publish_event(event).await {
-            println!("{}", e);
-            // TODO
+            error!(TARGET_EVENT, "PublishEvent, can not publish event: {}", e);
+            let _ = ctx.emit_error(e).await;
         }
     }
 }

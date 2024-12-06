@@ -7,8 +7,11 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use super::Metadata;
+
+const TARGET_SINKDATA: &str = "Kore-Subject-Sinkdata";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SinkData;
@@ -78,8 +81,7 @@ impl Handler<SinkData> for SinkData {
         ctx: &mut ActorContext<SinkData>,
     ) {
         if let Err(e) = ctx.publish_event(event).await {
-            println!("{}", e);
-            // TODO
+            error!(TARGET_SINKDATA, "OnEvent, can not publish event: {}", e)
         };
     }
 }

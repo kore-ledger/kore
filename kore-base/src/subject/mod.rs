@@ -62,11 +62,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::to_value;
 use sinkdata::{SinkData, SinkDataMessage};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
+use tracing::{error, warn};
 
 use std::{collections::HashSet, str::FromStr};
 
 pub mod event;
 pub mod sinkdata;
+
+const TARGET_SUBJECT: &str = "Kore-Subject";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateSubjectData {
@@ -1870,7 +1873,13 @@ impl Handler<Subject> for Subject {
         match msg {
             SubjectMessage::CreateCompilers(compilers) => {
                 let new_compilers =
-                    Self::create_compilers(ctx, &compilers).await?;
+                    match Self::create_compilers(ctx, &compilers).await {
+                        Ok(new_compilers) => new_compilers,
+                        Err(e) => {
+                            warn!(TARGET_SUBJECT, "CreateCompilers, can not create compilers: {}", e);
+                            return Err(e);
+                        }
+                    };
                 Ok(SubjectResponse::NewCompilers(new_compilers))
             }
             SubjectMessage::GetLedger { last_sn } => {
@@ -1878,8 +1887,14 @@ impl Handler<Subject> for Subject {
 
                 if ledger.len() < 100 {
                     let last_event =
-                        get_last_event(ctx, &self.subject_id.to_string())
-                            .await?;
+                        match get_last_event(ctx, &self.subject_id.to_string())
+                            .await {
+                                Ok(last_event) => last_event,
+                                Err(e) => {
+                                    error!(TARGET_SUBJECT, "GetLedger, can not get last event: {}", e);
+                                    return Err(e);
+                                }
+                            };
                     Ok(SubjectResponse::Ledger((ledger, Some(last_event))))
                 } else {
                     Ok(SubjectResponse::Ledger((ledger, None)))
@@ -1892,8 +1907,11 @@ impl Handler<Subject> for Subject {
                 Ok(SubjectResponse::Metadata(self.get_metadata()))
             }
             SubjectMessage::UpdateLedger { events } => {
-                self.verify_new_ledger_events(ctx, events.as_slice())
-                    .await?;
+                if let Err(e) = self.verify_new_ledger_events(ctx, events.as_slice())
+                    .await {
+                        warn!(TARGET_SUBJECT, "UpdateLedger, can not verify new events: {}", e);
+                        return Err(e);
+                    };
                 Ok(SubjectResponse::LastSn(self.sn))
             }
             SubjectMessage::SignRequest(content) => {
@@ -1903,6 +1921,7 @@ impl Handler<Subject> for Subject {
                     }
                 }
                 .map_err(|e| {
+                    error!(TARGET_SUBJECT, "SignRequest, can not sign request: {}", e);
                     ActorError::FunctionalFail(format!(
                         "Can not sign event: {}",
                         e
@@ -1916,6 +1935,7 @@ impl Handler<Subject> for Subject {
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
                         Err(e) => {
+                            error!(TARGET_SUBJECT, "GetGovernance, can not convert governance from properties: {}", e);
                             return Err(ActorError::FunctionalFail(
                                 e.to_string(),
                             ))
@@ -1935,13 +1955,14 @@ impl Handler<Subject> for Subject {
         event: Signed<Ledger>,
         ctx: &mut ActorContext<Subject>,
     ) {
-        if let Err(err) = self.persist(&event, ctx).await {
-            let _ = ctx.emit_error(err).await;
+        if let Err(e) = self.persist(&event, ctx).await {
+            error!(TARGET_SUBJECT, "OnEvent, can not persist information: {}", e);
+            let _ = ctx.emit_error(e).await;
         };
 
         if let Err(e) = ctx.publish_event(event).await {
-            println!("Errror {}", e);
-            // TODO
+            error!(TARGET_SUBJECT, "PublishEvent, can not publish event: {}", e);
+            let _ = ctx.emit_error(e).await;
         }
     }
 
@@ -1950,6 +1971,7 @@ impl Handler<Subject> for Subject {
         error: ActorError,
         ctx: &mut ActorContext<Subject>,
     ) -> ChildAction {
+        error!(TARGET_SUBJECT, "OnChildFault, {}", error);
         emit_fail(ctx, error).await;
         ChildAction::Stop
     }

@@ -466,6 +466,7 @@ impl Handler<Validation> for Validation {
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_VALIDATION, "OnEvent, can not persist information: {}", e);
+            let _ = ctx.emit_error(e).await;
         };
     }
 
