@@ -5,7 +5,7 @@
 //!
 
 use crate::{
-    config::KoreDbConfig, helpers::encrypted_pass::EncryptedPass, Error,
+    config::KoreDbConfig, helpers::encrypted_pass::EncryptedPass
 };
 
 use actor::{ActorContext, Error as ActorError};
@@ -30,20 +30,18 @@ pub enum Database {
 }
 
 impl Database {
-    pub fn open(config: &KoreDbConfig) -> Result<Self, Error> {
+    pub fn open(config: &KoreDbConfig) -> Self {
         match config {
             #[cfg(feature = "rocksdb")]
             KoreDbConfig::Rocksdb { path } => {
                 let manager = RocksDbManager::new(path);
-                Ok(Database::RocksDb(manager))
+                Database::RocksDb(manager)
             }
             #[cfg(feature = "sqlite")]
             KoreDbConfig::SQLite { path } => {
                 let manager = SqliteManager::new(&path);
-                Ok(Database::SQLite(manager))
+                Database::SQLite(manager)
             }
-            #[allow(unreachable_patterns)]
-            _ => Err(Error::Store("Database not supported".to_string())),
         }
     }
 }
@@ -65,10 +63,6 @@ impl DbManager<DbCollection> for Database {
                 let store = manager.create_collection(name, prefix)?;
                 Ok(DbCollection::SQLite(store))
             }
-            #[allow(unreachable_patterns)]
-            _ => Err(StoreError::CreateStore(
-                "Database not supported".to_string(),
-            )),
         }
     }
 }

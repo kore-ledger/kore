@@ -13,9 +13,6 @@ pub enum Error {
         source: Infallible,
     },
 
-    #[error("Unknown error: `{0}`")]
-    Unknown(String),
-
     #[error("Verification error: {0}")]
     Verification(String),
 
@@ -55,42 +52,18 @@ pub enum Error {
         source: rmp_serde::decode::Error,
     },
 
-    #[error("Event error: {0}")]
-    Event(String),
-
     #[error("Seed error: {0}")]
     SeedError(String),
 
     #[error("Semantic error: {0}")]
     Semantic(String),
 
-    #[error("Invalid identifier: {0}")]
-    InvalidIdentifier(String),
-
     #[error("Sign error: {0}")]
     Sign(String),
-
-    #[error("No signature error: {0}")]
-    NoSignature(String),
 
     #[error("Key pair error: {0}")]
     KeyPair(String),
 
     #[error("Kore error: {0}")]
     Kore(String),
-
-    #[error("Store error: {0}")]
-    Store(String),
-
-    #[error("Duplicate Event")]
-    DuplicateEvent,
-
-    #[error("Event out of order")]
-    OutOfOrder,
-
-    #[error("Schema not found")]
-    SchemaNotFound,
-
-    #[error("Subject not found")]
-    SubjectNotFound,
 }

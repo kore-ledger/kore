@@ -3,7 +3,6 @@
 //!
 
 pub(crate) mod ed25519;
-pub(crate) mod error;
 #[cfg(feature = "secp256k1")]
 pub(crate) mod secp256k1;
 

@@ -34,11 +34,13 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 pub enum KoreDbConfig {
     /// Rocksdb database.
+    #[cfg(feature = "rocksdb")]
     Rocksdb {
         /// Path to the database.
         path: String,
     },
     /// SQLite database.
+    #[cfg(feature = "sqlite")]
     SQLite {
         /// Path to the database.
         path: String,

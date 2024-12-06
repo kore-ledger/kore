@@ -42,6 +42,9 @@ use actor::{
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
     Strategy,
 };
+use tracing::{error, warn};
+
+const TARGET_VALIDATOR: &str = "Kore-Validation-Validator";
 
 /// A struct representing a validator actor.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -349,8 +352,10 @@ impl Handler<Validator> for Validator {
                         Ok(validation) => ValidationRes::Signature(validation),
                         Err(e) => {
                             if let ActorError::Functional(_) = e {
+                                warn!(TARGET_VALIDATOR, "LocalValidation, validation error: {}", e);
                                 ValidationRes::Error(e.to_string())
                             } else {
+                                error!(TARGET_VALIDATOR, "LocalValidation, validation error: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             }
                         }
@@ -370,10 +375,14 @@ impl Handler<Validator> for Validator {
 
                 // Send response of validation to parent
                 if let Some(validation_actor) = validation_actor {
-                    validation_actor.tell(validation).await?
+                    if let Err(e) = validation_actor.tell(validation).await {
+                        error!(TARGET_VALIDATOR, "LocalValidation, can not send local validation to Validation actor: {}", e);
+                        return Err(emit_fail(ctx, e).await);
+                    };
                 } else {
-                    // Can not obtain parent actor
-                    return Err(ActorError::Exists(validation_path));
+                    error!(TARGET_VALIDATOR, "LocalValidation, can not obtain Validation actor");
+                    let e = ActorError::Exists(validation_path);
+                    return Err(emit_fail(ctx, e).await);
                 }
 
                 ctx.stop().await;
@@ -427,10 +436,14 @@ impl Handler<Validator> for Validator {
                     .await
                 {
                     Ok(retry) => retry,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
+                    Err(e) => {
+                        error!(TARGET_VALIDATOR, "NetworkValidation, can not obtain Retry actor: {}", e);
+                        return Err(emit_fail(ctx, e).await)
+                    }
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
+                    error!(TARGET_VALIDATOR, "NetworkValidation, can not send retry to Retry actor: {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -440,12 +453,14 @@ impl Handler<Validator> for Validator {
             } => {
                 if request_id == self.request_id {
                     if self.node != validation_res.signature.signer {
+                        warn!(TARGET_VALIDATOR, "NetworkResponse, invalid signer");
                         return Err(ActorError::Functional(
                             "Invalid signer".to_owned(),
                         ));
                     }
 
                     if let Err(e) = validation_res.verify() {
+                        warn!(TARGET_VALIDATOR, "NetworkResponse, can not verify signature: {}",e);
                         return Err(ActorError::Functional(format!(
                             "Can not verify signature: {}",
                             e
@@ -467,10 +482,12 @@ impl Handler<Validator> for Validator {
                             })
                             .await
                         {
+                            error!(TARGET_VALIDATOR, "NetworkResponse, can not send response to Validation actor {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     } else {
                         let e = ActorError::NotFound(validation_path);
+                        error!(TARGET_VALIDATOR, "NetworkResponse, can not obtain Validation actor {}", e);
                         return Err(emit_fail(ctx, e).await);
                     }
 
@@ -491,7 +508,7 @@ impl Handler<Validator> for Validator {
 
                     ctx.stop().await;
                 } else {
-                    // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
+                    warn!(TARGET_VALIDATOR, "NetworkResponse, invalid request id");
                 }
             }
             ValidatorMessage::NetworkRequest {
@@ -500,12 +517,12 @@ impl Handler<Validator> for Validator {
             } => {
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
-                // Nos llegó una eval donde en la request se indica un sujeto pero en el info otro
-                // Posible ataque.
                 if info_subject_path
                     != validation_req.content.proof.governance_id.to_string()
                 {
-                    return Err(ActorError::Functional("We received an evaluation where the request indicates one subject but the info indicates another.".to_owned()));
+                    let e = "We received an evaluation where the request indicates one subject but the info indicates another.";
+                    warn!(TARGET_VALIDATOR, "NetworkRequest, {}", e);
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
 
                 if info.schema == "governance" {
@@ -518,8 +535,10 @@ impl Handler<Validator> for Validator {
                     .await
                     {
                         if let ActorError::Functional(_) = e {
+                            warn!(TARGET_VALIDATOR, "NetworkRequest, checking if signer is subject owner: {}", e);
                             return Err(e);
                         } else {
+                            error!(TARGET_VALIDATOR, "NetworkRequest, checking if signer is subject owner: {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -530,6 +549,7 @@ impl Handler<Validator> for Validator {
 
                 let Some(mut helper) = helper else {
                     let e = ActorError::NotHelper("network".to_owned());
+                    error!(TARGET_VALIDATOR, "NetworkRequest, can not obtain network helper");
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -545,8 +565,10 @@ impl Handler<Validator> for Validator {
                     Ok(reboot) => reboot,
                     Err(e) => {
                         if let ActorError::Functional(_) = e {
+                            warn!(TARGET_VALIDATOR, "NetworkRequest, checking governance: {}", e);
                             return Err(e);
                         } else {
+                            error!(TARGET_VALIDATOR, "NetworkRequest, checking governance: {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -562,8 +584,10 @@ impl Handler<Validator> for Validator {
                         Ok(validation) => ValidationRes::Signature(validation),
                         Err(e) => {
                             if let ActorError::Functional(_) = e {
+                                warn!(TARGET_VALIDATOR, "NetworkRequest, validation error: {}", e);
                                 ValidationRes::Error(e.to_string())
                             } else {
+                                error!(TARGET_VALIDATOR, "NetworkRequest, validation error: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             }
                         }
@@ -589,7 +613,10 @@ impl Handler<Validator> for Validator {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
+                    Err(e) => {
+                        error!(TARGET_VALIDATOR, "NetworkRequest, can not sign response: {}", e);
+                        return Err(emit_fail(ctx, e).await)
+                    },
                 };
 
                 let signed_response: Signed<ValidationRes> = Signed {
@@ -597,7 +624,7 @@ impl Handler<Validator> for Validator {
                     signature,
                 };
 
-                if let Err(_e) = helper
+                if let Err(e) = helper
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
@@ -608,7 +635,8 @@ impl Handler<Validator> for Validator {
                     })
                     .await
                 {
-                    // error al enviar mensaje, propagar hacia arriba TODO
+                    error!(TARGET_VALIDATOR, "NetworkRequest, can not send response to network: {}", e);
+                    return Err(emit_fail(ctx, e).await);
                 };
 
                 if info.schema != "governance" {
@@ -646,16 +674,18 @@ impl Handler<Validator> for Validator {
                         })
                         .await
                     {
+                        error!(TARGET_VALIDATOR, "OnChildError, can not send response to Validation actor: {}", e);
                         emit_fail(ctx, e).await;
                     }
                 } else {
                     let e = ActorError::NotFound(validation_path);
+                    error!(TARGET_VALIDATOR, "OnChildError, can not obtain Validation actor: {}", e);
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
             }
             _ => {
-                // TODO error inesperado
+                error!(TARGET_VALIDATOR, "OnChildError, unexpected error");
             }
         };
     }
@@ -665,6 +695,7 @@ impl Handler<Validator> for Validator {
         error: ActorError,
         ctx: &mut ActorContext<Validator>,
     ) -> ChildAction {
+        error!(TARGET_VALIDATOR, "OnChildFault, {}", error);
         emit_fail(ctx, error).await;
         ChildAction::Stop
     }

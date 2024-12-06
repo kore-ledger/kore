@@ -39,7 +39,6 @@ use prometheus_client::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-
 use tracing::{debug, error, info, trace, warn};
 
 use std::collections::{HashMap, VecDeque};
@@ -115,15 +114,15 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         cancel: CancellationToken,
     ) -> Result<Self, Error> {
         // Create channels to communicate commands
-        let (command_sender, command_receiver) = mpsc::channel(10000);
+        info!(TARGET_WORKER, "Creating network");
+        let (command_sender, command_receiver) = mpsc::channel(100000);
 
         // Prepare the network crypto key.
-
         let key = match keyderivator {
             KeyDerivator::Ed25519 => {
                 let sk =
                     ed25519::SecretKey::try_from_bytes(keys.secret_key_bytes())
-                        .expect("Invalid keypair");
+                .map_err(|e| Error::Worker(format!("Invalid Ed25518 secret key {}", e)))?;
                 let kp = ed25519::Keypair::from(sk);
                 Keypair::from(kp)
             }
@@ -131,7 +130,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 let sk = secp256k1::SecretKey::try_from_bytes(
                     keys.secret_key_bytes(),
                 )
-                .expect("Invalid keypair");
+                .map_err(|e| Error::Worker(format!("Invalid Secp256k1 secret key {}", e)))?;
                 let kp = secp256k1::Keypair::from(sk);
                 Keypair::from(kp)
             }
@@ -185,32 +184,18 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
         if addresses.is_empty() {
             // Listen on all tcp addresses.
-            if swarm
+            swarm
                 .listen_on(
                     "/ip4/0.0.0.0/tcp/0"
                         .parse::<Multiaddr>()
                         .map_err(|e| Error::Address(e.to_string()))?,
-                )
-                .is_err()
-            {
-                error!(TARGET_WORKER, "Error listening on all interfaces");
-                return Err(Error::Address(
-                    "Error listening on all interfaces".to_owned(),
-                ));
-            }
+                ).map_err(|e| Error::Address(format!("Error listening on all interfaces: {}", e)))?;
+            info!(TARGET_WORKER, "Listen in all interfaces");
         } else {
             // Listen on the external addresses.
             for addr in addresses.iter() {
-                if swarm.listen_on(addr.clone()).is_err() {
-                    error!(
-                        TARGET_WORKER,
-                        "Transport does not support the listening addresss: {:?}.", addr
-                    );
-                    panic!(
-                        "Transport does not support the listening addresss: {:?}.",
-                        addr
-                    );
-                }
+                info!(TARGET_WORKER, "Listen in {}", addr);
+                swarm.listen_on(addr.clone()).map_err(|e| Error::Worker(format!("Transport does not support the listening addresss: {}: {}", addr, e)))?;
             }
         }
 

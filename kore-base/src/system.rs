@@ -27,7 +27,7 @@ pub async fn system(
     system.add_helper("config", config.clone()).await;
 
     // Build database manager.
-    let db_manager = Database::open(&config.kore_db)?;
+    let db_manager = Database::open(&config.kore_db);
     system.add_helper("store", db_manager).await;
 
     // Helper memory encryption for passwords to be used in secure stores.
