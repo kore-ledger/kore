@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
+use tracing::{error, warn};
 
 use crate::{
     model::common::{emit_fail, try_to_update_subject},
@@ -17,6 +18,8 @@ use super::{
     evaluator::{Evaluator, EvaluatorMessage},
     request::EvaluationReq,
 };
+
+const TARGET_SCHEMA: &str = "Kore-Evaluation-Schema";
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct EvaluationSchema {
@@ -71,6 +74,7 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     )
                     .await
                     {
+                        error!(TARGET_SCHEMA, "NetworkRequest, can not update governance: {}", e);
                         return Err(emit_fail(ctx, e).await);
                     }
                 }
@@ -78,12 +82,14 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 let creator =
                     self.creators.get(&evaluation_req.signature.signer);
                 if creator.is_none() {
+                    warn!(TARGET_SCHEMA, "NetworkRequest, is not a Creator");
                     return Err(ActorError::Functional(
                         "Sender is not a Creator".to_owned(),
                     ));
                 };
 
                 if let Err(e) = evaluation_req.verify() {
+                    warn!(TARGET_SCHEMA, "NetworkRequest, can not verify evaliation req");
                     return Err(ActorError::Functional(format!(
                         "Can not verify evaluation request: {}.",
                         e
@@ -104,19 +110,23 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     Ok(child) => child,
                     Err(e) => {
                         if let ActorError::Exists(_) = e {
+                            warn!(TARGET_SCHEMA, "NetworkRequest, can not create evaluator: {}", e);
                             return Ok(());
                         } else {
+                            error!(TARGET_SCHEMA, "NetworkRequest, can not create evaluator: {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
                 };
 
-                evaluator_actor
+                if let Err(e) = evaluator_actor
                     .tell(EvaluatorMessage::NetworkRequest {
                         evaluation_req,
                         info,
                     })
-                    .await?
+                    .await {
+                        warn!(TARGET_SCHEMA, "NetworkRequest, can not send request to evaluator: {}", e);
+                    }
             }
             EvaluationSchemaMessage::UpdateEvaluators(
                 creators,

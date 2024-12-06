@@ -9,6 +9,9 @@ use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use tracing::error;
+
+const TARGET_RESPONSE: &str = "Kore-Validation-Response";
 
 /// A Enum representing a validation response.
 #[derive(
@@ -36,7 +39,10 @@ impl HashId for ValidationRes {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |e| Error::HashID(format!("HashId for ValidationRes fails: {}", e)),
+            |e| {
+                error!(TARGET_RESPONSE, "HashId for ValidationRes fails: {}", e);
+                Error::HashID(format!("HashId for ValidationRes fails: {}", e))
+            },
         )
     }
 }

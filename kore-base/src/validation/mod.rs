@@ -37,9 +37,12 @@ use request::ValidationReq;
 use response::ValidationRes;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
+use tracing::{error, warn};
 use validator::{Validator, ValidatorMessage};
 
 use std::collections::HashSet;
+
+const TARGET_VALIDATION: &str = "Kore-Validation";
 
 /// A struct for passing validation information.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -299,6 +302,7 @@ impl Handler<Validation> for Validation {
                     match self.create_validation_req(ctx, info.clone()).await {
                         Ok(validation_req) => validation_req,
                         Err(e) => {
+                            error!(TARGET_VALIDATION, "Create, can not create validation request: {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -316,6 +320,7 @@ impl Handler<Validation> for Validation {
                 {
                     Ok(signers_quorum) => signers_quorum,
                     Err(e) => {
+                        error!(TARGET_VALIDATION, "Create, can not create obtain signers and quorum: {}", e);
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
@@ -338,7 +343,10 @@ impl Handler<Validation> for Validation {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
+                    Err(e) => {
+                        error!(TARGET_VALIDATION, "Create, can not sign request: {}", e);
+                        return Err(emit_fail(ctx, e).await)
+                    },
                 };
 
                 let signed_validation_req: Signed<ValidationReq> = Signed {
@@ -390,6 +398,7 @@ impl Handler<Validation> for Validation {
                                 )
                                 .await
                                 {
+                                    error!(TARGET_VALIDATION, "Response, can not send reboot to Request actor: {}", e);
                                     return Err(emit_fail(ctx, e).await);
                                 }
                                 self.reboot = true;
@@ -419,6 +428,7 @@ impl Handler<Validation> for Validation {
                             if let Err(e) =
                                 self.send_validation_to_req(ctx, true).await
                             {
+                                error!(TARGET_VALIDATION, "Response, can not send validation response to Request actor: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             };
                         } else if self.validators.is_empty() {
@@ -437,11 +447,12 @@ impl Handler<Validation> for Validation {
                             if let Err(e) =
                                 self.send_validation_to_req(ctx, false).await
                             {
+                                error!(TARGET_VALIDATION, "Response, can not send validation response to Request actor: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             };
                         }
                     } else {
-                        // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
+                        warn!(TARGET_VALIDATION, "Response, A response has been received from someone we were not expecting.");
                     }
                 }
             }
@@ -453,8 +464,8 @@ impl Handler<Validation> for Validation {
         event: ValidationEvent,
         ctx: &mut ActorContext<Validation>,
     ) {
-        if let Err(_e) = self.persist(&event, ctx).await {
-            // TODO error al persistir, propagar hacia arriba
+        if let Err(e) = self.persist(&event, ctx).await {
+            error!(TARGET_VALIDATION, "OnEvent, can not persist information: {}", e);
         };
     }
 
@@ -463,6 +474,7 @@ impl Handler<Validation> for Validation {
         error: ActorError,
         ctx: &mut ActorContext<Validation>,
     ) -> ChildAction {
+        error!(TARGET_VALIDATION, "OnChildFault, {}", error);
         emit_fail(ctx, error).await;
         ChildAction::Stop
     }

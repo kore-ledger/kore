@@ -11,6 +11,9 @@ use crate::{
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
+use tracing::error;
+
+const TARGET_REQUEST: &str = "Kore-Validation-Request";
 
 /// A struct representing a validation request.
 #[derive(
@@ -33,7 +36,10 @@ impl HashId for ValidationReq {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |e| Error::HashID(format!("HashId for ValidationReq fails: {}", e)),
+            |e| {
+                error!(TARGET_REQUEST, "HashId for ValidationReq fails: {}", e);
+                Error::HashID(format!("HashId for ValidationReq fails: {}", e))
+            },
         )
     }
 }

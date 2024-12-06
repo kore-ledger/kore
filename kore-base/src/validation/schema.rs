@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
+use tracing::{error, warn};
 
 use crate::{
     model::common::{emit_fail, try_to_update_subject},
@@ -17,6 +18,8 @@ use super::{
     request::ValidationReq,
     validator::{Validator, ValidatorMessage},
 };
+
+const TARGET_SCHEMA: &str = "Kore-Validation-Schema";
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct ValidationSchema {
@@ -73,6 +76,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     )
                     .await
                     {
+                        error!(TARGET_SCHEMA, "NetworkRequest, can not update governance: {}", e);
                         return Err(emit_fail(ctx, e).await);
                     }
                 }
@@ -80,12 +84,14 @@ impl Handler<ValidationSchema> for ValidationSchema {
                 let creator =
                     self.creators.get(&validation_req.signature.signer);
                 if creator.is_none() {
+                    warn!(TARGET_SCHEMA, "NetworkRequest, is not a Creator");
                     return Err(ActorError::Functional(
                         "Sender is not a Creator".to_owned(),
                     ));
                 };
 
                 if let Err(e) = validation_req.verify() {
+                    warn!(TARGET_SCHEMA, "NetworkRequest, can not verify validation req");
                     return Err(ActorError::Functional(format!(
                         "Can not verify validation request: {}.",
                         e
@@ -106,19 +112,23 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     Ok(child) => child,
                     Err(e) => {
                         if let ActorError::Exists(_) = e {
+                            warn!(TARGET_SCHEMA, "NetworkRequest, can not create validator: {}", e);
                             return Ok(());
                         } else {
+                            error!(TARGET_SCHEMA, "NetworkRequest, can not create validator: {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
                 };
 
-                validator_actor
+                if let Err(e) = validator_actor
                     .tell(ValidatorMessage::NetworkRequest {
                         validation_req,
                         info,
                     })
-                    .await?
+                    .await {
+                        warn!(TARGET_SCHEMA, "NetworkRequest, can not send request to validator: {}", e);
+                    }
             }
             ValidationSchemaMessage::UpdateValidators(
                 validators,

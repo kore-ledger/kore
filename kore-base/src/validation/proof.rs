@@ -4,8 +4,7 @@
 use super::ValidationInfo;
 
 use crate::{
-    model::{request::EventRequest, HashId, Namespace},
-    Error, DIGEST_DERIVATOR,
+    error, model::{request::EventRequest, HashId, Namespace}, Error, DIGEST_DERIVATOR
 };
 use identity::identifier::{
     derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
@@ -13,6 +12,8 @@ use identity::identifier::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+
+const TARGET_PROOF: &str = "Kore-Validation-Proof";
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(
@@ -113,10 +114,9 @@ impl HashId for ValidationProof {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| {
-                Error::Validation(
-                    "Hashing error in ValidationProof".to_string(),
-                )
+            |e| {
+                error!(TARGET_PROOF, "HashId for ValidationProof fails: {}", e);
+                Error::Validation(format!("HashId for ValidationProof fails: {}", e))
             },
         )
     }
@@ -135,9 +135,7 @@ impl ValidationProof {
         } else {
             DigestDerivator::Blake3_256
         };
-        let event_hash = info.event_proof.hash_id(derivator).map_err(|_| {
-            Error::Validation("Error hashing event".to_string())
-        })?;
+        let event_hash = info.event_proof.hash_id(derivator)?;
 
         let mut validation_proof: ValidationProof = Self {
             governance_id: info.metadata.governance_id.clone(),
