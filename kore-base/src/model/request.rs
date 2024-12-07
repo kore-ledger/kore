@@ -30,7 +30,7 @@ impl From<EventRequest> for EventRequestType {
             EventRequest::Fact(_fact_request) => Self::Fact,
             EventRequest::Transfer(_transfer_request) => Self::Transfer,
             EventRequest::Confirm(_confirm_request) => Self::Confirm,
-            EventRequest::EOL(_eolrequest) => Self::EOL,
+            EventRequest::EOL(eolrequest) => Self::EOL,
         }
     }
 }

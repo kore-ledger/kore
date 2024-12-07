@@ -10,6 +10,7 @@ use async_std::fs;
 use nodekey::NodeKey;
 use register::Register;
 use relationship::RelationShip;
+use tracing::error;
 
 use crate::{
     auth::{Auth, AuthMessage, AuthResponse},
@@ -47,6 +48,8 @@ use store::store::PersistentActor;
 pub mod nodekey;
 pub mod register;
 pub mod relationship;
+
+const TARGET_NODE: &str = "Kore-Node";
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct CompiledContract(Vec<u8>);
@@ -152,6 +155,7 @@ impl Node {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
+            error!(TARGET_NODE, "Error getting derivator");
             DigestDerivator::Blake3_256
         };
         Signature::new(content, &self.owner, derivator)
@@ -638,7 +642,7 @@ impl Handler<Node> for Node {
         event: NodeEvent,
         ctx: &mut ActorContext<Node>,
     ) {
-        if let Err(_e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
     }

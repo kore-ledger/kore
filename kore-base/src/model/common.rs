@@ -398,7 +398,7 @@ pub async fn emit_fail<A>(
 where
     A: Actor + Handler<A>,
 {
-    if let Err(_e) = ctx.emit_fail(error.clone()).await {
+    if let Err(e) = ctx.emit_fail(error.clone()).await {
         ctx.system().send_event(SystemEvent::StopSystem).await;
     };
     error

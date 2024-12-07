@@ -12,6 +12,8 @@ pub mod response;
 mod runner;
 pub mod schema;
 
+const TARGET_EVALUATION: &str = "Kore-Evaluation";
+
 use crate::{
     governance::{model::Roles, Quorum},
     model::{
@@ -39,6 +41,7 @@ use identity::identifier::{derive::digest::DigestDerivator, KeyIdentifier};
 use request::{EvaluationReq, SubjectContext};
 use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use std::collections::HashSet;
 // TODO cuando se recibe una evaluación, validación lo que sea debería venir firmado y comprobar que es de quien dice ser, cuando llega por la network y cuando la envía un usuario.
@@ -123,7 +126,7 @@ impl Evaluation {
             .await;
         let evaluator_actor = match child {
             Ok(child) => child,
-            Err(_e) => return Err(_e),
+            Err(e) => return Err(e),
         };
 
         // Check node_key
@@ -167,6 +170,7 @@ impl Evaluation {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
+            error!(TARGET_EVALUATION, "Error getting derivator");
             DigestDerivator::Blake3_256
         };
         let (state, subject_id) = if let Some(req) = self.eval_req.clone() {

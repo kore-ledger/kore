@@ -174,7 +174,7 @@ impl Validation {
             .await;
         let validator_actor = match child {
             Ok(child) => child,
-            Err(_e) => return Err(_e),
+            Err(e) => return Err(e),
         };
 
         // Check node_key

@@ -6,10 +6,13 @@ use actor::{
 use async_trait::async_trait;
 use identity::identifier::DigestIdentifier;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::model::common::{emit_fail, get_last_event, get_metadata};
 
 use super::manager::{RequestManager, RequestManagerMessage};
+
+const TARGET_REBOOT: &str = "Kore-Request-Reboot";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Reboot {
@@ -61,16 +64,15 @@ impl Reboot {
             };
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(5)).await;
-                if let Err(_e) = actor.tell(request).await {
-                    // TODO
+                if let Err(e) = actor.tell(request).await {
+                    error!(TARGET_REBOOT, "Sleep, can send Update message to Reboot actor: {}", e);
                 }
             });
         } else {
             let path = ctx.path().clone();
             return Err(ActorError::NotFound(path));
         }
-
-        todo!()
+        return Ok(());
     }
 
     async fn finish(
@@ -136,14 +138,17 @@ impl Handler<Reboot> for Reboot {
         match msg {
             RebootMessage::Init => {
                 if let Err(e) = self.update_event_sn(ctx).await {
+                    error!(TARGET_REBOOT, "Init, can not uptade event sn: {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
 
                 if let Err(e) = self.update_ledger_sn(ctx).await {
+                    error!(TARGET_REBOOT, "Init, can not uptade ledger sn: {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
 
                 if let Err(e) = self.sleep(ctx).await {
+                    error!(TARGET_REBOOT, "Init, can not sleep: {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -152,27 +157,32 @@ impl Handler<Reboot> for Reboot {
                 last_sn_ledger,
             } => {
                 if let Err(e) = self.update_event_sn(ctx).await {
+                    error!(TARGET_REBOOT, "Update, can not uptade event sn: {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
 
                 if self.sn_event > last_sn_event {
                     if let Err(e) = Self::finish(ctx).await {
+                        error!(TARGET_REBOOT, "Update, can not finish reboot: {}", e);
                         return Err(emit_fail(ctx, e).await);
                     }
                     return Ok(());
                 }
 
                 if let Err(e) = self.update_ledger_sn(ctx).await {
+                    error!(TARGET_REBOOT, "Update, can not uptade ledger sn: {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
 
                 if self.sn_ledger > last_sn_ledger {
                     if let Err(e) = self.sleep(ctx).await {
+                        error!(TARGET_REBOOT, "Update, can not sleep: {}", e);
                         return Err(emit_fail(ctx, e).await);
                     };
                 }
 
                 if let Err(e) = Self::finish(ctx).await {
+                    error!(TARGET_REBOOT, "Update, can not finish reboot: {}", e);
                     return Err(emit_fail(ctx, e).await);
                 }
             }

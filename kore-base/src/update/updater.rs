@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::{
     model::{common::emit_fail, network::RetryNetwork},
@@ -156,7 +156,8 @@ impl Handler<Updater> for Updater {
                         break 'retry;
                     };
 
-                    if let Err(_e) = retry.tell(RetryMessage::End).await {
+                    if let Err(e) = retry.tell(RetryMessage::End).await {
+                        warn!(TARGET_UPDATER, "NetworkResponse, can not end Retry actor: {}", e);
                         // Aquí me da igual, porque al parar este actor para el hijo
                         break 'retry;
                     };

@@ -38,6 +38,7 @@ use actor::{
 };
 
 use serde_json::Value;
+use tracing::error;
 
 use super::{
     compiler::{Compiler, CompilerMessage},
@@ -49,6 +50,8 @@ use super::{
     },
     Evaluation, EvaluationMessage,
 };
+
+const TARGET_EVALUATOR: &str = "Kore-Evaluation-Evaluator";
 
 /// A struct representing a Evaluator actor.
 #[derive(Default, Clone, Debug)]
@@ -286,6 +289,7 @@ impl Evaluator {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
+            error!(TARGET_EVALUATOR, "Error getting derivator");
             DigestDerivator::Blake3_256
         };
 
@@ -538,7 +542,7 @@ impl Handler<Evaluator> for Evaluator {
                             break 'retry;
                         };
 
-                        if let Err(_e) = retry.tell(RetryMessage::End).await {
+                        if let Err(e) = retry.tell(RetryMessage::End).await {
                             // Aquí me da igual, porque al parar este actor para el hijo
                             break 'retry;
                         };

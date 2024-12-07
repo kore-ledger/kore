@@ -577,7 +577,7 @@ impl Handler<Approver> for Approver {
                             break 'retry;
                         };
 
-                        if let Err(_e) = retry.tell(RetryMessage::End).await {
+                        if let Err(e) = retry.tell(RetryMessage::End).await {
                             // Aquí me da igual, porque al parar este actor para el hijo
                             break 'retry;
                         };
@@ -719,11 +719,11 @@ impl Handler<Approver> for Approver {
         event: ApproverEvent,
         ctx: &mut ActorContext<Approver>,
     ) {
-        if let Err(_e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             //TODO
         };
 
-        if let Err(_e) = ctx.publish_event(event).await {
+        if let Err(e) = ctx.publish_event(event).await {
             // TODO
         };
     }

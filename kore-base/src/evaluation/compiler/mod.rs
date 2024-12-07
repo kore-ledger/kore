@@ -12,12 +12,15 @@ use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use tracing::error;
 use wasmtime::{Config, Engine, ExternType, Module, Store};
 
 use crate::{
     model::common::{generate_linker, MemoryManager},
     Error, HashId, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR,
 };
+
+const TARGET_COMPILER: &str = "Kore-Evaluation-Compiler";
 
 #[derive(
     Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug, Clone,
@@ -331,6 +334,7 @@ impl Handler<Compiler> for Compiler {
                 let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
                     *derivator
                 } else {
+                    error!(TARGET_COMPILER, "Error getting derivator");
                     DigestDerivator::Blake3_256
                 };
 

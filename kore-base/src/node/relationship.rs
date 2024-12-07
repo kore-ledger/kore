@@ -140,7 +140,7 @@ impl Handler<RelationShip> for RelationShip {
         event: RelationShipEvent,
         ctx: &mut ActorContext<RelationShip>,
     ) {
-        if let Err(_e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
     }

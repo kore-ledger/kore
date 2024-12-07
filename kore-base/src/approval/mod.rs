@@ -425,7 +425,7 @@ impl Handler<Approval> for Approval {
         event: ApprovalEvent,
         ctx: &mut ActorContext<Approval>,
     ) {
-        if let Err(_e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             // TODO error al persistir, propagar hacia arriba
         };
     }

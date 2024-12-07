@@ -332,6 +332,7 @@ impl Subject {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
+            error!(TARGET_SUBJECT, "Error getting derivator");
             DigestDerivator::Blake3_256
         };
 

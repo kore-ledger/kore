@@ -743,7 +743,7 @@ impl Handler<Distributor> for Distributor {
                             break 'retry;
                         };
 
-                        if let Err(_e) = retry.tell(RetryMessage::End).await {
+                        if let Err(e) = retry.tell(RetryMessage::End).await {
                             // Aquí me da igual, porque al parar este actor para el hijo
                             break 'retry;
                         };

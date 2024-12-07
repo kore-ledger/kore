@@ -166,7 +166,7 @@ impl Handler<DBManager> for DBManager {
         event: DBManagerEvent,
         ctx: &mut ActorContext<DBManager>,
     ) {
-        if let Err(_e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
     }

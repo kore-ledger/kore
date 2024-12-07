@@ -148,7 +148,7 @@ impl Handler<Register> for Register {
         event: RegisterEvent,
         ctx: &mut ActorContext<Register>,
     ) {
-        if let Err(_e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             // TODO Propagar error.
         };
     }

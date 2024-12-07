@@ -170,12 +170,12 @@ impl Validator {
         ctx: &mut ActorContext<Validator>,
         validation_req: ValidationReq,
     ) -> Result<Signature, ActorError> {
-        if let Err(_e) = validation_req
+        if let Err(e) = validation_req
             .subject_signature
             .verify(&validation_req.proof)
         {
             return Err(ActorError::Functional(
-                "Can not verify signature".to_owned(),
+                format!("Can not verify signature: {}", e),
             ));
         }
 
@@ -500,7 +500,8 @@ impl Handler<Validator> for Validator {
                             break 'retry;
                         };
 
-                        if let Err(_e) = retry.tell(RetryMessage::End).await {
+                        if let Err(e) = retry.tell(RetryMessage::End).await {
+                            warn!(TARGET_VALIDATOR, "NetworkResponse, can not end Retry actor: {}", e);
                             // Aquí me da igual, porque al parar este actor para el hijo
                             break 'retry;
                         };

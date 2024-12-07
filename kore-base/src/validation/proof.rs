@@ -133,6 +133,7 @@ impl ValidationProof {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
+            error!(TARGET_PROOF, "Error getting derivator");
             DigestDerivator::Blake3_256
         };
         let event_hash = info.event_proof.hash_id(derivator)?;
