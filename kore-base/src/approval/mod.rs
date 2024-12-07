@@ -14,6 +14,7 @@ use request::ApprovalReq;
 use response::ApprovalRes;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
+use tracing::{error, warn};
 
 use crate::evaluation::response::EvalLedgerResponse;
 use crate::governance::model::Roles;
@@ -248,7 +249,7 @@ impl Actor for Approval {
         let prefix = ctx.path().parent().key();
         self.init_store("approval", Some(prefix), false, ctx).await
         // Una vez recuperado el estado debemos ver si el propio nodo ha recibido ya ha enviado la respuesta
-        // para no levantar un approver
+        // para no levantar un approver TODO
     }
     async fn pre_stop(
         &mut self,
@@ -287,6 +288,7 @@ impl Handler<Approval> for Approval {
                             )
                             .await
                         {
+                            error!(TARGET_APPROVAL, "Create, Can not create approver actor, {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -298,6 +300,7 @@ impl Handler<Approval> for Approval {
                     {
                         Ok(approval_req) => approval_req,
                         Err(e) => {
+                            error!(TARGET_APPROVAL, "Create, Can not create approval request, {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -314,6 +317,7 @@ impl Handler<Approval> for Approval {
                         {
                             Ok(signers_quorum) => signers_quorum,
                             Err(e) => {
+                                error!(TARGET_APPROVAL, "Create, Can not obtain signers quorum and gov version, {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
@@ -328,6 +332,7 @@ impl Handler<Approval> for Approval {
                     {
                         Ok(signature) => signature,
                         Err(e) => {
+                            error!(TARGET_APPROVAL, "Create, Can not obtain sign approval request, {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -347,6 +352,7 @@ impl Handler<Approval> for Approval {
                             )
                             .await
                         {
+                            error!(TARGET_APPROVAL, "Create, Can not create approver actor, {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -405,17 +411,19 @@ impl Handler<Approval> for Approval {
                         if let Err(e) =
                             self.send_approval_to_req(ctx, true).await
                         {
+                            error!(TARGET_APPROVAL, "Response, Can not send approval response to request actor, {}", e);
                             return Err(emit_fail(ctx, e).await);
                         };
                     } else if self.approvers.is_empty() {
                         if let Err(e) =
                             self.send_approval_to_req(ctx, false).await
                         {
+                            error!(TARGET_APPROVAL, "Response, Can not send approval response to request actor, {}", e);
                             return Err(emit_fail(ctx, e).await);
                         };
                     }
                 } else {
-                    // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
+                    warn!(TARGET_APPROVAL, "Response, A response has been received from someone we were not expecting.");
                 }
             }
         }
@@ -428,7 +436,8 @@ impl Handler<Approval> for Approval {
         ctx: &mut ActorContext<Approval>,
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
-            // TODO error al persistir, propagar hacia arriba
+            error!(TARGET_APPROVAL, "OnEvent, can not persist information: {}", e);
+            emit_fail(ctx, e).await;
         };
     }
 

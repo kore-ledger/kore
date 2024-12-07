@@ -1206,12 +1206,12 @@ impl Handler<Distributor> for Distributor {
                         })
                         .await
                     {
-                        error!(TARGET_DISTRIBUTOR, "OnChildError, can not send response to Validation actor: {}", e);
+                        error!(TARGET_DISTRIBUTOR, "OnChildError, can not send response to Distribution actor: {}", e);
                         emit_fail(ctx, e).await;
                     }
                 } else {
                     let e = ActorError::NotFound(distribuiton_path);
-                    error!(TARGET_DISTRIBUTOR, "OnChildError, can not obtain Validation actor: {}", e);
+                    error!(TARGET_DISTRIBUTOR, "OnChildError, can not obtain Distribution actor: {}", e);
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;

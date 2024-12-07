@@ -72,7 +72,7 @@ impl Reboot {
             let path = ctx.path().clone();
             return Err(ActorError::NotFound(path));
         }
-        return Ok(());
+        Ok(())
     }
 
     async fn finish(

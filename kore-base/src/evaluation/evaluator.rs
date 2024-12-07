@@ -760,12 +760,12 @@ impl Handler<Evaluator> for Evaluator {
                         })
                         .await
                     {
-                        error!(TARGET_EVALUATOR, "OnChildError, can not send response to Validation actor: {}", e);
+                        error!(TARGET_EVALUATOR, "OnChildError, can not send response to Evaluation actor: {}", e);
                         emit_fail(ctx, e).await;
                     }
                 } else {
                     let e = ActorError::NotFound(evaluation_path);
-                    error!(TARGET_EVALUATOR, "OnChildError, can not obtain Validation actor: {}", e);
+                    error!(TARGET_EVALUATOR, "OnChildError, can not obtain Evaluation actor: {}", e);
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;
