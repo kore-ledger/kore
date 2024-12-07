@@ -7,6 +7,7 @@ use actor::{
 use async_trait::async_trait;
 use distributor::{Distributor, DistributorMessage};
 use identity::identifier::KeyIdentifier;
+use tracing::error;
 
 use crate::{
     governance::model::Roles,
@@ -139,13 +140,19 @@ impl Handler<Distribution> for Distribution {
                 let governance =
                     match get_gov(ctx, &subject_id.to_string()).await {
                         Ok(gov) => gov,
-                        Err(e) => return Err(emit_fail(ctx, e).await),
+                        Err(e) => {
+                            error!(TARGET_DISTRIBUTION, "Create, can not get governance: {}", e);
+                            return Err(emit_fail(ctx, e).await)
+                        },
                     };
 
                 let metadata =
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
-                        Err(e) => return Err(emit_fail(ctx, e).await),
+                        Err(e) => {
+                            error!(TARGET_DISTRIBUTION, "Create, can not get metadata: {}", e);
+                            return Err(emit_fail(ctx, e).await)
+                        },
                     };
 
                 let witnesses = if metadata.schema_id == "governance" {
@@ -162,6 +169,7 @@ impl Handler<Distribution> for Distribution {
 
                 if witnesses.len() == 1 && witnesses.contains(&self.node_key) {
                     if let Err(e) = self.end_request(ctx).await {
+                        error!(TARGET_DISTRIBUTION, "Create, can not end distribution: {}", e);
                         return Err(emit_fail(ctx, e).await);
                     };
                     return Ok(());
@@ -183,6 +191,7 @@ impl Handler<Distribution> for Distribution {
             DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) && self.witnesses.is_empty() {
                     if let Err(e) = self.end_request(ctx).await {
+                        error!(TARGET_DISTRIBUTION, "Response, can not end distribution: {}", e);
                         return Err(emit_fail(ctx, e).await);
                     };
                 }
@@ -197,6 +206,7 @@ impl Handler<Distribution> for Distribution {
         error: ActorError,
         ctx: &mut ActorContext<Distribution>,
     ) -> ChildAction {
+        error!(TARGET_DISTRIBUTION, "OnChildFault, {}", error);
         emit_fail(ctx, error).await;
         ChildAction::Stop
     }

@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 use std::collections::HashMap;
 use store::store::PersistentActor;
 
@@ -153,8 +154,10 @@ impl Handler<Auth> for Auth {
                 {
                     return Ok(AuthResponse::Witnesses(witnesses.clone()));
                 } else {
+                    let e = "The subject has not been authorized";
+                    error!(TARGET_AUTH, "GetAuth, {}", e);
                     return Err(ActorError::Functional(
-                        "The subject has not been authorized".to_owned(),
+                       e.to_owned(),
                     ));
                 }
             }
@@ -194,6 +197,7 @@ impl Handler<Auth> for Auth {
                         {
                             Ok(data) => data,
                             Err(e) => {
+                                error!(TARGET_AUTH, "Update, can not obtain request, sn, schema_id: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
@@ -215,6 +219,7 @@ impl Handler<Auth> for Auth {
                                 ctx.system().get_helper("network").await;
 
                             let Some(mut helper) = helper else {
+                                error!(TARGET_AUTH, "Update, can not obtain network helper");
                                 let e =
                                     ActorError::NotHelper("network".to_owned());
                                 return Err(emit_fail(ctx, e).await);
@@ -231,6 +236,7 @@ impl Handler<Auth> for Auth {
                                 )
                                 .await
                             {
+                                error!(TARGET_AUTH, "Update, can not send response to network: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             };
                         }
@@ -268,13 +274,16 @@ impl Handler<Auth> for Auth {
                             }
                         }
                         AuthWitness::None => {
-                            // Not Witness to update state of subject.
-                            return Err(ActorError::Functional("The subject has no witnesses to try to ask for an update.".to_owned()));
+                            let e = "The subject has no witnesses to try to ask for an update.";
+                            error!(TARGET_AUTH, "Update, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
                         }
                     };
                 } else {
+                    let e = "The subject has not been authorized";
+                    error!(TARGET_AUTH, "Update, {}", e);
                     return Err(ActorError::Functional(
-                        "The subject has not been authorized".to_owned(),
+                        e.to_owned(),
                     ));
                 }
             }
@@ -289,7 +298,8 @@ impl Handler<Auth> for Auth {
         ctx: &mut ActorContext<Auth>,
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
-            // TODO Propagar error.
+            error!(TARGET_AUTH, "OnEvent, can not persist information: {}", e);
+            emit_fail(ctx, e).await;
         };
     }
 
@@ -298,6 +308,7 @@ impl Handler<Auth> for Auth {
         error: ActorError,
         ctx: &mut ActorContext<Auth>,
     ) -> ChildAction {
+        error!(TARGET_AUTH, "OnChildFault, {}", error);
         emit_fail(ctx, error).await;
         ChildAction::Stop
     }
