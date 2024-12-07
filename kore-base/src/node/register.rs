@@ -7,10 +7,13 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use tracing::{error, warn};
 use std::collections::HashMap;
 use store::store::PersistentActor;
 
 use crate::db::Storable;
+
+const TARGET_REGISTER: &str = "Kore-Node-Register";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RegisterData {
@@ -123,8 +126,10 @@ impl Handler<Register> for Register {
 
                     return Ok(RegisterResponse::Subjs { subjects: subj });
                 } else {
+                    let e = "Governance id is not registered";
+                    warn!(TARGET_REGISTER, "GetSubj, {}", e);
                     return Err(ActorError::Functional(
-                        "Governance id is not registered".to_owned(),
+                        e.to_owned(),
                     ));
                 }
             }
@@ -149,7 +154,8 @@ impl Handler<Register> for Register {
         ctx: &mut ActorContext<Register>,
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
-            // TODO Propagar error.
+            error!(TARGET_REGISTER, "OnEvent, can not persist information: {}", e);
+            let _ = ctx.emit_error(e).await;
         };
     }
 }

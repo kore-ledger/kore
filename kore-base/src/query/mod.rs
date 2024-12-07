@@ -8,10 +8,13 @@ use actor::{
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
+use tracing::{error, warn};
 
 use crate::helpers::db::{
     EventDB, ExternalDB, Paginator, Querys, SignaturesDB, SubjectDB,
 };
+
+const TARGET_QUERY: &str = "Kore-Query";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Query {
@@ -100,6 +103,7 @@ impl Handler<Query> for Query {
         let Some(helper): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
+            error!(TARGET_QUERY, "Can not obtain ext_db helper");
             ctx.system().send_event(SystemEvent::StopSystem).await;
             return Err(ActorError::NotHelper("ext_db".to_owned()));
         };
@@ -109,14 +113,19 @@ impl Handler<Query> for Query {
                 let signatures = helper
                     .get_signatures(&subject_id)
                     .await
-                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                    .map_err(|e| {
+                        warn!(TARGET_QUERY, "GetSignatures, Can not obtain signatures: {}", e);
+                        ActorError::Functional(e.to_string())}
+                    )?;
                 Ok(QueryResponse::Signatures { signatures })
             }
             QueryMessage::GetSubject { subject_id } => {
                 let subject = helper
                     .get_subject_state(&subject_id)
                     .await
-                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                    .map_err(|e| {
+                        warn!(TARGET_QUERY, "GetSubject, Can not obtain subject state: {}", e);
+                        ActorError::Functional(e.to_string())})?;
                 Ok(QueryResponse::Subject { subject })
             }
             QueryMessage::GetEvents {
@@ -127,21 +136,27 @@ impl Handler<Query> for Query {
                 let (events, paginator) = helper
                     .get_events(&subject_id, quantity, page)
                     .await
-                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                    .map_err(|e| {
+                        warn!(TARGET_QUERY, "GetEvents, Can not obtain events: {}", e);
+                        ActorError::Functional(e.to_string())})?;
                 Ok(QueryResponse::Events { events, paginator })
             }
             QueryMessage::GetRequestState { request_id } => {
                 let res = helper
                     .get_request_id_status(&request_id)
                     .await
-                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                    .map_err(|e| {
+                        warn!(TARGET_QUERY, "GetRequestState, Can not obtain request status: {}", e);
+                        ActorError::Functional(e.to_string())})?;
                 Ok(QueryResponse::RequestState(res))
             }
             QueryMessage::GetApproval { subject_id } => {
                 let (request, state) = helper
                     .get_approve_req(&subject_id)
                     .await
-                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+                    .map_err(|e| {
+                        warn!(TARGET_QUERY, "GetApproval, Can not obtain approve request: {}", e);
+                        ActorError::Functional(e.to_string())})?;
                 Ok(QueryResponse::ApprovalState { request, state })
             }
         }

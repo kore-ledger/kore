@@ -7,8 +7,11 @@ use actor::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
+use tracing::{error, warn};
 
 use crate::db::Storable;
+
+const TARGET_RELATIONSHIP: &str = "Kore-Node-RelationShip";
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct OwnerSchema {
@@ -119,8 +122,10 @@ impl Handler<RelationShip> for RelationShip {
                     .await;
                     Ok(RelationShipResponse::None)
                 } else {
+                    let e = "Maximum number of subjects reached";
+                    warn!(TARGET_RELATIONSHIP, "RegisterNewSubject, {}", e);
                     Err(ActorError::Functional(
-                        "Maximum number of subjects reached".to_owned(),
+                        e.to_owned(),
                     ))
                 }
             }
@@ -141,7 +146,8 @@ impl Handler<RelationShip> for RelationShip {
         ctx: &mut ActorContext<RelationShip>,
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
-            // TODO Propagar error.
+            error!(TARGET_RELATIONSHIP, "OnEvent, can not persist information: {}", e);
+            let _ = ctx.emit_error(e).await;
         };
     }
 }

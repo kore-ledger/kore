@@ -10,7 +10,7 @@ use async_std::fs;
 use nodekey::NodeKey;
 use register::Register;
 use relationship::RelationShip;
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::{
     auth::{Auth, AuthMessage, AuthResponse},
@@ -386,6 +386,7 @@ impl Handler<Node> for Node {
                 let Some(ext_db): Option<ExternalDB> =
                     ctx.system().get_helper("ext_db").await
                 else {
+                    error!(TARGET_NODE, "CreateNewSubjectLedger, Can not obtain ext_db helper");
                     ctx.system().send_event(SystemEvent::StopSystem).await;
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
@@ -411,14 +412,20 @@ impl Handler<Node> for Node {
                         governance
                             .get_init_state(&create_event.schema_id)
                             .map_err(|e| {
+                                warn!(TARGET_NODE, "CreateNewSubjectLedger, Can not obtain init state {}", e);
                                 ActorError::Functional(e.to_string())
                             })?
                     };
                     Subject::from_event(None, &ledger, properties)
-                        .map_err(|e| ActorError::Functional(e.to_string()))?
+                        .map_err(|e| {
+                            warn!(TARGET_NODE, "CreateNewSubjectLedger, Can not create subject from event {}", e);
+                            ActorError::Functional(e.to_string())
+                        })?
                 } else {
+                    let e =  "trying to create a subject without create event";
+                    warn!(TARGET_NODE, "CreateNewSubjectLedger, {}", e);
                     return Err(ActorError::Functional(
-                        "trying to create a subject without create event"
+                        e
                             .to_owned(),
                     ));
                 };
@@ -481,6 +488,7 @@ impl Handler<Node> for Node {
                     ctx.system().get_helper("ext_db").await
                 else {
                     ctx.system().send_event(SystemEvent::StopSystem).await;
+                    error!(TARGET_NODE, "CreateNewSubjectReq, Can not obtain ext_db helper");
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
@@ -536,6 +544,7 @@ impl Handler<Node> for Node {
                     SignTypesNode::Event(event) => self.sign(&event),
                 }
                 .map_err(|e| {
+                    warn!(TARGET_NODE, "SignRequest, Can not sign event: {}", e);
                     ActorError::FunctionalFail(format!(
                         "Can not sign event: {}",
                         e
@@ -595,7 +604,7 @@ impl Handler<Node> for Node {
                         let e = ActorError::UnexpectedResponse(
                             ActorPath::from(format!("{}/auth", ctx.path())),
                             "AuthResponse::Auths".to_owned(),
-                        );
+                        );                        
                         return Err(e);
                     };
                     subjects
@@ -643,7 +652,8 @@ impl Handler<Node> for Node {
         ctx: &mut ActorContext<Node>,
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
-            // TODO Propagar error.
+            error!(TARGET_NODE, "OnEvent, can not persist information: {}", e);
+            let _ = ctx.emit_error(e).await;
         };
     }
 }
