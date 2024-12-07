@@ -12,8 +12,6 @@ pub mod response;
 mod runner;
 pub mod schema;
 
-const TARGET_EVALUATION: &str = "Kore-Evaluation";
-
 use crate::{
     governance::{model::Roles, Quorum},
     model::{
@@ -41,7 +39,9 @@ use identity::identifier::{derive::digest::DigestDerivator, KeyIdentifier};
 use request::{EvaluationReq, SubjectContext};
 use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, warn};
+
+const TARGET_EVALUATION: &str = "Kore-Evaluation";
 
 use std::collections::HashSet;
 // TODO cuando se recibe una evaluación, validación lo que sea debería venir firmado y comprobar que es de quien dice ser, cuando llega por la network y cuando la envía un usuario.
@@ -291,6 +291,7 @@ impl Handler<Evaluation> for Evaluation {
                 {
                     event.subject_id
                 } else {
+                    error!(TARGET_EVALUATION, "Create, only can evaluate Fact request");
                     let e = ActorError::FunctionalFail(
                         "Only can eval Fact requests".to_owned(),
                     );
@@ -301,6 +302,7 @@ impl Handler<Evaluation> for Evaluation {
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
                         Err(e) => {
+                            error!(TARGET_EVALUATION, "Create, can not get metadata: {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -323,6 +325,7 @@ impl Handler<Evaluation> for Evaluation {
                     {
                         Ok(data) => data,
                         Err(e) => {
+                            error!(TARGET_EVALUATION, "Create, can not get signersm quorum and gov version: {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -349,7 +352,10 @@ impl Handler<Evaluation> for Evaluation {
                 .await
                 {
                     Ok(signature) => signature,
-                    Err(e) => return Err(emit_fail(ctx, e).await),
+                    Err(e) => {
+                        error!(TARGET_EVALUATION, "Create, can not sign eval request: {}", e);
+                        return Err(emit_fail(ctx, e).await)
+                    },
                 };
 
                 let signed_evaluation_req: Signed<EvaluationReq> = Signed {
@@ -386,6 +392,7 @@ impl Handler<Evaluation> for Evaluation {
                                         ),
                                     );
                                 } else {
+                                    // TODO MIRAR ESTO
                                     unreachable!();
                                 }
                                 self.evaluators_response.push(response);
@@ -408,6 +415,7 @@ impl Handler<Evaluation> for Evaluation {
                                     let e = ActorError::FunctionalFail(
                                         "Can not get eval request".to_owned(),
                                     );
+                                    error!(TARGET_EVALUATION, "Response, can not get eval request: {}", e);
                                     return Err(emit_fail(ctx, e).await);
                                 };
 
@@ -418,6 +426,7 @@ impl Handler<Evaluation> for Evaluation {
                                 )
                                 .await
                                 {
+                                    error!(TARGET_EVALUATION, "Response, can not send reboot to Request actor: {}", e);
                                     return Err(emit_fail(ctx, e).await);
                                 }
                                 self.reboot = true;
@@ -443,6 +452,7 @@ impl Handler<Evaluation> for Evaluation {
                                 match self.fail_evaluation(ctx).await {
                                     Ok(res) => res,
                                     Err(e) => {
+                                        error!(TARGET_EVALUATION, "Response, can not create evaluation response: {}", e);
                                         return Err(emit_fail(ctx, e).await);
                                     }
                                 }
@@ -451,6 +461,7 @@ impl Handler<Evaluation> for Evaluation {
                             if let Err(e) =
                                 self.send_evaluation_to_req(ctx, response).await
                             {
+                                error!(TARGET_EVALUATION, "Response, can send evaluation to request actor: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             };
                         } else if self.evaluators.is_empty() {
@@ -458,17 +469,19 @@ impl Handler<Evaluation> for Evaluation {
                             {
                                 Ok(res) => res,
                                 Err(e) => {
+                                    error!(TARGET_EVALUATION, "Response, can not create evaluation response: {}", e);
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             };
                             if let Err(e) =
                                 self.send_evaluation_to_req(ctx, response).await
                             {
+                                error!(TARGET_EVALUATION, "Response, can send evaluation to request actor: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             };
                         }
                     } else {
-                        // TODO la respuesta no es válida, nos ha llegado una validación de alguien que no esperabamos o ya habíamos recibido la respuesta.
+                        warn!(TARGET_EVALUATION, "Response, A response has been received from someone we were not expecting.");
                     }
                 }
             }
@@ -482,6 +495,7 @@ impl Handler<Evaluation> for Evaluation {
         error: ActorError,
         ctx: &mut ActorContext<Evaluation>,
     ) -> ChildAction {
+        error!(TARGET_EVALUATION, "OnChildFault, {}", error);
         emit_fail(ctx, error).await;
         ChildAction::Stop
     }

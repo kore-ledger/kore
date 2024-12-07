@@ -33,6 +33,8 @@ pub mod approver;
 pub mod request;
 pub mod response;
 
+const TARGET_APPROVAL: &str = "Kore-Approval";
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Approval {
     node_key: KeyIdentifier,

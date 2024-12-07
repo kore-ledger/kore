@@ -59,9 +59,6 @@ pub enum Error {
     /// Store error.
     #[error("Store error: {0}")]
     Store(String),
-    /// Digest
-    #[error("Digest error: {0}")]
-    Digest(String),
     /// Signature
     #[error("Signature error: {0}")]
     Signature(String),

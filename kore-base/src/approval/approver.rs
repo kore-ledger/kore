@@ -30,6 +30,8 @@ use super::{
     Approval, ApprovalMessage,
 };
 
+const TARGET_APPROVER: &str = "Kore-Approval-Approver";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ApprovalStateRes {
     /// Request for approval which is in responded status and accepted

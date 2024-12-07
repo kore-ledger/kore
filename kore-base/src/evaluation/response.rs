@@ -11,6 +11,9 @@ use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use tracing::error;
+
+const TARGET_RESPONSE: &str = "Kore-Evaluation-Response";
 
 /// A struct representing an evaluation response.
 #[derive(
@@ -57,9 +60,10 @@ impl HashId for EvaluationRes {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |e| Error::HashID(format!("HashId for EvaluationRes fails: {}", e)),
-        )
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(|e| {
+            error!(TARGET_RESPONSE, "HashId for ProofEvent fails: {}", e);
+            Error::HashID(format!("HashId for ProofEvent fails: {}", e))
+        })
     }
 }
 

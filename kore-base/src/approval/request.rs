@@ -9,6 +9,9 @@ use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use tracing::error;
+
+const TARGET_REQUEST: &str = "Kore-Approval-Request";
 
 /// A struct representing an approval request.
 #[derive(
@@ -44,7 +47,10 @@ impl HashId for ApprovalReq {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| Error::Approval("HashId for ApprovalRequest Fails".to_string()),
+            |e| {
+                error!(TARGET_REQUEST, "HashId for ApprovalReq fails: {}", e);
+                Error::HashID(format!("HashId for ApprovalReq fails: {}", e))
+            },
         )
     }
 }

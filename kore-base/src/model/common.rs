@@ -26,8 +26,11 @@ use crate::{
     NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
     Subject, SubjectMessage, SubjectResponse, SubjectsTypes,
 };
+use tracing::error;
 
 use super::{event::ProtocolsSignatures, HashId, Namespace};
+
+const TARGET_COMMON: &str = "Kore-Model-Common";
 
 #[derive(Debug, Default)]
 pub struct MemoryManager {
@@ -399,6 +402,7 @@ where
     A: Actor + Handler<A>,
 {
     if let Err(e) = ctx.emit_fail(error.clone()).await {
+        error!(TARGET_COMMON, "EmitFail, can not emit fail: {}", e);
         ctx.system().send_event(SystemEvent::StopSystem).await;
     };
     error

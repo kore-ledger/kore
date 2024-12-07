@@ -125,7 +125,10 @@ impl HashId for SubjectID {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |e| Error::HashID(format!("HashId for SubjectID fails: {}", e)),
+            |e| {
+                error!(TARGET_SUBJECT, "HashId for SubjectID fails: {}", e);
+                Error::HashID(format!("HashId for SubjectID fails: {}", e))
+            },
         )
     }
 }
@@ -2305,7 +2308,7 @@ mod tests {
                 init_state, derivator,
             )
             .map_err(|_| {
-                Error::Digest("Error converting state to hash".to_owned())
+                Error::HashID("Error converting state to hash".to_owned())
             })?;
 
             Ok(KoreEvent {

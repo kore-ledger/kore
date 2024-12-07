@@ -20,6 +20,8 @@ use crate::{
 
 pub mod distributor;
 
+const TARGET_DISTRIBUTION: &str = "Kore-Distribution";
+
 #[derive(Default)]
 pub struct Distribution {
     witnesses: HashSet<KeyIdentifier>,

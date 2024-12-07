@@ -25,6 +25,8 @@ use crate::{
     SubjectResponse,
 };
 
+const TARGET_DISTRIBUTOR: &str = "Kore-Distribution-Distributor";
+
 use super::{Distribution, DistributionMessage};
 
 pub struct Distributor {

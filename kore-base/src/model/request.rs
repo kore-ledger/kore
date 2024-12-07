@@ -14,6 +14,9 @@ use identity::identifier::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use tracing::error;
+
+const TARGET_REQUEST: &str = "Kore-Model-Request";
 
 pub enum EventRequestType {
     Create,
@@ -173,7 +176,10 @@ impl HashId for EventRequest {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| Error::Signature("HashId for EventRequest Fails".to_string()),
+            |e| {
+                error!(TARGET_REQUEST, "HashId for EventRequest fails: {}", e);
+                Error::HashID(format!("HashId for EventRequest fails: {}", e))
+            },
         )
     }
 }
@@ -184,7 +190,10 @@ impl HashId for Signed<EventRequest> {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |_| Error::Subject("HashId for Signed Event Fails".to_string()),
+            |e| {
+                error!(TARGET_REQUEST, "HashId for Signed<EventRequest> fails: {}", e);
+                Error::HashID(format!("HashId for Signed<EventRequest> fails: {}", e))
+            },
         )
     }
 }
@@ -232,8 +241,9 @@ impl TryFrom<Signed<EventRequest>> for KoreRequest {
         event_request: Signed<EventRequest>,
     ) -> Result<Self, Self::Error> {
         let id = DigestIdentifier::generate_with_blake3(&event_request)
-            .map_err(|_| {
-                Error::Digest("Error generation request hash".to_owned())
+            .map_err(|e| {
+                error!(TARGET_REQUEST, "HashId for KoreRequest fails: {}", e);
+                Error::HashID(format!("HashId for KoreRequest fails: {}", e))
             })?;
         let subject_id = match &event_request.content {
             EventRequest::Create(_) => None,

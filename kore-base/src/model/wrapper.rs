@@ -13,9 +13,12 @@ use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
+use tracing::error;
 
 use core::str;
 use std::io::{Read, Write};
+
+const TARGET_WRAPPER: &str = "Kore-Model-Wrapper";
 
 /// Wrapper of serde_json::Value implementing serialization and deserialization with Borsh.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -43,7 +46,10 @@ impl HashId for ValueWrapper {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator)
-            .map_err(|_| Error::Digest("Hashing error".to_string()))
+            .map_err(|e| {
+                error!(TARGET_WRAPPER, "HashId for SubjectID fails: {}", e);
+                Error::HashID(format!("HashId for SubjectID fails: {}", e))
+            })
     }
 }
 

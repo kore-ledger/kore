@@ -20,6 +20,8 @@ use crate::{
     ActorMessage, NetworkMessage,
 };
 
+const TARGET_AUTH: &str = "Kore-Auth";
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum AuthWitness {
     One(KeyIdentifier),

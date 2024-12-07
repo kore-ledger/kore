@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use borsh::{to_vec, BorshDeserialize};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tracing::error;
 use types::{
     Contract, ContractResult, GovernanceData, GovernanceEvent, RunnerResult,
 };
@@ -24,6 +25,8 @@ use crate::{
     },
     Error, ValueWrapper, GOVERNANCE,
 };
+
+const TARGET_RUNNER: &str = "Kore-Evaluation-Runner";
 
 pub mod types;
 
@@ -511,7 +514,10 @@ impl Handler<Runner> for Runner {
             msg.is_owner,
         )
         .await
-        .map_err(|e| ActorError::Functional(e.to_string()))?;
+        .map_err(|e| {
+            error!(TARGET_RUNNER, "A problem running contract: {}", e);
+            ActorError::Functional(e.to_string())
+        })?;
 
         Ok(RunnerResponse {
             result,

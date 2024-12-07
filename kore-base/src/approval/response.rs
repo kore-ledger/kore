@@ -9,8 +9,11 @@ use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use super::request::ApprovalReq;
+
+const TARGET_RESPONSE: &str = "Kore-Approval-Response";
 
 #[derive(
     Debug,
@@ -34,7 +37,10 @@ impl HashId for ApprovalRes {
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |e| Error::HashID(format!("HashId for ApprovalRes fails: {}", e)),
+            |e| {
+                error!(TARGET_RESPONSE, "HashId for ApprovalRes fails: {}", e);
+                Error::HashID(format!("HashId for ApprovalRes fails: {}", e))
+            },
         )
     }
 }
@@ -61,10 +67,8 @@ impl HashId for ApprovalSignature {
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
             |e| {
-                Error::HashID(format!(
-                    "HashId for ApprovalSignature fails: {}",
-                    e
-                ))
+                error!(TARGET_RESPONSE, "HashId for ApprovalSignature fails: {}", e);
+                Error::HashID(format!("HashId for ApprovalSignature fails: {}", e))
             },
         )
     }

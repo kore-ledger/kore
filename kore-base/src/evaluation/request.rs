@@ -9,7 +9,9 @@ use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
+const TARGET_REQUEST: &str = "Kore-Evaluation-Request";
 /// A struct representing an evaluation request.
 #[derive(
     Debug,
@@ -57,8 +59,9 @@ impl HashId for EvaluationReq {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |e| Error::HashID(format!("HashId for EvaluationReq fails: {}", e)),
-        )
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(|e| {
+            error!(TARGET_REQUEST, "HashId for ProofEvent fails: {}", e);
+            Error::HashID(format!("HashId for ProofEvent fails: {}", e))
+        })
     }
 }
