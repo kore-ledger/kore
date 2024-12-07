@@ -887,12 +887,12 @@ impl Handler<RequestHandler> for RequestHandler {
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_REQUEST, "OnEvent, can not persist information: {}", e);
-            let _ = ctx.emit_error(e).await;
+            ctx.system().send_event(SystemEvent::StopSystem).await;
         };
 
         if let Err(e) = ctx.publish_event(event).await {
             error!(TARGET_REQUEST, "PublishEvent, can not publish event: {}", e);
-            let _ = ctx.emit_error(e).await;
+            ctx.system().send_event(SystemEvent::StopSystem).await;
         }
     }
 }

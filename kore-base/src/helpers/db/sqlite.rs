@@ -2,6 +2,7 @@ use actor::{ActorRef, Subscriber};
 use async_trait::async_trait;
 use serde_json::json;
 use tokio_rusqlite::{params, Connection, OpenFlags};
+use tracing::error;
 
 use crate::approval::approver::ApproverEvent;
 use crate::error::Error;
@@ -16,6 +17,8 @@ use crate::subject::sinkdata::SinkDataEvent;
 use crate::Signed;
 
 use super::{Paginator, Querys, SignaturesDB, SubjectDB};
+
+const TARGET_SQLITE: &str = "Kore-Helper-Sqlite";
 
 #[derive(Clone)]
 pub struct SqliteLocal {
@@ -345,7 +348,7 @@ impl Subscriber<RequestManagerEvent> for SqliteLocal {
         {
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
-                println!("{}", e);
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
         };
     }
@@ -394,7 +397,7 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
         {
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
-                println!("{}", e);
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
         };
 
@@ -404,7 +407,7 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
                 .tell(DBManagerMessage::Delete(DeleteTypes::Request { id }))
                 .await
             {
-                println!("{}", e);
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
         }
     }
@@ -431,7 +434,7 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                     .map_err(|e| Error::ExtDB(format!(": {}", e)))
                 {
                     if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
-                        println!("{}",e);
+                        error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                     }
                 };
             }
@@ -457,7 +460,7 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                     })
                 {
                     if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
-                        println!("{}",e);
+                        error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                     }
                 };
             }
@@ -478,7 +481,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
                     if let Err(e) =
                         self.manager.tell(DBManagerMessage::Error(e)).await
                     {
-                        println!("{}", e);
+                        error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                     }
                     return;
                 };
@@ -497,7 +500,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
                     })
                 {
                     if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
-                        println!("{}",e);
+                        error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                     }
                 };
 
@@ -514,7 +517,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
             );
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
-                println!("{}", e);
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
             return;
         };
@@ -525,7 +528,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
             );
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
-                println!("{}", e);
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
             return;
         };
@@ -536,7 +539,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
             );
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
-                println!("{}", e);
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
             return;
         };
@@ -554,7 +557,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
             })
         {
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
-                println!("{}",e);
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
         };
     }
@@ -574,7 +577,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
             );
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
-                println!("{}", e);
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
             return;
         };
@@ -592,7 +595,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
                     if let Err(e) =
                         self.manager.tell(DBManagerMessage::Error(e)).await
                     {
-                        println!("{}", e);
+                        error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                     }
                     return;
                 };
@@ -615,7 +618,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
             })
             {
                 if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
-                    println!("{}",e);
+                    error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                 }
         };
     }
@@ -649,7 +652,7 @@ impl Subscriber<SinkDataEvent> for SqliteLocal {
         })
         {
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
-                println!("{}",e);
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
     };
     }

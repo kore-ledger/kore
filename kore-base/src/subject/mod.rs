@@ -1958,12 +1958,12 @@ impl Handler<Subject> for Subject {
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_SUBJECT, "OnEvent, can not persist information: {}", e);
-            let _ = ctx.emit_error(e).await;
+            emit_fail(ctx, e).await;
         };
 
         if let Err(e) = ctx.publish_event(event).await {
             error!(TARGET_SUBJECT, "PublishEvent, can not publish event: {}", e);
-            let _ = ctx.emit_error(e).await;
+            emit_fail(ctx, e).await;
         }
     }
 

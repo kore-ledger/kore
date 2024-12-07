@@ -653,7 +653,7 @@ impl Handler<Node> for Node {
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_NODE, "OnEvent, can not persist information: {}", e);
-            let _ = ctx.emit_error(e).await;
+            ctx.system().send_event(SystemEvent::StopSystem).await;
         };
     }
 }

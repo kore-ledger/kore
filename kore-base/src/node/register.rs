@@ -11,7 +11,7 @@ use tracing::{error, warn};
 use std::collections::HashMap;
 use store::store::PersistentActor;
 
-use crate::db::Storable;
+use crate::{db::Storable, model::common::emit_fail};
 
 const TARGET_REGISTER: &str = "Kore-Node-Register";
 
@@ -155,7 +155,7 @@ impl Handler<Register> for Register {
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_REGISTER, "OnEvent, can not persist information: {}", e);
-            let _ = ctx.emit_error(e).await;
+            emit_fail(ctx, e).await;
         };
     }
 }

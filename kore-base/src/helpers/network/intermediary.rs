@@ -22,9 +22,12 @@ use network::CommandHelper as Command;
 use network::{PeerId, PublicKey, PublicKeyEd25519, PublicKeysecp256k1};
 use rmp_serde::Deserializer;
 use serde::Deserialize;
+use tracing::error;
 use std::io::Cursor;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+
+const TARGET_NETWORK: &str = "Kore-Helper-Network";
 
 #[derive(Clone)]
 pub struct Intermediary {
@@ -71,9 +74,12 @@ impl Intermediary {
                 tokio::select! {
                     command = command_receiver.recv() => {
                         if let Some(command) = command{
-                            if let Err(Error::Network(_)) = clone.handle_command(command).await {
-                                clone.token.cancel();
-                                break;
+                            if let Err(e) = clone.handle_command(command).await {
+                                error!(TARGET_NETWORK, "{}", e);
+                                if let Error::Network(_) = e {
+                                    clone.token.cancel();
+                                    break;
+                                }
                             };
                         }
                     },

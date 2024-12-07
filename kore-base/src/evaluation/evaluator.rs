@@ -543,6 +543,7 @@ impl Handler<Evaluator> for Evaluator {
                         };
 
                         if let Err(e) = retry.tell(RetryMessage::End).await {
+                            error!(TARGET_EVALUATOR, "Can no end Retry actor: {}", e);
                             // Aquí me da igual, porque al parar este actor para el hijo
                             break 'retry;
                         };

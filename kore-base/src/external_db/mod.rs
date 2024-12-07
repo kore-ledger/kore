@@ -7,12 +7,15 @@ use actor::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
+use tracing::error;
 
 use crate::{
     db::Storable,
     error::Error,
     helpers::db::{ExternalDB, Querys},
 };
+
+const TARGET_EXTERNAL: &str = "Kore-ExternalDB";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DeleteTypes {
@@ -114,6 +117,7 @@ impl Handler<DBManager> for DBManager {
         let Some(helper): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
         else {
+            error!(TARGET_EXTERNAL, "Can not obtain ext_db helper");
             ctx.system().send_event(SystemEvent::StopSystem).await;
             let e = ActorError::NotHelper("ext_db".to_owned());
             return Err(e);
@@ -124,6 +128,7 @@ impl Handler<DBManager> for DBManager {
                 let Some(our_ref): Option<ActorRef<DBManager>> =
                     ctx.reference().await
                 else {
+                    error!(TARGET_EXTERNAL, "InitDelete, Can not obtain DBManager actor");
                     ctx.system().send_event(SystemEvent::StopSystem).await;
                     let e = ActorError::NotFound(ctx.path().clone());
                     return Err(e);
@@ -134,6 +139,7 @@ impl Handler<DBManager> for DBManager {
                 }
             }
             DBManagerMessage::Error(error) => {
+                error!(TARGET_EXTERNAL, "Error, Problem un Subscriber: {}", error);
                 let e = ActorError::FunctionalFail(error.to_string());
                 ctx.system().send_event(SystemEvent::StopSystem).await;
                 return Err(e);
@@ -145,6 +151,7 @@ impl Handler<DBManager> for DBManager {
                 let Some(our_ref): Option<ActorRef<DBManager>> =
                     ctx.reference().await
                 else {
+                    error!(TARGET_EXTERNAL, "InitDelete, Can not obtain DBManager actor");
                     let e = ActorError::NotFound(ctx.path().clone());
                     ctx.system().send_event(SystemEvent::StopSystem).await;
                     return Err(e);
@@ -167,7 +174,8 @@ impl Handler<DBManager> for DBManager {
         ctx: &mut ActorContext<DBManager>,
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
-            // TODO Propagar error.
+            error!(TARGET_EXTERNAL, "OnEvent, can not persist information: {}", e);
+            ctx.system().send_event(SystemEvent::StopSystem).await;
         };
     }
 }

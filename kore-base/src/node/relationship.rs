@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{error, warn};
 
-use crate::db::Storable;
+use crate::{db::Storable, model::common::emit_fail};
 
 const TARGET_RELATIONSHIP: &str = "Kore-Node-RelationShip";
 
@@ -147,7 +147,7 @@ impl Handler<RelationShip> for RelationShip {
     ) {
         if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_RELATIONSHIP, "OnEvent, can not persist information: {}", e);
-            let _ = ctx.emit_error(e).await;
+            emit_fail(ctx, e).await;
         };
     }
 }
