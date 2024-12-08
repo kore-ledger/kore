@@ -116,7 +116,7 @@ impl HashId for ValidationProof {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
             |e| {
                 error!(TARGET_PROOF, "HashId for ValidationProof fails: {}", e);
-                Error::Validation(format!("HashId for ValidationProof fails: {}", e))
+                Error::HashID(format!("HashId for ValidationProof fails: {}", e))
             },
         )
     }

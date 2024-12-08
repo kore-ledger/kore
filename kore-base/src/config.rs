@@ -3,11 +3,11 @@
 
 //! # Configuration module
 
-use std::time::Duration;
+use std::{default, time::Duration};
 
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use network::Config as NetworkConfig;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 /// Node configuration.
 #[derive(Clone, Debug, Deserialize)]
@@ -31,7 +31,7 @@ pub struct Config {
 }
 
 /// Database configuration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub enum KoreDbConfig {
     /// Rocksdb database.
     #[cfg(feature = "rocksdb")]
@@ -47,6 +47,15 @@ pub enum KoreDbConfig {
     },
 }
 
+impl Default for KoreDbConfig {
+    fn default() -> Self {        
+        #[cfg(feature = "rocksdb")]
+        return KoreDbConfig::Rocksdb { path: "expample/rockdb".to_owned() };
+        #[cfg(feature = "sqlite")]
+        return KoreDbConfig::SQLite { path:  "expample/sqlite".to_owned() };
+    }
+}
+
 impl KoreDbConfig {
     pub fn build(path: &str) -> Self {
         #[cfg(feature = "rocksdb")]
@@ -58,16 +67,35 @@ impl KoreDbConfig {
             path: path.to_owned(),
         };
     }
+
+    pub fn deserialize_db<'de, D>(deserializer: D) -> Result<KoreDbConfig, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let path: String = String::deserialize(deserializer)?;
+        #[cfg(feature = "rocksdb")]
+        return Ok(KoreDbConfig::Rocksdb { path });
+        #[cfg(feature = "sqlite")]
+        return Ok(DbSettings::Sqlite { path });
+    }
 }
 
 /// Database configuration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub enum ExternalDbConfig {
     /// SQLite database.
+    #[cfg(feature = "ext-sqlite")]
     SQLite {
         /// Path to the database.
         path: String,
     },
+}
+
+impl Default for ExternalDbConfig {
+    fn default() -> Self {
+        #[cfg(feature = "ext-sqlite")]
+        return ExternalDbConfig::SQLite { path: "expample/ext-sqlite".to_owned() };
+    }
 }
 
 impl ExternalDbConfig {
@@ -76,5 +104,14 @@ impl ExternalDbConfig {
         return ExternalDbConfig::SQLite {
             path: path.to_owned(),
         };
+    }
+
+    pub fn deserialize_db<'de, D>(deserializer: D) -> Result<ExternalDbConfig, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let path: String = String::deserialize(deserializer)?;
+        #[cfg(feature = "ext-sqlite")]
+        return Ok(ExternalDbConfig::SQLite { path });
     }
 }

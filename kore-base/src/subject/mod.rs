@@ -2289,7 +2289,7 @@ mod tests {
             derivator: DigestDerivator,
         ) -> Result<Self, Error> {
             let EventRequest::Create(start_request) = &request.content else {
-                return Err(Error::Event("Invalid Event Request".to_string()));
+                panic!("Invalid Event Request")
             };
             let public_key = KeyIdentifier::new(
                 subject_keys.get_key_derivator(),

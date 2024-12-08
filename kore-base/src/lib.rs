@@ -360,7 +360,7 @@ impl Api {
     ) -> Result<String, Error> {
         if let ApprovalStateRes::Obsolete = state {
             error!(TARGET_API, "Invalid approval state");
-            return Err(Error::Approval("Invalid approval state".to_owned()));
+            return Err(Error::RequestHandler("Invalid approval state".to_owned()));
         }
 
         let response = self

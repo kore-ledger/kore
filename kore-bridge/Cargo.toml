@@ -1,0 +1,31 @@
+[package]
+name = "kore-bridge"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kore-base = { path = "../kore-base"}
+network = { path = "../network" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+prometheus-client = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "signal"] }
+tokio-util = { workspace = true }
+identity = { path = "../identity"}
+hex-literal = "0.4.1"
+pkcs8 = { version = "0.10.2", features = ["encryption"]}
+borsh = { workspace = true }
+config = {version = "0.14.1", features = ["json", "toml", "yaml"]}
+clap = { version = "4.5.4", features = ["derive"] }
+
+[features]
+default = ["rockdb"]
+rockdb = []

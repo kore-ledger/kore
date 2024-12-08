@@ -56,9 +56,6 @@ pub enum Error {
     /// Node error.
     #[error("Node error: {0}")]
     Node(String),
-    /// Store error.
-    #[error("Store error: {0}")]
-    Store(String),
     /// Signature
     #[error("Signature error: {0}")]
     Signature(String),
@@ -74,13 +71,7 @@ pub enum Error {
     /// Subject error.
     #[error("Subject error: {0}")]
     Subject(String),
-    /// Event error.
-    #[error("Event error: {0}")]
-    Event(String),
-    /// Validation error.
-    #[error("Validation error: {0}")]
-    Validation(String),
-    /// Approval error.
-    #[error("Approval error: {0}")]
-    Approval(String),
+    /// Bridge error.
+    #[error("Subject error: {0}")]
+    Bridge(String),
 }
