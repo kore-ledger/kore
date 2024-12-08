@@ -26,6 +26,10 @@ borsh = { workspace = true }
 config = {version = "0.14.1", features = ["json", "toml", "yaml"]}
 clap = { version = "4.5.4", features = ["derive"] }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+serial_test = { workspace = true }
+
 [features]
 default = ["rockdb"]
 rockdb = []

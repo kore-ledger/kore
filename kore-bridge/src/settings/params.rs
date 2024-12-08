@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{default, time::Duration};
 
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use kore_base::config::{ExternalDbConfig, KoreDbConfig};
@@ -649,12 +649,6 @@ fn default_true() -> bool {
     true
 }
 
-fn default_protocol_name() -> Vec<String> {
-    vec![
-        "/kore/routing/1.0.0".to_owned(),
-        "/ipfs/ping/1.0.0".to_owned(),
-    ]
-}
 
 fn default_discovery_only_if_under_num() -> u64 {
     std::u64::MAX
@@ -662,10 +656,10 @@ fn default_discovery_only_if_under_num() -> u64 {
 
 #[derive(Debug, Deserialize)]
 struct BaseParams {
-    #[serde(default)]
-    key_derivator: KeyDerivatorParams,
-    #[serde(default)]
-    digest_derivator: DigestDerivatorParams,
+    #[serde(default = "default_key_derivator")]
+    key_derivator: KeyDerivator,
+    #[serde(default = "default_digest_derivator")]
+    digest_derivator: DigestDerivator,
     #[serde(default)]
     always_accept: bool,
     #[serde(default = "default_contracts_directory")]
@@ -705,14 +699,14 @@ impl BaseParams {
 
     fn mix_config(&self, other_config: BaseParams) -> Self {
         let key_derivator =
-            if other_config.key_derivator != KeyDerivatorParams::default() {
+            if other_config.key_derivator != default_key_derivator() {
                 other_config.key_derivator
             } else {
                 self.key_derivator.clone()
             };
 
         let digest_derivator = if other_config.digest_derivator
-            != DigestDerivatorParams::default()
+            != default_digest_derivator()
         {
             other_config.digest_derivator
         } else {
@@ -768,11 +762,11 @@ impl BaseParams {
 impl Default for BaseParams {
     fn default() -> Self {
         Self {
-            key_derivator: Default::default(),
-            digest_derivator: Default::default(),
+            key_derivator: default_key_derivator(),
+            digest_derivator: default_digest_derivator(),
             always_accept: Default::default(),
-            contracts_dir: Default::default(),
-            garbage_collector: Default::default(),
+            contracts_dir: default_contracts_directory(),
+            garbage_collector: default_garbage_collector_secs(),
             kore_db: Default::default(),
             external_db: Default::default(),
         }
@@ -780,62 +774,17 @@ impl Default for BaseParams {
 }
 
 fn default_garbage_collector_secs() -> Duration {
-    Duration::from_secs(500)
+    Duration::from_secs(100)
 }
 
 fn default_contracts_directory() -> String {
     "./contracts".to_owned()
 }
 
-#[derive(Deserialize, Debug, PartialEq, Clone)]
-enum KeyDerivatorParams {
-    /// The Ed25519 key derivator.
-    Ed25519,
-    /// The Secp256k1 key derivator.
-    Secp256k1,
+fn default_key_derivator() -> KeyDerivator {
+    KeyDerivator::Ed25519
 }
 
-impl From<KeyDerivatorParams> for KeyDerivator {
-    fn from(val: KeyDerivatorParams) -> Self {
-        match val {
-            KeyDerivatorParams::Ed25519 => KeyDerivator::Ed25519,
-            KeyDerivatorParams::Secp256k1 => KeyDerivator::Secp256k1,
-        }
-    }
-}
-
-/// Key derivators availables
-#[derive(Deserialize, Debug, PartialEq, Clone)]
-pub enum DigestDerivatorParams {
-    Blake3_256,
-    Blake3_512,
-    SHA2_256,
-    SHA2_512,
-    SHA3_256,
-    SHA3_512,
-}
-
-impl From<DigestDerivatorParams> for DigestDerivator {
-    fn from(val: DigestDerivatorParams) -> Self {
-        match val {
-            DigestDerivatorParams::Blake3_256 => DigestDerivator::Blake3_256,
-            DigestDerivatorParams::Blake3_512 => DigestDerivator::Blake3_512,
-            DigestDerivatorParams::SHA2_256 => DigestDerivator::SHA2_256,
-            DigestDerivatorParams::SHA2_512 => DigestDerivator::SHA2_512,
-            DigestDerivatorParams::SHA3_256 => DigestDerivator::SHA3_256,
-            DigestDerivatorParams::SHA3_512 => DigestDerivator::SHA3_512,
-        }
-    }
-}
-
-impl Default for KeyDerivatorParams {
-    fn default() -> Self {
-        Self::Ed25519
-    }
-}
-
-impl Default for DigestDerivatorParams {
-    fn default() -> Self {
-        Self::Blake3_256
-    }
+fn default_digest_derivator() ->  DigestDerivator {
+    DigestDerivator::Blake3_256
 }
