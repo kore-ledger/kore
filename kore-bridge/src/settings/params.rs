@@ -1,4 +1,4 @@
-use std::{default, time::Duration};
+use std::time::Duration;
 
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use kore_base::config::{ExternalDbConfig, KoreDbConfig};
@@ -58,8 +58,8 @@ impl From<Params> for Config {
             keys_path: params.kore.keys_path,
             prometheus: params.kore.prometheus,
             kore_config: kore_base::config::Config { 
-                key_derivator: KeyDerivator::from(params.kore.base.key_derivator), 
-                digest_derivator: DigestDerivator::from(params.kore.base.digest_derivator),
+                key_derivator: params.kore.base.key_derivator, 
+                digest_derivator: params.kore.base.digest_derivator,
                 kore_db: params.kore.base.kore_db, 
                 external_db: params.kore.base.external_db,
                 network: network::Config {
@@ -156,7 +156,7 @@ fn default_prometheus() -> String {
 }
 
 fn default_keys_path() -> String {
-    "examples/keys".to_owned()
+    "keys".to_owned()
 }
 
 #[derive(Debug, Deserialize)]
@@ -363,7 +363,7 @@ impl ControlListParams {
         let enable = if other_config.enable {
             true
         } else {
-            self.enable.clone()
+            self.enable
         };
 
         let allow_list = if !other_config.allow_list.is_empty() {
@@ -609,7 +609,7 @@ impl Default for RoutingParams {
             discovery_only_if_under_num: default_discovery_only_if_under_num(),
             allow_non_globals_in_dht: false,
             allow_private_ip: false,
-            enable_mdns: default_true(),
+            enable_mdns: false,
             kademlia_disjoint_query_paths: default_true(),
             kademlia_replication_factor: 0,
         }
@@ -702,7 +702,7 @@ impl BaseParams {
             if other_config.key_derivator != default_key_derivator() {
                 other_config.key_derivator
             } else {
-                self.key_derivator.clone()
+                self.key_derivator
             };
 
         let digest_derivator = if other_config.digest_derivator
@@ -710,7 +710,7 @@ impl BaseParams {
         {
             other_config.digest_derivator
         } else {
-            self.digest_derivator.clone()
+            self.digest_derivator
         };
 
         let always_accept = if other_config.always_accept {
@@ -731,7 +731,7 @@ impl BaseParams {
         {
             other_config.garbage_collector
         } else {
-            self.garbage_collector.clone()
+            self.garbage_collector
         };
 
         let external_db =
@@ -778,7 +778,7 @@ fn default_garbage_collector_secs() -> Duration {
 }
 
 fn default_contracts_directory() -> String {
-    "./contracts".to_owned()
+    "./".to_owned()
 }
 
 fn default_key_derivator() -> KeyDerivator {

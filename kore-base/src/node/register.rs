@@ -22,15 +22,24 @@ pub struct RegisterData {
     pub active: bool,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GovsData {
+    pub governance_id: String,
+    pub active: bool
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Register {
     register_gov: HashMap<String, bool>,
     register_subj: HashMap<String, Vec<RegisterData>>,
 }
 
+
 #[derive(Debug, Clone)]
 pub enum RegisterMessage {
-    GetAllGov,
+    GetGovs {
+        active: Option<bool>,
+    },
     GetSubj {
         gov_id: String,
         active: Option<bool>,
@@ -50,8 +59,8 @@ impl Message for RegisterMessage {}
 
 #[derive(Debug, Clone)]
 pub enum RegisterResponse {
-    Govs { governances: Vec<String> },
-    Subjs { subjects: Vec<String> },
+    Govs { governances: Vec<GovsData> },
+    Subjs { subjects: Vec<RegisterData> },
     None,
 }
 
@@ -95,10 +104,18 @@ impl Handler<Register> for Register {
         ctx: &mut actor::ActorContext<Register>,
     ) -> Result<RegisterResponse, ActorError> {
         match msg {
-            RegisterMessage::GetAllGov => {
-                return Ok(RegisterResponse::Govs {
-                    governances: self.register_gov.keys().cloned().collect(),
-                })
+            RegisterMessage::GetGovs { active } => {
+                if let Some(active) = active {
+                    return Ok(RegisterResponse::Govs { governances: self.register_gov.iter().filter(|x| *x.1 == active ).map(|x| GovsData {
+                        active: *x.1,
+                        governance_id: x.0.clone() 
+                    }).collect()});
+                } else {
+                    return Ok(RegisterResponse::Govs { governances: self.register_gov.iter().map(|x| GovsData {
+                        active: *x.1,
+                        governance_id: x.0.clone() 
+                    }).collect() });
+                }
             }
             RegisterMessage::GetSubj {
                 gov_id,
@@ -121,7 +138,7 @@ impl Handler<Register> for Register {
                             }
                         }
 
-                        subj.push(subject.subject_id.clone());
+                        subj.push(subject.clone());
                     }
 
                     return Ok(RegisterResponse::Subjs { subjects: subj });
@@ -167,6 +184,7 @@ impl PersistentActor for Register {
         match event {
             RegisterEvent::RegisterGov { gov_id, active } => {
                 self.register_gov.insert(gov_id.clone(), *active);
+                self.register_subj.insert(gov_id.clone(), vec![]);
             }
             RegisterEvent::RegisterSubj { gov_id, data } => {
                 self.register_subj

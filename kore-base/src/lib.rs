@@ -30,7 +30,7 @@ use error::Error;
 use governance::json_schema::JsonSchema;
 use governance::schema;
 use governance::{init::init_state, Governance};
-use helpers::db::{EventDB, ExternalDB, Paginator, SignaturesDB, SubjectDB};
+use helpers::db::ExternalDB;
 use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use identity::identifier::DigestIdentifier;
@@ -42,7 +42,7 @@ use model::HashId;
 use model::ValueWrapper;
 use model::{request::*, SignTypesNode};
 use network::{Monitor, NetworkWorker};
-use node::register::{Register, RegisterMessage, RegisterResponse};
+use node::register::{GovsData, Register, RegisterData, RegisterMessage, RegisterResponse};
 use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
 use once_cell::sync::OnceCell;
 use prometheus_client::registry::Registry;
@@ -50,6 +50,7 @@ use query::{Query, QueryMessage, QueryResponse};
 use request::{
     RequestData, RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
 };
+use serde_json::Value;
 use subject::{Subject, SubjectMessage, SubjectResponse};
 use system::system;
 use tokio_util::sync::CancellationToken;
@@ -328,7 +329,7 @@ impl Api {
     pub async fn get_approval(
         &self,
         subject_id: DigestIdentifier,
-    ) -> Result<(String, String), Error> {
+    ) -> Result<Value, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetApproval {
@@ -340,8 +341,8 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::ApprovalState { request, state } => {
-                Ok((request, state))
+            QueryResponse::ApprovalState { data } => {
+                Ok(data)
             }
             _ => {
                 error!(TARGET_API, "A response was received that was not the expected one");
@@ -484,8 +485,8 @@ impl Api {
         }
     }
 
-    pub async fn all_govs(&self) -> Result<Vec<String>, Error> {
-        let response = self.register.ask(RegisterMessage::GetAllGov).await
+    pub async fn all_govs(&self, active: Option<bool>) -> Result<Vec<GovsData>, Error> {
+        let response = self.register.ask(RegisterMessage::GetGovs { active }).await
         .map_err(|e| {
             error!(TARGET_API, "Can not get resgister governances: {}", e);
             Error::Register(format!("Can not get resgister governances: {}", e))
@@ -508,7 +509,7 @@ impl Api {
         gov_id: DigestIdentifier,
         active: Option<bool>,
         schema: Option<String>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<RegisterData>, Error> {
         let response= self
             .register
             .ask(RegisterMessage::GetSubj {
@@ -538,7 +539,7 @@ impl Api {
         subject_id: DigestIdentifier,
         quantity: Option<u64>,
         page: Option<u64>,
-    ) -> Result<(Vec<EventDB>, Paginator), Error> {
+    ) -> Result<Value, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetEvents {
@@ -552,8 +553,8 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Events { events, paginator } => {
-                Ok((events, paginator))
+            QueryResponse::Events { data } => {
+                Ok(data)
             }
             _ => {
                 error!(TARGET_API, "A response was received that was not the expected one");
@@ -568,7 +569,7 @@ impl Api {
     pub async fn get_subject(
         &self,
         subject_id: DigestIdentifier,
-    ) -> Result<SubjectDB, Error> {
+    ) -> Result<Value, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetSubject {
@@ -594,7 +595,7 @@ impl Api {
     pub async fn get_signatures(
         &self,
         subject_id: DigestIdentifier,
-    ) -> Result<SignaturesDB, Error> {
+    ) -> Result<Value, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetSignatures {

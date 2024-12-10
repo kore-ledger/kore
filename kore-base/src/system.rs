@@ -120,10 +120,9 @@ pub mod tests {
             key_derivator: KeyDerivator::Ed25519,
             digest_derivator: DigestDerivator::Blake3_256,
             kore_db: KoreDbConfig::build(path),
-            external_db: ExternalDbConfig::build(&format!(
-                "{}/database.db",
+            external_db: ExternalDbConfig::build(&
                 create_temp_dir()
-            )),
+            ),
             network: newtork_config,
             contracts_dir: create_temp_dir(),
             always_accept: false,

@@ -2,16 +2,18 @@ use std::{future::Future, str::FromStr};
 
 use config::Config;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
-use kore_base::{ approval::approver::ApprovalStateRes, auth::AuthWitness, error::Error, helpers::db::{EventDB, Paginator, SignaturesDB, SubjectDB}, model::{request::EventRequest, signature::{Signature, Signed}}, request::RequestData, Api as KoreApi };
+pub use kore_base::{ node::register::RegisterData, node::register::GovsData, approval::approver::ApprovalStateRes, auth::AuthWitness, error::Error, helpers::db::{EventDB, Paginator, SignaturesDB, SubjectDB}, model::{request::EventRequest, signature::{Signature, Signed}}, request::RequestData, Api as KoreApi };
 use model::BridgeSignedEventRequest;
 use prometheus_client::registry::Registry;
+use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use utils::key_pair;
 
-mod model;
-mod config;
-mod settings;
-mod utils;
+pub mod model;
+pub mod config;
+pub mod settings;
+pub mod utils;
+pub use clap;
 
 pub struct Bridge {
     api: KoreApi,
@@ -19,7 +21,7 @@ pub struct Bridge {
 }
 
 impl Bridge {
-    pub async fn build(settings: Config, password: &str, token: Option<CancellationToken>,  shutdown_signal: Option<impl Future + Send + 'static>) -> Result<Self, Error> {
+    pub async fn build(settings: Config, password: &str, token: Option<CancellationToken>) -> Result<Self, Error> {
         let keys = key_pair(&settings, password)?;
         let mut registry = <Registry>::default();
 
@@ -30,11 +32,8 @@ impl Bridge {
 
         let api = KoreApi::new(keys, settings.kore_config, &mut registry, password, &token).await?;
 
-        if let Some (shutdown_signal) = shutdown_signal {
-            Self::bind_with_shutdown(token.clone(), shutdown_signal);
-        } else {
-            Self::bind_with_shutdown(token.clone(), tokio::signal::ctrl_c());
-        };
+        Self::bind_with_shutdown(token.clone(), tokio::signal::ctrl_c());
+        
 
         Ok(Self {
             api,
@@ -92,12 +91,12 @@ impl Bridge {
     pub async fn get_approval(
         &self,
         subject_id: String,
-    ) -> Result<(String, String), Error> {
+    ) -> Result<Value, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_approval(subject_id).await
     }
 
-    pub async fn post_approve(
+    pub async fn patch_approve(
         &self,
         subject_id: String,
         state: String
@@ -171,8 +170,8 @@ impl Bridge {
         self.api.update_subject(subject_id).await
     }
 
-    pub async fn get_all_govs(&self) -> Result<Vec<String>, Error> {
-        self.api.all_govs().await
+    pub async fn get_all_govs(&self, active: Option<bool>,) -> Result<Vec<GovsData>, Error> {
+        self.api.all_govs(active).await
     }
 
     pub async fn get_all_subjs(
@@ -180,7 +179,7 @@ impl Bridge {
         gov_id: String,
         active: Option<bool>,
         schema: Option<String>,
-    ) -> Result<Vec<String>, Error> {
+    ) -> Result<Vec<RegisterData>, Error> {
         let gov_id = DigestIdentifier::from_str(&gov_id).map_err(|e| Error::Bridge(format!("Invalid governance id: {}", e)))?;
         self.api.all_subjs(gov_id, active, schema).await
     }
@@ -190,7 +189,7 @@ impl Bridge {
         subject_id: String,
         quantity: Option<u64>,
         page: Option<u64>,
-    ) -> Result<(Vec<EventDB>, Paginator), Error> {
+    ) -> Result<Value, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_events(subject_id, quantity, page).await
     }
@@ -198,7 +197,7 @@ impl Bridge {
     pub async fn get_subject(
         &self,
         subject_id: String,
-    ) -> Result<SubjectDB, Error> {
+    ) -> Result<Value, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_subject(subject_id).await
     }
@@ -206,7 +205,7 @@ impl Bridge {
     pub async fn get_signatures(
         &self,
         subject_id: String,
-    ) -> Result<SignaturesDB, Error> {
+    ) -> Result<Value, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_signatures(subject_id).await
     }

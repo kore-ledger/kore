@@ -8,10 +8,11 @@ use actor::{
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tracing::{error, warn};
 
 use crate::helpers::db::{
-    EventDB, ExternalDB, Paginator, Querys, SignaturesDB, SubjectDB,
+    ExternalDB, Querys
 };
 
 const TARGET_QUERY: &str = "Kore-Query";
@@ -53,19 +54,17 @@ impl Message for QueryMessage {}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryResponse {
     Signatures {
-        signatures: SignaturesDB,
+        signatures: Value,
     },
     Subject {
-        subject: SubjectDB,
+        subject: Value,
     },
     Events {
-        events: Vec<EventDB>,
-        paginator: Paginator,
+        data: Value
     },
     RequestState(String),
     ApprovalState {
-        request: String,
-        state: String,
+        data: Value
     },
 }
 
@@ -133,13 +132,13 @@ impl Handler<Query> for Query {
                 quantity,
                 page,
             } => {
-                let (events, paginator) = helper
+                let data = helper
                     .get_events(&subject_id, quantity, page)
                     .await
                     .map_err(|e| {
                         warn!(TARGET_QUERY, "GetEvents, Can not obtain events: {}", e);
                         ActorError::Functional(e.to_string())})?;
-                Ok(QueryResponse::Events { events, paginator })
+                Ok(QueryResponse::Events { data })
             }
             QueryMessage::GetRequestState { request_id } => {
                 let res = helper
@@ -151,13 +150,13 @@ impl Handler<Query> for Query {
                 Ok(QueryResponse::RequestState(res))
             }
             QueryMessage::GetApproval { subject_id } => {
-                let (request, state) = helper
+                let data= helper
                     .get_approve_req(&subject_id)
                     .await
                     .map_err(|e| {
                         warn!(TARGET_QUERY, "GetApproval, Can not obtain approve request: {}", e);
                         ActorError::Functional(e.to_string())})?;
-                Ok(QueryResponse::ApprovalState { request, state })
+                Ok(QueryResponse::ApprovalState { data })
             }
         }
     }

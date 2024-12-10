@@ -11,6 +11,9 @@ use crate::{
 use crate::config::ExternalDbConfig;
 
 use actor::{ActorRef, Subscriber};
+use async_std::fs;
+use serde_json::Value;
+use std::path::Path;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "ext-sqlite")]
@@ -69,7 +72,7 @@ pub trait Querys {
     async fn get_approve_req(
         &self,
         subject_id: &str,
-    ) -> Result<(String, String), Error>;
+    ) -> Result<Value, Error>;
     // validators (not for user use).
     async fn get_last_validators(
         &self,
@@ -81,19 +84,19 @@ pub trait Querys {
         subject_id: &str,
         quantity: Option<u64>,
         page: Option<u64>,
-    ) -> Result<(Vec<EventDB>, Paginator), Error>;
+    ) -> Result<Value, Error>;
 
     // subject
     async fn get_subject_state(
         &self,
         subject_id: &str,
-    ) -> Result<SubjectDB, Error>;
+    ) -> Result<Value, Error>;
 
     // signatures
     async fn get_signatures(
         &self,
         subject_id: &str,
-    ) -> Result<SignaturesDB, Error>;
+    ) -> Result<Value, Error>;
 }
 
 #[derive(Clone)]
@@ -103,7 +106,6 @@ pub enum ExternalDB {
 }
 
 impl ExternalDB {
-    #[cfg(feature = "ext-sqlite")]
     pub async fn build(
         ext_db: ExternalDbConfig,
         manager: ActorRef<DBManager>,
@@ -111,6 +113,12 @@ impl ExternalDB {
         match ext_db {
             #[cfg(feature = "ext-sqlite")]
             ExternalDbConfig::SQLite { path } => {
+                if !Path::new(&path).exists() {
+                    fs::create_dir_all(&path).await.map_err(|e| {
+                        Error::Node(format!("Can not create src dir: {}", e))
+                    })?;
+                }
+                let path = format!("{}/database.db", path);
                 let sqlite = SqliteLocal::new(&path, manager).await?;
                 Ok(ExternalDB::SqliteLocal(sqlite))
             }
@@ -165,7 +173,7 @@ impl Querys for ExternalDB {
     async fn get_signatures(
         &self,
         subject_id: &str,
-    ) -> Result<SignaturesDB, Error> {
+    ) -> Result<Value, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -177,7 +185,7 @@ impl Querys for ExternalDB {
     async fn get_subject_state(
         &self,
         subject_id: &str,
-    ) -> Result<SubjectDB, Error> {
+    ) -> Result<Value, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -191,7 +199,7 @@ impl Querys for ExternalDB {
         subject_id: &str,
         quantity: Option<u64>,
         page: Option<u64>,
-    ) -> Result<(Vec<EventDB>, Paginator), Error> {
+    ) -> Result<Value, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -224,7 +232,7 @@ impl Querys for ExternalDB {
     async fn get_approve_req(
         &self,
         subject_id: &str,
-    ) -> Result<(String, String), Error> {
+    ) -> Result<Value, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {

@@ -3,7 +3,7 @@
 
 //! # Configuration module
 
-use std::{default, time::Duration};
+use std::time::Duration;
 
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use network::Config as NetworkConfig;
@@ -50,9 +50,9 @@ pub enum KoreDbConfig {
 impl Default for KoreDbConfig {
     fn default() -> Self {        
         #[cfg(feature = "rocksdb")]
-        return KoreDbConfig::Rocksdb { path: "expample/rockdb".to_owned() };
+        return KoreDbConfig::Rocksdb { path: "db/local/rockdb".to_owned() };
         #[cfg(feature = "sqlite")]
-        return KoreDbConfig::SQLite { path:  "expample/sqlite".to_owned() };
+        return KoreDbConfig::SQLite { path:  "db/local/sqlite".to_owned() };
     }
 }
 
@@ -94,7 +94,7 @@ pub enum ExternalDbConfig {
 impl Default for ExternalDbConfig {
     fn default() -> Self {
         #[cfg(feature = "ext-sqlite")]
-        return ExternalDbConfig::SQLite { path: "expample/ext-sqlite".to_owned() };
+        return ExternalDbConfig::SQLite { path: "db/ext/ext-sqlite".to_owned() };
     }
 }
 

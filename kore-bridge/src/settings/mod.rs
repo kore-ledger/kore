@@ -3,9 +3,9 @@ use std::env;
 use config::Config;
 use params::Params;
 
-mod command;
+pub mod command;
 use crate::config::Config as BridgeConfig;
-mod params;
+pub mod params;
 
 pub fn build_config(env: bool, file: &str) -> BridgeConfig {
     // Env configuration

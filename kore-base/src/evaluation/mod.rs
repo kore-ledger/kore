@@ -593,7 +593,7 @@ mod tests {
         };
 
         assert_eq!("In Approval", state);
-        let QueryResponse::ApprovalState { request, state } = query_actor
+        let QueryResponse::ApprovalState { data } = query_actor
             .ask(QueryMessage::GetApproval {
                 subject_id: subject_id.to_string(),
             })
@@ -603,8 +603,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(state, "Pending");
-        assert!(!request.is_empty());
+        assert_eq!(data["state"], "Pending");
 
         let RequestHandlerResponse::Response(res) = request_actor
             .ask(RequestHandlerMessage::ChangeApprovalState {
@@ -620,7 +619,7 @@ mod tests {
         assert_eq!(res, format!("The approval request for subject {} has changed to RespondedAccepted", subject_id.to_string()));
 
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let QueryResponse::ApprovalState { state, .. } = query_actor
+        let QueryResponse::ApprovalState { data } = query_actor
             .ask(QueryMessage::GetApproval {
                 subject_id: subject_id.to_string(),
             })
@@ -630,7 +629,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(state, "RespondedAccepted");
+        assert_eq!(data["state"], "RespondedAccepted");
 
         let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
             .ask(LedgerEventMessage::GetLastEvent)
@@ -819,7 +818,7 @@ mod tests {
 
         tokio::time::sleep(Duration::from_secs(3)).await;
 
-        let QueryResponse::ApprovalState { request, state } = query_actor
+        let QueryResponse::ApprovalState { data } = query_actor
             .ask(QueryMessage::GetApproval {
                 subject_id: subject_id.to_string(),
             })
@@ -829,8 +828,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(state, "Pending");
-        assert!(!request.is_empty());
+        assert_eq!(data["state"], "Pending");
 
         let RequestHandlerResponse::Response(res) = request_actor
             .ask(RequestHandlerMessage::ChangeApprovalState {
@@ -846,7 +844,7 @@ mod tests {
         assert_eq!(res, format!("The approval request for subject {} has changed to RespondedAccepted", subject_id.to_string()));
 
         tokio::time::sleep(Duration::from_secs(1)).await;
-        let QueryResponse::ApprovalState { state, .. } = query_actor
+        let QueryResponse::ApprovalState { data } = query_actor
             .ask(QueryMessage::GetApproval {
                 subject_id: subject_id.to_string(),
             })
@@ -856,7 +854,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(state, "RespondedAccepted");
+        assert_eq!(data["state"], "RespondedAccepted");
 
         let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
             .ask(LedgerEventMessage::GetLastEvent)

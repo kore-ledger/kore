@@ -336,6 +336,12 @@ impl PersistentActor for Node {
             }
         }
     }
+
+    fn update(&mut self, state: Self) {
+        self.known_subjects = state.known_subjects;
+        self.owned_subjects = state.owned_subjects;
+        self.temporal_subjects = state.temporal_subjects;
+    }
 }
 
 // TODO: SI algo falla cuando un sujeto es temporal hay que eliminarlo y limpiar la base de datos.

@@ -36,7 +36,7 @@ pub mod state;
 
 const TARGET_REQUEST: &str = "Kore-Request";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestData {
     pub request_id: String,
     pub subject_id: String,
@@ -477,7 +477,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     EventRequest::Fact(fact_request) => fact_request.subject_id,
                     EventRequest::Transfer(transfer_request) => {
                         if request.signature.signer != self.node_key {
-                            let e = "Only the node can sign creation events.";
+                            let e = "Only the node can sign transfer events.";
                             error!(TARGET_REQUEST, "NewRequest, {}", e);
                             return Err(ActorError::Functional(e.to_owned(),));
                         }
