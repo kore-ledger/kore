@@ -721,14 +721,20 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             .await
                     } else {
                         // TODO: No se puede comunicar con el helper, se debe cerrar
+                        error!(
+                            TARGET_WORKER,
+                            "Could not get network helper"
+                        );
                         self.cancel.cancel();
                         return;
                     };
                 if result.is_err() {
                     error!(
                         TARGET_WORKER,
-                        "Could not receive message from peer {}", peer_id
+                        "Could not send message to network helper"
                     );
+                    self.cancel.cancel();
+                    return;
                 } else {
                     trace!(
                         TARGET_WORKER,
@@ -760,7 +766,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         self.add_ephemeral_response(peer_id, channel);
                         self.send_event(NetworkEvent::MessageReceived {
                             peer: peer_id.to_string(),
-                            message: request.0,
+                            message: request.0.clone(),
                         })
                         .await;
 
@@ -769,6 +775,28 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             "Request received from peer {}.",
                             peer_id
                         );
+
+                        let result =
+                        if let Some(helper_sender) = self.helper_sender.as_ref() {
+                            helper_sender
+                                .send(CommandHelper::ReceivedMessage {
+                                    message: request.0,
+                                })
+                                .await
+                        } else {
+                            // TODO: No se puede comunicar con el helper, se debe cerrar
+                            self.cancel.cancel();
+                            return;
+                        };
+
+                        if result.is_err() {
+                            error!(
+                                TARGET_WORKER,
+                                "Could not send message to network helper"
+                            );
+                            self.cancel.cancel();
+                            return;
+                        }
 
                         self.messages_metric
                             .get_or_create(&MetricLabels {
@@ -794,10 +822,31 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                 self.send_event(
                                     NetworkEvent::MessageReceived {
                                         peer: peer_id.to_string(),
-                                        message: response.0,
+                                        message: response.0.clone(),
                                     },
                                 )
                                 .await;
+
+                                let result = if let Some(helper_sender) = self.helper_sender.as_ref() {
+                                    helper_sender
+                                        .send(CommandHelper::ReceivedMessage {
+                                            message: response.0,
+                                        })
+                                        .await
+                                } else {
+                                    // TODO: No se puede comunicar con el helper, se debe cerrar
+                                    self.cancel.cancel();
+                                    return;
+                                };
+
+                                if result.is_err() {
+                                    error!(
+                                        TARGET_WORKER,
+                                        "Could not send message to network helper"
+                                    );
+                                    self.cancel.cancel();
+                                    return;
+                                }
                             } else {
                                 error!(
                                     TARGET_WORKER,
