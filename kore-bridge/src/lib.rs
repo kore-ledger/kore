@@ -4,6 +4,7 @@ use config::Config;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 pub use kore_base::{ node::register::RegisterData, node::register::GovsData, approval::approver::ApprovalStateRes, auth::AuthWitness, error::Error, helpers::db::{EventDB, Paginator, SignaturesDB, SubjectDB}, model::{request::EventRequest, signature::{Signature, Signed}}, request::RequestData, Api as KoreApi };
 use model::BridgeSignedEventRequest;
+use prometheus::run_prometheus;
 use prometheus_client::registry::Registry;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
@@ -14,6 +15,7 @@ pub mod config;
 pub mod settings;
 pub mod utils;
 pub use clap;
+pub mod prometheus;
 
 pub struct Bridge {
     api: KoreApi,
@@ -32,9 +34,11 @@ impl Bridge {
 
         let api = KoreApi::new(keys, settings.kore_config, &mut registry, password, &token).await?;
 
+        #[cfg(feature = "prometheus")]
+        run_prometheus(registry, &settings.prometheus);
+
         Self::bind_with_shutdown(token.clone(), tokio::signal::ctrl_c());
         
-
         Ok(Self {
             api,
             cancellation: token,

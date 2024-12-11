@@ -65,19 +65,16 @@ impl Distribution {
 
         let our_key = self.node_key.clone();
 
-        if signer != our_key {
-            distributor_actor
-                .tell(DistributorMessage::NetworkDistribution {
+    
+        distributor_actor
+            .tell(DistributorMessage::NetworkDistribution {
                     ledger,
                     event,
                     node_key: signer,
                     our_key,
                     schema_id: schema_id.to_string(),
                 })
-                .await?
-        }
-
-        Ok(())
+                .await
     }
 
     async fn end_request(
@@ -155,7 +152,7 @@ impl Handler<Distribution> for Distribution {
                         },
                     };
 
-                let witnesses = if metadata.schema_id == "governance" {
+                let mut witnesses = if metadata.schema_id == "governance" {
                     governance.members_to_key_identifier()
                 } else {
                     governance
@@ -167,7 +164,9 @@ impl Handler<Distribution> for Distribution {
                         .0
                 };
 
-                if witnesses.len() == 1 && witnesses.contains(&self.node_key) {
+                let _ = witnesses.remove(&self.node_key);
+
+                if witnesses.len() == 0 {
                     if let Err(e) = self.end_request(ctx).await {
                         error!(TARGET_DISTRIBUTION, "Create, can not end distribution: {}", e);
                         return Err(emit_fail(ctx, e).await);

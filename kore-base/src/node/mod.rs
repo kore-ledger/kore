@@ -78,7 +78,6 @@ pub struct SubjectsVectors {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
     /// Owner of the node.
-    #[serde(skip)]
     owner: KeyPair,
     /// The node's owned subjects.
     owned_subjects: Vec<String>,
@@ -270,7 +269,6 @@ impl Actor for Node {
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Self::build_compilation_dir(ctx).await?;
-
         // Start store
         self.init_store("node", None, false, ctx).await?;
 
@@ -335,12 +333,6 @@ impl PersistentActor for Node {
                 self.change_subject_owner(subject_id.clone(), *iam_owner);
             }
         }
-    }
-
-    fn update(&mut self, state: Self) {
-        self.known_subjects = state.known_subjects;
-        self.owned_subjects = state.owned_subjects;
-        self.temporal_subjects = state.temporal_subjects;
     }
 }
 
