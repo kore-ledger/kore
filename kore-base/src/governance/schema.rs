@@ -45,12 +45,17 @@ pub fn schema() -> Value {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "version",
         "members",
         "schemas",
         "policies",
         "roles"
       ],
       "properties": {
+        "version": {
+          "type": "number",
+          "minimum": 0
+        },
         "members": {
           "type": "array",
           "items": {

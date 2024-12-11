@@ -490,7 +490,7 @@ pub fn generate_linker(
             "env",
             "cout",
             |_caller: Caller<'_, MemoryManager>, ptr: u32| {
-                println!("{}", ptr);
+                error!(TARGET_COMMON, "{}", ptr);
             },
         )
         .map_err(|e| {

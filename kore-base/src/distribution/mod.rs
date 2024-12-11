@@ -166,7 +166,7 @@ impl Handler<Distribution> for Distribution {
 
                 let _ = witnesses.remove(&self.node_key);
 
-                if witnesses.len() == 0 {
+                if witnesses.is_empty() {
                     if let Err(e) = self.end_request(ctx).await {
                         error!(TARGET_DISTRIBUTION, "Create, can not end distribution: {}", e);
                         return Err(emit_fail(ctx, e).await);

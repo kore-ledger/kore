@@ -26,6 +26,7 @@ borsh = { workspace = true }
 config = {version = "0.14.1", features = ["json", "toml", "yaml"]}
 clap = { version = "4.5.4", features = ["derive"] }
 axum = { version = "0.7.5", optional = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -333,6 +333,7 @@ impl Handler<Validation> for Validation {
                 self.validators.clone_from(&signers);
                 self.validators_quantity = signers.len() as u32;
                 self.request_id = request_id.to_string();
+                self.reboot = false;
 
                 let signature = match get_sign(
                     ctx,

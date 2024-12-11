@@ -344,6 +344,7 @@ impl Handler<Evaluation> for Evaluation {
                 self.request_id = request_id.to_string();
                 self.evaluators_signatures = vec![];
                 self.errors = String::default();
+                self.reboot = false;
 
                 let signature = match get_sign(
                     ctx,
@@ -364,14 +365,16 @@ impl Handler<Evaluation> for Evaluation {
                 };
 
                 for signer in signers {
-                    self.create_evaluators(
+                    if let Err(e) = self.create_evaluators(
                         ctx,
                         &self.request_id,
                         signed_evaluation_req.clone(),
                         &metadata.schema_id,
-                        signer,
+                        signer.clone(),
                     )
-                    .await?
+                    .await {
+                        error!(TARGET_EVALUATION, "Can not create evaluator {}: {}", signer, e);
+                    }
                 }
             }
             EvaluationMessage::Response {

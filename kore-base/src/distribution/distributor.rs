@@ -921,6 +921,7 @@ impl Handler<Distributor> for Distributor {
 
                 if let Err(e) = update_event(ctx, event.clone()).await {
                     if let ActorError::Functional(_) = e {
+                        warn!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update event: {}", e);
                     } else {
                         error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not update event: {}", e);
                         return Err(emit_fail(ctx, e).await);
@@ -1086,16 +1087,20 @@ impl Handler<Distributor> for Distributor {
                     // Si me actualicé ya no le digo nada más.
                     match last_sn.cmp(&last_sn_events) {
                         std::cmp::Ordering::Less => {
+                            // No apliqué todos los eventos, no quiero su event.
+                        }
+                        std::cmp::Ordering::Equal => {
+                            // Quiere decir que apliqué todos los eventos y todo fue bien.
                             if let Err(e) = update_event(ctx, event).await {
-                                error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update event: {}", e);
                                 if let ActorError::Functional(_) = e {
+                                    warn!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update event: {}", e);
                                     return Err(e);
                                 } else {
+                                    error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update event: {}", e);
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             };
                         }
-                        std::cmp::Ordering::Equal => {}
                         std::cmp::Ordering::Greater => {
                             let our_path = ActorPath::from(format!(
                                 "/user/node/{}/distributor",

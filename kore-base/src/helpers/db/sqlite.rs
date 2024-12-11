@@ -163,11 +163,19 @@ impl Querys for SqliteLocal {
             Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
-        let pages = if total % quantity == 0 {
+        if total == 0 {
+            return Err(Error::ExtDB(format!("There is no event for subject {}", subject_id)));
+        }
+
+        let mut pages = if total % quantity == 0 {
             total / quantity
         } else {
             total / quantity + 1
         };
+
+        if pages == 0 {
+            pages = 1;
+        }
 
         if page > pages {
             page = pages
@@ -697,12 +705,11 @@ impl Subscriber<SinkDataEvent> for SqliteLocal {
         .call(move |conn| {
             let _ =
                 conn.execute("INSERT OR REPLACE INTO subjects (subject_id, governance_id, genesis_gov_version, namespace, schema_id, owner, creator, active, sn, properties) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)", params![subject_id, governance_id, genesis_gov_version, namespace, schema_id, owner, creator, active, sn, properties])?;
-
             Ok(())
         })
         .await
         .map_err(|e| {
-            Error::ExtDB(format!(": {}", e))
+            Error::ExtDB(e.to_string())
         })
         {
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {

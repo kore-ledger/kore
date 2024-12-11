@@ -36,8 +36,6 @@ type SchemaKeyNameSpace = HashMap<(String, String), Vec<String>>;
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Governance {
-    /// The version of the governance
-    #[serde(default)]
     pub version: u64,
     /// The set of members.
     pub members: Vec<Member>,

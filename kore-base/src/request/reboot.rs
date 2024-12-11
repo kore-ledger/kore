@@ -34,10 +34,16 @@ impl Reboot {
         &mut self,
         ctx: &mut actor::ActorContext<Reboot>,
     ) -> Result<(), ActorError> {
-        let last_event =
-            get_last_event(ctx, &self.governance_id.to_string()).await?;
-        self.sn_ledger = last_event.content.sn;
-
+        self.sn_event = match get_last_event(ctx, &self.governance_id.to_string()).await {
+                Ok(last_event) => last_event.content.sn,
+                Err(e) => {
+                    if let ActorError::Functional(_) = e {
+                        0
+                    } else {
+                        return Err(e);
+                    }
+                }
+            };
         Ok(())
     }
 
@@ -65,7 +71,7 @@ impl Reboot {
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 if let Err(e) = actor.tell(request).await {
-                    error!(TARGET_REBOOT, "Sleep, can send Update message to Reboot actor: {}", e);
+                    error!(TARGET_REBOOT, "Sleep, can not send Update message to Reboot actor: {}", e);
                 }
             });
         } else {

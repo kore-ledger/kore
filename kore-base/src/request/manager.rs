@@ -11,7 +11,7 @@ use identity::identifier::{
 };
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use std::collections::HashSet;
 use store::store::PersistentActor;
 
@@ -46,7 +46,7 @@ use crate::{
 const TARGET_MANAGER: &str = "Kore-Request-Manager";
 
 use super::{
-    reboot::Reboot, state::RequestManagerState, RequestHandler,
+    reboot::{Reboot, RebootMessage}, state::RequestManagerState, RequestHandler,
     RequestHandlerMessage,
 };
 
@@ -88,6 +88,7 @@ impl RequestManager {
         ctx: &mut ActorContext<RequestManager>,
         val_info: ValidationInfo,
     ) -> Result<(), ActorError> {
+        info!(TARGET_MANAGER, "Init validation {}", self.id);
         let validation_path = ActorPath::from(format!(
             "/user/node/{}/validation",
             self.subject_id
@@ -113,6 +114,7 @@ impl RequestManager {
         &self,
         ctx: &mut ActorContext<RequestManager>,
     ) -> Result<(), ActorError> {
+        info!(TARGET_MANAGER, "Init evaluation {}", self.id);
         let evaluation_path = ActorPath::from(format!(
             "/user/node/{}/evaluation",
             self.subject_id
@@ -140,6 +142,7 @@ impl RequestManager {
         eval_req: EvaluationReq,
         eval_res: EvalLedgerResponse,
     ) -> Result<(), ActorError> {
+        info!(TARGET_MANAGER, "Init approvation {}", self.id);
         let approval_path =
             ActorPath::from(format!("/user/node/{}/approval", self.subject_id));
         let approval_actor: Option<ActorRef<Approval>> =
@@ -355,6 +358,7 @@ impl RequestManager {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
     ) -> Result<(), ActorError> {
+        info!(TARGET_MANAGER, "Init distribution {}", self.id);
         let distribution_path = ActorPath::from(format!(
             "/user/node/{}/distribution",
             event.content.subject_id
@@ -660,11 +664,20 @@ impl Handler<RequestManager> for RequestManager {
     ) -> Result<(), ActorError> {
         match msg {
             RequestManagerMessage::Reboot { governance_id } => {
+                info!(TARGET_MANAGER, "Init reboot {}", self.id);
                 if let RequestManagerState::Reboot = self.state.clone() {
                     let reboot = Reboot::new(governance_id);
-                    if let Err(e) = ctx.create_child("reboot", reboot).await {
-                        error!(TARGET_MANAGER, "Reboot, can not create Reboot actor: {}",e);
-                        return Err(emit_fail(ctx, e).await);
+                    let reboot_actor = match ctx.create_child("reboot", reboot).await {
+                        Ok(actor) => actor,
+                        Err(e) => {
+                            error!(TARGET_MANAGER, "Reboot, can not create Reboot actor: {}",e);
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    };
+
+                    if let Err(e) = reboot_actor.tell(RebootMessage::Init).await {
+                        error!(TARGET_MANAGER, "Reboot, can not send Init message to Reboot actor: {}",e);
+                            return Err(emit_fail(ctx, e).await);
                     }
                 } else {
                     self.on_event(
@@ -701,6 +714,7 @@ impl Handler<RequestManager> for RequestManager {
                 }
             }
             RequestManagerMessage::FinishReboot => {
+                info!(TARGET_MANAGER, "Finish reboot {}", self.id);
                 match self.request.content {
                     EventRequest::Fact(_) => {
                         if let Err(e) = self.evaluation(ctx).await {
@@ -736,6 +750,7 @@ impl Handler<RequestManager> for RequestManager {
                 };
             }
             RequestManagerMessage::Run => {
+                info!(TARGET_MANAGER, "Running {}", self.id);
                 match self.state.clone() {
                     RequestManagerState::Starting
                     | RequestManagerState::Reboot => {
@@ -813,6 +828,7 @@ impl Handler<RequestManager> for RequestManager {
                 };
             }
             RequestManagerMessage::ApprovalRes { result, signatures } => {
+                info!(TARGET_MANAGER, "Approval Response {}", self.id);
                 let (eval_req, eval_res, eval_signatures) =
                     if let RequestManagerState::Approval {
                         eval_req,
@@ -864,6 +880,7 @@ impl Handler<RequestManager> for RequestManager {
                 response,
                 signatures,
             } => {
+                info!(TARGET_MANAGER, "Evaluation Response {}", self.id);
                 if let RequestManagerState::Evaluation = self.state.clone() {
                 } else {
                     let e = ActorError::FunctionalFail(
@@ -919,6 +936,7 @@ impl Handler<RequestManager> for RequestManager {
                 }
             }
             RequestManagerMessage::FinishRequest => {
+                info!(TARGET_MANAGER, "Finish request {}", self.id);
                 if let RequestManagerState::Distribution { .. }
                 | RequestManagerState::Reboot = self.state.clone()
                 {
@@ -943,6 +961,7 @@ impl Handler<RequestManager> for RequestManager {
                 signatures,
                 errors,
             } => {
+                info!(TARGET_MANAGER, "Validation response {}", self.id);
                 let actual_state =
                     if let RequestManagerState::Validation(state) =
                         self.state.clone()
@@ -970,6 +989,7 @@ impl Handler<RequestManager> for RequestManager {
                 }
             }
             RequestManagerMessage::Fact => {
+                info!(TARGET_MANAGER, "Init Fact event {}", self.id);
                 if let RequestManagerState::Starting = self.state {
                 } else {
                     let e = ActorError::FunctionalFail(
@@ -985,6 +1005,7 @@ impl Handler<RequestManager> for RequestManager {
                 };
             }
             RequestManagerMessage::Other => {
+                info!(TARGET_MANAGER, "Init not Fact event {}", self.id);
                 if let RequestManagerState::Starting = self.state {
                 } else {
                     let e = ActorError::FunctionalFail(

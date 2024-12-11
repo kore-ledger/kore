@@ -8,6 +8,7 @@ use crate::model::ValueWrapper;
 
 pub fn init_state(owner_key: &str) -> ValueWrapper {
     ValueWrapper(serde_json::json!({
+        "version": 0,
         "members": [
           {
             "id": owner_key,
@@ -97,6 +98,6 @@ mod test {
         let init_state =
             init_state("EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE");
         let schema = JsonSchema::compile(&schema()).unwrap();
-        assert_eq!(schema.fast_validate(&init_state.0), true);
+        assert!(schema.fast_validate(&init_state.0));
     }
 }

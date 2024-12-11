@@ -4,8 +4,11 @@ use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use kore_base::config::{ExternalDbConfig, KoreDbConfig};
 use network::{NodeType, RoutingNode};
 use serde::{Deserialize, Deserializer};
+use tracing::error;
 
 use crate::config::Config;
+
+const TARGET_PARAMS: &str = "Kore-Bridge-Params";
 
 #[derive(Debug, Deserialize, Default)]
 pub struct Params {
@@ -100,14 +103,14 @@ impl KoreParams {
         let config = config
             .build()
             .map_err(|e| {
-                println!("Error building config: {}", e);
+                error!(TARGET_PARAMS, "Error building config: {}", e);
             })
             .unwrap();
 
         let kore_params: KoreParams = config
             .try_deserialize()
             .map_err(|e| {
-                println!("Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
             })
             .unwrap();
 
@@ -195,14 +198,14 @@ impl NetworkParams {
         let config = config
             .build()
             .map_err(|e| {
-                println!("Error building config: {}", e);
+                error!(TARGET_PARAMS,"Error building config: {}", e);
             })
             .unwrap();
 
         let network: NetworkParams = config
             .try_deserialize()
             .map_err(|e| {
-                println!("Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
             })
             .unwrap();
 
@@ -347,14 +350,14 @@ impl ControlListParams {
         let config = config
             .build()
             .map_err(|e| {
-                println!("Error building config: {}", e);
+                error!(TARGET_PARAMS,"Error building config: {}", e);
             })
             .unwrap();
 
         config
             .try_deserialize()
             .map_err(|e| {
-                println!("Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
             })
             .unwrap()
     }
@@ -432,14 +435,14 @@ impl TellParams {
         let config = config
             .build()
             .map_err(|e| {
-                println!("Error building config: {}", e);
+                error!(TARGET_PARAMS,"Error building config: {}", e);
             })
             .unwrap();
 
         config
             .try_deserialize()
             .map_err(|e| {
-                println!("Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
             })
             .unwrap()
     }
@@ -528,14 +531,14 @@ impl RoutingParams {
         let config = config
             .build()
             .map_err(|e| {
-                println!("Error building config: {}", e);
+                error!(TARGET_PARAMS,"Error building config: {}", e);
             })
             .unwrap();
 
         config
             .try_deserialize()
             .map_err(|e| {
-                println!("Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
             })
             .unwrap()
     }
@@ -685,14 +688,14 @@ impl BaseParams {
         let config = config
             .build()
             .map_err(|e| {
-                println!("Error building config: {}", e);
+                error!(TARGET_PARAMS,"Error building config: {}", e);
             })
             .unwrap();
 
         config
             .try_deserialize()
             .map_err(|e| {
-                println!("Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
             })
             .unwrap()
     }

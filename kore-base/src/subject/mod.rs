@@ -943,10 +943,6 @@ impl Subject {
 
         // Mirar que sea el siguiente sn
         if last_ledger.content.sn + 1 != new_ledger.content.sn {
-            println!(
-                "ERROR SN {} {}",
-                last_ledger.content.sn, new_ledger.content.sn
-            );
             return Err(Error::Sn);
         }
 
@@ -1366,9 +1362,10 @@ impl Subject {
             if let Err(e) = self.verify_new_ledger_events_gov(ctx, events).await
             {
                 if let ActorError::Functional(e) = e {
-                    println!("{}", e);
+                    warn!(TARGET_SUBJECT, "Error verifying new events: {}", e);
                     // TODO falló pero pudo aplicar algún evento entonces seguimos.
                 } else {
+                    error!(TARGET_SUBJECT, "Error verifying new events {}", e);
                     return Err(e);
                 }
             };
@@ -1651,8 +1648,7 @@ impl Subject {
                 self.verify_new_ledger_events_not_gov(ctx, events).await
             {
                 if let ActorError::Functional(e) = e {
-                    println!("{}", e);
-                    // TODO falló pero pudo aplicar algún evento entonces seguimos.
+                    warn!(TARGET_SUBJECT, "Error verifying new events: {}", e);
                 } else {
                     return Err(e);
                 }
@@ -1994,7 +1990,7 @@ impl PersistentActor for Subject {
         ) {
             Ok(is_ok) => is_ok,
             Err(e) => {
-                println!("{}", e);
+                error!(TARGET_SUBJECT, "Apply, can not verify protocols state: {}", e);
                 return;
             }
         };
@@ -2007,7 +2003,7 @@ impl PersistentActor for Subject {
                     {
                         Ok(hash) => hash,
                         Err(e) => {
-                            println!("{}", e);
+                            error!(TARGET_SUBJECT, "Apply, can not obtain last event hash id: {}", e);
                             return;
                         }
                     };
@@ -2019,7 +2015,7 @@ impl PersistentActor for Subject {
                     let json_patch = match event.content.value.clone() {
                         LedgerValue::Patch(value_wrapper) => value_wrapper,
                         LedgerValue::Error(e) => {
-                            println!("{:?}", e);
+                            error!(TARGET_SUBJECT, "Apply, event value can not be an error if protocols was successful: {:?}", e);
                             return;
                         }
                     };
@@ -2028,13 +2024,13 @@ impl PersistentActor for Subject {
                         match serde_json::from_value::<Patch>(json_patch.0) {
                             Ok(patch) => patch,
                             Err(e) => {
-                                println!("{}", e);
+                                error!(TARGET_SUBJECT, "Apply, can not obtain json patch: {}", e);
                                 return;
                             }
                         };
 
                     if let Err(e) = patch(&mut self.properties.0, &patch_json) {
-                        println!("{}", e);
+                        error!(TARGET_SUBJECT, "Apply, can not apply json patch: {}", e);
                         return;
                     };
                 }
@@ -2053,7 +2049,7 @@ impl PersistentActor for Subject {
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => gov,
                         Err(e) => {
-                            println!("{}", e);
+                            error!(TARGET_SUBJECT, "Apply, can not governance_id is empty but can not convert propierties in governance data: {}", e);
                             return;
                         }
                     };
@@ -2062,7 +2058,7 @@ impl PersistentActor for Subject {
                 let gov_value = match to_value(gov) {
                     Ok(value) => value,
                     Err(e) => {
-                        println!("{}", e);
+                        error!(TARGET_SUBJECT, "Apply, can not convert governance data into Value: {}", e);
                         return;
                     }
                 };
@@ -2075,7 +2071,7 @@ impl PersistentActor for Subject {
             match event.hash_id(event.signature.content_hash.derivator) {
                 Ok(hash) => hash,
                 Err(e) => {
-                    println!("{}", e);
+                    error!(TARGET_SUBJECT, "Apply, can not obtain last event hash id: {}", e);
                     return;
                 }
             };

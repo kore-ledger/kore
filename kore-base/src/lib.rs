@@ -110,6 +110,46 @@ impl Api {
         let system =
             system(config.clone(), password, Some(token.clone())).await?;
 
+
+            let newtork_monitor = Monitor;
+            let newtork_monitor_actor = system
+                .create_root_actor("network_monitor", newtork_monitor)
+                .await
+                .map_err(|e| {
+                    error!(TARGET_API, "Can not create network_monitor actor {}", e);
+                    Error::System(e.to_string())
+                })?;
+    
+            let mut worker: NetworkWorker<NetworkMessage> = NetworkWorker::new(
+                registry,
+                keys.clone(),
+                config.network.clone(),
+                Some(newtork_monitor_actor),
+                config.key_derivator,
+                token.clone(),
+            )
+            .map_err(|e| {
+                error!(TARGET_API, "Can not create networt {}", e);
+                Error::Network(e.to_string())})?;
+    
+            // Create worker
+            let service = Intermediary::new(
+                worker.service().sender().clone(),
+                KeyDerivator::Ed25519,
+                system.clone(),
+                token.clone(),
+            );
+    
+            let peer_id = worker.local_peer_id().to_string();
+    
+            worker.add_helper_sender(service.service().sender());
+    
+            system.add_helper("network", service).await;
+    
+            tokio::spawn(async move {
+                let _ = worker.run().await;
+            });
+
         let node = Node::new(&keys)?;
         let node_actor = system
             .create_root_actor("node", node)
@@ -160,45 +200,6 @@ impl Api {
                 error!(TARGET_API, "Can not create query actor {}", e);
                 Error::System(e.to_string())
             })?;
-
-        let newtork_monitor = Monitor;
-        let newtork_monitor_actor = system
-            .create_root_actor("network_monitor", newtork_monitor)
-            .await
-            .map_err(|e| {
-                error!(TARGET_API, "Can not create network_monitor actor {}", e);
-                Error::System(e.to_string())
-            })?;
-
-        let mut worker: NetworkWorker<NetworkMessage> = NetworkWorker::new(
-            registry,
-            keys.clone(),
-            config.network.clone(),
-            Some(newtork_monitor_actor),
-            config.key_derivator,
-            token.clone(),
-        )
-        .map_err(|e| {
-            error!(TARGET_API, "Can not create networt {}", e);
-            Error::Network(e.to_string())})?;
-
-        // Create worker
-        let service = Intermediary::new(
-            worker.service().sender().clone(),
-            KeyDerivator::Ed25519,
-            system.clone(),
-            token.clone(),
-        );
-
-        let peer_id = worker.local_peer_id().to_string();
-
-        worker.add_helper_sender(service.service().sender());
-
-        system.add_helper("network", service).await;
-
-        tokio::spawn(async move {
-            let _ = worker.run().await;
-        });
 
         Ok(Self {
             controller_id: keys.key_identifier().to_string(),

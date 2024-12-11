@@ -2,10 +2,13 @@ use std::env;
 
 use config::Config;
 use params::Params;
+use tracing::error;
 
 pub mod command;
 use crate::config::Config as BridgeConfig;
 pub mod params;
+
+const TARGET_SETTING: &str = "Kore-Bridge-Settings";
 
 pub fn build_config(env: bool, file: &str) -> BridgeConfig {
     // Env configuration
@@ -24,14 +27,14 @@ pub fn build_config(env: bool, file: &str) -> BridgeConfig {
         let config = config
             .build()
             .map_err(|e| {
-                println!("Error building config: {}", e);
+                error!(TARGET_SETTING, "Error building config: {}", e);
             })
             .unwrap();
 
         params_file = config
             .try_deserialize()
             .map_err(|e| {
-                println!("Error try deserialize config: {}", e);
+                error!(TARGET_SETTING,"Error try deserialize config: {}", e);
             })
             .unwrap();
     }

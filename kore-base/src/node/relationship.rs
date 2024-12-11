@@ -170,7 +170,7 @@ impl PersistentActor for RelationShip {
                     {
                         vec.remove(pos);
                     } else {
-                        println!("Se intentó borrar un sujeto que no estaba registrado");
+                        error!(TARGET_RELATIONSHIP, "An attempt was made to delete a subject that was not registered");
                     };
                 });
             }

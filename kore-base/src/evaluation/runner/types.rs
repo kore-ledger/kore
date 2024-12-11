@@ -32,6 +32,7 @@ pub enum Contract {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GovernanceData {
+    pub version: u64,
     pub members: Vec<Member>,
     pub roles: Vec<Role>,
     pub schemas: Vec<Schema>,

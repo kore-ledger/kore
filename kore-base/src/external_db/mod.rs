@@ -52,7 +52,7 @@ impl DBManager {
                         if let Err(e) =
                             our_ref.tell(DBManagerMessage::Error(e)).await
                         {
-                            println!("{}", e);
+                            error!(TARGET_EXTERNAL, "{}", e);
                         };
                     };
                 }
@@ -61,7 +61,7 @@ impl DBManager {
             if let Err(e) =
                 our_ref.tell(DBManagerMessage::ConfirmDelete(delete)).await
             {
-                println!("{}", e);
+                error!(TARGET_EXTERNAL, "{}", e);
             };
         });
     }

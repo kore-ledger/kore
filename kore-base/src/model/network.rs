@@ -3,10 +3,13 @@ use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::{intermediary::Intermediary, NetworkMessage};
 
 use super::{common::emit_fail, TimeStamp};
+
+const TARGET_NETWORK: &str = "Kore-Model-Network";
 
 #[derive(
     Debug,
@@ -50,6 +53,7 @@ impl Handler<RetryNetwork> for RetryNetwork {
 
         let Some(mut helper) = helper else {
             let e = ActorError::NotHelper("network".to_owned());
+            error!(TARGET_NETWORK, "Can not obtain network helper");
             return Err(emit_fail(ctx, e).await);
         };
 
@@ -57,6 +61,7 @@ impl Handler<RetryNetwork> for RetryNetwork {
             .send_command(network::CommandHelper::SendMessage { message: msg })
             .await
         {
+            error!(TARGET_NETWORK, "Can not send message to network helper");
             return Err(emit_fail(ctx, e).await);
         };
         Ok(())

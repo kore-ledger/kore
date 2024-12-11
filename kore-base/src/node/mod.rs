@@ -187,16 +187,37 @@ impl Node {
         &self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
+        let Some(ext_db): Option<ExternalDB> =
+            ctx.system().get_helper("ext_db").await
+            else {
+                return Err(ActorError::NotHelper("ext_db".to_owned()));
+            };
+
         for subject in self.owned_subjects.clone() {
-            ctx.create_child(&subject, Subject::default()).await?;
+            let subject_actor = ctx.create_child(&subject, Subject::default()).await?;
+            let sink = Sink::new(
+                subject_actor.subscribe(),
+                ext_db.get_subject(),
+            );
+            ctx.system().run_sink(sink).await;
         }
 
         for subject in self.known_subjects.clone() {
-            ctx.create_child(&subject, Subject::default()).await?;
+            let subject_actor = ctx.create_child(&subject, Subject::default()).await?;
+            let sink = Sink::new(
+                subject_actor.subscribe(),
+                ext_db.get_subject(),
+            );
+            ctx.system().run_sink(sink).await;
         }
 
         for subject in self.temporal_subjects.clone() {
-            ctx.create_child(&subject, Subject::default()).await?;
+            let subject_actor = ctx.create_child(&subject, Subject::default()).await?;
+            let sink = Sink::new(
+                subject_actor.subscribe(),
+                ext_db.get_subject(),
+            );
+            ctx.system().run_sink(sink).await;
         }
 
         Ok(())
