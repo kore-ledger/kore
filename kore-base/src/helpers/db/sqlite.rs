@@ -20,7 +20,7 @@ use crate::Signed;
 
 use super::{Paginator, Querys, SignaturesDB, SubjectDB};
 
-const TARGET_SQLITE: &str = "Kore-Helper-Sqlite";
+const TARGET_SQLITE: &str = "Kore-Helper-DB-Sqlite";
 
 #[derive(Clone)]
 pub struct SqliteLocal {

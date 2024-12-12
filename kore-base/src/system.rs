@@ -4,7 +4,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     db::Database,
     external_db::DBManager,
-    helpers::{db::ExternalDB, encrypted_pass::EncryptedPass},
+    helpers::{db::ExternalDB, encrypted_pass::EncryptedPass, sink::KoreSink},
     Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR,
 };
 
@@ -29,6 +29,10 @@ pub async fn system(
     // Build database manager.
     let db_manager = Database::open(&config.kore_db);
     system.add_helper("store", db_manager).await;
+
+    // Build sink manager.
+    let kore_sink = KoreSink::new(config.sink);
+    system.add_helper("sink", kore_sink).await;
 
     // Helper memory encryption for passwords to be used in secure stores.
     let encrypted_pass = EncryptedPass::new(password)?;
@@ -127,6 +131,7 @@ pub mod tests {
             contracts_dir: create_temp_dir(),
             always_accept: false,
             garbage_collector: Duration::from_secs(500),
+            sink: "".to_owned()
         };
 
         let sys = system(config.clone(), "password", None).await.unwrap();

@@ -62,6 +62,7 @@ async fn create_node1() -> Api {
         contracts_dir: create_temp_dir(),
         always_accept: false,
         garbage_collector: Duration::from_secs(500),
+        sink: "".to_owned()
     };
 
     let mut registry = Registry::default();
@@ -100,6 +101,7 @@ async fn create_node2(peer_id: &str) -> Api {
         contracts_dir: create_temp_dir(),
         always_accept: false,
         garbage_collector: Duration::from_secs(500),
+        sink: "".to_owned()
     };
 
     let mut registry = Registry::default();

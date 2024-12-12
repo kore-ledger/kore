@@ -78,7 +78,7 @@ mod tests {
             "false",
         );
         std::env::set_var("KORE_NETWORK_ROUTING_KADEMLIA_REPLICATION_FACTOR", "30");
-//////////
+
         std::env::set_var("KORE_BASE_KEY_DERIVATOR", "Secp256k1");
         std::env::set_var("KORE_BASE_DIGEST_DERIVATOR", "Blake3_512");
         std::env::set_var("KORE_BASE_ALWAYS_ACCEPT", "true");
@@ -86,7 +86,7 @@ mod tests {
         std::env::set_var("KORE_BASE_KORE_DB", "./fake/db/path");
         std::env::set_var("KORE_BASE_EXTERNAL_DB", "./fake/db/path");
         std::env::set_var("KORE_BASE_GARBAGE_COLLECTOR", "1000");
-/////////
+        std::env::set_var("KORE_BASE_SINK", "http");
 
         std::env::set_var("KORE_NETWORK_PORT_REUSE", "true");
         std::env::set_var("KORE_NETWORK_USER_AGENT", "Kore2.0");
@@ -158,6 +158,7 @@ mod tests {
             config.kore_config.contracts_dir,
             "./fake_route"
         );
+        assert_eq!(config.kore_config.sink, "http");
         // TODO Test
         println!("{:?}", config.kore_config.external_db);
         println!("{:?}", config.kore_config.kore_db);
@@ -248,6 +249,7 @@ mod tests {
         std::env::remove_var("KORE_BASE_KORE_DB");
         std::env::remove_var("KORE_BASE_EXTERNAL_DB");
         std::env::remove_var("KORE_BASE_GARBAGE_COLLECTOR");
+        std::env::remove_var("KORE_BASE_SINK");
         std::env::remove_var("KORE_PROMETHEUS");
         std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ENABLE");
         std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ALLOW_LIST");

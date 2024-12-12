@@ -28,6 +28,7 @@ pub struct Config {
     pub always_accept: bool,
     /// Garbage collector acts
     pub garbage_collector: Duration,
+    pub sink: String
 }
 
 /// Database configuration.

@@ -60,7 +60,7 @@ impl From<Params> for Config {
         Self {
             keys_path: params.kore.keys_path,
             prometheus: params.kore.prometheus,
-            kore_config: kore_base::config::Config { 
+            kore_config: kore_base::config::Config {
                 key_derivator: params.kore.base.key_derivator, 
                 digest_derivator: params.kore.base.digest_derivator,
                 kore_db: params.kore.base.kore_db, 
@@ -77,7 +77,8 @@ impl From<Params> for Config {
                 },
                 contracts_dir: params.kore.base.contracts_dir,
                 always_accept: params.kore.base.always_accept,
-                garbage_collector: params.kore.base.garbage_collector
+                garbage_collector: params.kore.base.garbage_collector,
+                sink: params.kore.base.sink
             }
         }
     }
@@ -676,6 +677,8 @@ struct BaseParams {
     kore_db: KoreDbConfig,
     #[serde(default, deserialize_with = "ExternalDbConfig::deserialize_db")]
     external_db: ExternalDbConfig,
+    #[serde(default)]
+    sink: String
 }
 
 impl BaseParams {
@@ -750,6 +753,12 @@ impl BaseParams {
             self.kore_db.clone()
         };
 
+        let sink = if !other_config.sink.is_empty() {
+            other_config.sink
+        } else {
+            self.sink.clone()
+        };
+
         Self {
             key_derivator,
             digest_derivator,
@@ -758,6 +767,7 @@ impl BaseParams {
             garbage_collector,
             external_db,
             kore_db,
+            sink
         }
     }
 }
@@ -772,6 +782,7 @@ impl Default for BaseParams {
             garbage_collector: default_garbage_collector_secs(),
             kore_db: Default::default(),
             external_db: Default::default(),
+            sink: Default::default()
         }
     }
 }

@@ -734,7 +734,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         "Could not send message to network helper"
                     );
                     self.cancel.cancel();
-                    return;
                 } else {
                     trace!(
                         TARGET_WORKER,
@@ -845,7 +844,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                         "Could not send message to network helper"
                                     );
                                     self.cancel.cancel();
-                                    return;
                                 }
                             } else {
                                 error!(

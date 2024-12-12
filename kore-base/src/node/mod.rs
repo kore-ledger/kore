@@ -18,7 +18,7 @@ use crate::{
     db::Storable,
     distribution::distributor::Distributor,
     governance::init::init_state,
-    helpers::db::ExternalDB,
+    helpers::{db::ExternalDB, sink::KoreSink},
     model::{
         common::get_gov,
         event::Ledger,
@@ -193,12 +193,21 @@ impl Node {
                 return Err(ActorError::NotHelper("ext_db".to_owned()));
             };
 
+            let Some(kore_sink): Option<KoreSink> =
+            ctx.system().get_helper("sink").await
+            else {
+                return Err(ActorError::NotHelper("sink".to_owned()));
+            };
+
         for subject in self.owned_subjects.clone() {
             let subject_actor = ctx.create_child(&subject, Subject::default()).await?;
             let sink = Sink::new(
                 subject_actor.subscribe(),
                 ext_db.get_subject(),
             );
+            ctx.system().run_sink(sink).await;
+
+            let sink = Sink::new(subject_actor.subscribe(), kore_sink.clone());
             ctx.system().run_sink(sink).await;
         }
 
@@ -209,6 +218,9 @@ impl Node {
                 ext_db.get_subject(),
             );
             ctx.system().run_sink(sink).await;
+
+            let sink = Sink::new(subject_actor.subscribe(), kore_sink.clone());
+            ctx.system().run_sink(sink).await;
         }
 
         for subject in self.temporal_subjects.clone() {
@@ -217,6 +229,9 @@ impl Node {
                 subject_actor.subscribe(),
                 ext_db.get_subject(),
             );
+            ctx.system().run_sink(sink).await;
+
+            let sink = Sink::new(subject_actor.subscribe(), kore_sink.clone());
             ctx.system().run_sink(sink).await;
         }
 
@@ -410,6 +425,14 @@ impl Handler<Node> for Node {
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
+                let Some(kore_sink): Option<KoreSink> =
+                    ctx.system().get_helper("sink").await
+                else {
+                    error!(TARGET_NODE, "CreateNewSubjectLedger, Can not obtain sink helper");
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    return Err(ActorError::NotHelper("sink".to_owned()));
+                };
+
                 let subject = if let EventRequest::Create(create_event) =
                     ledger.content.event_request.content.clone()
                 {
@@ -458,6 +481,9 @@ impl Handler<Node> for Node {
 
                 let sink =
                     Sink::new(subject_actor.subscribe(), ext_db.get_subject());
+                ctx.system().run_sink(sink).await;
+
+                let sink = Sink::new(subject_actor.subscribe(), kore_sink.clone());
                 ctx.system().run_sink(sink).await;
 
                 self.on_event(
@@ -511,6 +537,14 @@ impl Handler<Node> for Node {
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
+                let Some(kore_sink): Option<KoreSink> =
+                    ctx.system().get_helper("sink").await
+                else {
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    error!(TARGET_NODE, "CreateNewSubjectReq, Can not obtain sink helper");
+                    return Err(ActorError::NotHelper("sink".to_owned()));
+                };
+
                 let subject = Subject::new(data.clone());
 
                 let child = ctx
@@ -518,6 +552,9 @@ impl Handler<Node> for Node {
                     .await?;
 
                 let sink = Sink::new(child.subscribe(), ext_db.get_subject());
+                ctx.system().run_sink(sink).await;
+
+                let sink = Sink::new(child.subscribe(), kore_sink.clone());
                 ctx.system().run_sink(sink).await;
 
                 self.on_event(
