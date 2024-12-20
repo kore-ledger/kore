@@ -287,7 +287,7 @@ async fn test_governance_copy() {
         .await
         .unwrap();
     println!("");
-    println!("{:?}", response);
+    println!("{:#?}", response);
     println!("");
 
     let response = node1.get_subject(subject_id.clone()).await.unwrap();

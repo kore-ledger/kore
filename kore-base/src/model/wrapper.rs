@@ -16,7 +16,7 @@ use serde_json::{Map, Number, Value};
 use tracing::error;
 
 use core::str;
-use std::io::{Read, Write};
+use std::{io::{Read, Write}, str::FromStr};
 
 const TARGET_WRAPPER: &str = "Kore-Model-Wrapper";
 
@@ -58,7 +58,9 @@ impl Serialize for ValueWrapper {
     where
         S: serde::ser::Serializer,
     {
-        serializer.serialize_str(&self.0.to_string())
+        let json_string = serde_json::to_string(&self.0)
+            .map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&json_string)
     }
 }
 
@@ -69,7 +71,7 @@ impl<'de> Deserialize<'de> for ValueWrapper {
     {
         let s =
             <std::string::String as Deserialize>::deserialize(deserializer)?;
-        let value = serde_json::from_str::<Value>(&s)
+        let value = Value::from_str(&s)
             .map_err(serde::de::Error::custom)?;
         Ok(ValueWrapper(value))
     }
