@@ -1070,7 +1070,7 @@ impl Config {
         Self {
             boot_nodes,
             dht_random_walk: true,
-            discovery_only_if_under_num: std::u64::MAX,
+            discovery_only_if_under_num: u64::MAX,
             allow_non_globals_in_dht: true,
             allow_private_ip: true,
             enable_mdns: false,

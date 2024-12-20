@@ -439,8 +439,8 @@ pub fn generate_linker(
             "env",
             "pointer_len",
             |caller: Caller<'_, MemoryManager>, pointer: i32| {
-                return caller.data().get_pointer_len(pointer as usize)
-                    as u32;
+                caller.data().get_pointer_len(pointer as usize)
+                    as u32
             },
         )
         .map_err(|e| {
@@ -452,7 +452,7 @@ pub fn generate_linker(
             "env",
             "alloc",
             |mut caller: Caller<'_, MemoryManager>, len: u32| {
-                return caller.data_mut().alloc(len as usize) as u32;
+                caller.data_mut().alloc(len as usize) as u32
             },
         )
         .map_err(|e| {
@@ -464,9 +464,9 @@ pub fn generate_linker(
             "env",
             "write_byte",
             |mut caller: Caller<'_, MemoryManager>, ptr: u32, offset: u32, data: u32| {
-                return caller
+                caller
                     .data_mut()
-                    .write_byte(ptr as usize, offset as usize, data as u8);
+                    .write_byte(ptr as usize, offset as usize, data as u8)
             },
         )
         .map_err(|e| {
@@ -478,7 +478,7 @@ pub fn generate_linker(
             "env",
             "read_byte",
             |caller: Caller<'_, MemoryManager>, index: i32| {
-                return caller.data().read_byte(index as usize) as u32;
+                caller.data().read_byte(index as usize) as u32
             },
         )
         .map_err(|e| {

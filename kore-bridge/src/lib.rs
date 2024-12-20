@@ -17,6 +17,7 @@ pub mod utils;
 pub use clap;
 pub mod prometheus;
 
+#[derive(Clone)]
 pub struct Bridge {
     api: KoreApi,
     cancellation: CancellationToken

@@ -79,6 +79,7 @@ lazy_static! {
 
 static GOVERNANCE: OnceCell<RwLock<JsonSchema>> = OnceCell::new();
 
+#[derive(Clone)]
 pub struct Api {
     peer_id: String,
     controller_id: String,

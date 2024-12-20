@@ -655,7 +655,7 @@ fn default_true() -> bool {
 
 
 fn default_discovery_only_if_under_num() -> u64 {
-    std::u64::MAX
+    u64::MAX
 }
 
 #[derive(Debug, Deserialize)]

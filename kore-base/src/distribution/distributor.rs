@@ -636,11 +636,7 @@ impl Handler<Distributor> for Distributor {
                     };
                 }
 
-                let sn = if let Some(actual_sn) = actual_sn {
-                    actual_sn
-                } else {
-                    0
-                };
+                let sn = actual_sn.unwrap_or_default();
 
                 // Sacar eventos.
                 let (ledger, last_event) =
