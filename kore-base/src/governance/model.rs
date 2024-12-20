@@ -314,7 +314,7 @@ pub enum Roles {
     EVALUATOR,
     VALIDATOR,
     WITNESS,
-    CREATOR { quantity: u32 },
+    CREATOR(CreatorQuantity),
     ISSUER,
 }
 
@@ -353,7 +353,7 @@ impl Roles {
             Roles::EVALUATOR => "evaluator",
             Roles::VALIDATOR => "validator",
             Roles::WITNESS => "witness",
-            Roles::CREATOR { quantity: _ } => "creator",
+            Roles::CREATOR (_) => "creator",
             Roles::ISSUER => "issuer",
         }
     }
@@ -366,13 +366,29 @@ impl fmt::Display for Roles {
             Roles::EVALUATOR => write!(f, "Evaluator"),
             Roles::VALIDATOR => write!(f, "Validator"),
             Roles::WITNESS => write!(f, "Witness"),
-            Roles::CREATOR { quantity } => {
+            Roles::CREATOR (quantity) => {
                 write!(f, "Creator who can create {} subjects", quantity)
             }
             Roles::ISSUER => write!(f, "Issuer"),
         }
     }
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub enum CreatorQuantity {
+    QUANTITY(u32),
+    INFINITY
+}
+
+impl fmt::Display for CreatorQuantity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CreatorQuantity::QUANTITY(quantity) => write!(f, "{}", quantity),
+            CreatorQuantity::INFINITY => write!(f, "Infinity"),
+        }
+    }
+}
+
 
 /// Governance contract.
 #[derive(Debug, Clone, Serialize, Deserialize)]

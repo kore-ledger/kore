@@ -98,6 +98,6 @@ mod test {
         let init_state =
             init_state("EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE");
         let schema = JsonSchema::compile(&schema()).unwrap();
-        assert!(schema.fast_validate(&init_state.0));
+        schema.validate(&init_state.0).unwrap();
     }
 }

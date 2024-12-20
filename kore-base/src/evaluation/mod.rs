@@ -721,7 +721,7 @@ mod tests {
                                 "namespace": "",
                                 "role": {
                                     "CREATOR": {
-                                        "quantity": 2
+                                        "QUANTITY": 2
                                     }
                                 },
                                 "schema": {
@@ -907,7 +907,7 @@ mod tests {
                     "namespace": "",
                     "role": {
                         "CREATOR": {
-                            "quantity": 2
+                            "QUANTITY": 2
                         }
                     },
                     "schema": {

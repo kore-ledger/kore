@@ -166,7 +166,7 @@ async fn test_governance_copy() {
                         "namespace": "",
                         "role": {
                             "CREATOR": {
-                                "quantity": 2
+                                "QUANTITY": 2
                             }
                         },
                         "schema": {

@@ -15,7 +15,7 @@ use crate::{
 };
 
 use actor::Error as ActorError;
-use model::Roles;
+use model::{CreatorQuantity, Roles};
 pub use schema::schema;
 
 pub use model::{Member, Policy, Quorum, RequestStage, Role, Schema, Who};
@@ -151,9 +151,9 @@ impl Governance {
         user: &str,
         schema: &str,
         namespace: Namespace,
-    ) -> Option<usize> {
+    ) -> Option<CreatorQuantity> {
         for rol in &self.roles {
-            if let Roles::CREATOR { quantity } = rol.role {
+            if let Roles::CREATOR ( quantity) = rol.role.clone() {
                 let namespace_role = Namespace::from(rol.namespace.to_string());
                 if namespace_role != namespace {
                     continue;
@@ -178,11 +178,11 @@ impl Governance {
 
                 match rol.who.clone() {
                     Who::MEMBERS => {
-                        return Some(quantity as usize);
+                        return Some(quantity);
                     }
                     Who::ID { ID } => {
                         if user == ID {
-                            return Some(quantity as usize);
+                            return Some(quantity);
                         }
                     }
 
@@ -190,7 +190,7 @@ impl Governance {
                         let id_string = self.id_by_name(&NAME);
                         if let Some(id) = id_string {
                             if user == id {
-                                return Some(quantity as usize);
+                                return Some(quantity);
                             }
                         }
                     }

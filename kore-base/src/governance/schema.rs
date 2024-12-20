@@ -120,29 +120,38 @@ pub fn schema() -> Value {
             "namespace": {
               "type": "string"
             },
-            "role": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "propierties": {
-                        "CREATOR": {
-                          "type": "object",
-                          "properties": {
-                            "quantity": {
-                              "type": "integer",
-                              "minimum": 1
-                            }
+              "role": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "CREATOR": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "QUANTITY": {
+                                "type": "integer",
+                                "minimum": 1
+                              }
+                            },
+                            "required": ["QUANTITY"]
                           },
-                          "required": ["quantity"]
-                        },
-                      },
+                          {
+                            "type": "string",
+                            "enum": ["INFINITY"]
+                          }
+                        ]
+                      }
                     },
-                    {
-                      "type": "string",
-                      "enum": ["APPROVER", "EVALUATOR", "VALIDATOR", "WITNESS", "ISSUER"]
-                    }
-                  ]
-            },
+                    "required": ["CREATOR"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["APPROVER", "EVALUATOR", "VALIDATOR", "WITNESS", "ISSUER"]
+                  }
+                ]
+              },
             "schema": {
               "oneOf": [
                 {

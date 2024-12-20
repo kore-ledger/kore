@@ -11,7 +11,7 @@ use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
     auth::{Auth, AuthMessage},
-    governance::{model::Roles, Quorum},
+    governance::{model::{CreatorQuantity, Roles}, Quorum},
     intermediary::Intermediary,
     model::SignTypesNode,
     node::relationship::{
@@ -262,7 +262,7 @@ pub async fn register_relation<A>(
     owner: String,
     subject: String,
     namespace: String,
-    max_quantity: usize,
+    max_quantity: CreatorQuantity,
 ) -> Result<(), ActorError>
 where
     A: Actor + Handler<A>,

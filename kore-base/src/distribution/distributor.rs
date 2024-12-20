@@ -10,7 +10,7 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
-    governance::{model::Roles, Governance},
+    governance::{model::{CreatorQuantity, Roles}, Governance},
     intermediary::Intermediary,
     model::{
         common::{
@@ -80,8 +80,10 @@ impl Distributor {
                     )
                     .await?;
 
-                    if quantity >= max_quantity {
-                        return Err(ActorError::Functional("The maximum number of created subjects has been reached".to_owned()));
+                    if let CreatorQuantity::QUANTITY(max_quantity) = max_quantity {
+                        if quantity >= max_quantity as usize {
+                            return Err(ActorError::Functional("The maximum number of created subjects has been reached".to_owned()));
+                        }    
                     }
                 } else {
                     return Err(ActorError::Functional("The number of subjects that can be created has not been found".to_owned()));
@@ -246,7 +248,7 @@ impl Distributor {
             } else if !know && schema != "governance" {
                 if !gov.has_this_role(
                     &signer.to_string(),
-                    Roles::CREATOR { quantity: 0 },
+                    Roles::CREATOR(CreatorQuantity::QUANTITY(0)),
                     &schema,
                     namespace.clone(),
                 ) {

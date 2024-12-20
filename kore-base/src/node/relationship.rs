@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{error, warn};
 
-use crate::{db::Storable, model::common::emit_fail};
+use crate::{db::Storable, governance::model::CreatorQuantity, model::common::emit_fail};
 
 const TARGET_RELATIONSHIP: &str = "Kore-Node-RelationShip";
 
@@ -39,7 +39,7 @@ pub enum RelationShipMessage {
     RegisterNewSubject {
         data: OwnerSchema,
         subject: String,
-        max_quantity: usize,
+        max_quantity: CreatorQuantity,
     },
     DeleteSubject {
         data: OwnerSchema,
@@ -114,20 +114,23 @@ impl Handler<RelationShip> for RelationShip {
                     0
                 };
 
-                if quantity < max_quantity {
-                    self.on_event(
-                        RelationShipEvent::NewRegister { data, subject },
-                        ctx,
-                    )
-                    .await;
-                    Ok(RelationShipResponse::None)
-                } else {
-                    let e = "Maximum number of subjects reached";
-                    warn!(TARGET_RELATIONSHIP, "RegisterNewSubject, {}", e);
-                    Err(ActorError::Functional(
-                        e.to_owned(),
-                    ))
+                if let CreatorQuantity::QUANTITY(max_quantity) = max_quantity {
+                    if quantity >= max_quantity as usize {
+                        let e = "Maximum number of subjects reached";
+                        warn!(TARGET_RELATIONSHIP, "RegisterNewSubject, {}", e);
+                        return Err(ActorError::Functional(
+                            e.to_owned(),
+                        ));
+                    }
                 }
+
+                self.on_event(
+                    RelationShipEvent::NewRegister { data, subject },
+                    ctx,
+                )
+                .await;
+                Ok(RelationShipResponse::None)
+
             }
             RelationShipMessage::DeleteSubject { data, subject } => {
                 self.on_event(

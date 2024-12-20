@@ -18,7 +18,7 @@ use crate::{
         schema::{EvaluationSchema, EvaluationSchemaMessage},
         Evaluation,
     },
-    governance::{model::Roles, Schema},
+    governance::{model::{CreatorQuantity, Roles}, Schema},
     helpers::db::ExternalDB,
     model::{
         common::{
@@ -1233,7 +1233,7 @@ impl Subject {
         &self,
         ctx: &mut ActorContext<Subject>,
         signer: String,
-        max_quantity: usize,
+        max_quantity: CreatorQuantity,
     ) -> Result<(), ActorError> {
         register_relation(
             ctx,
@@ -1274,7 +1274,7 @@ impl Subject {
             self.register_relation(
                 ctx,
                 events[0].signature.signer.to_string(),
-                max_quantity,
+                max_quantity.clone(),
             )
             .await?;
 
@@ -1308,7 +1308,7 @@ impl Subject {
                     self.register_relation(
                         ctx,
                         event.signature.signer.to_string(),
-                        max_quantity,
+                        max_quantity.clone(),
                     )
                     .await?;
                 }

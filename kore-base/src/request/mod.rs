@@ -21,7 +21,7 @@ use store::store::PersistentActor;
 use crate::{
     approval::approver::{ApprovalStateRes, Approver, ApproverMessage},
     db::Storable,
-    governance::model::Roles,
+    governance::model::{CreatorQuantity, Roles},
     helpers::db::ExternalDB,
     init_state,
     model::common::{get_gov, get_metadata, get_quantity},
@@ -409,17 +409,19 @@ impl Handler<RequestHandler> for RequestHandler {
                                 &create_request.schema_id,
                                 create_request.namespace.clone(),
                             ) {
-                                let quantity = match get_quantity(ctx, create_request.governance_id.to_string(), create_request.schema_id.clone(), self.node_key.to_string(), create_request.namespace.to_string()).await {
-                                    Ok(quantity) => quantity,
-                                    Err(e) => {
-                                        error!(TARGET_REQUEST, "NewRequest, can not get subject quatity of node: {}", e);
-                                        return Err(ActorError::Functional(format!("Can not get subject quatity of node: {}", e)))
+                                if let CreatorQuantity::QUANTITY(max_quantity) = max_quantity {
+                                    let quantity = match get_quantity(ctx, create_request.governance_id.to_string(), create_request.schema_id.clone(), self.node_key.to_string(), create_request.namespace.to_string()).await {
+                                        Ok(quantity) => quantity,
+                                        Err(e) => {
+                                            error!(TARGET_REQUEST, "NewRequest, can not get subject quatity of node: {}", e);
+                                            return Err(ActorError::Functional(format!("Can not get subject quatity of node: {}", e)))
+                                        }
+                                    };
+    
+                                    if quantity >= max_quantity as usize {
+                                        error!(TARGET_REQUEST, "NewRequest, The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id);
+                                        return Err(ActorError::Functional(format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id)));
                                     }
-                                };
-
-                                if quantity >= max_quantity {
-                                    error!(TARGET_REQUEST, "NewRequest, The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id);
-                                    return Err(ActorError::Functional(format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id)));
                                 }
                             } else {
                                 let e = "The Scheme does not exist or does not have permissions for the creation of subjects, it needs to be assigned the creator role.";
@@ -716,25 +718,26 @@ impl Handler<RequestHandler> for RequestHandler {
                                         );
                                     }
                                 };
-
-                                if quantity >= max_quantity {
-                                    error!(TARGET_REQUEST, "PopQueue, The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id);
-                                    if let Err(e) = self
-                                        .error_queue_handling(
-                                            ctx,
-                                            &request_id,
-                                            &subject_id,
-                                        )
-                                        .await
-                                    {
-                                        error!(TARGET_REQUEST, "PopQueue, Can not enqueue next event: {}", e);
-                                        ctx.system()
-                                            .send_event(SystemEvent::StopSystem)
-                                            .await;
-                                        return Err(e);
+                                if let CreatorQuantity::QUANTITY(max_quantity) = max_quantity {
+                                    if quantity >= max_quantity as usize {
+                                        error!(TARGET_REQUEST, "PopQueue, The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id);
+                                        if let Err(e) = self
+                                            .error_queue_handling(
+                                                ctx,
+                                                &request_id,
+                                                &subject_id,
+                                            )
+                                            .await
+                                        {
+                                            error!(TARGET_REQUEST, "PopQueue, Can not enqueue next event: {}", e);
+                                            ctx.system()
+                                                .send_event(SystemEvent::StopSystem)
+                                                .await;
+                                            return Err(e);
+                                        }
+    
+                                        return Ok(RequestHandlerResponse::None);
                                     }
-
-                                    return Ok(RequestHandlerResponse::None);
                                 }
                             } else {
                                 error!(TARGET_REQUEST, "PopQueue, Unable to get the maximum number of subjects that can be created");
