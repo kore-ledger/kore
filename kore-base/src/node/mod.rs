@@ -306,7 +306,7 @@ impl Actor for Node {
     ) -> Result<(), ActorError> {
         Self::build_compilation_dir(ctx).await?;
         // Start store
-        self.init_store("node", None, false, ctx).await?;
+        self.init_store("node", None, true, ctx).await?;
 
         let register = Register::default();
         ctx.create_child("register", register).await?;

@@ -80,7 +80,7 @@ impl Actor for LedgerEvent {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         let prefix = ctx.path().parent().key();
-        self.init_store("event", Some(prefix), false, ctx).await
+        self.init_store("event", Some(prefix), true, ctx).await
     }
 
     async fn pre_stop(

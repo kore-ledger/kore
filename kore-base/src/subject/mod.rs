@@ -1809,7 +1809,7 @@ impl Actor for Subject {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store("subject", None, false, ctx).await?;
+        self.init_store("subject", None, true, ctx).await?;
 
         let our_key = self.get_node_key(ctx).await?;
 
