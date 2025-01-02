@@ -568,6 +568,66 @@ impl Api {
         }
     }
 
+    pub async fn get_event_sn(
+        &self,
+        subject_id: DigestIdentifier,
+        sn: u64,
+    ) -> Result<Value, Error> {
+        let response = self
+            .query
+            .ask(QueryMessage::GetEventSn {
+                subject_id: subject_id.to_string(),
+                sn,
+            })
+            .await.map_err(|e| {
+                error!(TARGET_API, "Can not get event sn: {}", e);
+                Error::Query(format!("Can not get event sn: {}", e))
+            })?;
+
+        match response {
+            QueryResponse::Events { data } => Ok(data),
+            _ => {
+                error!(TARGET_API, "A response was received that was not the expected one");
+                Err(Error::Query(
+                "A response was received that was not the expected one"
+                    .to_owned(),
+            ))
+        },
+        }
+    }
+
+    pub async fn get_first_or_end_events(
+        &self,
+        subject_id: DigestIdentifier,
+        quantity: u64,
+        reverse: bool,
+        success: Option<bool>,
+    ) -> Result<Value, Error> {
+        let response = self
+            .query
+            .ask(QueryMessage::GetFirstOrEndEvents {
+                subject_id: subject_id.to_string(),
+                quantity,
+                reverse,
+                success,
+            })
+            .await.map_err(|e| {
+                error!(TARGET_API, "Can not get first or end events: {}", e);
+                Error::Query(format!("Can not get first or end events: {}", e))
+            })?;
+
+        match response {
+            QueryResponse::Events { data } => Ok(data),
+            _ => {
+                error!(TARGET_API, "A response was received that was not the expected one");
+                Err(Error::Query(
+                "A response was received that was not the expected one"
+                    .to_owned(),
+            ))
+        },
+        }
+    }
+
     pub async fn get_subject(
         &self,
         subject_id: DigestIdentifier,

@@ -8,13 +8,10 @@ use identity::{
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
 use kore_base::{
-    approval::approver::ApprovalStateRes,
-    config::{Config, ExternalDbConfig, KoreDbConfig},
-    model::{
+    approval::approver::ApprovalStateRes, config::{Config, ExternalDbConfig, KoreDbConfig}, model::{
         request::{CreateRequest, EventRequest, FactRequest},
         Namespace, ValueWrapper,
-    },
-    Api,
+    }, Api
 };
 use network::{Config as NetworkConfig, RoutingNode};
 use prometheus_client::registry::Registry;
@@ -307,4 +304,10 @@ async fn test_governance_copy() {
 
         let _data = node2.own_request(request).await.unwrap();
     }
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+
+    let event = node2.get_first_or_end_events(subject_id.clone(), 5, false, Some(false)).await.unwrap();
+    println!("{:?}", event);
 }

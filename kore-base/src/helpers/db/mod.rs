@@ -85,6 +85,22 @@ pub trait Querys {
         quantity: Option<u64>,
         page: Option<u64>,
     ) -> Result<Value, Error>;
+    
+    // events sn
+    async fn get_events_sn(
+        &self,
+        subject_id: &str,
+        sn: u64,
+    ) -> Result<Value, Error>;
+
+    // n first or last events
+    async fn get_first_or_end_events(
+        &self,
+        subject_id: &str,
+        quantity: u64,
+        reverse: bool,
+        sucess: Option<bool>,
+    ) -> Result<Value, Error>;
 
     // subject
     async fn get_subject_state(
@@ -204,6 +220,36 @@ impl Querys for ExternalDB {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
                 sqlite_local.get_events(subject_id, quantity, page).await
+            }
+        }
+    }
+
+    async fn get_events_sn(
+        &self,
+        subject_id: &str,
+        sn: u64,
+    ) -> Result<Value, Error> {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => {
+                sqlite_local.get_events_sn(subject_id, sn).await
+            }
+        }
+    }
+
+    async fn get_first_or_end_events(
+        &self,
+        subject_id: &str,
+        quantity: u64,
+        reverse: bool,
+        sucess: Option<bool>,
+    ) -> Result<Value, Error> {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => {
+                sqlite_local
+                    .get_first_or_end_events(subject_id, quantity, reverse, sucess)
+                    .await
             }
         }
     }

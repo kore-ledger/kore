@@ -233,6 +233,110 @@ impl Querys for SqliteLocal {
         }))
     }
 
+    async fn get_events_sn(
+        &self,
+        subject_id: &str,
+        sn: u64,
+    ) -> Result<Value, Error> {
+        let subject_id = subject_id.to_owned();
+
+        let event = match self.conn.call(move |conn| {
+            let sql = "SELECT * FROM events WHERE subject_id = ?1 AND sn = ?2";
+            match conn.query_row(sql, params![subject_id, sn], |row| {
+                Ok(EventDB {
+                    subject_id: row.get(0)?,
+                    sn: row.get(1)?,
+                    data: row.get(2)?,
+                    event_req: row.get(3)?,
+                    succes: row.get(4)?,
+                })
+            }) {
+                Ok(result) => Ok(result),
+                Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
+            }
+        }).await {
+            Ok(event) => event,
+            Err(e) => return Err(Error::ExtDB(e.to_string())),
+        };
+
+        let mut event_req = Value::from_str(&event.event_req).map_err(|e| Error::ExtDB(format!("Can not convert event_req into Value: {}", e)))?;
+
+        if let Value::String(string) = &event_req["Fact"]["payload"] {
+            event_req["Fact"]["payload"] = Value::from_str(&string).map_err(|e| Error::ExtDB(format!("Can not convert event_req payload into Value: {}", e)))?;
+        }
+        
+        Ok(json!({
+        "subject_id": event.subject_id,
+        "sn": event.sn,
+        "data": Value::from_str(&event.data).map_err(|e| Error::ExtDB(format!("Can not convert event_req into Value: {}", e)))?,
+        "event_req": event_req,
+        "succes": bool::from_str(&event.succes).map_err(|e| Error::ExtDB(format!("Can not convert succes into bool: {}", e)))?,
+    }))
+
+    }
+
+    async fn get_first_or_end_events(
+        &self,
+        subject_id: &str,
+        quantity: u64,
+        reverse: bool,
+        sucess: Option<bool>,
+    ) -> Result<Value, Error> {
+        let subject_id = subject_id.to_owned();
+        let order = if reverse { "DESC" } else { "ASC" };
+        let sucess_condition = if let Some(sucess_value) = sucess {
+            format!("AND succes = '{}'", sucess_value)
+        } else {
+            "".to_string()
+        };
+
+        let sql = format!(
+            "SELECT * FROM events WHERE subject_id = ?1 {} ORDER BY sn {} LIMIT ?2",
+            sucess_condition, order
+        );
+
+        let events = match self
+            .conn
+            .call(move |conn| {
+                let mut stmt = conn.prepare(&sql)?;
+                let events = stmt.query_map(params![subject_id, quantity], |row| {
+                    Ok(EventDB {
+                        subject_id: row.get(0)?,
+                        sn: row.get(1)?,
+                        data: row.get(2)?,
+                        event_req: row.get(3)?,
+                        succes: row.get(4)?,
+                    })
+                })?.map(|x| {
+                    match x {
+                        Ok(event) => {
+                            let mut event_req = Value::from_str(&event.event_req).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req into Value: {}", e)))))?;
+                            if let Value::String(string) = &event_req["Fact"]["payload"] {
+                                event_req["Fact"]["payload"] = Value::from_str(&string).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req payload into Value: {}", e)))))?;
+                            }
+                            Ok(json!({
+                                "subject_id": event.subject_id,
+                                "sn": event.sn,
+                                "data": Value::from_str(&event.data).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert data into Value: {}", e)))))?,
+                                "event_req": event_req,
+                                "succes": bool::from_str(&event.succes).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert succes into bool: {}", e)))))?,
+                            }))
+                        },
+                        Err(error) => Err(tokio_rusqlite::Error::Rusqlite(error)),
+                    }
+                }).collect::<std::result::Result<Vec<Value>, tokio_rusqlite::Error>>()?;
+
+                Ok(events)
+            })
+            .await
+        {
+            Ok(events) => events,
+            Err(e) => return Err(Error::ExtDB(e.to_string())),
+        };
+
+        Ok(json!({ "events": events }))
+    }
+
     async fn get_request_id_status(
         &self,
         request_id: &str,
