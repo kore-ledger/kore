@@ -32,7 +32,7 @@ use crate::{
 
 pub mod manager;
 pub mod reboot;
-pub mod state;
+pub mod types;
 
 const TARGET_REQUEST: &str = "Kore-Request";
 

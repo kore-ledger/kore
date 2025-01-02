@@ -429,6 +429,7 @@ impl Intermediary {
                                 .tell(ValidatorMessage::NetworkResponse {
                                     validation_res: res,
                                     request_id: message.info.request_id,
+                                    version: message.info.version
                                 })
                                 .await
                             {
@@ -458,6 +459,7 @@ impl Intermediary {
                                 .tell(EvaluatorMessage::NetworkResponse {
                                     evaluation_res: res,
                                     request_id: message.info.request_id,
+                                    version: message.info.version
                                 })
                                 .await
                             {
@@ -487,6 +489,7 @@ impl Intermediary {
                                 .tell(ApproverMessage::NetworkResponse {
                                     approval_res: *res,
                                     request_id: message.info.request_id,
+                                    version: message.info.version
                                 })
                                 .await
                             {

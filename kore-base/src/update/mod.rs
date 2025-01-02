@@ -155,6 +155,7 @@ impl Handler<Update> for Update {
                                 reciver: node,
                                 sender: self.our_key.clone(),
                                 request_id: String::default(),
+                                version: 0,
                                 reciver_actor: format!(
                                     "/user/node/{}/distributor",
                                     self.subject_id

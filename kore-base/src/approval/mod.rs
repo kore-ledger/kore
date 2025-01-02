@@ -43,6 +43,7 @@ pub struct Approval {
     quorum: Quorum,
 
     request_id: String,
+    version: u64,
     request: Option<Signed<ApprovalReq>>,
     // approvers
     approvers: HashSet<KeyIdentifier>,
@@ -117,6 +118,7 @@ impl Approval {
         &self,
         ctx: &mut ActorContext<Approval>,
         request_id: &str,
+        version: u64,
         approval_req: Signed<ApprovalReq>,
         signer: KeyIdentifier,
     ) -> Result<(), ActorError> {
@@ -133,6 +135,7 @@ impl Approval {
                 approver_actor
                     .tell(ApproverMessage::LocalApproval {
                         request_id: request_id.to_owned(),
+                        version,
                         approval_req: approval_req.content,
                         our_key: signer,
                     })
@@ -147,6 +150,7 @@ impl Approval {
                     &signer.to_string(),
                     Approver::new(
                         request_id.to_owned(),
+                        version,
                         signer.clone(),
                         approval_req.content.subject_id.to_string(),
                         VotationType::Manual,
@@ -162,7 +166,6 @@ impl Approval {
 
             child
                 .tell(ApproverMessage::NetworkApproval {
-                    request_id: request_id.to_owned(),
                     approval_req: approval_req.clone(),
                     node_key: signer,
                     our_key,
@@ -205,6 +208,7 @@ impl Approval {
 pub enum ApprovalMessage {
     Create {
         request_id: String,
+        version: u64,
         eval_req: EvaluationReq,
         eval_res: EvalLedgerResponse,
     },
@@ -221,6 +225,7 @@ impl Message for ApprovalMessage {}
 pub enum ApprovalEvent {
     SafeState {
         request_id: String,
+        version: u64,
         // Quorum
         quorum: Quorum,
         request: Option<Signed<ApprovalReq>>,
@@ -268,10 +273,11 @@ impl Handler<Approval> for Approval {
         match msg {
             ApprovalMessage::Create {
                 request_id,
+                version,
                 eval_req,
                 eval_res,
             } => {
-                if request_id == self.request_id {
+                if request_id == self.request_id && version == self.version {
                     let Some(request) = self.request.clone() else {
                         return Ok(());
                     };
@@ -281,6 +287,7 @@ impl Handler<Approval> for Approval {
                             .create_approvers(
                                 ctx,
                                 &self.request_id,
+                                self.version,
                                 request.clone(),
                                 signer,
                             )
@@ -326,9 +333,6 @@ impl Handler<Approval> for Approval {
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
-                    // Update quorum and validators
-                    let request_id = request_id.to_string();
-
                     let signature = match get_sign(
                         ctx,
                         SignTypesNode::ApprovalReq(approval_req.clone()),
@@ -352,6 +356,7 @@ impl Handler<Approval> for Approval {
                             .create_approvers(
                                 ctx,
                                 &request_id,
+                                version,
                                 signed_approval_req.clone(),
                                 signer,
                             )
@@ -368,6 +373,7 @@ impl Handler<Approval> for Approval {
                     self.on_event(
                         ApprovalEvent::SafeState {
                             request_id: request_id.clone(),
+                            version: version,
                             quorum: quorum.clone(),
                             request: Some(signed_approval_req.clone()),
                             approvers: signers.clone(),
@@ -469,12 +475,14 @@ impl PersistentActor for Approval {
         match event {
             ApprovalEvent::SafeState {
                 request_id,
+                version,
                 quorum,
                 request,
                 approvers,
                 approvers_response,
                 approvers_quantity,
             } => {
+                self.version = *version;
                 self.request_id.clone_from(request_id);
                 self.quorum = quorum.clone();
                 self.request.clone_from(request);

@@ -50,12 +50,13 @@ const TARGET_VALIDATOR: &str = "Kore-Validation-Validator";
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Validator {
     request_id: String,
+    version: u64,
     node: KeyIdentifier,
 }
 
 impl Validator {
-    pub fn new(request_id: String, node: KeyIdentifier) -> Self {
-        Validator { request_id, node }
+    pub fn new(request_id: String, version: u64, node: KeyIdentifier) -> Self {
+        Validator { request_id, version, node }
     }
 
     fn check_event_proof(
@@ -309,7 +310,6 @@ pub enum ValidatorMessage {
         our_key: KeyIdentifier,
     },
     NetworkValidation {
-        request_id: String,
         validation_req: Signed<ValidationReq>,
         schema: String,
         node_key: KeyIdentifier,
@@ -318,6 +318,7 @@ pub enum ValidatorMessage {
     NetworkResponse {
         validation_res: Signed<ValidationRes>,
         request_id: String,
+        version: u64
     },
     NetworkRequest {
         validation_req: Box<Signed<ValidationReq>>,
@@ -398,7 +399,6 @@ impl Handler<Validator> for Validator {
                 ctx.stop().await;
             }
             ValidatorMessage::NetworkValidation {
-                request_id,
                 validation_req,
                 schema,
                 node_key,
@@ -419,7 +419,8 @@ impl Handler<Validator> for Validator {
                 // Lanzar evento donde lanzar los retrys
                 let message = NetworkMessage {
                     info: ComunicateInfo {
-                        request_id,
+                        request_id: self.request_id.to_owned(),
+                        version: self.version,
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
@@ -464,8 +465,9 @@ impl Handler<Validator> for Validator {
             ValidatorMessage::NetworkResponse {
                 validation_res,
                 request_id,
+                version
             } => {
-                if request_id == self.request_id {
+                if request_id == self.request_id && version == self.version {
                     if self.node != validation_res.signature.signer {
                         warn!(
                             TARGET_VALIDATOR,
@@ -641,6 +643,7 @@ impl Handler<Validator> for Validator {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/validation/{}",
                         validation_req.content.proof.subject_id,

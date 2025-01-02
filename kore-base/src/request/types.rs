@@ -45,3 +45,12 @@ pub enum ValidationProtocols {
     /// A request to mark a subject as end-of-life.
     EOL(EOLRequest),
 }
+
+#[derive(Default)]
+pub struct ProtocolsResult {
+    pub eval_success: Option<bool>,
+    pub appr_required: bool,
+    pub appr_success: Option<bool>,
+    pub eval_signatures: Option<HashSet<ProtocolsSignatures>>,
+    pub appr_signatures: Option<HashSet<ProtocolsSignatures>>,
+}

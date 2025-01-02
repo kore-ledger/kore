@@ -112,6 +112,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
                         &format!("{}", validation_req.signature.signer),
                         Validator::new(
                             info.request_id.clone(),
+                            info.version,
                             validation_req.signature.signer.clone(),
                         ),
                     )

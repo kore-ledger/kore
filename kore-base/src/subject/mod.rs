@@ -534,7 +534,8 @@ impl Subject {
 
             // If we are a approver
             let approver = Approver::new(
-                "".to_owned(),
+                String::default(),
+                0,
                 our_key.clone(),
                 subject_id.to_string(),
                 VotationType::from(config.always_accept),
@@ -634,7 +635,8 @@ impl Subject {
         ctx.create_child("approval", approval).await?;
 
         let approver = Approver::new(
-            "".to_owned(),
+            String::default(),
+            0,
             our_key.clone(),
             subject_id.to_string(),
             VotationType::from(config.always_accept),

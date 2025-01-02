@@ -87,6 +87,7 @@ impl Handler<Updater> for Updater {
                 let message = NetworkMessage {
                     info: ComunicateInfo {
                         request_id: String::default(),
+                        version: 0,
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor: format!(

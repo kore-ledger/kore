@@ -59,6 +59,7 @@ pub struct Evaluation {
 
     evaluators_signatures: Vec<ProtocolsSignatures>,
     request_id: String,
+    version: u64,
     errors: String,
 
     eval_req: Option<EvaluationReq>,
@@ -112,7 +113,6 @@ impl Evaluation {
     async fn create_evaluators(
         &self,
         ctx: &mut ActorContext<Evaluation>,
-        request_id: &str,
         evaluation_req: Signed<EvaluationReq>,
         schema: &str,
         signer: KeyIdentifier,
@@ -121,7 +121,7 @@ impl Evaluation {
         let child = ctx
             .create_child(
                 &format!("{}", signer),
-                Evaluator::new(request_id.to_string(), signer.clone()),
+                Evaluator::new(self.request_id.to_string(), self.version, signer.clone()),
             )
             .await;
         let evaluator_actor = match child {
@@ -144,7 +144,6 @@ impl Evaluation {
         else {
             evaluator_actor
                 .tell(EvaluatorMessage::NetworkEvaluation {
-                    request_id: request_id.to_owned(),
                     evaluation_req,
                     node_key: signer,
                     our_key,
@@ -248,6 +247,7 @@ impl Evaluation {
 pub enum EvaluationMessage {
     Create {
         request_id: String,
+        version: u64,
         request: Signed<EventRequest>,
     },
 
@@ -284,6 +284,7 @@ impl Handler<Evaluation> for Evaluation {
         match msg {
             EvaluationMessage::Create {
                 request_id,
+                version,
                 request,
             } => {
                 let subject_id = if let EventRequest::Fact(event) =
@@ -348,6 +349,7 @@ impl Handler<Evaluation> for Evaluation {
                 self.evaluators.clone_from(&signers);
                 self.evaluators_quantity = signers.len() as u32;
                 self.request_id = request_id.to_string();
+                self.version = version;
                 self.evaluators_signatures = vec![];
                 self.errors = String::default();
                 self.reboot = false;
@@ -377,7 +379,6 @@ impl Handler<Evaluation> for Evaluation {
                     if let Err(e) = self
                         .create_evaluators(
                             ctx,
-                            &self.request_id,
                             signed_evaluation_req.clone(),
                             &metadata.schema_id,
                             signer.clone(),

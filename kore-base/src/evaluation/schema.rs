@@ -110,6 +110,7 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                         &format!("{}", evaluation_req.signature.signer),
                         Evaluator::new(
                             info.request_id.clone(),
+                            info.version,
                             evaluation_req.signature.signer.clone(),
                         ),
                     )

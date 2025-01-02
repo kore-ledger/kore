@@ -31,8 +31,7 @@ use crate::{
             update_event,
         },
         event::{
-            DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
-            ProtocolsSignatures,
+            DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError, ProtocolsSignatures
         },
         SignTypesNode,
     },
@@ -47,18 +46,9 @@ const TARGET_MANAGER: &str = "Kore-Request-Manager";
 
 use super::{
     reboot::{Reboot, RebootMessage},
-    state::RequestManagerState,
+    types::{ProtocolsResult, RequestManagerState},
     RequestHandler, RequestHandlerMessage,
 };
-
-#[derive(Default)]
-pub struct ProtocolsResult {
-    pub eval_success: Option<bool>,
-    pub appr_required: bool,
-    pub appr_success: Option<bool>,
-    pub eval_signatures: Option<HashSet<ProtocolsSignatures>>,
-    pub appr_signatures: Option<HashSet<ProtocolsSignatures>>,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestManager {
@@ -67,6 +57,7 @@ pub struct RequestManager {
     state: RequestManagerState,
     subject_id: String,
     request: Signed<EventRequest>,
+    version: u64,
 }
 
 impl RequestManager {
@@ -82,6 +73,7 @@ impl RequestManager {
             state: RequestManagerState::Starting,
             subject_id,
             request,
+            version: 0
         }
     }
     async fn send_validation(
@@ -101,6 +93,7 @@ impl RequestManager {
             validation_actor
                 .tell(ValidationMessage::Create {
                     request_id: self.id.clone(),
+                    version: self.version,
                     info: val_info,
                 })
                 .await?
@@ -127,6 +120,7 @@ impl RequestManager {
             evaluation_actor
                 .tell(EvaluationMessage::Create {
                     request_id: self.id.clone(),
+                    version: self.version,
                     request: self.request.clone(),
                 })
                 .await?
@@ -153,6 +147,7 @@ impl RequestManager {
             approval_actor
                 .tell(ApprovalMessage::Create {
                     request_id: self.id.clone(),
+                    version: self.version,
                     eval_req,
                     eval_res,
                 })
@@ -203,7 +198,7 @@ impl RequestManager {
         };
 
         self.on_event(
-            RequestManagerEvent {
+            RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
                 state: RequestManagerState::Validation(val_info.clone()),
             },
@@ -222,7 +217,7 @@ impl RequestManager {
         eval_signatures: HashSet<ProtocolsSignatures>,
     ) -> Result<(), ActorError> {
         self.on_event(
-            RequestManagerEvent {
+            RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
                 state: RequestManagerState::Approval {
                     eval_req: eval_req.clone(),
@@ -242,7 +237,7 @@ impl RequestManager {
         ctx: &mut ActorContext<RequestManager>,
     ) -> Result<(), ActorError> {
         self.on_event(
-            RequestManagerEvent {
+            RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
                 state: RequestManagerState::Evaluation,
             },
@@ -338,7 +333,7 @@ impl RequestManager {
         }
 
         self.on_event(
-            RequestManagerEvent {
+            RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
                 state: RequestManagerState::Distribution {
                     event: signed_event.clone(),
@@ -539,6 +534,7 @@ impl RequestManager {
                 let info = ComunicateInfo {
                     reciver: key_identifier.clone(),
                     sender: self.our_key.clone(),
+                    version: 0,
                     request_id: String::default(),
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
@@ -651,9 +647,15 @@ pub enum RequestManagerMessage {
 impl Message for RequestManagerMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RequestManagerEvent {
-    pub id: String,
-    pub state: RequestManagerState,
+pub enum RequestManagerEvent {
+    UpdateState {
+        id: String,
+        state: RequestManagerState,
+    },
+    UpdateVersion {
+        id: String,
+        version: u64
+    }
 }
 
 impl Event for RequestManagerEvent {}
@@ -712,7 +714,7 @@ impl Handler<RequestManager> for RequestManager {
                     }
                 } else {
                     self.on_event(
-                        RequestManagerEvent {
+                        RequestManagerEvent::UpdateState {
                             id: self.id.clone(),
                             state: RequestManagerState::Reboot,
                         },
@@ -758,6 +760,15 @@ impl Handler<RequestManager> for RequestManager {
             }
             RequestManagerMessage::FinishReboot => {
                 info!(TARGET_MANAGER, "Finish reboot {}", self.id);
+                self.on_event(
+                    RequestManagerEvent::UpdateVersion {
+                        id: self.id.clone(),
+                        version: self.version + 1
+                    },
+                    ctx,
+                )
+                .await;
+
                 match self.request.content {
                     EventRequest::Fact(_) => {
                         if let Err(e) = self.evaluation(ctx).await {
@@ -1187,7 +1198,11 @@ impl Handler<RequestManager> for RequestManager {
 impl PersistentActor for RequestManager {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
-        self.state = event.state.clone();
+        match event {
+            RequestManagerEvent::UpdateState { state, .. } => self.state = state.clone(),
+            RequestManagerEvent::UpdateVersion { version, .. } => self.version = version.clone(),
+        };
+
         Ok(())
     }
 }

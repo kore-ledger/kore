@@ -606,6 +606,7 @@ where
         reciver: data.other_node,
         sender: data.our_node,
         request_id: String::default(),
+        version: 0,
         reciver_actor: format!("/user/node/{}/distributor", subject_string),
         schema: "governance".to_string(),
     };
@@ -645,6 +646,7 @@ where
         reciver: data.other_node,
         sender: data.our_node,
         request_id: String::default(),
+        version: 0,
         reciver_actor: format!("/user/node/{}/distributor", subject_string),
         schema: "governance".to_string(),
     };

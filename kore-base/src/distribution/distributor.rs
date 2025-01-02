@@ -302,6 +302,7 @@ impl Distributor {
                     reciver: info.sender,
                     sender: info.reciver,
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
                         governance_id_string
@@ -342,6 +343,7 @@ impl Distributor {
                         reciver: info.reciver,
                         sender: info.sender,
                         request_id: info.request_id,
+                        version: info.version,
                         reciver_actor: format!(
                             "/user/node/{}/distributor",
                             governance_id_string
@@ -558,6 +560,7 @@ impl Handler<Distributor> for Distributor {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/auth/{}/{}",
                         subject_id, info.reciver
@@ -681,6 +684,7 @@ impl Handler<Distributor> for Distributor {
                     reciver: info.sender,
                     sender: info.reciver,
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
                         subject_id
@@ -731,6 +735,7 @@ impl Handler<Distributor> for Distributor {
                 let message = NetworkMessage {
                     info: ComunicateInfo {
                         request_id: "".to_owned(),
+                        version: 0,
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
@@ -906,6 +911,7 @@ impl Handler<Distributor> for Distributor {
                                     reciver: info.sender,
                                     sender: info.reciver,
                                     request_id: info.request_id,
+                                    version: info.version,
                                     reciver_actor: format!(
                                         "/user/node/{}/distributor",
                                         ledger.content.subject_id
@@ -974,6 +980,7 @@ impl Handler<Distributor> for Distributor {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/distribution/{}",
                         event.content.subject_id,
@@ -1212,6 +1219,7 @@ impl Handler<Distributor> for Distributor {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
                         subject_id

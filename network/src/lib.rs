@@ -171,6 +171,8 @@ where
 pub struct ComunicateInfo {
     /// The request id.
     pub request_id: String,
+    /// The request version.
+    pub version: u64,
     /// The sender key identifier.
     pub sender: KeyIdentifier,
     /// The receiver key identifier.

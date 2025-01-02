@@ -206,6 +206,7 @@ impl Handler<Auth> for Auth {
                                 reciver: key_identifier.clone(),
                                 sender: self.our_node.clone(),
                                 request_id: String::default(),
+                                version: 0,
                                 reciver_actor: format!(
                                     "/user/node/{}/distributor",
                                     subject_id

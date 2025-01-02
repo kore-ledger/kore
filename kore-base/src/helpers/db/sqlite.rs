@@ -15,7 +15,7 @@ use crate::external_db::{DBManager, DBManagerMessage, DeleteTypes};
 use crate::helpers::db::EventDB;
 use crate::model::event::{Ledger, LedgerValue};
 use crate::request::manager::RequestManagerEvent;
-use crate::request::state::RequestManagerState;
+use crate::request::types::RequestManagerState;
 use crate::request::RequestHandlerEvent;
 use crate::subject::event::LedgerEventEvent;
 use crate::subject::sinkdata::SinkDataEvent;
@@ -348,7 +348,7 @@ impl SqliteLocal {
                 })?;
 
         conn.call(|conn| {
-            let sql = "CREATE TABLE IF NOT EXISTS request (id TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY (id))";
+            let sql = "CREATE TABLE IF NOT EXISTS request (id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY (id))";
             let _ = conn.execute(sql, ())?;
 
             let sql = "CREATE TABLE IF NOT EXISTS approval (subject_id TEXT NOT NULL, data TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY (subject_id))";
@@ -375,21 +375,42 @@ impl SqliteLocal {
 #[async_trait]
 impl Subscriber<RequestManagerEvent> for SqliteLocal {
     async fn notify(&self, event: RequestManagerEvent) {
-        let state = match event.state {
-            RequestManagerState::Starting => return,
-            RequestManagerState::Reboot => "In Reboot".to_owned(),
-            RequestManagerState::Evaluation => "In Evaluation".to_owned(),
-            RequestManagerState::Approval { .. } => "In Approval".to_owned(),
-            RequestManagerState::Validation(..) => "In Validation".to_owned(),
-            RequestManagerState::Distribution { .. } => {
-                "In Distribution".to_owned()
+        let sql = match event {
+            RequestManagerEvent::UpdateState { id, state } => {
+                let state = match state {
+                    RequestManagerState::Starting => return,
+                    RequestManagerState::Reboot => "In Reboot".to_owned(),
+                    RequestManagerState::Evaluation => {
+                        "In Evaluation".to_owned()
+                    }
+                    RequestManagerState::Approval { .. } => {
+                        "In Approval".to_owned()
+                    }
+                    RequestManagerState::Validation(..) => {
+                        "In Validation".to_owned()
+                    }
+                    RequestManagerState::Distribution { .. } => {
+                        "In Distribution".to_owned()
+                    }
+                };
+
+                format!(
+                    "UPDATE request SET state = \"{}\" WHERE id = \"{}\"",
+                    state, id
+                )
+            }
+            RequestManagerEvent::UpdateVersion { id, version } => {
+                format!(
+                    "UPDATE request SET version = \"{}\" WHERE id = \"{}\"",
+                    version, id
+                )
             }
         };
+
         if let Err(e) = self
             .conn
             .call(move |conn| {
-                let sql = "UPDATE request SET state = ?1 WHERE id = ?2";
-                let _ = conn.execute(sql, params![state, event.id])?;
+                let _ = conn.execute(&sql, params![])?;
 
                 Ok(())
             })
@@ -428,7 +449,7 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
         };
 
         let sql = if insert {
-            "INSERT INTO request (id, state) VALUES (?1, ?2)".to_owned()
+            "INSERT INTO request (id, state, version) VALUES (?1, ?2, 0)".to_owned()
         } else {
             "UPDATE request SET state = ?2 WHERE id = ?1".to_owned()
         };

@@ -107,6 +107,7 @@ impl From<bool> for VotationType {
 pub struct Approver {
     node: KeyIdentifier,
     request_id: String,
+    version: u64,
     subject_id: String,
     pass_votation: VotationType,
     state: Option<ApprovalState>,
@@ -117,6 +118,7 @@ pub struct Approver {
 impl Approver {
     pub fn new(
         request_id: String,
+        version: u64,
         node: KeyIdentifier,
         subject_id: String,
         pass_votation: VotationType,
@@ -124,6 +126,7 @@ impl Approver {
         Approver {
             node,
             request_id,
+            version,
             subject_id,
             pass_votation,
             state: None,
@@ -204,6 +207,7 @@ impl Approver {
                 reciver: info.sender,
                 sender: info.reciver.clone(),
                 request_id: info.request_id,
+                version: info.version,
                 reciver_actor: format!(
                     "/user/node/{}/approval/{}",
                     request.subject_id,
@@ -259,12 +263,12 @@ pub enum ApproverMessage {
     // Mensaje para aprobar localmente
     LocalApproval {
         request_id: String,
+        version: u64,
         approval_req: ApprovalReq,
         our_key: KeyIdentifier,
     },
     // Lanza los retries y envía la petición a la network(exponencial)
     NetworkApproval {
-        request_id: String,
         approval_req: Signed<ApprovalReq>,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
@@ -273,6 +277,7 @@ pub enum ApproverMessage {
     NetworkResponse {
         approval_res: Signed<ApprovalRes>,
         request_id: String,
+        version: u64
     },
     // Mensaje para pedir aprobación desde el helper y devolver ahi
     NetworkRequest {
@@ -294,6 +299,7 @@ pub enum ApproverEvent {
     },
     SafeState {
         request_id: String,
+        version: u64,
         subject_id: String,
         request: ApprovalReq,
         state: ApprovalState,
@@ -418,10 +424,11 @@ impl Handler<Approver> for Approver {
             // aprobar si esta por defecto
             ApproverMessage::LocalApproval {
                 request_id,
+                version,
                 approval_req,
                 our_key,
             } => {
-                if request_id != self.request_id {
+                if request_id != self.request_id || version != self.version {
                     if !approval_req.event_request.content.is_fact_event() {
                         let e = "An attempt is being made to approve an event that is not fact.";
                         error!(TARGET_APPROVER, "LocalApproval, {}", e);
@@ -429,7 +436,7 @@ impl Handler<Approver> for Approver {
                         return Err(emit_fail(ctx, e).await);
                     }
 
-                    if self.pass_votation == VotationType::AlwaysAccept {
+                    let state = if self.pass_votation == VotationType::AlwaysAccept {
                         let sign_type = SignTypesNode::ApprovalSignature(
                             ApprovalSignature {
                                 request: approval_req.clone(),
@@ -476,34 +483,26 @@ impl Handler<Approver> for Approver {
                             return Err(emit_fail(ctx, e).await);
                         }
 
-                        self.on_event(
-                            ApproverEvent::SafeState {
-                                subject_id: self.subject_id.clone(),
-                                request_id,
-                                request: approval_req,
-                                state: ApprovalState::RespondedAccepted,
-                                info: None,
-                            },
-                            ctx,
-                        )
-                        .await;
+                        ApprovalState::RespondedAccepted
                     } else {
-                        self.on_event(
-                            ApproverEvent::SafeState {
-                                subject_id: self.subject_id.clone(),
-                                request_id,
-                                request: approval_req,
-                                state: ApprovalState::Pending,
-                                info: None,
-                            },
-                            ctx,
-                        )
-                        .await;
-                    }
+                        ApprovalState::Pending
+                    };
+
+                    self.on_event(
+                        ApproverEvent::SafeState {
+                            subject_id: self.subject_id.clone(),
+                            version,
+                            request_id,
+                            request: approval_req,
+                            state,
+                            info: None,
+                        },
+                        ctx,
+                    )
+                    .await;
                 }
             }
             ApproverMessage::NetworkApproval {
-                request_id,
                 approval_req,
                 node_key,
                 our_key,
@@ -526,7 +525,8 @@ impl Handler<Approver> for Approver {
                 // Lanzar evento donde lanzar los retrys
                 let message = NetworkMessage {
                     info: ComunicateInfo {
-                        request_id,
+                        request_id: self.request_id.clone(),
+                        version: self.version,
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
@@ -571,8 +571,9 @@ impl Handler<Approver> for Approver {
             ApproverMessage::NetworkResponse {
                 approval_res,
                 request_id,
+                version
             } => {
-                if request_id == self.request_id {
+                if request_id == self.request_id && version == self.version {
                     if self.node != approval_res.signature.signer {
                         let e = "We received an approval from a node which we were not expecting to receive.";
                         error!(TARGET_APPROVER, "NetworkResponse, {}", e);
@@ -647,7 +648,7 @@ impl Handler<Approver> for Approver {
                     return Err(ActorError::Functional(e.to_owned()));
                 }
 
-                if info.request_id != self.request_id {
+                if info.request_id != self.request_id || info.version != self.version {
                     if let Err(e) = check_request_owner(
                         ctx,
                         &approval_req.content.subject_id.to_string(),
@@ -695,7 +696,7 @@ impl Handler<Approver> for Approver {
                         return Err(emit_fail(ctx, e).await);
                     }
 
-                    if self.pass_votation == VotationType::AlwaysAccept {
+                    let state = if self.pass_votation == VotationType::AlwaysAccept {
                         if let Err(e) = self
                             .send_response(
                                 ctx,
@@ -707,30 +708,24 @@ impl Handler<Approver> for Approver {
                             error!(TARGET_APPROVER, "NetworkRequest, can not send approver response: {}", e);
                             return Err(emit_fail(ctx, e).await);
                         };
-                        self.on_event(
-                            ApproverEvent::SafeState {
-                                subject_id: self.subject_id.clone(),
-                                request_id: info.request_id,
-                                request: approval_req.content,
-                                state: ApprovalState::RespondedAccepted,
-                                info: None,
-                            },
-                            ctx,
-                        )
-                        .await;
+
+                        ApprovalState::RespondedAccepted
                     } else {
-                        self.on_event(
-                            ApproverEvent::SafeState {
-                                subject_id: self.subject_id.clone(),
-                                request_id: info.request_id.clone(),
-                                request: approval_req.content,
-                                state: ApprovalState::Pending,
-                                info: Some(info),
-                            },
-                            ctx,
-                        )
-                        .await;
-                    }
+                        ApprovalState::Pending
+                    };
+
+                    self.on_event(
+                        ApproverEvent::SafeState {
+                            subject_id: self.subject_id.clone(),
+                            request_id: info.request_id.clone(),
+                            version: info.version,
+                            request: approval_req.content,
+                            state,
+                            info: Some(info),
+                        },
+                        ctx,
+                    )
+                    .await;
                 } else if !self.request_id.is_empty() {
                     let state = if let Some(state) = self.state.clone() {
                         state
@@ -874,8 +869,10 @@ impl PersistentActor for Approver {
                 state,
                 info,
                 request_id,
+                version,
                 ..
             } => {
+                self.version = *version;
                 self.request_id.clone_from(request_id);
                 self.request = Some(request.clone());
                 self.state = Some(state.clone());

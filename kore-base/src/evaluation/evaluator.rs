@@ -57,12 +57,13 @@ const TARGET_EVALUATOR: &str = "Kore-Evaluation-Evaluator";
 #[derive(Default, Clone, Debug)]
 pub struct Evaluator {
     request_id: String,
+    version: u64,
     node: KeyIdentifier,
 }
 
 impl Evaluator {
-    pub fn new(request_id: String, node: KeyIdentifier) -> Self {
-        Evaluator { request_id, node }
+    pub fn new(request_id: String, version: u64, node: KeyIdentifier) -> Self {
+        Evaluator { request_id, version, node }
     }
 
     async fn execute_contract(
@@ -325,7 +326,6 @@ pub enum EvaluatorMessage {
         our_key: KeyIdentifier,
     },
     NetworkEvaluation {
-        request_id: String,
         evaluation_req: Signed<EvaluationReq>,
         schema: String,
         node_key: KeyIdentifier,
@@ -334,6 +334,7 @@ pub enum EvaluatorMessage {
     NetworkResponse {
         evaluation_res: Signed<EvaluationRes>,
         request_id: String,
+        version: u64,
     },
     NetworkRequest {
         evaluation_req: Signed<EvaluationReq>,
@@ -443,7 +444,6 @@ impl Handler<Evaluator> for Evaluator {
                 ctx.stop().await;
             }
             EvaluatorMessage::NetworkEvaluation {
-                request_id,
                 evaluation_req,
                 schema,
                 node_key,
@@ -464,7 +464,8 @@ impl Handler<Evaluator> for Evaluator {
                 // Lanzar evento donde lanzar los retrys
                 let message = NetworkMessage {
                     info: ComunicateInfo {
-                        request_id,
+                        request_id: self.request_id.clone(),
+                        version: self.version,
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
@@ -509,8 +510,9 @@ impl Handler<Evaluator> for Evaluator {
             EvaluatorMessage::NetworkResponse {
                 evaluation_res,
                 request_id,
+                version
             } => {
-                if request_id == self.request_id {
+                if request_id == self.request_id && version == self.version {
                     if self.node != evaluation_res.signature.signer {
                         let e = "We received an evaluation where the request indicates one subject but the info indicates another.";
                         error!(TARGET_EVALUATOR, "NetworkResponse, {}", e);
@@ -727,6 +729,7 @@ impl Handler<Evaluator> for Evaluator {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/evaluation/{}",
                         evaluation_req.content.context.subject_id,
