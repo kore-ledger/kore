@@ -252,6 +252,26 @@ impl Bridge {
         self.api.get_events(subject_id, quantity, page).await
     }
 
+    pub async fn get_event_sn(
+        &self,
+        subject_id: String,
+        sn: u64,
+    ) -> Result<Value, Error> {
+        let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
+        self.api.get_event_sn(subject_id, sn).await
+    }
+
+    pub async fn get_first_or_end_events(
+        &self,
+        subject_id: String,
+        quantity: u64,
+        reverse: bool,
+        success: Option<bool>,
+    ) -> Result<Value, Error> {
+        let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
+        self.api.get_first_or_end_events(subject_id, quantity, reverse, success).await
+    }
+
     pub async fn get_subject(
         &self,
         subject_id: String,
