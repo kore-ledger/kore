@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use json_patch::{patch, Patch};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

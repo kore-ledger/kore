@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::collections::HashMap;
 
 use actor::{
@@ -9,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{error, warn};
 
-use crate::{db::Storable, governance::model::CreatorQuantity, model::common::emit_fail};
+use crate::{
+    db::Storable, governance::model::CreatorQuantity, model::common::emit_fail,
+};
 
 const TARGET_RELATIONSHIP: &str = "Kore-Node-RelationShip";
 
@@ -118,9 +123,7 @@ impl Handler<RelationShip> for RelationShip {
                     if quantity >= max_quantity as usize {
                         let e = "Maximum number of subjects reached";
                         warn!(TARGET_RELATIONSHIP, "RegisterNewSubject, {}", e);
-                        return Err(ActorError::Functional(
-                            e.to_owned(),
-                        ));
+                        return Err(ActorError::Functional(e.to_owned()));
                     }
                 }
 
@@ -130,7 +133,6 @@ impl Handler<RelationShip> for RelationShip {
                 )
                 .await;
                 Ok(RelationShipResponse::None)
-
             }
             RelationShipMessage::DeleteSubject { data, subject } => {
                 self.on_event(
@@ -149,7 +151,10 @@ impl Handler<RelationShip> for RelationShip {
         ctx: &mut ActorContext<RelationShip>,
     ) {
         if let Err(e) = self.persist_light(&event, ctx).await {
-            error!(TARGET_RELATIONSHIP, "OnEvent, can not persist information: {}", e);
+            error!(
+                TARGET_RELATIONSHIP,
+                "OnEvent, can not persist information: {}", e
+            );
             emit_fail(ctx, e).await;
         };
     }

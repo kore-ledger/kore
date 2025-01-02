@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use crate::{
     approval::approver::{Approver, ApproverMessage},
     distribution::distributor::{Distributor, DistributorMessage},
@@ -22,10 +25,10 @@ use network::CommandHelper as Command;
 use network::{PeerId, PublicKey, PublicKeyEd25519, PublicKeysecp256k1};
 use rmp_serde::Deserializer;
 use serde::Deserialize;
-use tracing::error;
 use std::io::Cursor;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use tracing::error;
 
 const TARGET_NETWORK: &str = "Kore-Helper-Network";
 

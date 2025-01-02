@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
@@ -9,9 +9,9 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use tracing::error;
 use std::collections::HashMap;
 use store::store::PersistentActor;
+use tracing::error;
 
 use crate::{
     db::Storable,
@@ -156,9 +156,7 @@ impl Handler<Auth> for Auth {
                 } else {
                     let e = "The subject has not been authorized";
                     error!(TARGET_AUTH, "GetAuth, {}", e);
-                    return Err(ActorError::Functional(
-                       e.to_owned(),
-                    ));
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
             }
             AuthMessage::DeleteAuth { subject_id } => {
@@ -219,7 +217,10 @@ impl Handler<Auth> for Auth {
                                 ctx.system().get_helper("network").await;
 
                             let Some(mut helper) = helper else {
-                                error!(TARGET_AUTH, "Update, can not obtain network helper");
+                                error!(
+                                    TARGET_AUTH,
+                                    "Update, can not obtain network helper"
+                                );
                                 let e =
                                     ActorError::NotHelper("network".to_owned());
                                 return Err(emit_fail(ctx, e).await);
@@ -282,9 +283,7 @@ impl Handler<Auth> for Auth {
                 } else {
                     let e = "The subject has not been authorized";
                     error!(TARGET_AUTH, "Update, {}", e);
-                    return Err(ActorError::Functional(
-                        e.to_owned(),
-                    ));
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
             }
         };

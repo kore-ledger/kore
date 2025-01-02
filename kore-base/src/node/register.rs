@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
@@ -7,9 +7,9 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use tracing::{error, warn};
 use std::collections::HashMap;
 use store::store::PersistentActor;
+use tracing::{error, warn};
 
 use crate::{db::Storable, model::common::emit_fail};
 
@@ -25,7 +25,7 @@ pub struct RegisterData {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GovsData {
     pub governance_id: String,
-    pub active: bool
+    pub active: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -33,7 +33,6 @@ pub struct Register {
     register_gov: HashMap<String, bool>,
     register_subj: HashMap<String, Vec<RegisterData>>,
 }
-
 
 #[derive(Debug, Clone)]
 pub enum RegisterMessage {
@@ -106,15 +105,28 @@ impl Handler<Register> for Register {
         match msg {
             RegisterMessage::GetGovs { active } => {
                 if let Some(active) = active {
-                    return Ok(RegisterResponse::Govs { governances: self.register_gov.iter().filter(|x| *x.1 == active ).map(|x| GovsData {
-                        active: *x.1,
-                        governance_id: x.0.clone() 
-                    }).collect()});
+                    return Ok(RegisterResponse::Govs {
+                        governances: self
+                            .register_gov
+                            .iter()
+                            .filter(|x| *x.1 == active)
+                            .map(|x| GovsData {
+                                active: *x.1,
+                                governance_id: x.0.clone(),
+                            })
+                            .collect(),
+                    });
                 } else {
-                    return Ok(RegisterResponse::Govs { governances: self.register_gov.iter().map(|x| GovsData {
-                        active: *x.1,
-                        governance_id: x.0.clone() 
-                    }).collect() });
+                    return Ok(RegisterResponse::Govs {
+                        governances: self
+                            .register_gov
+                            .iter()
+                            .map(|x| GovsData {
+                                active: *x.1,
+                                governance_id: x.0.clone(),
+                            })
+                            .collect(),
+                    });
                 }
             }
             RegisterMessage::GetSubj {
@@ -145,9 +157,7 @@ impl Handler<Register> for Register {
                 } else {
                     let e = "Governance id is not registered";
                     warn!(TARGET_REGISTER, "GetSubj, {}", e);
-                    return Err(ActorError::Functional(
-                        e.to_owned(),
-                    ));
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
             }
             RegisterMessage::RegisterGov { gov_id, active } => {
@@ -171,7 +181,10 @@ impl Handler<Register> for Register {
         ctx: &mut ActorContext<Register>,
     ) {
         if let Err(e) = self.persist_light(&event, ctx).await {
-            error!(TARGET_REGISTER, "OnEvent, can not persist information: {}", e);
+            error!(
+                TARGET_REGISTER,
+                "OnEvent, can not persist information: {}", e
+            );
             emit_fail(ctx, e).await;
         };
     }

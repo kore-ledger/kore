@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::str::FromStr;
 
 use actor::{ActorRef, Subscriber};
@@ -201,7 +204,6 @@ impl Querys for SqliteLocal {
                             if let Value::String(string) = &event_req["Fact"]["payload"] {
                                 event_req["Fact"]["payload"] = Value::from_str(&string).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req payload into Value: {}", e)))))?;
                             }
-                            
                             Ok(json!({
                             "subject_id": event.subject_id,
                             "sn": event.sn,

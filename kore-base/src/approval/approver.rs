@@ -1,14 +1,21 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::fmt::Display;
 
 use crate::{
-    db::Storable, intermediary::Intermediary, model::{
+    db::Storable,
+    intermediary::Intermediary,
+    model::{
         common::{
             check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
             update_ledger_network, UpdateData,
         },
         network::{RetryNetwork, TimeOutResponse},
         SignTypesNode, TimeStamp,
-    }, subject::Subject, ActorMessage, EventRequest, NetworkMessage, Signed
+    },
+    subject::Subject,
+    ActorMessage, EventRequest, NetworkMessage, Signed,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
@@ -306,10 +313,10 @@ impl Actor for Approver {
             let prefix = ctx.path().parent().key();
             self.init_store("approver", Some(prefix), false, ctx).await
         } else {
-            Ok(())    
+            Ok(())
         }
     }
-    
+
     async fn pre_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
@@ -355,7 +362,10 @@ impl Handler<Approver> for Approver {
             }
             ApproverMessage::ChangeResponse { response } => {
                 let Some(state) = self.state.clone() else {
-                    warn!(TARGET_APPROVER, "ChangeResponse, Can not obtain approval state");
+                    warn!(
+                        TARGET_APPROVER,
+                        "ChangeResponse, Can not obtain approval state"
+                    );
                     return Err(ActorError::Functional(
                         "Can not get approval state".to_owned(),
                     ));
@@ -458,7 +468,10 @@ impl Handler<Approver> for Approver {
                                 return Err(emit_fail(ctx, e).await);
                             }
                         } else {
-                            error!(TARGET_APPROVER, "LocalApproval, can not obtain approval actor");
+                            error!(
+                                TARGET_APPROVER,
+                                "LocalApproval, can not obtain approval actor"
+                            );
                             let e = ActorError::NotFound(approval_path);
                             return Err(emit_fail(ctx, e).await);
                         }
@@ -542,7 +555,10 @@ impl Handler<Approver> for Approver {
                         ctx.path().clone(),
                         "retry".to_string(),
                     );
-                    error!(TARGET_APPROVER, "NetworkApproval, can not create retry actor: {}", e);
+                    error!(
+                        TARGET_APPROVER,
+                        "NetworkApproval, can not create retry actor: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -589,7 +605,10 @@ impl Handler<Approver> for Approver {
                             return Err(emit_fail(ctx, e).await);
                         }
                     } else {
-                        error!(TARGET_APPROVER, "NetworkResponse, can not obtain approval actor");
+                        error!(
+                            TARGET_APPROVER,
+                            "NetworkResponse, can not obtain approval actor"
+                        );
                         let e = ActorError::NotFound(approval_path);
                         return Err(emit_fail(ctx, e).await);
                     }
@@ -637,7 +656,10 @@ impl Handler<Approver> for Approver {
                     )
                     .await
                     {
-                        error!(TARGET_APPROVER, "NetworkRequest, can not check request owner {}", e);
+                        error!(
+                            TARGET_APPROVER,
+                            "NetworkRequest, can not check request owner {}", e
+                        );
                         if let ActorError::Functional(_) = e {
                             return Err(e);
                         } else {
@@ -653,9 +675,7 @@ impl Handler<Approver> for Approver {
                     {
                         let e = "Only can approve fact requests";
                         error!(TARGET_APPROVER, "NetworkRequest, {}", e);
-                        let e = ActorError::Functional(
-                            e.to_owned(),
-                        );
+                        let e = ActorError::Functional(e.to_owned());
                         return Err(e);
                     }
 
@@ -668,7 +688,10 @@ impl Handler<Approver> for Approver {
                         )
                         .await
                     {
-                        error!(TARGET_APPROVER, "NetworkRequest, can not obtain governance: {}", e);
+                        error!(
+                            TARGET_APPROVER,
+                            "NetworkRequest, can not obtain governance: {}", e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
 
@@ -712,7 +735,10 @@ impl Handler<Approver> for Approver {
                     let state = if let Some(state) = self.state.clone() {
                         state
                     } else {
-                        error!(TARGET_APPROVER, "NetworkRequest, can not obtain approval state");
+                        error!(
+                            TARGET_APPROVER,
+                            "NetworkRequest, can not obtain approval state"
+                        );
                         let e = ActorError::FunctionalFail(
                             "Can not get state".to_owned(),
                         );
@@ -731,7 +757,10 @@ impl Handler<Approver> for Approver {
                         if let Some(approval_req) = self.request.clone() {
                             approval_req
                         } else {
-                            error!(TARGET_APPROVER, "NetworkRequest, can not obtain approval request");
+                            error!(
+                            TARGET_APPROVER,
+                            "NetworkRequest, can not obtain approval request"
+                        );
                             let e = ActorError::FunctionalFail(
                                 "Can not get approve request".to_owned(),
                             );
@@ -742,7 +771,10 @@ impl Handler<Approver> for Approver {
                         .send_response(ctx, approval_req.clone(), response)
                         .await
                     {
-                        error!(TARGET_APPROVER, "NetworkRequest, can not send approval response");
+                        error!(
+                            TARGET_APPROVER,
+                            "NetworkRequest, can not send approval response"
+                        );
                         return Err(emit_fail(ctx, e).await);
                     };
                 }
@@ -757,12 +789,18 @@ impl Handler<Approver> for Approver {
         ctx: &mut ActorContext<Approver>,
     ) {
         if let Err(e) = self.persist_light(&event, ctx).await {
-            error!(TARGET_APPROVER, "OnEvent, can not persist information: {}", e);
+            error!(
+                TARGET_APPROVER,
+                "OnEvent, can not persist information: {}", e
+            );
             emit_fail(ctx, e).await;
         };
 
         if let Err(e) = ctx.publish_event(event).await {
-            error!(TARGET_APPROVER, "PublishEvent, can not publish event: {}", e);
+            error!(
+                TARGET_APPROVER,
+                "PublishEvent, can not publish event: {}", e
+            );
             emit_fail(ctx, e).await;
         };
     }
@@ -798,7 +836,10 @@ impl Handler<Approver> for Approver {
                     }
                 } else {
                     let e = ActorError::NotFound(approval_path);
-                    error!(TARGET_APPROVER, "OnChildError, can not obtain Approval actor: {}", e);
+                    error!(
+                        TARGET_APPROVER,
+                        "OnChildError, can not obtain Approval actor: {}", e
+                    );
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;

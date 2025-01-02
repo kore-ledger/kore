@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::{fs, str::FromStr, time::Duration};
 
 use identity::{
@@ -62,7 +65,7 @@ async fn create_node1() -> Api {
         contracts_dir: create_temp_dir(),
         always_accept: false,
         garbage_collector: Duration::from_secs(500),
-        sink: "".to_owned()
+        sink: "".to_owned(),
     };
 
     let mut registry = Registry::default();
@@ -101,7 +104,7 @@ async fn create_node2(peer_id: &str) -> Api {
         contracts_dir: create_temp_dir(),
         always_accept: false,
         garbage_collector: Duration::from_secs(500),
-        sink: "".to_owned()
+        sink: "".to_owned(),
     };
 
     let mut registry = Registry::default();

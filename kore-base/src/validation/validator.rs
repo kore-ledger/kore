@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::{collections::HashSet, time::Duration};
@@ -174,9 +174,10 @@ impl Validator {
             .subject_signature
             .verify(&validation_req.proof)
         {
-            return Err(ActorError::Functional(
-                format!("Can not verify signature: {}", e),
-            ));
+            return Err(ActorError::Functional(format!(
+                "Can not verify signature: {}",
+                e
+            )));
         }
 
         self.check_event_proof(
@@ -352,10 +353,16 @@ impl Handler<Validator> for Validator {
                         Ok(validation) => ValidationRes::Signature(validation),
                         Err(e) => {
                             if let ActorError::Functional(_) = e {
-                                warn!(TARGET_VALIDATOR, "LocalValidation, validation error: {}", e);
+                                warn!(
+                                    TARGET_VALIDATOR,
+                                    "LocalValidation, validation error: {}", e
+                                );
                                 ValidationRes::Error(e.to_string())
                             } else {
-                                error!(TARGET_VALIDATOR, "LocalValidation, validation error: {}", e);
+                                error!(
+                                    TARGET_VALIDATOR,
+                                    "LocalValidation, validation error: {}", e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             }
                         }
@@ -380,7 +387,10 @@ impl Handler<Validator> for Validator {
                         return Err(emit_fail(ctx, e).await);
                     };
                 } else {
-                    error!(TARGET_VALIDATOR, "LocalValidation, can not obtain Validation actor");
+                    error!(
+                        TARGET_VALIDATOR,
+                        "LocalValidation, can not obtain Validation actor"
+                    );
                     let e = ActorError::Exists(validation_path);
                     return Err(emit_fail(ctx, e).await);
                 }
@@ -437,8 +447,12 @@ impl Handler<Validator> for Validator {
                 {
                     Ok(retry) => retry,
                     Err(e) => {
-                        error!(TARGET_VALIDATOR, "NetworkValidation, can not obtain Retry actor: {}", e);
-                        return Err(emit_fail(ctx, e).await)
+                        error!(
+                            TARGET_VALIDATOR,
+                            "NetworkValidation, can not obtain Retry actor: {}",
+                            e
+                        );
+                        return Err(emit_fail(ctx, e).await);
                     }
                 };
 
@@ -453,14 +467,20 @@ impl Handler<Validator> for Validator {
             } => {
                 if request_id == self.request_id {
                     if self.node != validation_res.signature.signer {
-                        warn!(TARGET_VALIDATOR, "NetworkResponse, invalid signer");
+                        warn!(
+                            TARGET_VALIDATOR,
+                            "NetworkResponse, invalid signer"
+                        );
                         return Err(ActorError::Functional(
                             "Invalid signer".to_owned(),
                         ));
                     }
 
                     if let Err(e) = validation_res.verify() {
-                        warn!(TARGET_VALIDATOR, "NetworkResponse, can not verify signature: {}",e);
+                        warn!(
+                            TARGET_VALIDATOR,
+                            "NetworkResponse, can not verify signature: {}", e
+                        );
                         return Err(ActorError::Functional(format!(
                             "Can not verify signature: {}",
                             e
@@ -501,7 +521,11 @@ impl Handler<Validator> for Validator {
                         };
 
                         if let Err(e) = retry.tell(RetryMessage::End).await {
-                            warn!(TARGET_VALIDATOR, "NetworkResponse, can not end Retry actor: {}", e);
+                            warn!(
+                                TARGET_VALIDATOR,
+                                "NetworkResponse, can not end Retry actor: {}",
+                                e
+                            );
                             // Aquí me da igual, porque al parar este actor para el hijo
                             break 'retry;
                         };
@@ -509,7 +533,10 @@ impl Handler<Validator> for Validator {
 
                     ctx.stop().await;
                 } else {
-                    warn!(TARGET_VALIDATOR, "NetworkResponse, invalid request id");
+                    warn!(
+                        TARGET_VALIDATOR,
+                        "NetworkResponse, invalid request id"
+                    );
                 }
             }
             ValidatorMessage::NetworkRequest {
@@ -550,7 +577,10 @@ impl Handler<Validator> for Validator {
 
                 let Some(mut helper) = helper else {
                     let e = ActorError::NotHelper("network".to_owned());
-                    error!(TARGET_VALIDATOR, "NetworkRequest, can not obtain network helper");
+                    error!(
+                        TARGET_VALIDATOR,
+                        "NetworkRequest, can not obtain network helper"
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -566,10 +596,16 @@ impl Handler<Validator> for Validator {
                     Ok(reboot) => reboot,
                     Err(e) => {
                         if let ActorError::Functional(_) = e {
-                            warn!(TARGET_VALIDATOR, "NetworkRequest, checking governance: {}", e);
+                            warn!(
+                                TARGET_VALIDATOR,
+                                "NetworkRequest, checking governance: {}", e
+                            );
                             return Err(e);
                         } else {
-                            error!(TARGET_VALIDATOR, "NetworkRequest, checking governance: {}", e);
+                            error!(
+                                TARGET_VALIDATOR,
+                                "NetworkRequest, checking governance: {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -585,10 +621,16 @@ impl Handler<Validator> for Validator {
                         Ok(validation) => ValidationRes::Signature(validation),
                         Err(e) => {
                             if let ActorError::Functional(_) = e {
-                                warn!(TARGET_VALIDATOR, "NetworkRequest, validation error: {}", e);
+                                warn!(
+                                    TARGET_VALIDATOR,
+                                    "NetworkRequest, validation error: {}", e
+                                );
                                 ValidationRes::Error(e.to_string())
                             } else {
-                                error!(TARGET_VALIDATOR, "NetworkRequest, validation error: {}", e);
+                                error!(
+                                    TARGET_VALIDATOR,
+                                    "NetworkRequest, validation error: {}", e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             }
                         }
@@ -615,9 +657,12 @@ impl Handler<Validator> for Validator {
                 {
                     Ok(signature) => signature,
                     Err(e) => {
-                        error!(TARGET_VALIDATOR, "NetworkRequest, can not sign response: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_VALIDATOR,
+                            "NetworkRequest, can not sign response: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let signed_response: Signed<ValidationRes> = Signed {
@@ -636,7 +681,11 @@ impl Handler<Validator> for Validator {
                     })
                     .await
                 {
-                    error!(TARGET_VALIDATOR, "NetworkRequest, can not send response to network: {}", e);
+                    error!(
+                        TARGET_VALIDATOR,
+                        "NetworkRequest, can not send response to network: {}",
+                        e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -680,7 +729,10 @@ impl Handler<Validator> for Validator {
                     }
                 } else {
                     let e = ActorError::NotFound(validation_path);
-                    error!(TARGET_VALIDATOR, "OnChildError, can not obtain Validation actor: {}", e);
+                    error!(
+                        TARGET_VALIDATOR,
+                        "OnChildError, can not obtain Validation actor: {}", e
+                    );
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;

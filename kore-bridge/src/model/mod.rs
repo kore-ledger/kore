@@ -1,7 +1,20 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::str::FromStr;
 
 use identity::identifier::{Derivable, DigestIdentifier, KeyIdentifier};
-use kore_base::{error::Error, model::{ namespace::Namespace, request::{ConfirmRequest, CreateRequest, EOLRequest, EventRequest, FactRequest, TransferRequest}, ValueWrapper}};
+use kore_base::{
+    error::Error,
+    model::{
+        namespace::Namespace,
+        request::{
+            ConfirmRequest, CreateRequest, EOLRequest, EventRequest,
+            FactRequest, TransferRequest,
+        },
+        ValueWrapper,
+    },
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use signature::BridgeSignature;
@@ -24,7 +37,7 @@ pub enum BridgeEventRequest {
     Fact(BridgeFactRequest),
     Transfer(BridgeTransferRequest),
     EOL(BridgeEOLRequest),
-    Confirm(BridgeConfirmRequest)
+    Confirm(BridgeConfirmRequest),
 }
 
 impl From<EventRequest> for BridgeEventRequest {
@@ -34,7 +47,7 @@ impl From<EventRequest> for BridgeEventRequest {
             EventRequest::Fact(request) => Self::Fact(request.into()),
             EventRequest::Transfer(request) => Self::Transfer(request.into()),
             EventRequest::EOL(request) => Self::EOL(request.into()),
-            EventRequest::Confirm(request) => Self::Confirm(request.into())
+            EventRequest::Confirm(request) => Self::Confirm(request.into()),
         }
     }
 }
@@ -43,11 +56,21 @@ impl TryFrom<BridgeEventRequest> for EventRequest {
     type Error = Error;
     fn try_from(request: BridgeEventRequest) -> Result<Self, Self::Error> {
         match request {
-            BridgeEventRequest::Create(request) => Ok(Self::Create(request.try_into()?)),
-            BridgeEventRequest::Fact(request) => Ok(Self::Fact(request.try_into()?)),
-            BridgeEventRequest::Transfer(request) => Ok(Self::Transfer(request.try_into()?)),
-            BridgeEventRequest::EOL(request) => Ok(Self::EOL(request.try_into()?)),
-            BridgeEventRequest::Confirm(request) => Ok(Self::Confirm(request.try_into()?)),
+            BridgeEventRequest::Create(request) => {
+                Ok(Self::Create(request.try_into()?))
+            }
+            BridgeEventRequest::Fact(request) => {
+                Ok(Self::Fact(request.try_into()?))
+            }
+            BridgeEventRequest::Transfer(request) => {
+                Ok(Self::Transfer(request.try_into()?))
+            }
+            BridgeEventRequest::EOL(request) => {
+                Ok(Self::EOL(request.try_into()?))
+            }
+            BridgeEventRequest::Confirm(request) => {
+                Ok(Self::Confirm(request.try_into()?))
+            }
         }
     }
 }
@@ -76,7 +99,8 @@ impl TryFrom<BridgeCreateRequest> for CreateRequest {
     type Error = Error;
     fn try_from(request: BridgeCreateRequest) -> Result<Self, Self::Error> {
         Ok(Self {
-            governance_id: DigestIdentifier::from_str(&request.governance_id).map_err(|_| {
+            governance_id: DigestIdentifier::from_str(&request.governance_id)
+                .map_err(|_| {
                 Error::Bridge("Invalid governance identifier".to_string())
             })?,
             schema_id: request.schema_id,
@@ -106,9 +130,10 @@ impl TryFrom<BridgeFactRequest> for FactRequest {
     type Error = Error;
     fn try_from(request: BridgeFactRequest) -> Result<Self, Self::Error> {
         Ok(Self {
-            subject_id: DigestIdentifier::from_str(&request.subject_id).map_err(|_| {
-                Error::Bridge("Invalid subject identifier".to_string())
-            })?,
+            subject_id: DigestIdentifier::from_str(&request.subject_id)
+                .map_err(|_| {
+                    Error::Bridge("Invalid subject identifier".to_string())
+                })?,
             payload: ValueWrapper(request.payload),
         })
     }
@@ -135,15 +160,15 @@ impl TryFrom<BridgeTransferRequest> for TransferRequest {
     type Error = Error;
     fn try_from(request: BridgeTransferRequest) -> Result<Self, Self::Error> {
         Ok(Self {
-            subject_id: DigestIdentifier::from_str(&request.subject_id).map_err(|_| {
-                Error::Bridge("Invalid subject identifier".to_string())
-            })?,
+            subject_id: DigestIdentifier::from_str(&request.subject_id)
+                .map_err(|_| {
+                    Error::Bridge("Invalid subject identifier".to_string())
+                })?,
             new_owner: KeyIdentifier::from_str(&request.new_owner)
                 .map_err(|_| Error::Bridge("Invalid public key".to_string()))?,
         })
     }
 }
-
 
 /// EOL request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,9 +189,10 @@ impl TryFrom<BridgeEOLRequest> for EOLRequest {
     type Error = Error;
     fn try_from(request: BridgeEOLRequest) -> Result<Self, Self::Error> {
         Ok(Self {
-            subject_id: DigestIdentifier::from_str(&request.subject_id).map_err(|_| {
-                Error::Bridge("Invalid subject identifier".to_string())
-            })?,
+            subject_id: DigestIdentifier::from_str(&request.subject_id)
+                .map_err(|_| {
+                    Error::Bridge("Invalid subject identifier".to_string())
+                })?,
         })
     }
 }
@@ -189,9 +215,10 @@ impl TryFrom<BridgeConfirmRequest> for ConfirmRequest {
     type Error = Error;
     fn try_from(request: BridgeConfirmRequest) -> Result<Self, Self::Error> {
         Ok(Self {
-            subject_id: DigestIdentifier::from_str(&request.subject_id).map_err(|_| {
-                Error::Bridge("Invalid subject identifier".to_string())
-            })?,
+            subject_id: DigestIdentifier::from_str(&request.subject_id)
+                .map_err(|_| {
+                    Error::Bridge("Invalid subject identifier".to_string())
+                })?,
         })
     }
 }

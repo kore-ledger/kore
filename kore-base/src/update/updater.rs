@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::time::Duration;
@@ -115,13 +115,20 @@ impl Handler<Updater> for Updater {
                 {
                     Ok(retry) => retry,
                     Err(e) => {
-                        error!(TARGET_UPDATER, "NetworkLastSn, can not create Retry actor: {}", e);
+                        error!(
+                            TARGET_UPDATER,
+                            "NetworkLastSn, can not create Retry actor: {}", e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
-                    error!(TARGET_UPDATER, "NetworkLastSn, can not send retry to Retry actor: {}", e);
+                    error!(
+                        TARGET_UPDATER,
+                        "NetworkLastSn, can not send retry to Retry actor: {}",
+                        e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -143,7 +150,10 @@ impl Handler<Updater> for Updater {
                     }
                 } else {
                     let e = ActorError::NotFound(update_path);
-                    error!(TARGET_UPDATER, "NetworkResponse, can not obtain Update actor: {}", e);
+                    error!(
+                        TARGET_UPDATER,
+                        "NetworkResponse, can not obtain Update actor: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 }
 
@@ -157,7 +167,10 @@ impl Handler<Updater> for Updater {
                     };
 
                     if let Err(e) = retry.tell(RetryMessage::End).await {
-                        warn!(TARGET_UPDATER, "NetworkResponse, can not end Retry actor: {}", e);
+                        warn!(
+                            TARGET_UPDATER,
+                            "NetworkResponse, can not end Retry actor: {}", e
+                        );
                         // Aquí me da igual, porque al parar este actor para el hijo
                         break 'retry;
                     };
@@ -196,7 +209,10 @@ impl Handler<Updater> for Updater {
                     }
                 } else {
                     let e = ActorError::NotFound(update_path);
-                    error!(TARGET_UPDATER, "OnChildError, can not obtain Update actor: {}", e);
+                    error!(
+                        TARGET_UPDATER,
+                        "OnChildError, can not obtain Update actor: {}", e
+                    );
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;

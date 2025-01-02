@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Event data model.
@@ -18,8 +18,8 @@ use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use tracing::error;
 use std::collections::HashSet;
+use tracing::error;
 
 const TARGET_EVENT: &str = "Kore-Model-Event";
 
@@ -97,11 +97,12 @@ impl HashId for ProofEvent {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator)
-        .map_err(|e| {
-            error!(TARGET_EVENT, "HashId for ProofEvent fails: {}", e);
-            Error::HashID(format!("HashId for ProofEvent fails: {}", e))
-        })
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |e| {
+                error!(TARGET_EVENT, "HashId for ProofEvent fails: {}", e);
+                Error::HashID(format!("HashId for ProofEvent fails: {}", e))
+            },
+        )
     }
 }
 
@@ -110,10 +111,18 @@ impl HashId for Signed<ProofEvent> {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(|e| {
-            error!(TARGET_EVENT, "HashId for Signed<ProofEvent> fails: {}", e);
-            Error::HashID(format!("HashId for Signed<ProofEvent> fails: {}", e))
-        })
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |e| {
+                error!(
+                    TARGET_EVENT,
+                    "HashId for Signed<ProofEvent> fails: {}", e
+                );
+                Error::HashID(format!(
+                    "HashId for Signed<ProofEvent> fails: {}",
+                    e
+                ))
+            },
+        )
     }
 }
 
@@ -164,11 +173,12 @@ impl HashId for Event {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator)
-        .map_err(|e| {
-            error!(TARGET_EVENT, "HashId for Event fails: {}", e);
-            Error::HashID(format!("HashId for Event fails: {}", e))
-        })
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |e| {
+                error!(TARGET_EVENT, "HashId for Event fails: {}", e);
+                Error::HashID(format!("HashId for Event fails: {}", e))
+            },
+        )
     }
 }
 
@@ -177,10 +187,12 @@ impl HashId for Signed<Event> {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(|e| {
-            error!(TARGET_EVENT, "HashId for Signed<Event> fails: {}", e);
-            Error::HashID(format!("HashId for Signed<Event> fails: {}", e))
-        })
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |e| {
+                error!(TARGET_EVENT, "HashId for Signed<Event> fails: {}", e);
+                Error::HashID(format!("HashId for Signed<Event> fails: {}", e))
+            },
+        )
     }
 }
 
@@ -241,11 +253,12 @@ impl HashId for Ledger {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator)
-            .map_err(|e| {
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |e| {
                 error!(TARGET_EVENT, "HashId for Ledger fails: {}", e);
                 Error::HashID(format!("HashId for Ledger fails: {}", e))
-            })
+            },
+        )
     }
 }
 
@@ -254,10 +267,12 @@ impl HashId for Signed<Ledger> {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(|e| {
-            error!(TARGET_EVENT, "HashId for Signed<Ledger> fails: {}", e);
-            Error::HashID(format!("HashId for Signed<Ledger> fails: {}", e))
-        })
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |e| {
+                error!(TARGET_EVENT, "HashId for Signed<Ledger> fails: {}", e);
+                Error::HashID(format!("HashId for Signed<Ledger> fails: {}", e))
+            },
+        )
     }
 }
 

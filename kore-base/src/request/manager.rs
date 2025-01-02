@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
@@ -11,9 +11,9 @@ use identity::identifier::{
 };
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, warn};
 use std::collections::HashSet;
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
+use tracing::{error, info, warn};
 
 use crate::{
     approval::{Approval, ApprovalMessage},
@@ -46,8 +46,9 @@ use crate::{
 const TARGET_MANAGER: &str = "Kore-Request-Manager";
 
 use super::{
-    reboot::{Reboot, RebootMessage}, state::RequestManagerState, RequestHandler,
-    RequestHandlerMessage,
+    reboot::{Reboot, RebootMessage},
+    state::RequestManagerState,
+    RequestHandler, RequestHandlerMessage,
 };
 
 #[derive(Default)]
@@ -602,9 +603,7 @@ impl RequestManager {
         let store: Option<ActorRef<Store<RequestManager>>> =
             ctx.get_child("store").await;
         let response = if let Some(store) = store {
-            store
-                .ask(StoreCommand::Purge)
-                .await?
+            store.ask(StoreCommand::Purge).await?
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/store",
@@ -613,9 +612,12 @@ impl RequestManager {
         };
 
         if let StoreResponse::Error(e) = response {
-            return Err(ActorError::Store(format!("Can not purge request: {}", e)))
+            return Err(ActorError::Store(format!(
+                "Can not purge request: {}",
+                e
+            )));
         };
-        
+
         Ok(())
     }
 }
@@ -690,17 +692,23 @@ impl Handler<RequestManager> for RequestManager {
                 info!(TARGET_MANAGER, "Init reboot {}", self.id);
                 if let RequestManagerState::Reboot = self.state.clone() {
                     let reboot = Reboot::new(governance_id);
-                    let reboot_actor = match ctx.create_child("reboot", reboot).await {
-                        Ok(actor) => actor,
-                        Err(e) => {
-                            error!(TARGET_MANAGER, "Reboot, can not create Reboot actor: {}",e);
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    };
+                    let reboot_actor =
+                        match ctx.create_child("reboot", reboot).await {
+                            Ok(actor) => actor,
+                            Err(e) => {
+                                error!(
+                                    TARGET_MANAGER,
+                                    "Reboot, can not create Reboot actor: {}",
+                                    e
+                                );
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        };
 
-                    if let Err(e) = reboot_actor.tell(RebootMessage::Init).await {
+                    if let Err(e) = reboot_actor.tell(RebootMessage::Init).await
+                    {
                         error!(TARGET_MANAGER, "Reboot, can not send Init message to Reboot actor: {}",e);
-                            return Err(emit_fail(ctx, e).await);
+                        return Err(emit_fail(ctx, e).await);
                     }
                 } else {
                     self.on_event(
@@ -713,24 +721,36 @@ impl Handler<RequestManager> for RequestManager {
                     .await;
                     if let Err(e) = self.init_reboot(ctx, governance_id).await {
                         if let ActorError::Functional(_) = e {
-                            warn!(TARGET_MANAGER, "Reboot, can not init reboot: {}",e);
+                            warn!(
+                                TARGET_MANAGER,
+                                "Reboot, can not init reboot: {}", e
+                            );
                             let actor = ctx.reference().await;
                             if let Some(actor) = actor {
                                 if let Err(e) = actor
                                     .tell(RequestManagerMessage::FinishReboot)
                                     .await
                                 {
-                                    error!(TARGET_MANAGER, "Reboot, can not finish reboot: {}",e);
+                                    error!(
+                                        TARGET_MANAGER,
+                                        "Reboot, can not finish reboot: {}", e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             } else {
-                                error!(TARGET_MANAGER, "Reboot, request actor problem: {}",e);
+                                error!(
+                                    TARGET_MANAGER,
+                                    "Reboot, request actor problem: {}", e
+                                );
                                 let path = ctx.path().clone();
                                 let e = ActorError::NotFound(path);
                                 return Err(emit_fail(ctx, e).await);
                             }
                         } else {
-                            warn!(TARGET_MANAGER, "Reboot, a problem in init reboot: {}",e);
+                            warn!(
+                                TARGET_MANAGER,
+                                "Reboot, a problem in init reboot: {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -741,7 +761,10 @@ impl Handler<RequestManager> for RequestManager {
                 match self.request.content {
                     EventRequest::Fact(_) => {
                         if let Err(e) = self.evaluation(ctx).await {
-                            error!(TARGET_MANAGER, "FinishReboot, can not init evaluation: {}",e);
+                            error!(
+                                TARGET_MANAGER,
+                                "FinishReboot, can not init evaluation: {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         };
                     }
@@ -761,12 +784,15 @@ impl Handler<RequestManager> for RequestManager {
                             Ok(data) => data,
                             Err(e) => {
                                 error!(TARGET_MANAGER, "FinishReboot, can not build event proof: {}",e);
-                                return Err(emit_fail(ctx, e).await)
-                            },
+                                return Err(emit_fail(ctx, e).await);
+                            }
                         };
 
                         if let Err(e) = self.validation(ctx, data).await {
-                            error!(TARGET_MANAGER, "FinishReboot, can not init validation: {}",e);
+                            error!(
+                                TARGET_MANAGER,
+                                "FinishReboot, can not init validation: {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         };
                     }
@@ -780,7 +806,10 @@ impl Handler<RequestManager> for RequestManager {
                         match self.request.content {
                             EventRequest::Fact(_) => {
                                 if let Err(e) = self.evaluation(ctx).await {
-                                    error!(TARGET_MANAGER, "Run, can not init evaluation: {}",e);
+                                    error!(
+                                        TARGET_MANAGER,
+                                        "Run, can not init evaluation: {}", e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 };
                             }
@@ -802,13 +831,16 @@ impl Handler<RequestManager> for RequestManager {
                                     Ok(data) => data,
                                     Err(e) => {
                                         error!(TARGET_MANAGER, "Run, can not build event proof: {}",e);
-                                        return Err(emit_fail(ctx, e).await)
+                                        return Err(emit_fail(ctx, e).await);
                                     }
                                 };
 
                                 if let Err(e) = self.validation(ctx, data).await
                                 {
-                                    error!(TARGET_MANAGER, "Run, can not init validation: {}",e);
+                                    error!(
+                                        TARGET_MANAGER,
+                                        "Run, can not init validation: {}", e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 };
                             }
@@ -816,7 +848,10 @@ impl Handler<RequestManager> for RequestManager {
                     }
                     RequestManagerState::Evaluation => {
                         if let Err(e) = self.send_evaluation(ctx).await {
-                            error!(TARGET_MANAGER, "Evaluation, can not init evaluation: {}",e);
+                            error!(
+                                TARGET_MANAGER,
+                                "Evaluation, can not init evaluation: {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -828,7 +863,10 @@ impl Handler<RequestManager> for RequestManager {
                         if let Err(e) =
                             self.send_approval(ctx, eval_req, eval_res).await
                         {
-                            error!(TARGET_MANAGER, "Approval, can not init approval: {}",e);
+                            error!(
+                                TARGET_MANAGER,
+                                "Approval, can not init approval: {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -836,7 +874,10 @@ impl Handler<RequestManager> for RequestManager {
                         if let Err(e) =
                             self.send_validation(ctx, val_info).await
                         {
-                            error!(TARGET_MANAGER, "Validation, can not init validation: {}",e);
+                            error!(
+                                TARGET_MANAGER,
+                                "Validation, can not init validation: {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -844,7 +885,11 @@ impl Handler<RequestManager> for RequestManager {
                         if let Err(e) =
                             self.init_distribution(ctx, event, ledger).await
                         {
-                            error!(TARGET_MANAGER, "Distribution, can not init distribution: {}",e);
+                            error!(
+                                TARGET_MANAGER,
+                                "Distribution, can not init distribution: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -864,7 +909,7 @@ impl Handler<RequestManager> for RequestManager {
                         let e = ActorError::FunctionalFail(
                             "Invalid request state".to_owned(),
                         );
-                        error!(TARGET_MANAGER, "ApprovalRes, {}",e);
+                        error!(TARGET_MANAGER, "ApprovalRes, {}", e);
                         return Err(emit_fail(ctx, e).await);
                     };
 
@@ -888,13 +933,19 @@ impl Handler<RequestManager> for RequestManager {
                 {
                     Ok(data) => data,
                     Err(e) => {
-                        error!(TARGET_MANAGER, "ApprovalRes, can not build event proof: {}",e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_MANAGER,
+                            "ApprovalRes, can not build event proof: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 if let Err(e) = self.validation(ctx, data).await {
-                    error!(TARGET_MANAGER, "ApprovalRes, can not init validation: {}",e);
+                    error!(
+                        TARGET_MANAGER,
+                        "ApprovalRes, can not init validation: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 }
             }
@@ -909,7 +960,7 @@ impl Handler<RequestManager> for RequestManager {
                     let e = ActorError::FunctionalFail(
                         "Invalid request state".to_owned(),
                     );
-                    error!(TARGET_MANAGER, "EvaluationRes, {}",e);
+                    error!(TARGET_MANAGER, "EvaluationRes, {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -923,8 +974,11 @@ impl Handler<RequestManager> for RequestManager {
                         )
                         .await
                     {
-                        error!(TARGET_MANAGER, "EvaluationRes, can not init approval: {}",e);
-                        return Err(emit_fail(ctx, e).await)
+                        error!(
+                            TARGET_MANAGER,
+                            "EvaluationRes, can not init approval: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
                     }
                 } else {
                     let data = match self
@@ -947,13 +1001,20 @@ impl Handler<RequestManager> for RequestManager {
                     {
                         Ok(data) => data,
                         Err(e) => {
-                            error!(TARGET_MANAGER, "EvaluationRes, can not build event proof: {}",e);
-                            return Err(emit_fail(ctx, e).await)
-                        },
+                            error!(
+                                TARGET_MANAGER,
+                                "EvaluationRes, can not build event proof: {}",
+                                e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
 
                     if let Err(e) = self.validation(ctx, data).await {
-                        error!(TARGET_MANAGER, "EvaluationRes, can not init validation: {}",e);
+                        error!(
+                            TARGET_MANAGER,
+                            "EvaluationRes, can not init validation: {}", e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 }
@@ -967,17 +1028,23 @@ impl Handler<RequestManager> for RequestManager {
                     let e = ActorError::FunctionalFail(
                         "Invalid request state".to_owned(),
                     );
-                    error!(TARGET_MANAGER, "FinishRequest, {}",e);
+                    error!(TARGET_MANAGER, "FinishRequest, {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
 
                 if let Err(e) = self.end_request(ctx).await {
-                    error!(TARGET_MANAGER, "FinishRequest, can not end request: {}",e);
+                    error!(
+                        TARGET_MANAGER,
+                        "FinishRequest, can not end request: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 }
 
                 if let Err(e) = Self::purge_storage(ctx).await {
-                    error!(TARGET_MANAGER, "FinishRequest, can not purge storage: {}",e);
+                    error!(
+                        TARGET_MANAGER,
+                        "FinishRequest, can not purge storage: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 }
 
@@ -998,7 +1065,7 @@ impl Handler<RequestManager> for RequestManager {
                         let e = ActorError::FunctionalFail(
                             "Invalid request state".to_owned(),
                         );
-                        error!(TARGET_MANAGER, "ValidationRes, {}",e);
+                        error!(TARGET_MANAGER, "ValidationRes, {}", e);
                         return Err(emit_fail(ctx, e).await);
                     };
 
@@ -1011,7 +1078,10 @@ impl Handler<RequestManager> for RequestManager {
 
                 if let Err(e) = self.safe_ledger_event(ctx, event, ledger).await
                 {
-                    error!(TARGET_MANAGER, "ValidationRes, Can not safe ledger or event: {}",e);
+                    error!(
+                        TARGET_MANAGER,
+                        "ValidationRes, Can not safe ledger or event: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 }
             }
@@ -1022,12 +1092,15 @@ impl Handler<RequestManager> for RequestManager {
                     let e = ActorError::FunctionalFail(
                         "Invalid request state".to_owned(),
                     );
-                    error!(TARGET_MANAGER, "Fact, {}",e);
+                    error!(TARGET_MANAGER, "Fact, {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
 
                 if let Err(e) = self.evaluation(ctx).await {
-                    error!(TARGET_MANAGER, "EvaluationRes, can not init evaluation: {}",e);
+                    error!(
+                        TARGET_MANAGER,
+                        "EvaluationRes, can not init evaluation: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -1038,7 +1111,7 @@ impl Handler<RequestManager> for RequestManager {
                     let e = ActorError::FunctionalFail(
                         "Invalid request state".to_owned(),
                     );
-                    error!(TARGET_MANAGER, "Other, {}",e);
+                    error!(TARGET_MANAGER, "Other, {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -1056,13 +1129,19 @@ impl Handler<RequestManager> for RequestManager {
                 {
                     Ok(data) => data,
                     Err(e) => {
-                        error!(TARGET_MANAGER, "Other, can not build event proof: {}",e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_MANAGER,
+                            "Other, can not build event proof: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 if let Err(e) = self.validation(ctx, data).await {
-                    error!(TARGET_MANAGER, "Other, can not init validation: {}",e);
+                    error!(
+                        TARGET_MANAGER,
+                        "Other, can not init validation: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -1077,12 +1156,18 @@ impl Handler<RequestManager> for RequestManager {
         ctx: &mut ActorContext<RequestManager>,
     ) {
         if let Err(e) = self.persist_light(&event, ctx).await {
-            error!(TARGET_MANAGER, "OnEvent, can not persist information: {}", e);
+            error!(
+                TARGET_MANAGER,
+                "OnEvent, can not persist information: {}", e
+            );
             emit_fail(ctx, e).await;
         };
 
         if let Err(e) = ctx.publish_event(event).await {
-            error!(TARGET_MANAGER, "PublishEvent, can not publish event: {}", e);
+            error!(
+                TARGET_MANAGER,
+                "PublishEvent, can not publish event: {}", e
+            );
             emit_fail(ctx, e).await;
         }
     }

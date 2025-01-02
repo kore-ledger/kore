@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::{collections::HashSet, path::Path, process::Command};
 
 use actor::{
@@ -342,11 +345,14 @@ impl Handler<Compiler> for Compiler {
                 let contract_hash = match contract_wrapper.hash_id(derivator) {
                     Ok(hash) => hash,
                     Err(e) => {
-                        error!(TARGET_COMPILER, "Compile, Can not hash contract: {}", e);
+                        error!(
+                            TARGET_COMPILER,
+                            "Compile, Can not hash contract: {}", e
+                        );
                         return Err(ActorError::Functional(format!(
                             "Can not hash contract: {}",
                             e
-                        )))
+                        )));
                     }
                 };
 
@@ -354,7 +360,10 @@ impl Handler<Compiler> for Compiler {
                     if let Err(e) =
                         Self::compile_contract(&contract, &contract_path).await
                     {
-                        error!(TARGET_COMPILER, "Compile, Can not compile: {}", e);
+                        error!(
+                            TARGET_COMPILER,
+                            "Compile, Can not compile: {}", e
+                        );
                         return Err(ActorError::Functional(e.to_string()));
                     };
 
@@ -366,8 +375,11 @@ impl Handler<Compiler> for Compiler {
                     {
                         Ok(contract) => contract,
                         Err(e) => {
-                            error!(TARGET_COMPILER, "Compile, Can check wasm: {}", e);
-                            return Err(ActorError::Functional(e.to_string()))
+                            error!(
+                                TARGET_COMPILER,
+                                "Compile, Can check wasm: {}", e
+                            );
+                            return Err(ActorError::Functional(e.to_string()));
                         }
                     };
 

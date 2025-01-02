@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::time::Duration;
 
 use actor::{
@@ -34,7 +37,8 @@ impl Reboot {
         &mut self,
         ctx: &mut actor::ActorContext<Reboot>,
     ) -> Result<(), ActorError> {
-        self.sn_event = match get_last_event(ctx, &self.governance_id.to_string()).await {
+        self.sn_event =
+            match get_last_event(ctx, &self.governance_id.to_string()).await {
                 Ok(last_event) => last_event.content.sn,
                 Err(e) => {
                     if let ActorError::Functional(_) = e {
@@ -144,12 +148,18 @@ impl Handler<Reboot> for Reboot {
         match msg {
             RebootMessage::Init => {
                 if let Err(e) = self.update_event_sn(ctx).await {
-                    error!(TARGET_REBOOT, "Init, can not uptade event sn: {}", e);
+                    error!(
+                        TARGET_REBOOT,
+                        "Init, can not uptade event sn: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
                 if let Err(e) = self.update_ledger_sn(ctx).await {
-                    error!(TARGET_REBOOT, "Init, can not uptade ledger sn: {}", e);
+                    error!(
+                        TARGET_REBOOT,
+                        "Init, can not uptade ledger sn: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -163,20 +173,29 @@ impl Handler<Reboot> for Reboot {
                 last_sn_ledger,
             } => {
                 if let Err(e) = self.update_event_sn(ctx).await {
-                    error!(TARGET_REBOOT, "Update, can not uptade event sn: {}", e);
+                    error!(
+                        TARGET_REBOOT,
+                        "Update, can not uptade event sn: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
                 if self.sn_event > last_sn_event {
                     if let Err(e) = Self::finish(ctx).await {
-                        error!(TARGET_REBOOT, "Update, can not finish reboot: {}", e);
+                        error!(
+                            TARGET_REBOOT,
+                            "Update, can not finish reboot: {}", e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                     return Ok(());
                 }
 
                 if let Err(e) = self.update_ledger_sn(ctx).await {
-                    error!(TARGET_REBOOT, "Update, can not uptade ledger sn: {}", e);
+                    error!(
+                        TARGET_REBOOT,
+                        "Update, can not uptade ledger sn: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -188,7 +207,10 @@ impl Handler<Reboot> for Reboot {
                 }
 
                 if let Err(e) = Self::finish(ctx).await {
-                    error!(TARGET_REBOOT, "Update, can not finish reboot: {}", e);
+                    error!(
+                        TARGET_REBOOT,
+                        "Update, can not finish reboot: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 }
             }

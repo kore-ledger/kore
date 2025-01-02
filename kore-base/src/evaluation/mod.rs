@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Evaluation module.
@@ -291,7 +291,10 @@ impl Handler<Evaluation> for Evaluation {
                 {
                     event.subject_id
                 } else {
-                    error!(TARGET_EVALUATION, "Create, only can evaluate Fact request");
+                    error!(
+                        TARGET_EVALUATION,
+                        "Create, only can evaluate Fact request"
+                    );
                     let e = ActorError::FunctionalFail(
                         "Only can eval Fact requests".to_owned(),
                     );
@@ -302,7 +305,10 @@ impl Handler<Evaluation> for Evaluation {
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
                         Err(e) => {
-                            error!(TARGET_EVALUATION, "Create, can not get metadata: {}", e);
+                            error!(
+                                TARGET_EVALUATION,
+                                "Create, can not get metadata: {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -354,9 +360,12 @@ impl Handler<Evaluation> for Evaluation {
                 {
                     Ok(signature) => signature,
                     Err(e) => {
-                        error!(TARGET_EVALUATION, "Create, can not sign eval request: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_EVALUATION,
+                            "Create, can not sign eval request: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let signed_evaluation_req: Signed<EvaluationReq> = Signed {
@@ -365,15 +374,20 @@ impl Handler<Evaluation> for Evaluation {
                 };
 
                 for signer in signers {
-                    if let Err(e) = self.create_evaluators(
-                        ctx,
-                        &self.request_id,
-                        signed_evaluation_req.clone(),
-                        &metadata.schema_id,
-                        signer.clone(),
-                    )
-                    .await {
-                        error!(TARGET_EVALUATION, "Can not create evaluator {}: {}", signer, e);
+                    if let Err(e) = self
+                        .create_evaluators(
+                            ctx,
+                            &self.request_id,
+                            signed_evaluation_req.clone(),
+                            &metadata.schema_id,
+                            signer.clone(),
+                        )
+                        .await
+                    {
+                        error!(
+                            TARGET_EVALUATION,
+                            "Can not create evaluator {}: {}", signer, e
+                        );
                     }
                 }
             }

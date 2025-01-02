@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::time::Duration;
 
 use actor::{
@@ -128,7 +131,10 @@ impl Handler<DBManager> for DBManager {
                 let Some(our_ref): Option<ActorRef<DBManager>> =
                     ctx.reference().await
                 else {
-                    error!(TARGET_EXTERNAL, "InitDelete, Can not obtain DBManager actor");
+                    error!(
+                        TARGET_EXTERNAL,
+                        "InitDelete, Can not obtain DBManager actor"
+                    );
                     ctx.system().send_event(SystemEvent::StopSystem).await;
                     let e = ActorError::NotFound(ctx.path().clone());
                     return Err(e);
@@ -139,7 +145,10 @@ impl Handler<DBManager> for DBManager {
                 }
             }
             DBManagerMessage::Error(error) => {
-                error!(TARGET_EXTERNAL, "Error, Problem un Subscriber: {}", error);
+                error!(
+                    TARGET_EXTERNAL,
+                    "Error, Problem un Subscriber: {}", error
+                );
                 let e = ActorError::FunctionalFail(error.to_string());
                 ctx.system().send_event(SystemEvent::StopSystem).await;
                 return Err(e);
@@ -151,7 +160,10 @@ impl Handler<DBManager> for DBManager {
                 let Some(our_ref): Option<ActorRef<DBManager>> =
                     ctx.reference().await
                 else {
-                    error!(TARGET_EXTERNAL, "InitDelete, Can not obtain DBManager actor");
+                    error!(
+                        TARGET_EXTERNAL,
+                        "InitDelete, Can not obtain DBManager actor"
+                    );
                     let e = ActorError::NotFound(ctx.path().clone());
                     ctx.system().send_event(SystemEvent::StopSystem).await;
                     return Err(e);
@@ -173,9 +185,11 @@ impl Handler<DBManager> for DBManager {
         event: DBManagerEvent,
         ctx: &mut ActorContext<DBManager>,
     ) {
-
         if let Err(e) = self.persist_light(&event, ctx).await {
-            error!(TARGET_EXTERNAL, "OnEvent, can not persist information: {}", e);
+            error!(
+                TARGET_EXTERNAL,
+                "OnEvent, can not persist information: {}", e
+            );
             ctx.system().send_event(SystemEvent::StopSystem).await;
         };
     }

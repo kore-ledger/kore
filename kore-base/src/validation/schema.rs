@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::collections::HashSet;
 
 use actor::{
@@ -76,7 +79,10 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     )
                     .await
                     {
-                        error!(TARGET_SCHEMA, "NetworkRequest, can not update governance: {}", e);
+                        error!(
+                            TARGET_SCHEMA,
+                            "NetworkRequest, can not update governance: {}", e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 }
@@ -91,7 +97,10 @@ impl Handler<ValidationSchema> for ValidationSchema {
                 };
 
                 if let Err(e) = validation_req.verify() {
-                    warn!(TARGET_SCHEMA, "NetworkRequest, can not verify validation req");
+                    warn!(
+                        TARGET_SCHEMA,
+                        "NetworkRequest, can not verify validation req"
+                    );
                     return Err(ActorError::Functional(format!(
                         "Can not verify validation request: {}.",
                         e
@@ -112,10 +121,18 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     Ok(child) => child,
                     Err(e) => {
                         if let ActorError::Exists(_) = e {
-                            warn!(TARGET_SCHEMA, "NetworkRequest, can not create validator: {}", e);
+                            warn!(
+                                TARGET_SCHEMA,
+                                "NetworkRequest, can not create validator: {}",
+                                e
+                            );
                             return Ok(());
                         } else {
-                            error!(TARGET_SCHEMA, "NetworkRequest, can not create validator: {}", e);
+                            error!(
+                                TARGET_SCHEMA,
+                                "NetworkRequest, can not create validator: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -126,9 +143,14 @@ impl Handler<ValidationSchema> for ValidationSchema {
                         validation_req,
                         info,
                     })
-                    .await {
-                        warn!(TARGET_SCHEMA, "NetworkRequest, can not send request to validator: {}", e);
-                    }
+                    .await
+                {
+                    warn!(
+                        TARGET_SCHEMA,
+                        "NetworkRequest, can not send request to validator: {}",
+                        e
+                    );
+                }
             }
             ValidationSchemaMessage::UpdateValidators(
                 validators,

@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use base64::{engine::general_purpose, Engine as _};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

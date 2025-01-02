@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Governance model.
@@ -353,7 +353,7 @@ impl Roles {
             Roles::EVALUATOR => "evaluator",
             Roles::VALIDATOR => "validator",
             Roles::WITNESS => "witness",
-            Roles::CREATOR (_) => "creator",
+            Roles::CREATOR(_) => "creator",
             Roles::ISSUER => "issuer",
         }
     }
@@ -366,7 +366,7 @@ impl fmt::Display for Roles {
             Roles::EVALUATOR => write!(f, "Evaluator"),
             Roles::VALIDATOR => write!(f, "Validator"),
             Roles::WITNESS => write!(f, "Witness"),
-            Roles::CREATOR (quantity) => {
+            Roles::CREATOR(quantity) => {
                 write!(f, "Creator who can create {} subjects", quantity)
             }
             Roles::ISSUER => write!(f, "Issuer"),
@@ -377,7 +377,7 @@ impl fmt::Display for Roles {
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum CreatorQuantity {
     QUANTITY(u32),
-    INFINITY
+    INFINITY,
 }
 
 impl fmt::Display for CreatorQuantity {
@@ -388,7 +388,6 @@ impl fmt::Display for CreatorQuantity {
         }
     }
 }
-
 
 /// Governance contract.
 #[derive(Debug, Clone, Serialize, Deserialize)]

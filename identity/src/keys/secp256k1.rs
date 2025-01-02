@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! Adapter for pure Rust implementation of the secp256k1 curve and fast ECDSA signatures
 //!
 

@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Validation module.
@@ -302,7 +302,11 @@ impl Handler<Validation> for Validation {
                     match self.create_validation_req(ctx, info.clone()).await {
                         Ok(validation_req) => validation_req,
                         Err(e) => {
-                            error!(TARGET_VALIDATION, "Create, can not create validation request: {}", e);
+                            error!(
+                                TARGET_VALIDATION,
+                                "Create, can not create validation request: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -345,9 +349,12 @@ impl Handler<Validation> for Validation {
                 {
                     Ok(signature) => signature,
                     Err(e) => {
-                        error!(TARGET_VALIDATION, "Create, can not sign request: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_VALIDATION,
+                            "Create, can not sign request: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let signed_validation_req: Signed<ValidationReq> = Signed {
@@ -466,7 +473,10 @@ impl Handler<Validation> for Validation {
         ctx: &mut ActorContext<Validation>,
     ) {
         if let Err(e) = self.persist_light(&event, ctx).await {
-            error!(TARGET_VALIDATION, "OnEvent, can not persist information: {}", e);
+            error!(
+                TARGET_VALIDATION,
+                "OnEvent, can not persist information: {}", e
+            );
             emit_fail(ctx, e).await;
         };
     }

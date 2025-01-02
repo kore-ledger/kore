@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use crate::{
     approval::approver::ApproverEvent,
     error::Error,
@@ -12,12 +15,12 @@ use crate::config::ExternalDbConfig;
 
 use actor::{ActorRef, Subscriber};
 use async_std::fs;
-use serde_json::Value;
-use std::path::Path;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 #[cfg(feature = "ext-sqlite")]
 use sqlite::SqliteLocal;
+use std::path::Path;
 #[cfg(feature = "ext-sqlite")]
 mod sqlite;
 
@@ -69,10 +72,7 @@ pub trait Querys {
     ) -> Result<String, Error>;
     async fn del_request(&self, request_id: &str) -> Result<(), Error>;
     // approver
-    async fn get_approve_req(
-        &self,
-        subject_id: &str,
-    ) -> Result<Value, Error>;
+    async fn get_approve_req(&self, subject_id: &str) -> Result<Value, Error>;
     // validators (not for user use).
     async fn get_last_validators(
         &self,
@@ -87,16 +87,11 @@ pub trait Querys {
     ) -> Result<Value, Error>;
 
     // subject
-    async fn get_subject_state(
-        &self,
-        subject_id: &str,
-    ) -> Result<Value, Error>;
+    async fn get_subject_state(&self, subject_id: &str)
+        -> Result<Value, Error>;
 
     // signatures
-    async fn get_signatures(
-        &self,
-        subject_id: &str,
-    ) -> Result<Value, Error>;
+    async fn get_signatures(&self, subject_id: &str) -> Result<Value, Error>;
 }
 
 #[derive(Clone)]
@@ -170,10 +165,7 @@ impl ExternalDB {
 
 #[async_trait]
 impl Querys for ExternalDB {
-    async fn get_signatures(
-        &self,
-        subject_id: &str,
-    ) -> Result<Value, Error> {
+    async fn get_signatures(&self, subject_id: &str) -> Result<Value, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -229,10 +221,7 @@ impl Querys for ExternalDB {
         }
     }
 
-    async fn get_approve_req(
-        &self,
-        subject_id: &str,
-    ) -> Result<Value, Error> {
+    async fn get_approve_req(&self, subject_id: &str) -> Result<Value, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {

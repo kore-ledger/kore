@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashSet;
@@ -286,7 +286,10 @@ impl Handler<Approval> for Approval {
                             )
                             .await
                         {
-                            error!(TARGET_APPROVAL, "Create, Can not create approver actor, {}", e);
+                            error!(
+                                TARGET_APPROVAL,
+                                "Create, Can not create approver actor, {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -298,7 +301,11 @@ impl Handler<Approval> for Approval {
                     {
                         Ok(approval_req) => approval_req,
                         Err(e) => {
-                            error!(TARGET_APPROVAL, "Create, Can not create approval request, {}", e);
+                            error!(
+                                TARGET_APPROVAL,
+                                "Create, Can not create approval request, {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -350,7 +357,10 @@ impl Handler<Approval> for Approval {
                             )
                             .await
                         {
-                            error!(TARGET_APPROVAL, "Create, Can not create approver actor, {}", e);
+                            error!(
+                                TARGET_APPROVAL,
+                                "Create, Can not create approver actor, {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -433,9 +443,11 @@ impl Handler<Approval> for Approval {
         event: ApprovalEvent,
         ctx: &mut ActorContext<Approval>,
     ) {
-        
         if let Err(e) = self.persist_light(&event, ctx).await {
-            error!(TARGET_APPROVAL, "OnEvent, can not persist information: {}", e);
+            error!(
+                TARGET_APPROVAL,
+                "OnEvent, can not persist information: {}", e
+            );
             emit_fail(ctx, e).await;
         };
     }

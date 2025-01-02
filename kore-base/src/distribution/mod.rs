@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::collections::HashSet;
 
 use actor::{
@@ -65,16 +68,15 @@ impl Distribution {
 
         let our_key = self.node_key.clone();
 
-    
         distributor_actor
             .tell(DistributorMessage::NetworkDistribution {
-                    ledger,
-                    event,
-                    node_key: signer,
-                    our_key,
-                    schema_id: schema_id.to_string(),
-                })
-                .await
+                ledger,
+                event,
+                node_key: signer,
+                our_key,
+                schema_id: schema_id.to_string(),
+            })
+            .await
     }
 
     async fn end_request(
@@ -138,18 +140,24 @@ impl Handler<Distribution> for Distribution {
                     match get_gov(ctx, &subject_id.to_string()).await {
                         Ok(gov) => gov,
                         Err(e) => {
-                            error!(TARGET_DISTRIBUTION, "Create, can not get governance: {}", e);
-                            return Err(emit_fail(ctx, e).await)
-                        },
+                            error!(
+                                TARGET_DISTRIBUTION,
+                                "Create, can not get governance: {}", e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
 
                 let metadata =
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
                         Err(e) => {
-                            error!(TARGET_DISTRIBUTION, "Create, can not get metadata: {}", e);
-                            return Err(emit_fail(ctx, e).await)
-                        },
+                            error!(
+                                TARGET_DISTRIBUTION,
+                                "Create, can not get metadata: {}", e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
 
                 let mut witnesses = if metadata.schema_id == "governance" {
@@ -168,7 +176,10 @@ impl Handler<Distribution> for Distribution {
 
                 if witnesses.is_empty() {
                     if let Err(e) = self.end_request(ctx).await {
-                        error!(TARGET_DISTRIBUTION, "Create, can not end distribution: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTION,
+                            "Create, can not end distribution: {}", e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     };
                     return Ok(());
@@ -190,7 +201,10 @@ impl Handler<Distribution> for Distribution {
             DistributionMessage::Response { sender } => {
                 if self.check_witness(sender) && self.witnesses.is_empty() {
                     if let Err(e) = self.end_request(ctx).await {
-                        error!(TARGET_DISTRIBUTION, "Response, can not end distribution: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTION,
+                            "Response, can not end distribution: {}", e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     };
                 }
