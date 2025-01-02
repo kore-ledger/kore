@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashSet;
@@ -113,14 +113,19 @@ impl Handler<Update> for Update {
             UpdateMessage::Create => {
                 for witness in self.witnesses.clone() {
                     let updater = Updater::new(witness.clone());
-                    let child =
-                        match ctx.create_child(&witness.to_string(), updater).await {
-                            Ok(child) => child,
-                            Err(e) => {
-                                error!(TARGET_UPDATE, "Create, can not create Retry actor: {}", e);
-                                return Err(emit_fail(ctx, e).await);
-                            }
-                        };
+                    let child = match ctx
+                        .create_child(&witness.to_string(), updater)
+                        .await
+                    {
+                        Ok(child) => child,
+                        Err(e) => {
+                            error!(
+                                TARGET_UPDATE,
+                                "Create, can not create Retry actor: {}", e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    };
 
                     if let Err(e) = child
                         .tell(UpdaterMessage::NetworkLastSn {
@@ -130,7 +135,10 @@ impl Handler<Update> for Update {
                         })
                         .await
                     {
-                        error!(TARGET_UPDATE, "Create, can not send retry to Retry actor: {}", e);
+                        error!(
+                            TARGET_UPDATE,
+                            "Create, can not send retry to Retry actor: {}", e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 }
@@ -147,6 +155,7 @@ impl Handler<Update> for Update {
                                 reciver: node,
                                 sender: self.our_key.clone(),
                                 request_id: String::default(),
+                                version: 0,
                                 reciver_actor: format!(
                                     "/user/node/{}/distributor",
                                     self.subject_id
@@ -160,7 +169,10 @@ impl Handler<Update> for Update {
                             let Some(mut helper) = helper else {
                                 let e =
                                     ActorError::NotHelper("network".to_owned());
-                                error!(TARGET_UPDATE, "Response, can not obtain network helper");
+                                error!(
+                                    TARGET_UPDATE,
+                                    "Response, can not obtain network helper"
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             };
 

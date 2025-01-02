@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashSet;
@@ -44,4 +44,13 @@ pub enum ValidationProtocols {
     Confirm(ConfirmRequest),
     /// A request to mark a subject as end-of-life.
     EOL(EOLRequest),
+}
+
+#[derive(Default)]
+pub struct ProtocolsResult {
+    pub eval_success: Option<bool>,
+    pub appr_required: bool,
+    pub appr_success: Option<bool>,
+    pub eval_signatures: Option<HashSet<ProtocolsSignatures>>,
+    pub appr_signatures: Option<HashSet<ProtocolsSignatures>>,
 }

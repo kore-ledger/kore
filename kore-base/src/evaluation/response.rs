@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
@@ -60,10 +60,12 @@ impl HashId for EvaluationRes {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(|e| {
-            error!(TARGET_RESPONSE, "HashId for ProofEvent fails: {}", e);
-            Error::HashID(format!("HashId for ProofEvent fails: {}", e))
-        })
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |e| {
+                error!(TARGET_RESPONSE, "HashId for ProofEvent fails: {}", e);
+                Error::HashID(format!("HashId for ProofEvent fails: {}", e))
+            },
+        )
     }
 }
 

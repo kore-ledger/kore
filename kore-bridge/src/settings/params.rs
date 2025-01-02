@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::time::Duration;
 
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
@@ -36,34 +39,49 @@ impl From<Params> for Config {
             params.kore.network.tell.max_concurrent_streams,
         );
 
-        let routing = network::RoutingConfig::new(params.kore.network.routing.boot_nodes)
-            .with_dht_random_walk(params.kore.network.routing.dht_random_walk)
-            .with_discovery_limit(params.kore.network.routing.discovery_only_if_under_num)
-            .with_allow_non_globals_in_dht(params.kore.network.routing.allow_non_globals_in_dht)
-            .with_allow_private_ip(params.kore.network.routing.allow_private_ip)
-            .with_mdns(params.kore.network.routing.enable_mdns)
-            .with_kademlia_disjoint_query_paths(
-                params.kore.network.routing.kademlia_disjoint_query_paths,
-            )
-            .with_kademlia_replication_factor(
-                params.kore.network.routing.kademlia_replication_factor,
-            );
+        let routing =
+            network::RoutingConfig::new(params.kore.network.routing.boot_nodes)
+                .with_dht_random_walk(
+                    params.kore.network.routing.dht_random_walk,
+                )
+                .with_discovery_limit(
+                    params.kore.network.routing.discovery_only_if_under_num,
+                )
+                .with_allow_non_globals_in_dht(
+                    params.kore.network.routing.allow_non_globals_in_dht,
+                )
+                .with_allow_private_ip(
+                    params.kore.network.routing.allow_private_ip,
+                )
+                .with_mdns(params.kore.network.routing.enable_mdns)
+                .with_kademlia_disjoint_query_paths(
+                    params.kore.network.routing.kademlia_disjoint_query_paths,
+                )
+                .with_kademlia_replication_factor(
+                    params.kore.network.routing.kademlia_replication_factor,
+                );
 
         let control_list = network::ControlListConfig::default()
             .with_allow_list(params.kore.network.control_list.allow_list)
             .with_block_list(params.kore.network.control_list.block_list)
             .with_enable(params.kore.network.control_list.enable)
-            .with_interval_request(params.kore.network.control_list.interval_request)
-            .with_service_allow_list(params.kore.network.control_list.service_allow_list)
-            .with_service_block_list(params.kore.network.control_list.service_block_list);
+            .with_interval_request(
+                params.kore.network.control_list.interval_request,
+            )
+            .with_service_allow_list(
+                params.kore.network.control_list.service_allow_list,
+            )
+            .with_service_block_list(
+                params.kore.network.control_list.service_block_list,
+            );
 
         Self {
             keys_path: params.kore.keys_path,
             prometheus: params.kore.prometheus,
             kore_config: kore_base::config::Config {
-                key_derivator: params.kore.base.key_derivator, 
+                key_derivator: params.kore.base.key_derivator,
                 digest_derivator: params.kore.base.digest_derivator,
-                kore_db: params.kore.base.kore_db, 
+                kore_db: params.kore.base.kore_db,
                 external_db: params.kore.base.external_db,
                 network: network::Config {
                     user_agent: params.kore.network.user_agent,
@@ -78,8 +96,8 @@ impl From<Params> for Config {
                 contracts_dir: params.kore.base.contracts_dir,
                 always_accept: params.kore.base.always_accept,
                 garbage_collector: params.kore.base.garbage_collector,
-                sink: params.kore.base.sink
-            }
+                sink: params.kore.base.sink,
+            },
         }
     }
 }
@@ -199,14 +217,14 @@ impl NetworkParams {
         let config = config
             .build()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error building config: {}", e);
+                error!(TARGET_PARAMS, "Error building config: {}", e);
             })
             .unwrap();
 
         let network: NetworkParams = config
             .try_deserialize()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
             })
             .unwrap();
 
@@ -351,14 +369,14 @@ impl ControlListParams {
         let config = config
             .build()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error building config: {}", e);
+                error!(TARGET_PARAMS, "Error building config: {}", e);
             })
             .unwrap();
 
         config
             .try_deserialize()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
             })
             .unwrap()
     }
@@ -436,14 +454,14 @@ impl TellParams {
         let config = config
             .build()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error building config: {}", e);
+                error!(TARGET_PARAMS, "Error building config: {}", e);
             })
             .unwrap();
 
         config
             .try_deserialize()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
             })
             .unwrap()
     }
@@ -532,14 +550,14 @@ impl RoutingParams {
         let config = config
             .build()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error building config: {}", e);
+                error!(TARGET_PARAMS, "Error building config: {}", e);
             })
             .unwrap();
 
         config
             .try_deserialize()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
             })
             .unwrap()
     }
@@ -653,7 +671,6 @@ fn default_true() -> bool {
     true
 }
 
-
 fn default_discovery_only_if_under_num() -> u64 {
     u64::MAX
 }
@@ -678,7 +695,7 @@ struct BaseParams {
     #[serde(default, deserialize_with = "ExternalDbConfig::deserialize_db")]
     external_db: ExternalDbConfig,
     #[serde(default)]
-    sink: String
+    sink: String,
 }
 
 impl BaseParams {
@@ -691,14 +708,14 @@ impl BaseParams {
         let config = config
             .build()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error building config: {}", e);
+                error!(TARGET_PARAMS, "Error building config: {}", e);
             })
             .unwrap();
 
         config
             .try_deserialize()
             .map_err(|e| {
-                error!(TARGET_PARAMS,"Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
             })
             .unwrap()
     }
@@ -711,13 +728,12 @@ impl BaseParams {
                 self.key_derivator
             };
 
-        let digest_derivator = if other_config.digest_derivator
-            != default_digest_derivator()
-        {
-            other_config.digest_derivator
-        } else {
-            self.digest_derivator
-        };
+        let digest_derivator =
+            if other_config.digest_derivator != default_digest_derivator() {
+                other_config.digest_derivator
+            } else {
+                self.digest_derivator
+            };
 
         let always_accept = if other_config.always_accept {
             other_config.always_accept
@@ -767,7 +783,7 @@ impl BaseParams {
             garbage_collector,
             external_db,
             kore_db,
-            sink
+            sink,
         }
     }
 }
@@ -782,7 +798,7 @@ impl Default for BaseParams {
             garbage_collector: default_garbage_collector_secs(),
             kore_db: Default::default(),
             external_db: Default::default(),
-            sink: Default::default()
+            sink: Default::default(),
         }
     }
 }
@@ -799,6 +815,6 @@ fn default_key_derivator() -> KeyDerivator {
     KeyDerivator::Ed25519
 }
 
-fn default_digest_derivator() ->  DigestDerivator {
+fn default_digest_derivator() -> DigestDerivator {
     DigestDerivator::Blake3_256
 }

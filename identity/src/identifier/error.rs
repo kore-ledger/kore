@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use ed25519_dalek::ed25519;
 use std::convert::Infallible;
 use thiserror::Error;

@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::collections::{HashMap, HashSet};
 
 use actor::{
@@ -11,7 +14,10 @@ use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
     auth::{Auth, AuthMessage},
-    governance::{model::{CreatorQuantity, Roles}, Quorum},
+    governance::{
+        model::{CreatorQuantity, Roles},
+        Quorum,
+    },
     intermediary::Intermediary,
     model::SignTypesNode,
     node::relationship::{
@@ -600,6 +606,7 @@ where
         reciver: data.other_node,
         sender: data.our_node,
         request_id: String::default(),
+        version: 0,
         reciver_actor: format!("/user/node/{}/distributor", subject_string),
         schema: "governance".to_string(),
     };
@@ -639,6 +646,7 @@ where
         reciver: data.other_node,
         sender: data.our_node,
         request_id: String::default(),
+        version: 0,
         reciver_actor: format!("/user/node/{}/distributor", subject_string),
         schema: "governance".to_string(),
     };

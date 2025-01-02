@@ -1,12 +1,10 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Store module.
 //!
 
-use crate::{
-    config::KoreDbConfig, helpers::encrypted_pass::EncryptedPass
-};
+use crate::{config::KoreDbConfig, helpers::encrypted_pass::EncryptedPass};
 
 use actor::{ActorContext, Error as ActorError};
 #[cfg(feature = "rocksdb")]

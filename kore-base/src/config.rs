@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Configuration module
@@ -28,7 +28,7 @@ pub struct Config {
     pub always_accept: bool,
     /// Garbage collector acts
     pub garbage_collector: Duration,
-    pub sink: String
+    pub sink: String,
 }
 
 /// Database configuration.
@@ -49,11 +49,15 @@ pub enum KoreDbConfig {
 }
 
 impl Default for KoreDbConfig {
-    fn default() -> Self {        
+    fn default() -> Self {
         #[cfg(feature = "rocksdb")]
-        return KoreDbConfig::Rocksdb { path: "db/local/rockdb".to_owned() };
+        return KoreDbConfig::Rocksdb {
+            path: "db/local/rockdb".to_owned(),
+        };
         #[cfg(feature = "sqlite")]
-        return KoreDbConfig::SQLite { path:  "db/local/sqlite".to_owned() };
+        return KoreDbConfig::SQLite {
+            path: "db/local/sqlite".to_owned(),
+        };
     }
 }
 
@@ -69,7 +73,9 @@ impl KoreDbConfig {
         };
     }
 
-    pub fn deserialize_db<'de, D>(deserializer: D) -> Result<KoreDbConfig, D::Error>
+    pub fn deserialize_db<'de, D>(
+        deserializer: D,
+    ) -> Result<KoreDbConfig, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -95,7 +101,9 @@ pub enum ExternalDbConfig {
 impl Default for ExternalDbConfig {
     fn default() -> Self {
         #[cfg(feature = "ext-sqlite")]
-        return ExternalDbConfig::SQLite { path: "db/ext/ext-sqlite".to_owned() };
+        return ExternalDbConfig::SQLite {
+            path: "db/ext/ext-sqlite".to_owned(),
+        };
     }
 }
 
@@ -107,7 +115,9 @@ impl ExternalDbConfig {
         };
     }
 
-    pub fn deserialize_db<'de, D>(deserializer: D) -> Result<ExternalDbConfig, D::Error>
+    pub fn deserialize_db<'de, D>(
+        deserializer: D,
+    ) -> Result<ExternalDbConfig, D::Error>
     where
         D: Deserializer<'de>,
     {

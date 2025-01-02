@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Wrapper for Json Value.
@@ -16,7 +16,10 @@ use serde_json::{Map, Number, Value};
 use tracing::error;
 
 use core::str;
-use std::{io::{Read, Write}, str::FromStr};
+use std::{
+    io::{Read, Write},
+    str::FromStr,
+};
 
 const TARGET_WRAPPER: &str = "Kore-Model-Wrapper";
 
@@ -45,11 +48,12 @@ impl HashId for ValueWrapper {
         &self,
         derivator: DigestDerivator,
     ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator)
-            .map_err(|e| {
+        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
+            |e| {
                 error!(TARGET_WRAPPER, "HashId for SubjectID fails: {}", e);
                 Error::HashID(format!("HashId for SubjectID fails: {}", e))
-            })
+            },
+        )
     }
 }
 
@@ -71,8 +75,7 @@ impl<'de> Deserialize<'de> for ValueWrapper {
     {
         let s =
             <std::string::String as Deserialize>::deserialize(deserializer)?;
-        let value = Value::from_str(&s)
-            .map_err(serde::de::Error::custom)?;
+        let value = Value::from_str(&s).map_err(serde::de::Error::custom)?;
         Ok(ValueWrapper(value))
     }
 }

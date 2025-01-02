@@ -1,12 +1,20 @@
-// Copyright 2024 Kore Ledger
+// Copyright 2025 Kore Ledger
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Signature model.
 //!
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use identity::identifier::{Derivable, DigestIdentifier, KeyIdentifier, SignatureIdentifier};
-use kore_base::{error::Error, model::{signature::{Signature, Signed}, HashId, TimeStamp}};
+use identity::identifier::{
+    Derivable, DigestIdentifier, KeyIdentifier, SignatureIdentifier,
+};
+use kore_base::{
+    error::Error,
+    model::{
+        signature::{Signature, Signed},
+        HashId, TimeStamp,
+    },
+};
 use serde::{Deserialize, Serialize};
 
 use std::{fmt::Debug, str::FromStr};
@@ -42,10 +50,13 @@ impl TryFrom<BridgeSignature> for Signature {
             signer: KeyIdentifier::from_str(&signature.signer)
                 .map_err(|_| Error::Bridge("key identifier".to_owned()))?,
             timestamp: TimeStamp(signature.timestamp),
-            value: SignatureIdentifier::from_str(&signature.value)
-                .map_err(|_| Error::Bridge("signature identifier".to_owned()))?,
+            value: SignatureIdentifier::from_str(&signature.value).map_err(
+                |_| Error::Bridge("signature identifier".to_owned()),
+            )?,
             content_hash: DigestIdentifier::from_str(&signature.content_hash)
-                .map_err(|_| Error::Bridge("digest identifier".to_owned()))?,
+                .map_err(|_| {
+                Error::Bridge("digest identifier".to_owned())
+            })?,
         })
     }
 }
