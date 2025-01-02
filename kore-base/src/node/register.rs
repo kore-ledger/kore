@@ -170,7 +170,7 @@ impl Handler<Register> for Register {
         event: RegisterEvent,
         ctx: &mut ActorContext<Register>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_REGISTER, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -180,7 +180,7 @@ impl Handler<Register> for Register {
 #[async_trait]
 impl PersistentActor for Register {
     /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             RegisterEvent::RegisterGov { gov_id, active } => {
                 self.register_gov.insert(gov_id.clone(), *active);
@@ -192,7 +192,9 @@ impl PersistentActor for Register {
                     .or_default()
                     .push(data.clone());
             }
-        }
+        };
+
+        Ok(())
     }
 }
 

@@ -148,7 +148,7 @@ impl Handler<RelationShip> for RelationShip {
         event: RelationShipEvent,
         ctx: &mut ActorContext<RelationShip>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_RELATIONSHIP, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -158,7 +158,7 @@ impl Handler<RelationShip> for RelationShip {
 #[async_trait]
 impl PersistentActor for RelationShip {
     /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             RelationShipEvent::NewRegister { data, subject } => {
                 self.owner_subjects
@@ -177,7 +177,9 @@ impl PersistentActor for RelationShip {
                     };
                 });
             }
-        }
+        };
+
+        Ok(())
     }
 }
 

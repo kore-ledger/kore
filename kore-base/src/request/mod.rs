@@ -267,6 +267,7 @@ impl Actor for RequestHandler {
             return Err(ActorError::NotHelper("ext_db".to_owned()));
         };
 
+        println!("PRE START {:?}", self.handling);
         for (subject_id, (request_id, request)) in self.handling.clone() {
             let request_manager = RequestManager::new(
                 self.node_key.clone(),
@@ -888,7 +889,8 @@ impl Handler<RequestHandler> for RequestHandler {
         event: RequestHandlerEvent,
         ctx: &mut ActorContext<RequestHandler>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        println!("EVENTOOOOO {:?}", event);
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_REQUEST, "OnEvent, can not persist information: {}", e);
             ctx.system().send_event(SystemEvent::StopSystem).await;
         };
@@ -906,7 +908,7 @@ impl Storable for RequestHandler {}
 #[async_trait]
 impl PersistentActor for RequestHandler {
     /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             RequestHandlerEvent::EventToQueue {
                 subject_id, event, ..
@@ -941,6 +943,8 @@ impl PersistentActor for RequestHandler {
             RequestHandlerEvent::FinishHandling { subject_id, .. } => {
                 self.handling.remove(subject_id);
             }
-        }
+        };
+
+        Ok(())
     }
 }

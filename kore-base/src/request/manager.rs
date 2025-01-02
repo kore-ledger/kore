@@ -13,7 +13,7 @@ use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 use std::collections::HashSet;
-use store::store::PersistentActor;
+use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 
 use crate::{
     approval::{Approval, ApprovalMessage},
@@ -595,6 +595,29 @@ impl RequestManager {
 
         Ok(())
     }
+
+    async fn purge_storage(
+        ctx: &mut ActorContext<RequestManager>,
+    ) -> Result<(), ActorError> {
+        let store: Option<ActorRef<Store<Subject>>> =
+            ctx.get_child("store").await;
+        let response = if let Some(store) = store {
+            store
+                .ask(StoreCommand::Purge)
+                .await?
+        } else {
+            return Err(ActorError::NotFound(ActorPath::from(format!(
+                "{}/store",
+                ctx.path()
+            ))));
+        };
+
+        if let StoreResponse::Error(e) = response {
+            return Err(ActorError::Store(format!("Can not purge request: {}", e)))
+        };
+        
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -949,11 +972,18 @@ impl Handler<RequestManager> for RequestManager {
                 };
 
                 if let Err(e) = self.end_request(ctx).await {
-                    error!(TARGET_MANAGER, "EvaluationRes, can not end request: {}",e);
+                    error!(TARGET_MANAGER, "FinishRequest, can not end request: {}",e);
                     return Err(emit_fail(ctx, e).await);
                 }
 
-                // TODO Limpiar la base de datos.
+                /*
+                if let Err(e) = Self::purge_storage(ctx).await {
+                    error!(TARGET_MANAGER, "FinishRequest, can not purge storage: {}",e);
+                    return Err(emit_fail(ctx, e).await);
+                }
+                */
+                
+
                 ctx.stop().await;
             }
             RequestManagerMessage::ValidationRes {
@@ -1049,7 +1079,7 @@ impl Handler<RequestManager> for RequestManager {
         event: RequestManagerEvent,
         ctx: &mut ActorContext<RequestManager>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_MANAGER, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -1074,8 +1104,9 @@ impl Handler<RequestManager> for RequestManager {
 #[async_trait]
 impl PersistentActor for RequestManager {
     /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         self.state = event.state.clone();
+        Ok(())
     }
 }
 

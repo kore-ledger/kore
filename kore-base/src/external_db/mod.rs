@@ -173,7 +173,8 @@ impl Handler<DBManager> for DBManager {
         event: DBManagerEvent,
         ctx: &mut ActorContext<DBManager>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_EXTERNAL, "OnEvent, can not persist information: {}", e);
             ctx.system().send_event(SystemEvent::StopSystem).await;
         };
@@ -183,7 +184,7 @@ impl Handler<DBManager> for DBManager {
 #[async_trait]
 impl PersistentActor for DBManager {
     /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             DBManagerEvent::DeleteReq(delete_types) => {
                 self.delete_req.push(delete_types.clone());
@@ -195,7 +196,9 @@ impl PersistentActor for DBManager {
                     let _ = self.delete_req.remove(pos);
                 }
             }
-        }
+        };
+
+        Ok(())
     }
 }
 

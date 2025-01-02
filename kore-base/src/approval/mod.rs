@@ -435,7 +435,8 @@ impl Handler<Approval> for Approval {
         event: ApprovalEvent,
         ctx: &mut ActorContext<Approval>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_APPROVAL, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -454,7 +455,7 @@ impl Handler<Approval> for Approval {
 // Debemos persistir quienes han aprobado y quienes no
 #[async_trait]
 impl PersistentActor for Approval {
-    fn apply(&mut self, event: &ApprovalEvent) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             ApprovalEvent::SafeState {
                 request_id,
@@ -474,7 +475,9 @@ impl PersistentActor for Approval {
             ApprovalEvent::Response(response) => {
                 self.approvers_response.push(response.clone());
             }
-        }
+        };
+
+        Ok(())
     }
 }
 

@@ -465,7 +465,7 @@ impl Handler<Validation> for Validation {
         event: ValidationEvent,
         ctx: &mut ActorContext<Validation>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_VALIDATION, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -484,10 +484,12 @@ impl Handler<Validation> for Validation {
 
 #[async_trait]
 impl PersistentActor for Validation {
-    fn apply(&mut self, event: &ValidationEvent) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         self.prev_event_validation_response
             .clone_from(&event.actual_event_validation_response);
         self.previous_proof = Some(event.actual_proof.clone());
+
+        Ok(())
     }
 }
 

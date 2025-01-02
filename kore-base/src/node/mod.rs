@@ -342,7 +342,7 @@ impl Actor for Node {
 #[async_trait]
 impl PersistentActor for Node {
     /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             NodeEvent::OwnedSubject(subject_id) => {
                 self.add_owned_subject(subject_id.clone());
@@ -368,7 +368,9 @@ impl PersistentActor for Node {
             } => {
                 self.change_subject_owner(subject_id.clone(), *iam_owner);
             }
-        }
+        };
+
+        Ok(())
     }
 }
 
@@ -707,7 +709,7 @@ impl Handler<Node> for Node {
         event: NodeEvent,
         ctx: &mut ActorContext<Node>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_NODE, "OnEvent, can not persist information: {}", e);
             ctx.system().send_event(SystemEvent::StopSystem).await;
         };

@@ -215,7 +215,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
         event: LedgerEventEvent,
         ctx: &mut ActorContext<LedgerEvent>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_EVENT, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -229,12 +229,14 @@ impl Handler<LedgerEvent> for LedgerEvent {
 
 #[async_trait]
 impl PersistentActor for LedgerEvent {
-    fn apply(&mut self, event: &LedgerEventEvent) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         let event = match event {
             LedgerEventEvent::WithVal { event, .. } => event,
             LedgerEventEvent::WithOutVal { event } => event,
         };
         self.last_event = Some(event.clone());
+
+        Ok(())
     }
 }
 

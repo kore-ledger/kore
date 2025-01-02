@@ -297,7 +297,7 @@ impl Handler<Auth> for Auth {
         event: AuthEvent,
         ctx: &mut ActorContext<Auth>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_AUTH, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -317,7 +317,7 @@ impl Handler<Auth> for Auth {
 #[async_trait]
 impl PersistentActor for Auth {
     /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             AuthEvent::NewAuth {
                 subject_id,
@@ -329,6 +329,8 @@ impl PersistentActor for Auth {
                 self.auth.remove(subject_id);
             }
         };
+
+        Ok(())
     }
 }
 

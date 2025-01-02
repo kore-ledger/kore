@@ -1979,8 +1979,7 @@ impl Handler<Subject> for Subject {
 
 #[async_trait]
 impl PersistentActor for Subject {
-    fn apply(&mut self, event: &Signed<Ledger>) {
-        // TODO Cualquier error aquí implicaría que el nodo volviera a un estado previo, eliminando el último storage.
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         let valid_event = match verify_protocols_state(
             EventRequestType::from(event.content.event_request.content.clone()),
             event.content.eval_success,
@@ -1990,8 +1989,9 @@ impl PersistentActor for Subject {
         ) {
             Ok(is_ok) => is_ok,
             Err(e) => {
-                error!(TARGET_SUBJECT, "Apply, can not verify protocols state: {}", e);
-                return;
+                let error = format!("Apply, can not verify protocols state: {}", e);
+                error!(TARGET_SUBJECT, error);
+                return Err(ActorError::Functional(error));
             }
         };
 
@@ -2003,20 +2003,22 @@ impl PersistentActor for Subject {
                     {
                         Ok(hash) => hash,
                         Err(e) => {
-                            error!(TARGET_SUBJECT, "Apply, can not obtain last event hash id: {}", e);
-                            return;
+                            let error = format!("Apply, can not obtain last event hash id: {}", e);
+                            error!(TARGET_SUBJECT, error);
+                            return Err(ActorError::Functional(error));
                         }
                     };
 
                     self.last_event_hash = last_event_hash;
-                    return;
+                    return Ok(());
                 }
                 EventRequest::Fact(_fact_request) => {
                     let json_patch = match event.content.value.clone() {
                         LedgerValue::Patch(value_wrapper) => value_wrapper,
                         LedgerValue::Error(e) => {
-                            error!(TARGET_SUBJECT, "Apply, event value can not be an error if protocols was successful: {:?}", e);
-                            return;
+                            let error = format!("Apply, event value can not be an error if protocols was successful: {:?}", e);
+                            error!(TARGET_SUBJECT, error);
+                            return Err(ActorError::Functional(error));
                         }
                     };
 
@@ -2024,14 +2026,16 @@ impl PersistentActor for Subject {
                         match serde_json::from_value::<Patch>(json_patch.0) {
                             Ok(patch) => patch,
                             Err(e) => {
-                                error!(TARGET_SUBJECT, "Apply, can not obtain json patch: {}", e);
-                                return;
+                                let error = format!("Apply, can not obtain json patch: {}", e);
+                                error!(TARGET_SUBJECT, error);
+                                return Err(ActorError::Functional(error));
                             }
                         };
 
                     if let Err(e) = patch(&mut self.properties.0, &patch_json) {
-                        error!(TARGET_SUBJECT, "Apply, can not apply json patch: {}", e);
-                        return;
+                        let error = format!( "Apply, can not apply json patch: {}", e);
+                        error!(TARGET_SUBJECT, error);
+                        return Err(ActorError::Functional(error));
                     };
                 }
                 EventRequest::Transfer(transfer_request) => {
@@ -2049,8 +2053,9 @@ impl PersistentActor for Subject {
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => gov,
                         Err(e) => {
-                            error!(TARGET_SUBJECT, "Apply, can not governance_id is empty but can not convert propierties in governance data: {}", e);
-                            return;
+                            let error = format!("Apply, can not governance_id is empty but can not convert propierties in governance data: {}", e);
+                            error!(TARGET_SUBJECT, error);
+                            return Err(ActorError::Functional(error));
                         }
                     };
 
@@ -2058,8 +2063,9 @@ impl PersistentActor for Subject {
                 let gov_value = match to_value(gov) {
                     Ok(value) => value,
                     Err(e) => {
-                        error!(TARGET_SUBJECT, "Apply, can not convert governance data into Value: {}", e);
-                        return;
+                        let error = format!("Apply, can not convert governance data into Value: {}", e);
+                        error!(TARGET_SUBJECT, error);
+                        return Err(ActorError::Functional(error));
                     }
                 };
 
@@ -2071,14 +2077,17 @@ impl PersistentActor for Subject {
             match event.hash_id(event.signature.content_hash.derivator) {
                 Ok(hash) => hash,
                 Err(e) => {
-                    error!(TARGET_SUBJECT, "Apply, can not obtain last event hash id: {}", e);
-                    return;
+                    let error = format!("Apply, can not obtain last event hash id: {}", e);
+                    error!(TARGET_SUBJECT, error);
+                    return Err(ActorError::Functional(error));
                 }
             };
 
         self.last_event_hash = last_event_hash;
 
         self.sn += 1;
+
+        Ok(())
     }
 }
 

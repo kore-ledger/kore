@@ -750,7 +750,7 @@ impl Handler<Approver> for Approver {
         event: ApproverEvent,
         ctx: &mut ActorContext<Approver>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_APPROVER, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -817,7 +817,7 @@ impl Handler<Approver> for Approver {
 // Debemos persistir el estado de la petición hasta que se apruebe
 #[async_trait]
 impl PersistentActor for Approver {
-    fn apply(&mut self, event: &ApproverEvent) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             ApproverEvent::ChangeState { state, .. } => {
                 self.state = Some(state.clone());
@@ -834,7 +834,9 @@ impl PersistentActor for Approver {
                 self.state = Some(state.clone());
                 self.info.clone_from(info);
             }
-        }
+        };
+
+        Ok(())
     }
 }
 
