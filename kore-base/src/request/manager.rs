@@ -599,7 +599,7 @@ impl RequestManager {
     async fn purge_storage(
         ctx: &mut ActorContext<RequestManager>,
     ) -> Result<(), ActorError> {
-        let store: Option<ActorRef<Store<Subject>>> =
+        let store: Option<ActorRef<Store<RequestManager>>> =
             ctx.get_child("store").await;
         let response = if let Some(store) = store {
             store
@@ -976,13 +976,10 @@ impl Handler<RequestManager> for RequestManager {
                     return Err(emit_fail(ctx, e).await);
                 }
 
-                /*
                 if let Err(e) = Self::purge_storage(ctx).await {
                     error!(TARGET_MANAGER, "FinishRequest, can not purge storage: {}",e);
                     return Err(emit_fail(ctx, e).await);
                 }
-                */
-                
 
                 ctx.stop().await;
             }

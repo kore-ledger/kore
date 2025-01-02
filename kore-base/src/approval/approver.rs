@@ -1,17 +1,14 @@
 use std::fmt::Display;
 
 use crate::{
-    db::Storable,
-    intermediary::Intermediary,
-    model::{
+    db::Storable, intermediary::Intermediary, model::{
         common::{
             check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
             update_ledger_network, UpdateData,
         },
         network::{RetryNetwork, TimeOutResponse},
         SignTypesNode, TimeStamp,
-    },
-    ActorMessage, EventRequest, NetworkMessage, Signed,
+    }, subject::Subject, ActorMessage, EventRequest, NetworkMessage, Signed
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
@@ -305,14 +302,23 @@ impl Actor for Approver {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        let prefix = ctx.path().parent().key();
-        self.init_store("approver", Some(prefix), false, ctx).await
+        if let Some(_) = ctx.parent::<Subject>().await {
+            let prefix = ctx.path().parent().key();
+            self.init_store("approver", Some(prefix), false, ctx).await
+        } else {
+            Ok(())    
+        }
     }
+    
     async fn pre_stop(
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.stop_store(ctx).await
+        if let Some(_) = ctx.parent::<Subject>().await {
+            self.stop_store(ctx).await
+        } else {
+            Ok(())
+        }
     }
 
     type Event = ApproverEvent;

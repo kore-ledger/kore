@@ -248,8 +248,6 @@ impl Actor for Approval {
     ) -> Result<(), ActorError> {
         let prefix = ctx.path().parent().key();
         self.init_store("approval", Some(prefix), false, ctx).await
-        // Una vez recuperado el estado debemos ver si el propio nodo ha recibido ya ha enviado la respuesta
-        // para no levantar un approver TODO
     }
     async fn pre_stop(
         &mut self,
