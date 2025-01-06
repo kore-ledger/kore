@@ -1069,7 +1069,7 @@ impl Config {
     pub fn new(boot_nodes: Vec<RoutingNode>) -> Self {
         Self {
             boot_nodes,
-            dht_random_walk: true,
+            dht_random_walk: false,
             discovery_only_if_under_num: u64::MAX,
             allow_non_globals_in_dht: true,
             allow_private_ip: true,
