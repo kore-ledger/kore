@@ -39,6 +39,12 @@ tempfile = { workspace = true }
 tracing-test = { workspace = true }
 tracing-subscriber = { workspace = true }
 serial_test = { workspace = true }
+criterion = { version = "0.5.1", features = ["async_tokio"]}
+tokio = { workspace = true, features = ["full"] }
+
+[[bench]]
+name = "my_benchmark"
+harness = false
 
 [features]
 default = ["rocksdb", "ext-sqlite"]
