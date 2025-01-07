@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashSet;
@@ -43,6 +43,7 @@ pub struct Approval {
     quorum: Quorum,
 
     request_id: String,
+    version: u64,
     request: Option<Signed<ApprovalReq>>,
     // approvers
     approvers: HashSet<KeyIdentifier>,
@@ -117,6 +118,7 @@ impl Approval {
         &self,
         ctx: &mut ActorContext<Approval>,
         request_id: &str,
+        version: u64,
         approval_req: Signed<ApprovalReq>,
         signer: KeyIdentifier,
     ) -> Result<(), ActorError> {
@@ -133,6 +135,7 @@ impl Approval {
                 approver_actor
                     .tell(ApproverMessage::LocalApproval {
                         request_id: request_id.to_owned(),
+                        version,
                         approval_req: approval_req.content,
                         our_key: signer,
                     })
@@ -147,6 +150,7 @@ impl Approval {
                     &signer.to_string(),
                     Approver::new(
                         request_id.to_owned(),
+                        version,
                         signer.clone(),
                         approval_req.content.subject_id.to_string(),
                         VotationType::Manual,
@@ -162,7 +166,6 @@ impl Approval {
 
             child
                 .tell(ApproverMessage::NetworkApproval {
-                    request_id: request_id.to_owned(),
                     approval_req: approval_req.clone(),
                     node_key: signer,
                     our_key,
@@ -205,6 +208,7 @@ impl Approval {
 pub enum ApprovalMessage {
     Create {
         request_id: String,
+        version: u64,
         eval_req: EvaluationReq,
         eval_res: EvalLedgerResponse,
     },
@@ -221,6 +225,7 @@ impl Message for ApprovalMessage {}
 pub enum ApprovalEvent {
     SafeState {
         request_id: String,
+        version: u64,
         // Quorum
         quorum: Quorum,
         request: Option<Signed<ApprovalReq>>,
@@ -248,8 +253,6 @@ impl Actor for Approval {
     ) -> Result<(), ActorError> {
         let prefix = ctx.path().parent().key();
         self.init_store("approval", Some(prefix), false, ctx).await
-        // Una vez recuperado el estado debemos ver si el propio nodo ha recibido ya ha enviado la respuesta
-        // para no levantar un approver TODO
     }
     async fn pre_stop(
         &mut self,
@@ -270,10 +273,11 @@ impl Handler<Approval> for Approval {
         match msg {
             ApprovalMessage::Create {
                 request_id,
+                version,
                 eval_req,
                 eval_res,
             } => {
-                if request_id == self.request_id {
+                if request_id == self.request_id && version == self.version {
                     let Some(request) = self.request.clone() else {
                         return Ok(());
                     };
@@ -283,12 +287,16 @@ impl Handler<Approval> for Approval {
                             .create_approvers(
                                 ctx,
                                 &self.request_id,
+                                self.version,
                                 request.clone(),
                                 signer,
                             )
                             .await
                         {
-                            error!(TARGET_APPROVAL, "Create, Can not create approver actor, {}", e);
+                            error!(
+                                TARGET_APPROVAL,
+                                "Create, Can not create approver actor, {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -300,7 +308,11 @@ impl Handler<Approval> for Approval {
                     {
                         Ok(approval_req) => approval_req,
                         Err(e) => {
-                            error!(TARGET_APPROVAL, "Create, Can not create approval request, {}", e);
+                            error!(
+                                TARGET_APPROVAL,
+                                "Create, Can not create approval request, {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -321,9 +333,6 @@ impl Handler<Approval> for Approval {
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
-                    // Update quorum and validators
-                    let request_id = request_id.to_string();
-
                     let signature = match get_sign(
                         ctx,
                         SignTypesNode::ApprovalReq(approval_req.clone()),
@@ -347,12 +356,16 @@ impl Handler<Approval> for Approval {
                             .create_approvers(
                                 ctx,
                                 &request_id,
+                                version,
                                 signed_approval_req.clone(),
                                 signer,
                             )
                             .await
                         {
-                            error!(TARGET_APPROVAL, "Create, Can not create approver actor, {}", e);
+                            error!(
+                                TARGET_APPROVAL,
+                                "Create, Can not create approver actor, {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -360,6 +373,7 @@ impl Handler<Approval> for Approval {
                     self.on_event(
                         ApprovalEvent::SafeState {
                             request_id: request_id.clone(),
+                            version: version,
                             quorum: quorum.clone(),
                             request: Some(signed_approval_req.clone()),
                             approvers: signers.clone(),
@@ -435,8 +449,11 @@ impl Handler<Approval> for Approval {
         event: ApprovalEvent,
         ctx: &mut ActorContext<Approval>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
-            error!(TARGET_APPROVAL, "OnEvent, can not persist information: {}", e);
+        if let Err(e) = self.persist_light(&event, ctx).await {
+            error!(
+                TARGET_APPROVAL,
+                "OnEvent, can not persist information: {}", e
+            );
             emit_fail(ctx, e).await;
         };
     }
@@ -454,16 +471,18 @@ impl Handler<Approval> for Approval {
 // Debemos persistir quienes han aprobado y quienes no
 #[async_trait]
 impl PersistentActor for Approval {
-    fn apply(&mut self, event: &ApprovalEvent) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             ApprovalEvent::SafeState {
                 request_id,
+                version,
                 quorum,
                 request,
                 approvers,
                 approvers_response,
                 approvers_quantity,
             } => {
+                self.version = *version;
                 self.request_id.clone_from(request_id);
                 self.quorum = quorum.clone();
                 self.request.clone_from(request);
@@ -474,7 +493,9 @@ impl PersistentActor for Approval {
             ApprovalEvent::Response(response) => {
                 self.approvers_response.push(response.clone());
             }
-        }
+        };
+
+        Ok(())
     }
 }
 

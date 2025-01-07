@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Evaluation module.
@@ -59,6 +59,7 @@ pub struct Evaluation {
 
     evaluators_signatures: Vec<ProtocolsSignatures>,
     request_id: String,
+    version: u64,
     errors: String,
 
     eval_req: Option<EvaluationReq>,
@@ -112,7 +113,6 @@ impl Evaluation {
     async fn create_evaluators(
         &self,
         ctx: &mut ActorContext<Evaluation>,
-        request_id: &str,
         evaluation_req: Signed<EvaluationReq>,
         schema: &str,
         signer: KeyIdentifier,
@@ -121,7 +121,7 @@ impl Evaluation {
         let child = ctx
             .create_child(
                 &format!("{}", signer),
-                Evaluator::new(request_id.to_string(), signer.clone()),
+                Evaluator::new(self.request_id.to_string(), self.version, signer.clone()),
             )
             .await;
         let evaluator_actor = match child {
@@ -144,7 +144,6 @@ impl Evaluation {
         else {
             evaluator_actor
                 .tell(EvaluatorMessage::NetworkEvaluation {
-                    request_id: request_id.to_owned(),
                     evaluation_req,
                     node_key: signer,
                     our_key,
@@ -248,6 +247,7 @@ impl Evaluation {
 pub enum EvaluationMessage {
     Create {
         request_id: String,
+        version: u64,
         request: Signed<EventRequest>,
     },
 
@@ -284,6 +284,7 @@ impl Handler<Evaluation> for Evaluation {
         match msg {
             EvaluationMessage::Create {
                 request_id,
+                version,
                 request,
             } => {
                 let subject_id = if let EventRequest::Fact(event) =
@@ -291,7 +292,10 @@ impl Handler<Evaluation> for Evaluation {
                 {
                     event.subject_id
                 } else {
-                    error!(TARGET_EVALUATION, "Create, only can evaluate Fact request");
+                    error!(
+                        TARGET_EVALUATION,
+                        "Create, only can evaluate Fact request"
+                    );
                     let e = ActorError::FunctionalFail(
                         "Only can eval Fact requests".to_owned(),
                     );
@@ -302,7 +306,10 @@ impl Handler<Evaluation> for Evaluation {
                     match get_metadata(ctx, &subject_id.to_string()).await {
                         Ok(metadata) => metadata,
                         Err(e) => {
-                            error!(TARGET_EVALUATION, "Create, can not get metadata: {}", e);
+                            error!(
+                                TARGET_EVALUATION,
+                                "Create, can not get metadata: {}", e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -342,6 +349,7 @@ impl Handler<Evaluation> for Evaluation {
                 self.evaluators.clone_from(&signers);
                 self.evaluators_quantity = signers.len() as u32;
                 self.request_id = request_id.to_string();
+                self.version = version;
                 self.evaluators_signatures = vec![];
                 self.errors = String::default();
                 self.reboot = false;
@@ -354,9 +362,12 @@ impl Handler<Evaluation> for Evaluation {
                 {
                     Ok(signature) => signature,
                     Err(e) => {
-                        error!(TARGET_EVALUATION, "Create, can not sign eval request: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_EVALUATION,
+                            "Create, can not sign eval request: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let signed_evaluation_req: Signed<EvaluationReq> = Signed {
@@ -365,15 +376,19 @@ impl Handler<Evaluation> for Evaluation {
                 };
 
                 for signer in signers {
-                    if let Err(e) = self.create_evaluators(
-                        ctx,
-                        &self.request_id,
-                        signed_evaluation_req.clone(),
-                        &metadata.schema_id,
-                        signer.clone(),
-                    )
-                    .await {
-                        error!(TARGET_EVALUATION, "Can not create evaluator {}: {}", signer, e);
+                    if let Err(e) = self
+                        .create_evaluators(
+                            ctx,
+                            signed_evaluation_req.clone(),
+                            &metadata.schema_id,
+                            signer.clone(),
+                        )
+                        .await
+                    {
+                        error!(
+                            TARGET_EVALUATION,
+                            "Can not create evaluator {}: {}", signer, e
+                        );
                     }
                 }
             }

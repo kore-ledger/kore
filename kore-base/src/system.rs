@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use actor::{ActorSystem, SystemRef};
 use tokio_util::sync::CancellationToken;
 
@@ -124,14 +127,12 @@ pub mod tests {
             key_derivator: KeyDerivator::Ed25519,
             digest_derivator: DigestDerivator::Blake3_256,
             kore_db: KoreDbConfig::build(path),
-            external_db: ExternalDbConfig::build(&
-                create_temp_dir()
-            ),
+            external_db: ExternalDbConfig::build(&create_temp_dir()),
             network: newtork_config,
             contracts_dir: create_temp_dir(),
             always_accept: false,
             garbage_collector: Duration::from_secs(500),
-            sink: "".to_owned()
+            sink: "".to_owned(),
         };
 
         let sys = system(config.clone(), "password", None).await.unwrap();

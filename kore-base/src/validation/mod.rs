@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Validation module.
@@ -70,6 +70,7 @@ pub struct Validation {
     valid_validation: bool,
 
     request_id: String,
+    version: u64,
 
     previous_proof: Option<ValidationProof>,
     prev_event_validation_response: Vec<ProtocolsSignatures>,
@@ -160,7 +161,6 @@ impl Validation {
     async fn create_validators(
         &self,
         ctx: &mut ActorContext<Validation>,
-        request_id: &str,
         validation_req: Signed<ValidationReq>,
         schema: &str,
         signer: KeyIdentifier,
@@ -169,7 +169,7 @@ impl Validation {
         let child = ctx
             .create_child(
                 &format!("{}", signer),
-                Validator::new(request_id.to_owned(), signer.clone()),
+                Validator::new(self.request_id.to_owned(),self.version, signer.clone()),
             )
             .await;
         let validator_actor = match child {
@@ -192,7 +192,6 @@ impl Validation {
         else {
             validator_actor
                 .tell(ValidatorMessage::NetworkValidation {
-                    request_id: request_id.to_owned(),
                     validation_req,
                     node_key: signer,
                     our_key,
@@ -246,6 +245,7 @@ impl Validation {
 pub enum ValidationMessage {
     Create {
         request_id: String,
+        version: u64,
         info: ValidationInfo,
     },
 
@@ -297,12 +297,16 @@ impl Handler<Validation> for Validation {
         ctx: &mut ActorContext<Validation>,
     ) -> Result<(), ActorError> {
         match msg {
-            ValidationMessage::Create { request_id, info } => {
+            ValidationMessage::Create { request_id, info, version } => {
                 let (validation_req, proof) =
                     match self.create_validation_req(ctx, info.clone()).await {
                         Ok(validation_req) => validation_req,
                         Err(e) => {
-                            error!(TARGET_VALIDATION, "Create, can not create validation request: {}", e);
+                            error!(
+                                TARGET_VALIDATION,
+                                "Create, can not create validation request: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -332,7 +336,8 @@ impl Handler<Validation> for Validation {
                 self.quorum = quorum;
                 self.validators.clone_from(&signers);
                 self.validators_quantity = signers.len() as u32;
-                self.request_id = request_id.to_string();
+                self.request_id = request_id.clone();
+                self.version = version;
                 self.reboot = false;
 
                 let signature = match get_sign(
@@ -345,9 +350,12 @@ impl Handler<Validation> for Validation {
                 {
                     Ok(signature) => signature,
                     Err(e) => {
-                        error!(TARGET_VALIDATION, "Create, can not sign request: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_VALIDATION,
+                            "Create, can not sign request: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let signed_validation_req: Signed<ValidationReq> = Signed {
@@ -358,7 +366,6 @@ impl Handler<Validation> for Validation {
                 for signer in signers {
                     self.create_validators(
                         ctx,
-                        &self.request_id,
                         signed_validation_req.clone(),
                         &info.metadata.schema_id,
                         signer,
@@ -465,8 +472,11 @@ impl Handler<Validation> for Validation {
         event: ValidationEvent,
         ctx: &mut ActorContext<Validation>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
-            error!(TARGET_VALIDATION, "OnEvent, can not persist information: {}", e);
+        if let Err(e) = self.persist_light(&event, ctx).await {
+            error!(
+                TARGET_VALIDATION,
+                "OnEvent, can not persist information: {}", e
+            );
             emit_fail(ctx, e).await;
         };
     }
@@ -484,10 +494,12 @@ impl Handler<Validation> for Validation {
 
 #[async_trait]
 impl PersistentActor for Validation {
-    fn apply(&mut self, event: &ValidationEvent) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         self.prev_event_validation_response
             .clone_from(&event.actual_event_validation_response);
         self.previous_proof = Some(event.actual_proof.clone());
+
+        Ok(())
     }
 }
 

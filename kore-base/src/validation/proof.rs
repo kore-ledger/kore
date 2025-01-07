@@ -1,10 +1,12 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::ValidationInfo;
 
 use crate::{
-    error, model::{request::EventRequest, HashId, Namespace}, Error, DIGEST_DERIVATOR
+    error,
+    model::{request::EventRequest, HashId, Namespace},
+    Error, DIGEST_DERIVATOR,
 };
 use identity::identifier::{
     derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
@@ -116,7 +118,10 @@ impl HashId for ValidationProof {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
             |e| {
                 error!(TARGET_PROOF, "HashId for ValidationProof fails: {}", e);
-                Error::HashID(format!("HashId for ValidationProof fails: {}", e))
+                Error::HashID(format!(
+                    "HashId for ValidationProof fails: {}",
+                    e
+                ))
             },
         )
     }

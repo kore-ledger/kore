@@ -1,5 +1,6 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
+
 #![recursion_limit = "256"]
 pub mod config;
 pub mod error;
@@ -42,7 +43,9 @@ use model::HashId;
 use model::ValueWrapper;
 use model::{request::*, SignTypesNode};
 use network::{Monitor, NetworkWorker};
-use node::register::{GovsData, Register, RegisterData, RegisterMessage, RegisterResponse};
+use node::register::{
+    GovsData, Register, RegisterData, RegisterMessage, RegisterResponse,
+};
 use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
 use once_cell::sync::OnceCell;
 use prometheus_client::registry::Registry;
@@ -54,7 +57,7 @@ use serde_json::Value;
 use subject::{Subject, SubjectMessage, SubjectResponse};
 use system::system;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, error};
+use tracing::{error, info};
 use validation::{Validation, ValidationInfo, ValidationMessage};
 
 use lazy_static::lazy_static;
@@ -111,51 +114,52 @@ impl Api {
         let system =
             system(config.clone(), password, Some(token.clone())).await?;
 
-
-            let newtork_monitor = Monitor;
-            let newtork_monitor_actor = system
-                .create_root_actor("network_monitor", newtork_monitor)
-                .await
-                .map_err(|e| {
-                    error!(TARGET_API, "Can not create network_monitor actor {}", e);
-                    Error::System(e.to_string())
-                })?;
-    
-            let mut worker: NetworkWorker<NetworkMessage> = NetworkWorker::new(
-                registry,
-                keys.clone(),
-                config.network.clone(),
-                Some(newtork_monitor_actor),
-                config.key_derivator,
-                token.clone(),
-            )
-            .map_err(|e| {
-                error!(TARGET_API, "Can not create networt {}", e);
-                Error::Network(e.to_string())})?;
-    
-            // Create worker
-            let service = Intermediary::new(
-                worker.service().sender().clone(),
-                KeyDerivator::Ed25519,
-                system.clone(),
-                token.clone(),
-            );
-    
-            let peer_id = worker.local_peer_id().to_string();
-    
-            worker.add_helper_sender(service.service().sender());
-    
-            system.add_helper("network", service).await;
-    
-            tokio::spawn(async move {
-                let _ = worker.run().await;
-            });
-
-        let node = Node::new(&keys)?;
-        let node_actor = system
-            .create_root_actor("node", node)
+        let newtork_monitor = Monitor;
+        let newtork_monitor_actor = system
+            .create_root_actor("network_monitor", newtork_monitor)
             .await
             .map_err(|e| {
+                error!(
+                    TARGET_API,
+                    "Can not create network_monitor actor {}", e
+                );
+                Error::System(e.to_string())
+            })?;
+
+        let mut worker: NetworkWorker<NetworkMessage> = NetworkWorker::new(
+            registry,
+            keys.clone(),
+            config.network.clone(),
+            Some(newtork_monitor_actor),
+            config.key_derivator,
+            token.clone(),
+        )
+        .map_err(|e| {
+            error!(TARGET_API, "Can not create networt {}", e);
+            Error::Network(e.to_string())
+        })?;
+
+        // Create worker
+        let service = Intermediary::new(
+            worker.service().sender().clone(),
+            KeyDerivator::Ed25519,
+            system.clone(),
+            token.clone(),
+        );
+
+        let peer_id = worker.local_peer_id().to_string();
+
+        worker.add_helper_sender(service.service().sender());
+
+        system.add_helper("network", service).await;
+
+        tokio::spawn(async move {
+            let _ = worker.run().await;
+        });
+
+        let node = Node::new(&keys)?;
+        let node_actor =
+            system.create_root_actor("node", node).await.map_err(|e| {
                 error!(TARGET_API, "Can not create node actor {}", e);
                 Error::System(e.to_string())
             })?;
@@ -181,7 +185,8 @@ impl Api {
             .await
             .map_err(|e| {
                 error!(TARGET_API, "Can not create request actor {}", e);
-                Error::System(e.to_string())})?;
+                Error::System(e.to_string())
+            })?;
         let Some(ext_db): Option<ExternalDB> =
             system.get_helper("ext_db").await
         else {
@@ -229,21 +234,24 @@ impl Api {
         let response = self
             .request
             .ask(RequestHandlerMessage::NewRequest { request })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not send external request {}", e);
-                Error::RequestHandler(
-                    e.to_string(),
-                )
+                Error::RequestHandler(e.to_string())
             })?;
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::RequestHandler(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))},
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -257,7 +265,8 @@ impl Api {
             .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
                 request.clone(),
             )))
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not sign request {}", e);
                 Error::Node(
                     "The node was unable to sign the request".to_owned(),
@@ -267,11 +276,14 @@ impl Api {
         let signature = match response {
             NodeResponse::SignRequest(signature) => signature,
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 return Err(Error::Node(
                     "A response was received that was not the expected one"
                         .to_owned(),
-                ))
+                ));
             }
         };
 
@@ -294,11 +306,15 @@ impl Api {
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::RequestHandler(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))},
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -311,7 +327,8 @@ impl Api {
             .ask(QueryMessage::GetRequestState {
                 request_id: request_id.to_string(),
             })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not get request state {}", e);
                 Error::Query(e.to_string())
             })?;
@@ -319,12 +336,15 @@ impl Api {
         match response {
             QueryResponse::RequestState(state) => Ok(state),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Query(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -337,22 +357,24 @@ impl Api {
             .ask(QueryMessage::GetApproval {
                 subject_id: subject_id.to_string(),
             })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not get approval request {}", e);
                 Error::Query(e.to_string())
             })?;
 
         match response {
-            QueryResponse::ApprovalState { data } => {
-                Ok(data)
-            }
+            QueryResponse::ApprovalState { data } => Ok(data),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Query(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -363,7 +385,9 @@ impl Api {
     ) -> Result<String, Error> {
         if let ApprovalStateRes::Obsolete = state {
             error!(TARGET_API, "Invalid approval state");
-            return Err(Error::RequestHandler("Invalid approval state".to_owned()));
+            return Err(Error::RequestHandler(
+                "Invalid approval state".to_owned(),
+            ));
         }
 
         let response = self
@@ -372,20 +396,27 @@ impl Api {
                 subject_id: subject_id.to_string(),
                 state,
             })
-            .await.map_err(|e| {
-                error!(TARGET_API, "Can not change approve request state: {}", e);
+            .await
+            .map_err(|e| {
+                error!(
+                    TARGET_API,
+                    "Can not change approve request state: {}", e
+                );
                 Error::RequestHandler(e.to_string())
             })?;
 
         match response {
             RequestHandlerResponse::Response(res) => Ok(res),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::RequestHandler(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -394,25 +425,23 @@ impl Api {
         subject_id: DigestIdentifier,
         witnesses: AuthWitness,
     ) -> Result<String, Error> {
-        self
-            .auth
+        self.auth
             .tell(AuthMessage::NewAuth {
                 subject_id,
                 witness: witnesses,
             })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not get auth subject: {}", e);
-                Error::Auth(
-                    format!("Can not get auth subject: {}", e)
-                )
+                Error::Auth(format!("Can not get auth subject: {}", e))
             })?;
 
         Ok("Ok".to_owned())
     }
 
     pub async fn all_auth_subjects(&self) -> Result<Vec<String>, Error> {
-        let response = self.auth.ask(AuthMessage::GetAuths).await
-            .map_err(|e| {
+        let response =
+            self.auth.ask(AuthMessage::GetAuths).await.map_err(|e| {
                 error!(TARGET_API, "Can not get auth subject: {}", e);
                 Error::Auth(format!("Can not get auth subjects: {}", e))
             })?;
@@ -420,12 +449,15 @@ impl Api {
         match response {
             AuthResponse::Auths { subjects } => Ok(subjects),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Auth(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -433,8 +465,10 @@ impl Api {
         &self,
         subject_id: DigestIdentifier,
     ) -> Result<AuthWitness, Error> {
-        let response =
-            self.auth.ask(AuthMessage::GetAuth { subject_id }).await
+        let response = self
+            .auth
+            .ask(AuthMessage::GetAuth { subject_id })
+            .await
             .map_err(|e| {
                 error!(TARGET_API, "Can not get witnesses of subject: {}", e);
                 Error::Auth(format!("Can not get witnesses of subjects: {}", e))
@@ -443,12 +477,15 @@ impl Api {
         match response {
             AuthResponse::Witnesses(witnesses) => Ok(witnesses),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Auth(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -456,7 +493,10 @@ impl Api {
         &self,
         subject_id: DigestIdentifier,
     ) -> Result<String, Error> {
-        self.auth.tell(AuthMessage::DeleteAuth { subject_id }).await.map_err(|e| {
+        self.auth
+            .tell(AuthMessage::DeleteAuth { subject_id })
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not delete auth of subjects: {}", e);
                 Error::Auth(format!("Can not delete auth of subjects: {}", e))
             })?;
@@ -468,41 +508,58 @@ impl Api {
         &self,
         subject_id: DigestIdentifier,
     ) -> Result<String, Error> {
-        let response =
-            self.auth.ask(AuthMessage::Update { subject_id }).await
+        let response = self
+            .auth
+            .ask(AuthMessage::Update { subject_id })
+            .await
             .map_err(|e| {
                 error!(TARGET_API, "Can not update subject: {}", e);
                 Error::Auth(format!("Can not update subject: {}", e))
-        })?;
+            })?;
 
         match response {
             AuthResponse::None => Ok("Update in progress".to_owned()),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Auth(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
             }
         }
     }
 
-    pub async fn all_govs(&self, active: Option<bool>) -> Result<Vec<GovsData>, Error> {
-        let response = self.register.ask(RegisterMessage::GetGovs { active }).await
-        .map_err(|e| {
-            error!(TARGET_API, "Can not get resgister governances: {}", e);
-            Error::Register(format!("Can not get resgister governances: {}", e))
-        })?;
+    pub async fn all_govs(
+        &self,
+        active: Option<bool>,
+    ) -> Result<Vec<GovsData>, Error> {
+        let response = self
+            .register
+            .ask(RegisterMessage::GetGovs { active })
+            .await
+            .map_err(|e| {
+                error!(TARGET_API, "Can not get resgister governances: {}", e);
+                Error::Register(format!(
+                    "Can not get resgister governances: {}",
+                    e
+                ))
+            })?;
 
         match response {
             RegisterResponse::Govs { governances } => Ok(governances),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Register(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -512,27 +569,34 @@ impl Api {
         active: Option<bool>,
         schema: Option<String>,
     ) -> Result<Vec<RegisterData>, Error> {
-        let response= self
+        let response = self
             .register
             .ask(RegisterMessage::GetSubj {
                 gov_id: gov_id.to_string(),
                 active,
                 schema,
             })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not get resgister subjects: {}", e);
-                Error::Register(format!("Can not get resgister subjects: {}", e))
+                Error::Register(format!(
+                    "Can not get resgister subjects: {}",
+                    e
+                ))
             })?;
 
         match response {
             RegisterResponse::Subjs { subjects } => Ok(subjects),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Register(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -549,22 +613,24 @@ impl Api {
                 quantity,
                 page,
             })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not get events: {}", e);
                 Error::Query(format!("Can not get events: {}", e))
             })?;
 
         match response {
-            QueryResponse::Events { data } => {
-                Ok(data)
-            }
+            QueryResponse::Events { data } => Ok(data),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Query(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -637,7 +703,8 @@ impl Api {
             .ask(QueryMessage::GetSubject {
                 subject_id: subject_id.to_string(),
             })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not get subject: {}", e);
                 Error::Query(format!("Can not get subject: {}", e))
             })?;
@@ -645,12 +712,15 @@ impl Api {
         match response {
             QueryResponse::Subject { subject } => Ok(subject),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Query(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -663,20 +733,24 @@ impl Api {
             .ask(QueryMessage::GetSignatures {
                 subject_id: subject_id.to_string(),
             })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not get signatures: {}", e);
-                Error::Query(format!("Can not get signatures: {}", e))  
+                Error::Query(format!("Can not get signatures: {}", e))
             })?;
 
         match response {
             QueryResponse::Signatures { signatures } => Ok(signatures),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Query(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 }

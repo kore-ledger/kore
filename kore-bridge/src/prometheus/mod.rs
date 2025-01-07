@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::sync::Arc;
 
 use axum::{response::IntoResponse, routing::get, Extension, Router};
@@ -8,14 +11,13 @@ pub async fn handler_prometheus_data(
 ) -> impl IntoResponse {
     let mut body = String::new();
     if let Err(e) = encode(&mut body, &state) {
-        return ([("Content-Type", "text/plain; charset=utf-8")],
-            format!("Error encoding Prometheus metrics: {}", e))
+        return (
+            [("Content-Type", "text/plain; charset=utf-8")],
+            format!("Error encoding Prometheus metrics: {}", e),
+        );
     };
 
-    (
-        [("Content-Type", "text/plain; charset=utf-8")],
-        body,
-    )
+    ([("Content-Type", "text/plain; charset=utf-8")], body)
 }
 
 pub fn build_routes(registry: Registry) -> Router {
@@ -33,7 +35,8 @@ pub fn run_prometheus(registry: Registry, tcp_listener: &str) {
     let tcp_listener = tcp_listener.to_owned();
 
     tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(tcp_listener).await.unwrap();
+        let listener =
+            tokio::net::TcpListener::bind(tcp_listener).await.unwrap();
         axum::serve(listener, routes).await.unwrap();
     });
 }

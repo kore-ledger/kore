@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{error, warn};
 
-use crate::helpers::db::{
-    ExternalDB, Querys
-};
+use crate::helpers::db::{ExternalDB, Querys};
 
 const TARGET_QUERY: &str = "Kore-Query";
 
@@ -63,19 +61,11 @@ impl Message for QueryMessage {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryResponse {
-    Signatures {
-        signatures: Value,
-    },
-    Subject {
-        subject: Value,
-    },
-    Events {
-        data: Value
-    },
+    Signatures { signatures: Value },
+    Subject { subject: Value },
+    Events { data: Value },
     RequestState(String),
-    ApprovalState {
-        data: Value
-    },
+    ApprovalState { data: Value },
 }
 
 impl Response for QueryResponse {}
@@ -119,13 +109,14 @@ impl Handler<Query> for Query {
 
         match msg {
             QueryMessage::GetSignatures { subject_id } => {
-                let signatures = helper
-                    .get_signatures(&subject_id)
-                    .await
-                    .map_err(|e| {
-                        warn!(TARGET_QUERY, "GetSignatures, Can not obtain signatures: {}", e);
-                        ActorError::Functional(e.to_string())}
-                    )?;
+                let signatures =
+                    helper.get_signatures(&subject_id).await.map_err(|e| {
+                        warn!(
+                            TARGET_QUERY,
+                            "GetSignatures, Can not obtain signatures: {}", e
+                        );
+                        ActorError::Functional(e.to_string())
+                    })?;
                 Ok(QueryResponse::Signatures { signatures })
             }
             QueryMessage::GetSubject { subject_id } => {
@@ -133,8 +124,12 @@ impl Handler<Query> for Query {
                     .get_subject_state(&subject_id)
                     .await
                     .map_err(|e| {
-                        warn!(TARGET_QUERY, "GetSubject, Can not obtain subject state: {}", e);
-                        ActorError::Functional(e.to_string())})?;
+                        warn!(
+                            TARGET_QUERY,
+                            "GetSubject, Can not obtain subject state: {}", e
+                        );
+                        ActorError::Functional(e.to_string())
+                    })?;
                 Ok(QueryResponse::Subject { subject })
             }
             QueryMessage::GetEvents {
@@ -146,8 +141,12 @@ impl Handler<Query> for Query {
                     .get_events(&subject_id, quantity, page)
                     .await
                     .map_err(|e| {
-                        warn!(TARGET_QUERY, "GetEvents, Can not obtain events: {}", e);
-                        ActorError::Functional(e.to_string())})?;
+                        warn!(
+                            TARGET_QUERY,
+                            "GetEvents, Can not obtain events: {}", e
+                        );
+                        ActorError::Functional(e.to_string())
+                    })?;
                 Ok(QueryResponse::Events { data })
             }
             QueryMessage::GetEventSn { subject_id, sn } => {
@@ -183,12 +182,15 @@ impl Handler<Query> for Query {
                 Ok(QueryResponse::RequestState(res))
             }
             QueryMessage::GetApproval { subject_id } => {
-                let data= helper
-                    .get_approve_req(&subject_id)
-                    .await
-                    .map_err(|e| {
-                        warn!(TARGET_QUERY, "GetApproval, Can not obtain approve request: {}", e);
-                        ActorError::Functional(e.to_string())})?;
+                let data =
+                    helper.get_approve_req(&subject_id).await.map_err(|e| {
+                        warn!(
+                            TARGET_QUERY,
+                            "GetApproval, Can not obtain approve request: {}",
+                            e
+                        );
+                        ActorError::Functional(e.to_string())
+                    })?;
                 Ok(QueryResponse::ApprovalState { data })
             }
         }

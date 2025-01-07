@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Network worker.
@@ -122,7 +122,12 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             KeyDerivator::Ed25519 => {
                 let sk =
                     ed25519::SecretKey::try_from_bytes(keys.secret_key_bytes())
-                .map_err(|e| Error::Worker(format!("Invalid Ed25518 secret key {}", e)))?;
+                        .map_err(|e| {
+                            Error::Worker(format!(
+                                "Invalid Ed25518 secret key {}",
+                                e
+                            ))
+                        })?;
                 let kp = ed25519::Keypair::from(sk);
                 Keypair::from(kp)
             }
@@ -130,7 +135,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 let sk = secp256k1::SecretKey::try_from_bytes(
                     keys.secret_key_bytes(),
                 )
-                .map_err(|e| Error::Worker(format!("Invalid Secp256k1 secret key {}", e)))?;
+                .map_err(|e| {
+                    Error::Worker(format!("Invalid Secp256k1 secret key {}", e))
+                })?;
                 let kp = secp256k1::Keypair::from(sk);
                 Keypair::from(kp)
             }
@@ -189,7 +196,13 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                     "/ip4/0.0.0.0/tcp/0"
                         .parse::<Multiaddr>()
                         .map_err(|e| Error::Address(e.to_string()))?,
-                ).map_err(|e| Error::Address(format!("Error listening on all interfaces: {}", e)))?;
+                )
+                .map_err(|e| {
+                    Error::Address(format!(
+                        "Error listening on all interfaces: {}",
+                        e
+                    ))
+                })?;
             info!(TARGET_WORKER, "Listen in all interfaces");
         } else {
             // Listen on the external addresses.
@@ -721,10 +734,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             .await
                     } else {
                         // TODO: No se puede comunicar con el helper, se debe cerrar
-                        error!(
-                            TARGET_WORKER,
-                            "Could not get network helper"
-                        );
+                        error!(TARGET_WORKER, "Could not get network helper");
                         self.cancel.cancel();
                         return;
                     };
@@ -775,8 +785,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             peer_id
                         );
 
-                        let result =
-                        if let Some(helper_sender) = self.helper_sender.as_ref() {
+                        let result = if let Some(helper_sender) =
+                            self.helper_sender.as_ref()
+                        {
                             helper_sender
                                 .send(CommandHelper::ReceivedMessage {
                                     message: request.0,
@@ -826,7 +837,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                 )
                                 .await;
 
-                                let result = if let Some(helper_sender) = self.helper_sender.as_ref() {
+                                let result = if let Some(helper_sender) =
+                                    self.helper_sender.as_ref()
+                                {
                                     helper_sender
                                         .send(CommandHelper::ReceivedMessage {
                                             message: response.0,

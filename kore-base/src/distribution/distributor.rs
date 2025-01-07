@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::time::Duration;
 
 use actor::{
@@ -10,7 +13,10 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
-    governance::{model::{CreatorQuantity, Roles}, Governance},
+    governance::{
+        model::{CreatorQuantity, Roles},
+        Governance,
+    },
     intermediary::Intermediary,
     model::{
         common::{
@@ -80,10 +86,12 @@ impl Distributor {
                     )
                     .await?;
 
-                    if let CreatorQuantity::QUANTITY(max_quantity) = max_quantity {
+                    if let CreatorQuantity::QUANTITY(max_quantity) =
+                        max_quantity
+                    {
                         if quantity >= max_quantity as usize {
                             return Err(ActorError::Functional("The maximum number of created subjects has been reached".to_owned()));
-                        }    
+                        }
                     }
                 } else {
                     return Err(ActorError::Functional("The number of subjects that can be created has not been found".to_owned()));
@@ -294,6 +302,7 @@ impl Distributor {
                     reciver: info.sender,
                     sender: info.reciver,
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
                         governance_id_string
@@ -334,6 +343,7 @@ impl Distributor {
                         reciver: info.reciver,
                         sender: info.sender,
                         request_id: info.request_id,
+                        version: info.version,
                         reciver_actor: format!(
                             "/user/node/{}/distributor",
                             governance_id_string
@@ -510,7 +520,10 @@ impl Handler<Distributor> for Distributor {
                 let metadata = match get_metadata(ctx, &subject_id).await {
                     Ok(metadata) => metadata,
                     Err(e) => {
-                        error!(TARGET_DISTRIBUTOR, "GetLastSn, Can not get metadata: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "GetLastSn, Can not get metadata: {}", e
+                        );
                         if let ActorError::NotFound(_) = e {
                             return Err(e);
                         } else {
@@ -522,9 +535,12 @@ impl Handler<Distributor> for Distributor {
                 let gov = match get_gov(ctx, &subject_id).await {
                     Ok(gov) => gov,
                     Err(e) => {
-                        error!(TARGET_DISTRIBUTOR, "GetLastSn, Can not get governance: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "GetLastSn, Can not get governance: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 if metadata.owner != info.sender
@@ -537,15 +553,14 @@ impl Handler<Distributor> for Distributor {
                 {
                     let e = "Sender neither the owned nor a witness";
                     error!(TARGET_DISTRIBUTOR, "GetLastSn, {}", e);
-                    return Err(ActorError::Functional(
-                        e.to_owned(),
-                    ));
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
 
                 let new_info = ComunicateInfo {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/auth/{}/{}",
                         subject_id, info.reciver
@@ -558,7 +573,10 @@ impl Handler<Distributor> for Distributor {
 
                 let Some(mut helper) = helper else {
                     let e = ActorError::NotHelper("network".to_owned());
-                    error!(TARGET_DISTRIBUTOR, "GetLastSn, Can not obtain network helper");
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "GetLastSn, Can not obtain network helper"
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -573,7 +591,10 @@ impl Handler<Distributor> for Distributor {
                     })
                     .await
                 {
-                    error!(TARGET_DISTRIBUTOR, "GetLastSn, can not send response to network: {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "GetLastSn, can not send response to network: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -587,7 +608,11 @@ impl Handler<Distributor> for Distributor {
                     let metadata = match get_metadata(ctx, &subject_id).await {
                         Ok(metadata) => metadata,
                         Err(e) => {
-                            error!(TARGET_DISTRIBUTOR, "SendDistribution, can not obtain metadata: {}", e);
+                            error!(
+                                TARGET_DISTRIBUTOR,
+                                "SendDistribution, can not obtain metadata: {}",
+                                e
+                            );
                             if let ActorError::NotFound(_) = e {
                                 return Err(e);
                             } else {
@@ -601,8 +626,8 @@ impl Handler<Distributor> for Distributor {
                         Ok(gov) => gov,
                         Err(e) => {
                             error!(TARGET_DISTRIBUTOR, "SendDistribution, can not obtain governance: {}", e);
-                            return Err(emit_fail(ctx, e).await)
-                        },
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
 
                     if metadata.owner != info.sender
@@ -615,9 +640,7 @@ impl Handler<Distributor> for Distributor {
                     {
                         let e = "Sender neither the owned nor a witness";
                         error!(TARGET_DISTRIBUTOR, "SendDistribution, {}", e);
-                        return Err(ActorError::Functional(
-                            e.to_owned(),
-                        ));
+                        return Err(ActorError::Functional(e.to_owned()));
                     }
 
                     info.schema = metadata.schema_id;
@@ -630,7 +653,11 @@ impl Handler<Distributor> for Distributor {
                     )
                     .await
                 {
-                    error!(TARGET_DISTRIBUTOR, "SendDistribution, Can not check governance version {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "SendDistribution, Can not check governance version {}",
+                        e
+                    );
                     if let ActorError::Functional(_) = e {
                         return Err(e);
                     } else {
@@ -645,15 +672,19 @@ impl Handler<Distributor> for Distributor {
                     match self.get_ledger(ctx, &subject_id, sn).await {
                         Ok(res) => res,
                         Err(e) => {
-                            error!(TARGET_DISTRIBUTOR, "SendDistribution, Can not obtain ledger {}", e);
-                            return Err(emit_fail(ctx, e).await)
-                        },
+                            error!(
+                                TARGET_DISTRIBUTOR,
+                                "SendDistribution, Can not obtain ledger {}", e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
 
                 let new_info = ComunicateInfo {
                     reciver: info.sender,
                     sender: info.reciver,
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
                         subject_id
@@ -666,7 +697,10 @@ impl Handler<Distributor> for Distributor {
 
                 let Some(mut helper) = helper else {
                     let e = ActorError::NotHelper("network".to_owned());
-                    error!(TARGET_DISTRIBUTOR, "SendDistribution, Can not obtain network helper {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "SendDistribution, Can not obtain network helper {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -701,6 +735,7 @@ impl Handler<Distributor> for Distributor {
                 let message = NetworkMessage {
                     info: ComunicateInfo {
                         request_id: "".to_owned(),
+                        version: 0,
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
@@ -730,8 +765,8 @@ impl Handler<Distributor> for Distributor {
                     Ok(retry) => retry,
                     Err(e) => {
                         error!(TARGET_DISTRIBUTOR, "NetworkDistribution, can not create retry actor: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
@@ -772,7 +807,11 @@ impl Handler<Distributor> for Distributor {
                         };
 
                         if let Err(e) = retry.tell(RetryMessage::End).await {
-                            error!(TARGET_DISTRIBUTOR, "NetworkResponse, can not end retry actor: {}", e);
+                            error!(
+                                TARGET_DISTRIBUTOR,
+                                "NetworkResponse, can not end retry actor: {}",
+                                e
+                            );
                             // Aquí me da igual, porque al parar este actor para el hijo
                             break 'retry;
                         };
@@ -796,7 +835,10 @@ impl Handler<Distributor> for Distributor {
                     )
                     .await
                 {
-                    error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not check auth: {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "LastEventDistribution, can not check auth: {}", e
+                    );
                     if let ActorError::Functional(_) = e {
                         return Err(e);
                     } else {
@@ -828,8 +870,8 @@ impl Handler<Distributor> for Distributor {
                         Ok(subject) => subject,
                         Err(e) => {
                             error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not get SubjectRef: {}", e);
-                            return Err(emit_fail(ctx, e).await)
-                        },
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
 
                     let response = match subject_ref
@@ -841,8 +883,8 @@ impl Handler<Distributor> for Distributor {
                         Ok(res) => res,
                         Err(e) => {
                             error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not update ledger: {}", e);
-                            return Err(emit_fail(ctx, e).await)
-                        },
+                            return Err(emit_fail(ctx, e).await);
+                        }
                     };
 
                     match response {
@@ -859,7 +901,7 @@ impl Handler<Distributor> for Distributor {
                                     Ok(gov) => gov,
                                     Err(e) => {
                                         error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not obtain governance: {}", e);
-                                        return Err(emit_fail(ctx, e).await)
+                                        return Err(emit_fail(ctx, e).await);
                                     }
                                 };
 
@@ -869,6 +911,7 @@ impl Handler<Distributor> for Distributor {
                                     reciver: info.sender,
                                     sender: info.reciver,
                                     request_id: info.request_id,
+                                    version: info.version,
                                     reciver_actor: format!(
                                         "/user/node/{}/distributor",
                                         ledger.content.subject_id
@@ -919,9 +962,16 @@ impl Handler<Distributor> for Distributor {
 
                 if let Err(e) = update_event(ctx, event.clone()).await {
                     if let ActorError::Functional(_) = e {
-                        warn!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update event: {}", e);
+                        warn!(
+                            TARGET_DISTRIBUTOR,
+                            "LedgerDistribution, can not update event: {}", e
+                        );
                     } else {
-                        error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not update event: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "LastEventDistribution, can not update event: {}",
+                            e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
@@ -930,6 +980,7 @@ impl Handler<Distributor> for Distributor {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/distribution/{}",
                         event.content.subject_id,
@@ -942,7 +993,10 @@ impl Handler<Distributor> for Distributor {
                     ctx.system().get_helper("network").await;
 
                 let Some(mut helper) = helper else {
-                    error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not obtain network helper");
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "LastEventDistribution, can not obtain network helper"
+                    );
                     let e = ActorError::NotHelper("network".to_owned());
                     return Err(emit_fail(ctx, e).await);
                 };
@@ -969,7 +1023,10 @@ impl Handler<Distributor> for Distributor {
             } => {
                 // TODO REFACTORIZAR.
                 if events.is_empty() {
-                    warn!(TARGET_DISTRIBUTOR, "LedgerDistribution, events is empty");
+                    warn!(
+                        TARGET_DISTRIBUTOR,
+                        "LedgerDistribution, events is empty"
+                    );
                     return Err(ActorError::Functional(
                         "Events is empty".to_owned(),
                     ));
@@ -984,7 +1041,10 @@ impl Handler<Distributor> for Distributor {
                     )
                     .await
                 {
-                    error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not check auth: {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "LedgerDistribution, can not check auth: {}", e
+                    );
                     if let ActorError::Functional(_) = e {
                         return Err(e);
                     } else {
@@ -1020,9 +1080,13 @@ impl Handler<Distributor> for Distributor {
                 {
                     Ok(subject) => subject,
                     Err(e) => {
-                        error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not obtain SubjectRef: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "LedgerDistribution, can not obtain SubjectRef: {}",
+                            e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 // Obtenemos el last_sn para saber si nos vale la pena intentar actualizar el ledger
@@ -1142,15 +1206,20 @@ impl Handler<Distributor> for Distributor {
                 {
                     Ok(gov) => gov.version,
                     Err(e) => {
-                        error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not obtain governance: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "LedgerDistribution, can not obtain governance: {}",
+                            e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let new_info = ComunicateInfo {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
                         subject_id
@@ -1162,7 +1231,10 @@ impl Handler<Distributor> for Distributor {
                     ctx.system().get_helper("network").await;
 
                 let Some(mut helper) = helper else {
-                    error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not obtain netowrk helper");
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "LedgerDistribution, can not obtain netowrk helper"
+                    );
                     let e = ActorError::NotHelper("network".to_owned());
                     return Err(emit_fail(ctx, e).await);
                 };
@@ -1214,7 +1286,11 @@ impl Handler<Distributor> for Distributor {
                     }
                 } else {
                     let e = ActorError::NotFound(distribuiton_path);
-                    error!(TARGET_DISTRIBUTOR, "OnChildError, can not obtain Distribution actor: {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "OnChildError, can not obtain Distribution actor: {}",
+                        e
+                    );
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;

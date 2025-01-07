@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Network package.
@@ -171,6 +171,8 @@ where
 pub struct ComunicateInfo {
     /// The request id.
     pub request_id: String,
+    /// The request version.
+    pub version: u64,
     /// The sender key identifier.
     pub sender: KeyIdentifier,
     /// The receiver key identifier.

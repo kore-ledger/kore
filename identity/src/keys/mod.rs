@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 //! This module provides the structs and traits for the generation of key pairs for
 //! cryptographic operations.
 //!

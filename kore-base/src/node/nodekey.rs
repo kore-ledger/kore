@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
     Response,

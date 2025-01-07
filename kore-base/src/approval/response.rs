@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
@@ -67,8 +67,14 @@ impl HashId for ApprovalSignature {
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
             |e| {
-                error!(TARGET_RESPONSE, "HashId for ApprovalSignature fails: {}", e);
-                Error::HashID(format!("HashId for ApprovalSignature fails: {}", e))
+                error!(
+                    TARGET_RESPONSE,
+                    "HashId for ApprovalSignature fails: {}", e
+                );
+                Error::HashID(format!(
+                    "HashId for ApprovalSignature fails: {}",
+                    e
+                ))
             },
         )
     }

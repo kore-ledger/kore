@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Governance module.
@@ -153,7 +153,7 @@ impl Governance {
         namespace: Namespace,
     ) -> Option<CreatorQuantity> {
         for rol in &self.roles {
-            if let Roles::CREATOR ( quantity) = rol.role.clone() {
+            if let Roles::CREATOR(quantity) = rol.role.clone() {
                 let namespace_role = Namespace::from(rol.namespace.to_string());
                 if namespace_role != namespace {
                     continue;

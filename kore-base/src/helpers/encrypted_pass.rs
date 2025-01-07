@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use generic_array::{typenum::U32, GenericArray};
@@ -7,7 +7,10 @@ use memsecurity::EncryptedMem;
 use serde_json::Value;
 use tracing::error;
 
-use crate::{model::{HashId, ValueWrapper}, Error, DIGEST_DERIVATOR};
+use crate::{
+    model::{HashId, ValueWrapper},
+    Error, DIGEST_DERIVATOR,
+};
 
 const TARGET_ENCPASS: &str = "Kore-Helper-EncryptedPass";
 
@@ -29,7 +32,12 @@ impl EncryptedPass {
         };
 
         let value = ValueWrapper(Value::String(pass.to_owned()));
-        let digest_identifier = value.hash_id(derivator).map_err(|e| Error::Password(format!("Can not generate DigestIdentifier from password: {}", e)))?;
+        let digest_identifier = value.hash_id(derivator).map_err(|e| {
+            Error::Password(format!(
+                "Can not generate DigestIdentifier from password: {}",
+                e
+            ))
+        })?;
         let digest_array = Self::vec_to_array_fixed(digest_identifier.digest);
 
         password.encrypt(&digest_array).map_err(|_| {
@@ -48,7 +56,6 @@ impl EncryptedPass {
 
     pub fn key(&self) -> Option<[u8; 32]> {
         if let Ok(value) = self.password.decrypt() {
-            
             let bytes: &GenericArray<u8, U32> =
                 GenericArray::from_slice(value.as_ref());
             Some(bytes.into_array())

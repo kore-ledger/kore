@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! # Request data model.
@@ -191,8 +191,14 @@ impl HashId for Signed<EventRequest> {
     ) -> Result<DigestIdentifier, Error> {
         DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
             |e| {
-                error!(TARGET_REQUEST, "HashId for Signed<EventRequest> fails: {}", e);
-                Error::HashID(format!("HashId for Signed<EventRequest> fails: {}", e))
+                error!(
+                    TARGET_REQUEST,
+                    "HashId for Signed<EventRequest> fails: {}", e
+                );
+                Error::HashID(format!(
+                    "HashId for Signed<EventRequest> fails: {}",
+                    e
+                ))
             },
         )
     }

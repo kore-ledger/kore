@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
@@ -9,9 +9,9 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use tracing::error;
 use std::collections::HashMap;
 use store::store::PersistentActor;
+use tracing::error;
 
 use crate::{
     db::Storable,
@@ -156,9 +156,7 @@ impl Handler<Auth> for Auth {
                 } else {
                     let e = "The subject has not been authorized";
                     error!(TARGET_AUTH, "GetAuth, {}", e);
-                    return Err(ActorError::Functional(
-                       e.to_owned(),
-                    ));
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
             }
             AuthMessage::DeleteAuth { subject_id } => {
@@ -208,6 +206,7 @@ impl Handler<Auth> for Auth {
                                 reciver: key_identifier.clone(),
                                 sender: self.our_node.clone(),
                                 request_id: String::default(),
+                                version: 0,
                                 reciver_actor: format!(
                                     "/user/node/{}/distributor",
                                     subject_id
@@ -219,7 +218,10 @@ impl Handler<Auth> for Auth {
                                 ctx.system().get_helper("network").await;
 
                             let Some(mut helper) = helper else {
-                                error!(TARGET_AUTH, "Update, can not obtain network helper");
+                                error!(
+                                    TARGET_AUTH,
+                                    "Update, can not obtain network helper"
+                                );
                                 let e =
                                     ActorError::NotHelper("network".to_owned());
                                 return Err(emit_fail(ctx, e).await);
@@ -282,9 +284,7 @@ impl Handler<Auth> for Auth {
                 } else {
                     let e = "The subject has not been authorized";
                     error!(TARGET_AUTH, "Update, {}", e);
-                    return Err(ActorError::Functional(
-                        e.to_owned(),
-                    ));
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
             }
         };
@@ -297,7 +297,7 @@ impl Handler<Auth> for Auth {
         event: AuthEvent,
         ctx: &mut ActorContext<Auth>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_AUTH, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -317,7 +317,7 @@ impl Handler<Auth> for Auth {
 #[async_trait]
 impl PersistentActor for Auth {
     /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             AuthEvent::NewAuth {
                 subject_id,
@@ -329,6 +329,8 @@ impl PersistentActor for Auth {
                 self.auth.remove(subject_id);
             }
         };
+
+        Ok(())
     }
 }
 

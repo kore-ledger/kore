@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use std::collections::HashSet;
 
 use actor::{
@@ -74,7 +77,10 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     )
                     .await
                     {
-                        error!(TARGET_SCHEMA, "NetworkRequest, can not update governance: {}", e);
+                        error!(
+                            TARGET_SCHEMA,
+                            "NetworkRequest, can not update governance: {}", e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 }
@@ -89,7 +95,10 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 };
 
                 if let Err(e) = evaluation_req.verify() {
-                    warn!(TARGET_SCHEMA, "NetworkRequest, can not verify evaliation req");
+                    warn!(
+                        TARGET_SCHEMA,
+                        "NetworkRequest, can not verify evaliation req"
+                    );
                     return Err(ActorError::Functional(format!(
                         "Can not verify evaluation request: {}.",
                         e
@@ -101,6 +110,7 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                         &format!("{}", evaluation_req.signature.signer),
                         Evaluator::new(
                             info.request_id.clone(),
+                            info.version,
                             evaluation_req.signature.signer.clone(),
                         ),
                     )
@@ -110,10 +120,18 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     Ok(child) => child,
                     Err(e) => {
                         if let ActorError::Exists(_) = e {
-                            warn!(TARGET_SCHEMA, "NetworkRequest, can not create evaluator: {}", e);
+                            warn!(
+                                TARGET_SCHEMA,
+                                "NetworkRequest, can not create evaluator: {}",
+                                e
+                            );
                             return Ok(());
                         } else {
-                            error!(TARGET_SCHEMA, "NetworkRequest, can not create evaluator: {}", e);
+                            error!(
+                                TARGET_SCHEMA,
+                                "NetworkRequest, can not create evaluator: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -124,9 +142,14 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                         evaluation_req,
                         info,
                     })
-                    .await {
-                        warn!(TARGET_SCHEMA, "NetworkRequest, can not send request to evaluator: {}", e);
-                    }
+                    .await
+                {
+                    warn!(
+                        TARGET_SCHEMA,
+                        "NetworkRequest, can not send request to evaluator: {}",
+                        e
+                    );
+                }
             }
             EvaluationSchemaMessage::UpdateEvaluators(
                 creators,

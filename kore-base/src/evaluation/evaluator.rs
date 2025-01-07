@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::time::Duration;
@@ -57,12 +57,13 @@ const TARGET_EVALUATOR: &str = "Kore-Evaluation-Evaluator";
 #[derive(Default, Clone, Debug)]
 pub struct Evaluator {
     request_id: String,
+    version: u64,
     node: KeyIdentifier,
 }
 
 impl Evaluator {
-    pub fn new(request_id: String, node: KeyIdentifier) -> Self {
-        Evaluator { request_id, node }
+    pub fn new(request_id: String, version: u64, node: KeyIdentifier) -> Self {
+        Evaluator { request_id, version, node }
     }
 
     async fn execute_contract(
@@ -325,7 +326,6 @@ pub enum EvaluatorMessage {
         our_key: KeyIdentifier,
     },
     NetworkEvaluation {
-        request_id: String,
         evaluation_req: Signed<EvaluationReq>,
         schema: String,
         node_key: KeyIdentifier,
@@ -334,6 +334,7 @@ pub enum EvaluatorMessage {
     NetworkResponse {
         evaluation_res: Signed<EvaluationRes>,
         request_id: String,
+        version: u64,
     },
     NetworkRequest {
         evaluation_req: Signed<EvaluationReq>,
@@ -413,8 +414,8 @@ impl Handler<Evaluator> for Evaluator {
                     Ok(signature) => signature,
                     Err(e) => {
                         error!(TARGET_EVALUATOR, "LocalEvaluation, can not sign evaluator response: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 // Evaluatiob path.
@@ -433,14 +434,16 @@ impl Handler<Evaluator> for Evaluator {
                         })
                         .await?
                 } else {
-                    error!(TARGET_EVALUATOR, "LocalEvaluation, can not obtain Evaluation actor");
+                    error!(
+                        TARGET_EVALUATOR,
+                        "LocalEvaluation, can not obtain Evaluation actor"
+                    );
                     return Err(ActorError::Exists(evaluation_path));
                 }
 
                 ctx.stop().await;
             }
             EvaluatorMessage::NetworkEvaluation {
-                request_id,
                 evaluation_req,
                 schema,
                 node_key,
@@ -461,7 +464,8 @@ impl Handler<Evaluator> for Evaluator {
                 // Lanzar evento donde lanzar los retrys
                 let message = NetworkMessage {
                     info: ComunicateInfo {
-                        request_id,
+                        request_id: self.request_id.clone(),
+                        version: self.version,
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
@@ -490,9 +494,12 @@ impl Handler<Evaluator> for Evaluator {
                 {
                     Ok(retry) => retry,
                     Err(e) => {
-                        error!(TARGET_EVALUATOR, "NetworkEvaluation, can not create Retry actor");
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_EVALUATOR,
+                            "NetworkEvaluation, can not create Retry actor"
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
@@ -503,18 +510,20 @@ impl Handler<Evaluator> for Evaluator {
             EvaluatorMessage::NetworkResponse {
                 evaluation_res,
                 request_id,
+                version
             } => {
-                if request_id == self.request_id {
+                if request_id == self.request_id && version == self.version {
                     if self.node != evaluation_res.signature.signer {
                         let e = "We received an evaluation where the request indicates one subject but the info indicates another.";
                         error!(TARGET_EVALUATOR, "NetworkResponse, {}", e);
-                        return Err(ActorError::Functional(
-                            e.to_owned()
-                        ));
+                        return Err(ActorError::Functional(e.to_owned()));
                     }
 
                     if let Err(e) = evaluation_res.verify() {
-                        error!(TARGET_EVALUATOR, "NetworkResponse, Can not verify signature: {}", e);
+                        error!(
+                            TARGET_EVALUATOR,
+                            "NetworkResponse, Can not verify signature: {}", e
+                        );
                         return Err(ActorError::Functional(format!(
                             "Can not verify signature: {}",
                             e
@@ -541,7 +550,10 @@ impl Handler<Evaluator> for Evaluator {
                             return Err(emit_fail(ctx, e).await);
                         }
                     } else {
-                        error!(TARGET_EVALUATOR, "NetworkResponse, Can not obtain Evaluation actor");
+                        error!(
+                            TARGET_EVALUATOR,
+                            "NetworkResponse, Can not obtain Evaluation actor"
+                        );
                         let e = ActorError::NotFound(evaluation_path);
                         return Err(emit_fail(ctx, e).await);
                     }
@@ -556,7 +568,10 @@ impl Handler<Evaluator> for Evaluator {
                         };
 
                         if let Err(e) = retry.tell(RetryMessage::End).await {
-                            error!(TARGET_EVALUATOR, "Can not end Retry actor: {}", e);
+                            error!(
+                                TARGET_EVALUATOR,
+                                "Can not end Retry actor: {}", e
+                            );
                             // Aquí me da igual, porque al parar este actor para el hijo
                             break 'retry;
                         };
@@ -564,7 +579,10 @@ impl Handler<Evaluator> for Evaluator {
 
                     ctx.stop().await;
                 } else {
-                    warn!(TARGET_EVALUATOR, "NetworkResponse, invalid request id");
+                    warn!(
+                        TARGET_EVALUATOR,
+                        "NetworkResponse, invalid request id"
+                    );
                 }
             }
             EvaluatorMessage::NetworkRequest {
@@ -600,7 +618,10 @@ impl Handler<Evaluator> for Evaluator {
                     )
                     .await
                     {
-                        error!(TARGET_EVALUATOR, "NetworkRequest, Node is not subject owner: {}", e);
+                        error!(
+                            TARGET_EVALUATOR,
+                            "NetworkRequest, Node is not subject owner: {}", e
+                        );
                         if let ActorError::Functional(_) = e {
                             return Err(e);
                         } else {
@@ -614,7 +635,10 @@ impl Handler<Evaluator> for Evaluator {
 
                 let Some(mut helper) = helper else {
                     let e = ActorError::NotHelper("network".to_owned());
-                    error!(TARGET_EVALUATOR, "NetworkRequest, Can not get network helper: {}", e);
+                    error!(
+                        TARGET_EVALUATOR,
+                        "NetworkRequest, Can not get network helper: {}", e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -639,7 +663,10 @@ impl Handler<Evaluator> for Evaluator {
                 {
                     Ok(reboot) => reboot,
                     Err(e) => {
-                        error!(TARGET_EVALUATOR, "NetworkRequest, Can not check governance: {}", e);
+                        error!(
+                            TARGET_EVALUATOR,
+                            "NetworkRequest, Can not check governance: {}", e
+                        );
                         if let ActorError::Functional(_) = e {
                             return Err(e);
                         } else {
@@ -669,7 +696,10 @@ impl Handler<Evaluator> for Evaluator {
                             .await
                         }
                         Err(e) => {
-                            error!(TARGET_EVALUATOR, "NetworkRequest, Can not build response: {}", e);
+                            error!(
+                                TARGET_EVALUATOR,
+                                "NetworkRequest, Can not build response: {}", e
+                            );
                             if let ActorError::Functional(_) = e {
                                 EvaluationRes::Error(e.to_string())
                             } else {
@@ -687,15 +717,19 @@ impl Handler<Evaluator> for Evaluator {
                 {
                     Ok(signature) => signature,
                     Err(e) => {
-                        error!(TARGET_EVALUATOR, "NetworkRequest, Can not sign response: {}", e);
-                        return Err(emit_fail(ctx, e).await)
-                    },
+                        error!(
+                            TARGET_EVALUATOR,
+                            "NetworkRequest, Can not sign response: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 };
 
                 let new_info = ComunicateInfo {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
                     request_id: info.request_id,
+                    version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/evaluation/{}",
                         evaluation_req.content.context.subject_id,
@@ -719,7 +753,11 @@ impl Handler<Evaluator> for Evaluator {
                     })
                     .await
                 {
-                    error!(TARGET_EVALUATOR, "NetworkRequest, can not send response to network: {}", e);
+                    error!(
+                        TARGET_EVALUATOR,
+                        "NetworkRequest, can not send response to network: {}",
+                        e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -765,7 +803,10 @@ impl Handler<Evaluator> for Evaluator {
                     }
                 } else {
                     let e = ActorError::NotFound(evaluation_path);
-                    error!(TARGET_EVALUATOR, "OnChildError, can not obtain Evaluation actor: {}", e);
+                    error!(
+                        TARGET_EVALUATOR,
+                        "OnChildError, can not obtain Evaluation actor: {}", e
+                    );
                     emit_fail(ctx, e).await;
                 }
                 ctx.stop().await;

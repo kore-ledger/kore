@@ -1,4 +1,4 @@
-// Copyright 2024 Kore Ledger, SL
+// Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 //! Node module
@@ -189,22 +189,21 @@ impl Node {
     ) -> Result<(), ActorError> {
         let Some(ext_db): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await
-            else {
-                return Err(ActorError::NotHelper("ext_db".to_owned()));
-            };
+        else {
+            return Err(ActorError::NotHelper("ext_db".to_owned()));
+        };
 
-            let Some(kore_sink): Option<KoreSink> =
+        let Some(kore_sink): Option<KoreSink> =
             ctx.system().get_helper("sink").await
-            else {
-                return Err(ActorError::NotHelper("sink".to_owned()));
-            };
+        else {
+            return Err(ActorError::NotHelper("sink".to_owned()));
+        };
 
         for subject in self.owned_subjects.clone() {
-            let subject_actor = ctx.create_child(&subject, Subject::default()).await?;
-            let sink = Sink::new(
-                subject_actor.subscribe(),
-                ext_db.get_subject(),
-            );
+            let subject_actor =
+                ctx.create_child(&subject, Subject::default()).await?;
+            let sink =
+                Sink::new(subject_actor.subscribe(), ext_db.get_subject());
             ctx.system().run_sink(sink).await;
 
             let sink = Sink::new(subject_actor.subscribe(), kore_sink.clone());
@@ -212,11 +211,10 @@ impl Node {
         }
 
         for subject in self.known_subjects.clone() {
-            let subject_actor = ctx.create_child(&subject, Subject::default()).await?;
-            let sink = Sink::new(
-                subject_actor.subscribe(),
-                ext_db.get_subject(),
-            );
+            let subject_actor =
+                ctx.create_child(&subject, Subject::default()).await?;
+            let sink =
+                Sink::new(subject_actor.subscribe(), ext_db.get_subject());
             ctx.system().run_sink(sink).await;
 
             let sink = Sink::new(subject_actor.subscribe(), kore_sink.clone());
@@ -224,11 +222,10 @@ impl Node {
         }
 
         for subject in self.temporal_subjects.clone() {
-            let subject_actor = ctx.create_child(&subject, Subject::default()).await?;
-            let sink = Sink::new(
-                subject_actor.subscribe(),
-                ext_db.get_subject(),
-            );
+            let subject_actor =
+                ctx.create_child(&subject, Subject::default()).await?;
+            let sink =
+                Sink::new(subject_actor.subscribe(), ext_db.get_subject());
             ctx.system().run_sink(sink).await;
 
             let sink = Sink::new(subject_actor.subscribe(), kore_sink.clone());
@@ -342,7 +339,7 @@ impl Actor for Node {
 #[async_trait]
 impl PersistentActor for Node {
     /// Change node state.
-    fn apply(&mut self, event: &Self::Event) {
+    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             NodeEvent::OwnedSubject(subject_id) => {
                 self.add_owned_subject(subject_id.clone());
@@ -368,7 +365,9 @@ impl PersistentActor for Node {
             } => {
                 self.change_subject_owner(subject_id.clone(), *iam_owner);
             }
-        }
+        };
+
+        Ok(())
     }
 }
 
@@ -420,7 +419,10 @@ impl Handler<Node> for Node {
                 let Some(ext_db): Option<ExternalDB> =
                     ctx.system().get_helper("ext_db").await
                 else {
-                    error!(TARGET_NODE, "CreateNewSubjectLedger, Can not obtain ext_db helper");
+                    error!(
+                        TARGET_NODE,
+                        "CreateNewSubjectLedger, Can not obtain ext_db helper"
+                    );
                     ctx.system().send_event(SystemEvent::StopSystem).await;
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
@@ -428,7 +430,10 @@ impl Handler<Node> for Node {
                 let Some(kore_sink): Option<KoreSink> =
                     ctx.system().get_helper("sink").await
                 else {
-                    error!(TARGET_NODE, "CreateNewSubjectLedger, Can not obtain sink helper");
+                    error!(
+                        TARGET_NODE,
+                        "CreateNewSubjectLedger, Can not obtain sink helper"
+                    );
                     ctx.system().send_event(SystemEvent::StopSystem).await;
                     return Err(ActorError::NotHelper("sink".to_owned()));
                 };
@@ -464,12 +469,9 @@ impl Handler<Node> for Node {
                             ActorError::Functional(e.to_string())
                         })?
                 } else {
-                    let e =  "trying to create a subject without create event";
+                    let e = "trying to create a subject without create event";
                     warn!(TARGET_NODE, "CreateNewSubjectLedger, {}", e);
-                    return Err(ActorError::Functional(
-                        e
-                            .to_owned(),
-                    ));
+                    return Err(ActorError::Functional(e.to_owned()));
                 };
 
                 let subject_actor = ctx
@@ -483,7 +485,8 @@ impl Handler<Node> for Node {
                     Sink::new(subject_actor.subscribe(), ext_db.get_subject());
                 ctx.system().run_sink(sink).await;
 
-                let sink = Sink::new(subject_actor.subscribe(), kore_sink.clone());
+                let sink =
+                    Sink::new(subject_actor.subscribe(), kore_sink.clone());
                 ctx.system().run_sink(sink).await;
 
                 self.on_event(
@@ -533,7 +536,10 @@ impl Handler<Node> for Node {
                     ctx.system().get_helper("ext_db").await
                 else {
                     ctx.system().send_event(SystemEvent::StopSystem).await;
-                    error!(TARGET_NODE, "CreateNewSubjectReq, Can not obtain ext_db helper");
+                    error!(
+                        TARGET_NODE,
+                        "CreateNewSubjectReq, Can not obtain ext_db helper"
+                    );
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
@@ -541,7 +547,10 @@ impl Handler<Node> for Node {
                     ctx.system().get_helper("sink").await
                 else {
                     ctx.system().send_event(SystemEvent::StopSystem).await;
-                    error!(TARGET_NODE, "CreateNewSubjectReq, Can not obtain sink helper");
+                    error!(
+                        TARGET_NODE,
+                        "CreateNewSubjectReq, Can not obtain sink helper"
+                    );
                     return Err(ActorError::NotHelper("sink".to_owned()));
                 };
 
@@ -600,7 +609,10 @@ impl Handler<Node> for Node {
                     SignTypesNode::Event(event) => self.sign(&event),
                 }
                 .map_err(|e| {
-                    warn!(TARGET_NODE, "SignRequest, Can not sign event: {}", e);
+                    warn!(
+                        TARGET_NODE,
+                        "SignRequest, Can not sign event: {}", e
+                    );
                     ActorError::FunctionalFail(format!(
                         "Can not sign event: {}",
                         e
@@ -660,7 +672,7 @@ impl Handler<Node> for Node {
                         let e = ActorError::UnexpectedResponse(
                             ActorPath::from(format!("{}/auth", ctx.path())),
                             "AuthResponse::Auths".to_owned(),
-                        );                        
+                        );
                         return Err(e);
                     };
                     subjects
@@ -707,7 +719,7 @@ impl Handler<Node> for Node {
         event: NodeEvent,
         ctx: &mut ActorContext<Node>,
     ) {
-        if let Err(e) = self.persist(&event, ctx).await {
+        if let Err(e) = self.persist_light(&event, ctx).await {
             error!(TARGET_NODE, "OnEvent, can not persist information: {}", e);
             ctx.system().send_event(SystemEvent::StopSystem).await;
         };
