@@ -311,6 +311,6 @@ async fn test_governance_copy() {
     tokio::time::sleep(Duration::from_secs(3)).await;
 
 
-    let event = node2.get_first_or_end_events(subject_id.clone(), 5, false, Some(false)).await.unwrap();
+    let event = node2.get_first_or_end_events(subject_id.clone(), Some(5), Some(false), Some(false)).await.unwrap();
     println!("{:?}", event);
 }

@@ -665,8 +665,8 @@ impl Api {
     pub async fn get_first_or_end_events(
         &self,
         subject_id: DigestIdentifier,
-        quantity: u64,
-        reverse: bool,
+        quantity: Option<u64>,
+        reverse: Option<bool>,
         success: Option<bool>,
     ) -> Result<Value, Error> {
         let response = self
