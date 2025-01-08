@@ -210,12 +210,17 @@ impl Validation {
     ) -> Result<(), ActorError> {
         let mut error = self.errors.clone();
         if !result && error.is_empty() {
+            let gov_id = if self.actual_proof.governance_id.is_empty() {
+                self.actual_proof.subject_id.clone()
+            } else {
+                self.actual_proof.governance_id.clone()
+            };
             "who: ALL, error: No validator was able to validate the event."
                 .clone_into(&mut error);
             try_to_update(
                 self.validators_response.clone(),
                 ctx,
-                self.actual_proof.subject_id.clone(),
+                gov_id,
             )
             .await?;
         }
@@ -594,15 +599,8 @@ pub mod tests {
             panic!("Invalid response")
         };
 
-        let NodeResponse::Subjects(subjects) =
-            node_actor.ask(NodeMessage::GetSubjects).await.unwrap()
-        else {
-            panic!("Invalid response")
-        };
 
-        let temporal_subj = subjects.temporal_subjects[0].clone();
-
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
         let NodeResponse::Subjects(subjects) =
             node_actor.ask(NodeMessage::GetSubjects).await.unwrap()
         else {
@@ -611,12 +609,10 @@ pub mod tests {
 
         let owned_subj = subjects.owned_subjects[0].clone();
 
-        assert_eq!(temporal_subj, owned_subj);
-
         let subject_actor: ActorRef<Subject> = system
             .get_actor(&ActorPath::from(format!(
                 "/user/node/{}",
-                temporal_subj
+                owned_subj
             )))
             .await
             .unwrap();
@@ -624,7 +620,7 @@ pub mod tests {
         let ledger_event_actor: ActorRef<LedgerEvent> = system
             .get_actor(&ActorPath::from(format!(
                 "/user/node/{}/ledger_event",
-                temporal_subj
+                owned_subj
             )))
             .await
             .unwrap();

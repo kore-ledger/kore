@@ -555,6 +555,7 @@ impl Handler<Validator> for Validator {
                     return Err(ActorError::Functional(e.to_owned()));
                 }
 
+                // TODO UNA vez verificada al gobernanza, comprobar que el firmante sea issuer.
                 if info.schema == "governance" {
                     if let Err(e) = check_request_owner(
                         ctx,

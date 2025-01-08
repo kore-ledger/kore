@@ -16,7 +16,7 @@ use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use store::store::PersistentActor;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::{
     approval::approver::{ApprovalStateRes, Approver, ApproverMessage},
@@ -177,11 +177,13 @@ impl RequestHandler {
         ctx: &mut ActorContext<RequestHandler>,
         id: &str,
         subject_id: &str,
+        error: &str
     ) -> Result<(), ActorError> {
         self.on_event(
             RequestHandlerEvent::Invalid {
                 id: id.to_owned(),
                 subject_id: subject_id.to_owned(),
+                error: error.to_owned()
             },
             ctx,
         )
@@ -211,6 +213,11 @@ pub enum RequestHandlerMessage {
         subject_id: String,
         id: String,
     },
+    AbortRequest {
+        subject_id: String,
+        id: String,
+        error: String
+    }
 }
 
 impl Message for RequestHandlerMessage {}
@@ -231,10 +238,15 @@ pub enum RequestHandlerEvent {
         subject_id: String,
         event: Signed<EventRequest>,
     },
-
     Invalid {
         id: String,
         subject_id: String,
+        error: String
+    },
+    Abort {
+        id: String,
+        subject_id: String,
+        error: String
     },
     FinishHandling {
         id: String,
@@ -307,6 +319,28 @@ impl Handler<RequestHandler> for RequestHandler {
         ctx: &mut actor::ActorContext<RequestHandler>,
     ) -> Result<RequestHandlerResponse, ActorError> {
         match msg {
+            RequestHandlerMessage::AbortRequest {
+                subject_id,
+                id,
+                error
+            } => {
+                info!(
+                    TARGET_REQUEST,
+                    "AbortRequest, Aborting request {} for {}: {}", id, subject_id, error
+                );
+
+                self.on_event(
+                    RequestHandlerEvent::Abort {
+                        id: id.to_owned(),
+                        subject_id: subject_id.to_owned(),
+                        error: error.to_owned()
+                    },
+                    ctx,
+                )
+                .await;        
+
+                Ok(RequestHandlerResponse::None)
+            }
             RequestHandlerMessage::ChangeApprovalState {
                 subject_id,
                 state,
@@ -692,25 +726,11 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 };
 
-                if metadata.owner != event.signature.signer {
-                    if let Err(e) = self
-                        .error_queue_handling(ctx, &request_id, &subject_id)
-                        .await
-                    {
-                        error!(
-                            TARGET_REQUEST,
-                            "PopQueue, Can not enqueue next event: {}", e
-                        );
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
-                        return Err(e);
-                    }
-
-                    return Ok(RequestHandlerResponse::None);
-                }
-
                 if !metadata.active {
+                    let e = "Subject is not active";
+                    warn!(TARGET_REQUEST, "PopQueue, {} for {}", e, subject_id);
                     if let Err(e) = self
-                        .error_queue_handling(ctx, &request_id, &subject_id)
+                        .error_queue_handling(ctx, &request_id, &subject_id, e)
                         .await
                     {
                         error!(
@@ -738,6 +758,26 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 };
 
+                if let EventRequest::Fact(_) = event.content.clone() {} else {
+                    if metadata.owner != event.signature.signer {
+                        let e = "owner and sign are not the same";
+                        warn!(TARGET_REQUEST, "PopQueue, {} for {}", e, subject_id);
+                        if let Err(e) = self
+                            .error_queue_handling(ctx, &request_id, &subject_id, e)
+                            .await
+                        {
+                            error!(
+                                TARGET_REQUEST,
+                                "PopQueue, Can not enqueue next event: {}", e
+                            );
+                            ctx.system().send_event(SystemEvent::StopSystem).await;
+                            return Err(e);
+                        }
+
+                        return Ok(RequestHandlerResponse::None);
+                    }
+                }
+
                 let message = match event.content.clone() {
                     EventRequest::Create(create_request) => {
                         if create_request.schema_id != "governance" {
@@ -757,12 +797,13 @@ impl Handler<RequestHandler> for RequestHandler {
                                 {
                                     Ok(quantity) => quantity,
                                     Err(e) => {
-                                        error!(TARGET_REQUEST, "PopQueue, Can not get subject quantity: {}", e);
+                                        error!(TARGET_REQUEST, "PopQueue, Can not get subject quantity for {} : {}", subject_id, e);
                                         if let Err(e) = self
                                             .error_queue_handling(
                                                 ctx,
                                                 &request_id,
                                                 &subject_id,
+                                                &e.to_string()
                                             )
                                             .await
                                         {
@@ -784,12 +825,14 @@ impl Handler<RequestHandler> for RequestHandler {
                                     max_quantity
                                 {
                                     if quantity >= max_quantity as usize {
-                                        error!(TARGET_REQUEST, "PopQueue, The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id);
+                                        let e = format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id);
+                                        error!(TARGET_REQUEST, "PopQueue, {}", e);
                                         if let Err(e) = self
                                             .error_queue_handling(
                                                 ctx,
                                                 &request_id,
                                                 &subject_id,
+                                                &e
                                             )
                                             .await
                                         {
@@ -808,12 +851,14 @@ impl Handler<RequestHandler> for RequestHandler {
                                     }
                                 }
                             } else {
-                                error!(TARGET_REQUEST, "PopQueue, Unable to get the maximum number of subjects that can be created");
+                                let e = "Unable to get the maximum number of subjects that can be created";
+                                error!(TARGET_REQUEST, "PopQueue, {} for {}", e, subject_id);
                                 if let Err(e) = self
                                     .error_queue_handling(
                                         ctx,
                                         &request_id,
                                         &subject_id,
+                                        e
                                     )
                                     .await
                                 {
@@ -844,15 +889,17 @@ impl Handler<RequestHandler> for RequestHandler {
                                     |x| x.clone() == event.signature.signer,
                                 ))
                         {
+                            let e = "Invalid request signer";
                             error!(
                                 TARGET_REQUEST,
-                                "PopQueue, Invalid request signer"
+                                "PopQueue, {} for {}", e, subject_id
                             );
                             if let Err(e) = self
                                 .error_queue_handling(
                                     ctx,
                                     &request_id,
                                     &subject_id,
+                                    e
                                 )
                                 .await
                             {
@@ -995,6 +1042,9 @@ impl PersistentActor for RequestHandler {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
+            RequestHandlerEvent::Abort { subject_id, .. } => {
+                self.handling.remove(subject_id);
+            }
             RequestHandlerEvent::EventToQueue {
                 subject_id, event, ..
             } => {

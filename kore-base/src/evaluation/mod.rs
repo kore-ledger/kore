@@ -172,8 +172,13 @@ impl Evaluation {
             error!(TARGET_EVALUATION, "Error getting derivator");
             DigestDerivator::Blake3_256
         };
-        let (state, subject_id) = if let Some(req) = self.eval_req.clone() {
-            (req.context.state, req.context.subject_id)
+        let (state, gov_id) = if let Some(req) = self.eval_req.clone() {
+            let gov_id = if req.context.governance_id.is_empty() {
+                req.context.subject_id
+            } else {
+                req.context.governance_id
+            };
+            (req.context.state, gov_id)
         } else {
             return Err(ActorError::FunctionalFail(
                 "Can not get eval request".to_owned(),
@@ -194,7 +199,7 @@ impl Evaluation {
         if self.errors.is_empty() {
             "who: ALL, error: No evaluator was able to evaluate the event."
                 .clone_into(&mut error);
-            try_to_update(self.evaluators_signatures.clone(), ctx, subject_id)
+            try_to_update(self.evaluators_signatures.clone(), ctx, gov_id)
                 .await?;
         }
 
@@ -1109,9 +1114,9 @@ mod tests {
         assert_eq!(last_event.content.gov_version, 1);
         assert_eq!(
             last_event.content.value,
-            LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
-                "[]".to_owned(),
-            ),))
+            LedgerValue::Patch(ValueWrapper(json!({
+                "one": 0, "three": 0, "two": 0
+            })))
         );
         assert_eq!(
             last_event.content.state_hash,

@@ -2,7 +2,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::{fs, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use kore_base::{
@@ -14,13 +14,11 @@ use kore_base::{
 };
 use node_builder::create_nodes_and_connections;
 use serde_json::json;
-use serial_test::serial;
 
 mod node_builder;
 
 #[tokio::test]
 #[tracing_test::traced_test]
-#[serial]
 async fn test_governance_copy() {
     // Bootstrap ≤- Addressable
     let nodes = create_nodes_and_connections(
@@ -28,7 +26,7 @@ async fn test_governance_copy() {
         vec![vec![0]],
         vec![],
         false,
-        45000,
+        46000,
     )
     .await;
     let node1 = &nodes[0];
@@ -229,7 +227,6 @@ async fn test_governance_copy() {
 
 #[tokio::test]
 #[tracing_test::traced_test]
-#[serial]
 async fn test_basic_use_case_1b_1e_1a() {
     //  Ephemeral -> Bootstrap ≤- Addressable
     let nodes = create_nodes_and_connections(
