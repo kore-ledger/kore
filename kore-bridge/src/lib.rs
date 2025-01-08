@@ -264,8 +264,8 @@ impl Bridge {
     pub async fn get_first_or_end_events(
         &self,
         subject_id: String,
-        quantity: u64,
-        reverse: bool,
+        quantity: Option<u64>,
+        reverse: Option<bool>,
         success: Option<bool>,
     ) -> Result<Value, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;

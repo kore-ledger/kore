@@ -296,7 +296,6 @@ async fn test_basic_use_case_1b_1e_1a() {
                         "name": "KoreNode3"
                     }
                 },
-
                 {
                     "op": "add",
                     "path": "/roles/6",

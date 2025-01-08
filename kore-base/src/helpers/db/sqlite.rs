@@ -280,16 +280,21 @@ impl Querys for SqliteLocal {
     async fn get_first_or_end_events(
         &self,
         subject_id: &str,
-        quantity: u64,
-        reverse: bool,
+        quantity: Option<u64>,
+        reverse: Option<bool>,
         sucess: Option<bool>,
     ) -> Result<Value, Error> {
         let subject_id = subject_id.to_owned();
+        let mut quantity= quantity.unwrap_or(50);
+        if quantity==0{
+            quantity=1;
+        }
+        let reverse=reverse.unwrap_or_default();
         let order = if reverse { "DESC" } else { "ASC" };
         let sucess_condition = if let Some(sucess_value) = sucess {
             format!("AND succes = '{}'", sucess_value)
         } else {
-            "".to_string()
+            String::default()
         };
 
         let sql = format!(

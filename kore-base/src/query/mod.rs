@@ -45,8 +45,8 @@ pub enum QueryMessage {
     },
     GetFirstOrEndEvents {
         subject_id: String,
-        quantity: u64,
-        reverse: bool,
+        quantity: Option<u64>,
+        reverse: Option<bool>,
         success: Option<bool>,
     },
     GetRequestState {

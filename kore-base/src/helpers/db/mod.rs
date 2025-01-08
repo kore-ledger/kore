@@ -97,8 +97,8 @@ pub trait Querys {
     async fn get_first_or_end_events(
         &self,
         subject_id: &str,
-        quantity: u64,
-        reverse: bool,
+        quantity: Option<u64>,
+        reverse: Option<bool>,
         sucess: Option<bool>,
     ) -> Result<Value, Error>;
 
@@ -232,8 +232,8 @@ impl Querys for ExternalDB {
     async fn get_first_or_end_events(
         &self,
         subject_id: &str,
-        quantity: u64,
-        reverse: bool,
+        quantity: Option<u64>,
+        reverse: Option<bool>,
         sucess: Option<bool>,
     ) -> Result<Value, Error> {
         match self {
