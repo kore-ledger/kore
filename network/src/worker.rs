@@ -986,14 +986,17 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                     self.swarm.add_external_address(address);
                 }
             }
-            SwarmEvent::OutgoingConnectionError { error, .. } => match error {
+            SwarmEvent::OutgoingConnectionError { error, peer_id, connection_id} => match error {
                 DialError::Transport(errors) => {
                     for (address, error) in errors {
-                        error!(
+                        // TODO: revisar si se debe enviar un evento de error por puertos ocupados
+                        warn!(
                             TARGET_WORKER,
-                            "Error dialing peer {:?} with errror {:?}",
+                            "Error dialing peer {:?} with error {:?} peer_id {:?} connection_id {:?}",
                             address,
-                            error
+                            error,
+                            peer_id,
+                            connection_id
                         );
                     }
                     self.send_event(NetworkEvent::Error(Error::Transport(

@@ -457,7 +457,7 @@ impl SqliteLocal {
                 })?;
 
         conn.call(|conn| {
-            let sql = "CREATE TABLE IF NOT EXISTS request (id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY (id))";
+            let sql = "CREATE TABLE IF NOT EXISTS request (id TEXT NOT NULL, state TEXT NOT NULL, version INTEGER NOT NULL, error TEXT, PRIMARY KEY (id))";
             let _ = conn.execute(sql, ())?;
 
             let sql = "CREATE TABLE IF NOT EXISTS approval (subject_id TEXT NOT NULL, data TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY (subject_id))";
@@ -504,13 +504,13 @@ impl Subscriber<RequestManagerEvent> for SqliteLocal {
                 };
 
                 format!(
-                    "UPDATE request SET state = \"{}\" WHERE id = \"{}\"",
+                    "UPDATE request SET state = '{}' WHERE id = '{}'",
                     state, id
                 )
             }
             RequestManagerEvent::UpdateVersion { id, version } => {
                 format!(
-                    "UPDATE request SET version = \"{}\" WHERE id = \"{}\"",
+                    "UPDATE request SET version = '{}' WHERE id = '{}'",
                     version, id
                 )
             }
@@ -542,25 +542,31 @@ impl Subscriber<RequestManagerEvent> for SqliteLocal {
 #[async_trait]
 impl Subscriber<RequestHandlerEvent> for SqliteLocal {
     async fn notify(&self, event: RequestHandlerEvent) {
-        let (id, state, insert) = match event {
-            RequestHandlerEvent::EventToQueue { id, .. } => {
-                (id, "In queue".to_owned(), true)
+        let (id, state, insert, mut error) = match event {
+            RequestHandlerEvent::Abort { id,  error, .. } => {
+                (id, "Abort".to_owned(), false, error)
             }
-            RequestHandlerEvent::Invalid { id, .. } => {
-                (id, "Invalid".to_owned(), false)
+            RequestHandlerEvent::EventToQueue { id, .. } => {
+                (id, "In queue".to_owned(), true, String::default())
+            }
+            RequestHandlerEvent::Invalid { id, error, .. } => {
+                (id, "Invalid".to_owned(), false, error)
             }
             RequestHandlerEvent::FinishHandling { id, .. } => {
-                (id, "Finish".to_owned(), false)
+                (id, "Finish".to_owned(), false, String::default())
             }
             RequestHandlerEvent::EventToHandling { request_id, .. } => {
-                (request_id, "In Handling".to_owned(), false)
+                (request_id, "In Handling".to_owned(), false, String::default())
             }
         };
 
         let sql = if insert {
             "INSERT INTO request (id, state, version) VALUES (?1, ?2, 0)".to_owned()
         } else {
-            "UPDATE request SET state = ?2 WHERE id = ?1".to_owned()
+            if !error.is_empty() {
+                error = format!(", error = '{}'", error);
+            }
+            format!("UPDATE request SET state = ?2{} WHERE id = ?1", error)
         };
 
         let id_clone = id.clone();

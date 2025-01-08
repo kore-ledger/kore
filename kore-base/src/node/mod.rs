@@ -20,7 +20,7 @@ use crate::{
     governance::init::init_state,
     helpers::{db::ExternalDB, sink::KoreSink},
     model::{
-        common::get_gov,
+        event::LedgerValue,
         event::Ledger,
         signature::{Signature, Signed},
         HashId, SignTypesNode,
@@ -58,7 +58,6 @@ pub struct CompiledContract(Vec<u8>);
 pub enum SubjectsTypes {
     KnowSubject(String),
     OwnerSubject(String),
-    TemporalSubject(String),
     ChangeTemp {
         subject_id: String,
         key_identifier: String,
@@ -70,8 +69,6 @@ pub struct SubjectsVectors {
     pub owned_subjects: Vec<String>,
     /// The node's known subjects.
     pub known_subjects: Vec<String>,
-
-    pub temporal_subjects: Vec<String>,
 }
 
 /// Node struct.
@@ -83,8 +80,6 @@ pub struct Node {
     owned_subjects: Vec<String>,
     /// The node's known subjects.
     known_subjects: Vec<String>,
-
-    temporal_subjects: Vec<String>,
 }
 
 impl Node {
@@ -94,7 +89,6 @@ impl Node {
             owner: id.clone(),
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
-            temporal_subjects: Vec::new(),
         })
     }
 
@@ -118,21 +112,11 @@ impl Node {
         self.owned_subjects.push(subject_id);
     }
 
-    /// Adds a subject to the node's temporal subjects.
-    pub fn add_temporal_subject(&mut self, subject_id: String) {
-        self.temporal_subjects.push(subject_id);
-    }
-
-    pub fn change_temporal_subject(
-        &mut self,
-        subject_id: String,
-        key_identifier: String,
-    ) {
-        self.temporal_subjects.retain(|x| x.clone() != subject_id);
-        if key_identifier == self.owner.key_identifier().to_string() {
-            self.owned_subjects.push(subject_id);
+    pub fn delete_subject(&mut self, subject_id: String, iam_owner: bool) {
+        if iam_owner {
+            self.owned_subjects.retain(|x| x.clone() != subject_id);
         } else {
-            self.known_subjects.push(subject_id);
+            self.known_subjects.retain(|x| x.clone() != subject_id);
         }
     }
 
@@ -221,17 +205,6 @@ impl Node {
             ctx.system().run_sink(sink).await;
         }
 
-        for subject in self.temporal_subjects.clone() {
-            let subject_actor =
-                ctx.create_child(&subject, Subject::default()).await?;
-            let sink =
-                Sink::new(subject_actor.subscribe(), ext_db.get_subject());
-            ctx.system().run_sink(sink).await;
-
-            let sink = Sink::new(subject_actor.subscribe(), kore_sink.clone());
-            ctx.system().run_sink(sink).await;
-        }
-
         Ok(())
     }
 }
@@ -239,10 +212,13 @@ impl Node {
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessage {
+    DeleteSubject {
+        owner: String,
+        subject_id: String
+    },
     GetSubjects,
     CreateNewSubjectLedger(Signed<Ledger>),
     CreateNewSubjectReq(CreateSubjectData),
-    RegisterSubject(SubjectsTypes),
     SignRequest(SignTypesNode),
     AmISubjectOwner(String),
     IsAuthorized(String),
@@ -278,15 +254,14 @@ impl Response for NodeResponse {}
 pub enum NodeEvent {
     OwnedSubject(String),
     KnownSubject(String),
-    TemporalSubject(String),
-    ChangeTempSubj {
-        subject_id: String,
-        key_identifier: String,
-    },
     ChangeSubjectOwner {
         iam_owner: bool,
         subject_id: String,
     },
+    DeleteSubject{
+        iam_owner: bool,
+        subject_id: String,
+    }
 }
 
 impl Event for NodeEvent {}
@@ -347,23 +322,14 @@ impl PersistentActor for Node {
             NodeEvent::KnownSubject(subject_id) => {
                 self.add_known_subject(subject_id.clone());
             }
-            NodeEvent::ChangeTempSubj {
-                subject_id,
-                key_identifier,
-            } => {
-                self.change_temporal_subject(
-                    subject_id.clone(),
-                    key_identifier.clone(),
-                );
-            }
-            NodeEvent::TemporalSubject(subject_id) => {
-                self.add_temporal_subject(subject_id.clone());
-            }
             NodeEvent::ChangeSubjectOwner {
                 iam_owner,
                 subject_id,
             } => {
                 self.change_subject_owner(subject_id.clone(), *iam_owner);
+            }
+            NodeEvent::DeleteSubject { iam_owner, subject_id } => {
+                self.delete_subject(subject_id.clone(), *iam_owner);
             }
         };
 
@@ -381,11 +347,27 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
+            NodeMessage::DeleteSubject { owner, subject_id } => {
+                if owner == self.owner.key_identifier().to_string() {
+                    self.on_event(
+                        NodeEvent::DeleteSubject { iam_owner: true, subject_id },
+                        ctx,
+                    )
+                    .await;
+                } else {
+                    self.on_event(
+                        NodeEvent::DeleteSubject { iam_owner: false, subject_id },
+                        ctx,
+                    )
+                    .await;
+                }
+
+                Ok(NodeResponse::None) 
+            },
             NodeMessage::GetSubjects => {
                 Ok(NodeResponse::Subjects(SubjectsVectors {
                     owned_subjects: self.owned_subjects.clone(),
-                    known_subjects: self.known_subjects.clone(),
-                    temporal_subjects: self.temporal_subjects.clone(),
+                    known_subjects: self.known_subjects.clone()
                 }))
             }
             NodeMessage::ChangeSubjectOwner {
@@ -451,17 +433,13 @@ impl Handler<Node> for Node {
                                 .to_string(),
                         )
                     } else {
-                        let governance = get_gov(
-                            ctx,
-                            &create_event.governance_id.to_string(),
-                        )
-                        .await?;
-                        governance
-                            .get_init_state(&create_event.schema_id)
-                            .map_err(|e| {
-                                warn!(TARGET_NODE, "CreateNewSubjectLedger, Can not obtain init state {}", e);
-                                ActorError::Functional(e.to_string())
-                            })?
+                        if let LedgerValue::Patch(init_state) = ledger.content.value.clone() {
+                            init_state
+                        } else {
+                            let e = "Can not create subject, ledgerValue is not a patch";
+                            warn!(TARGET_NODE, "CreateNewSubjectLedger, {}", e);
+                            return Err(ActorError::Functional(e.to_string()))
+                        }
                     };
                     Subject::from_event(None, &ledger, properties)
                         .map_err(|e| {
@@ -489,14 +467,6 @@ impl Handler<Node> for Node {
                     Sink::new(subject_actor.subscribe(), kore_sink.clone());
                 ctx.system().run_sink(sink).await;
 
-                self.on_event(
-                    NodeEvent::TemporalSubject(
-                        ledger.content.subject_id.to_string(),
-                    ),
-                    ctx,
-                )
-                .await;
-
                 let response = subject_actor
                     .ask(SubjectMessage::UpdateLedger {
                         events: vec![ledger.clone()],
@@ -505,20 +475,19 @@ impl Handler<Node> for Node {
 
                 match response {
                     SubjectResponse::LastSn(_) => {
-                        self.on_event(
-                            NodeEvent::ChangeTempSubj {
-                                subject_id: ledger
-                                    .content
-                                    .subject_id
-                                    .to_string(),
-                                key_identifier: ledger
-                                    .signature
-                                    .signer
-                                    .to_string(),
-                            },
-                            ctx,
-                        )
-                        .await;
+                        let event = if ledger.signature.signer == self.owner.key_identifier() {
+                            NodeEvent::OwnedSubject(ledger
+                                .content
+                                .subject_id
+                                .to_string())
+                        } else {
+                            NodeEvent::KnownSubject(ledger
+                                .content
+                                .subject_id
+                                .to_string())
+                        };
+
+                        self.on_event(event, ctx,).await;
                         Ok(NodeResponse::SonWasCreated)
                     }
                     _ => {
@@ -566,11 +535,8 @@ impl Handler<Node> for Node {
                 let sink = Sink::new(child.subscribe(), kore_sink.clone());
                 ctx.system().run_sink(sink).await;
 
-                self.on_event(
-                    NodeEvent::TemporalSubject(data.subject_id.to_string()),
-                    ctx,
-                )
-                .await;
+                self.on_event(NodeEvent::OwnedSubject(data.subject_id.to_string()),ctx,).await;
+
                 Ok(NodeResponse::SonWasCreated)
             }
             NodeMessage::SignRequest(content) => {
@@ -625,34 +591,6 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::AmIOwner(
                     self.owned_subjects.iter().any(|x| **x == subject_id),
                 ))
-            }
-            NodeMessage::RegisterSubject(subject) => {
-                match subject {
-                    SubjectsTypes::KnowSubject(subj) => {
-                        self.on_event(NodeEvent::KnownSubject(subj), ctx).await;
-                    }
-                    SubjectsTypes::OwnerSubject(subj) => {
-                        self.on_event(NodeEvent::OwnedSubject(subj), ctx).await;
-                    }
-                    SubjectsTypes::TemporalSubject(subj) => {
-                        self.on_event(NodeEvent::TemporalSubject(subj), ctx)
-                            .await;
-                    }
-                    SubjectsTypes::ChangeTemp {
-                        subject_id,
-                        key_identifier,
-                    } => {
-                        self.on_event(
-                            NodeEvent::ChangeTempSubj {
-                                subject_id,
-                                key_identifier,
-                            },
-                            ctx,
-                        )
-                        .await;
-                    }
-                }
-                Ok(NodeResponse::None)
             }
             NodeMessage::IsAuthorized(subject_id) => {
                 let auth: Option<actor::ActorRef<Auth>> =
