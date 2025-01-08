@@ -30,8 +30,7 @@ use crate::{
     },
     ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
     NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
-    Subject, SubjectMessage, SubjectResponse, SubjectsTypes,
-};
+    Subject, SubjectMessage, SubjectResponse};
 use tracing::error;
 
 use super::{event::ProtocolsSignatures, HashId, Namespace};
@@ -199,30 +198,6 @@ where
     Ok(())
 }
 
-pub async fn change_temp_subj<A>(
-    ctx: &mut ActorContext<A>,
-    subject_id: String,
-    key_identifier: String,
-) -> Result<(), ActorError>
-where
-    A: Actor + Handler<A>,
-{
-    let node_path = ActorPath::from("/user/node");
-    let node_actor: Option<ActorRef<Node>> =
-        ctx.system().get_actor(&node_path).await;
-
-    if let Some(node_actor) = node_actor {
-        node_actor
-            .tell(NodeMessage::RegisterSubject(SubjectsTypes::ChangeTemp {
-                subject_id,
-                key_identifier,
-            }))
-            .await?;
-    } else {
-        return Err(ActorError::NotFound(node_path));
-    }
-    Ok(())
-}
 
 pub async fn get_quantity<A>(
     ctx: &mut ActorContext<A>,

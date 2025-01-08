@@ -36,7 +36,7 @@ use crate::{
     node::{
         nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
         register::{Register, RegisterData, RegisterMessage},
-        NodeMessage,
+        NodeMessage, NodeResponse,
     },
     validation::{
         schema::{ValidationSchema, ValidationSchemaMessage},
@@ -1187,7 +1187,8 @@ impl Subject {
             if let Err(e) =
                 self.verify_first_ledger_event(events[0].clone()).await
             {
-                // TODO Borrar sujeto.
+                self.delete_subject(ctx, false).await?;
+            
                 return Err(ActorError::Functional(e.to_string()));
             }
 
@@ -1252,6 +1253,74 @@ impl Subject {
         .await
     }
 
+    async fn purge_storage(
+        ctx: &mut ActorContext<Subject>,
+    ) -> Result<(), ActorError> {
+        let store: Option<ActorRef<Store<Subject>>> =
+            ctx.get_child("store").await;
+        let response = if let Some(store) = store {
+            store.ask(StoreCommand::Purge).await?
+        } else {
+            return Err(ActorError::NotFound(ActorPath::from(format!(
+                "{}/store",
+                ctx.path()
+            ))));
+        };
+
+        if let StoreResponse::Error(e) = response {
+            return Err(ActorError::Store(format!(
+                "Can not purge request: {}",
+                e
+            )));
+        };
+
+        Ok(())
+    }
+
+    pub async fn delet_node_subject(ctx: &mut ActorContext<Subject>, owner: &str, subject_id: &str) -> Result<(), ActorError>
+{
+    let node_path = ActorPath::from("/user/node");
+    let node_actor: Option<ActorRef<Node>> =
+        ctx.system().get_actor(&node_path).await;
+
+    // We obtain the validator
+    let node_response = if let Some(node_actor) = node_actor {
+        node_actor.ask(NodeMessage::DeleteSubject { owner: owner.to_owned(), subject_id: subject_id.to_owned() }).await?
+    } else {
+        return Err(ActorError::NotFound(node_path));
+    };
+
+    match node_response {
+        NodeResponse::None => Ok(()),
+        _ => Err(ActorError::UnexpectedResponse(
+            node_path,
+            "NodeResponse::None".to_owned(),
+        )),
+    }
+}
+
+    async fn delete_subject(&self, ctx: &mut ActorContext<Subject>, relation: bool) -> Result<(), ActorError> {
+        if relation {
+            delete_relation(
+                ctx,
+                self.governance_id.to_string(),
+                self.schema_id.clone(),
+                self.owner.to_string(),
+                self.subject_id.to_string(),
+                self.namespace.to_string(),
+            )
+            .await?;
+        }
+    
+        Self::delet_node_subject(ctx, &self.subject_id.to_string(), &self.owner.to_string()).await?;
+
+        Self::purge_storage(ctx).await?;
+
+        ctx.stop().await;
+        
+        Ok(())
+    }
+
     async fn verify_new_ledger_events_not_gov(
         &mut self,
         ctx: &mut ActorContext<Subject>,
@@ -1278,7 +1347,7 @@ impl Subject {
         } else {
             self.register_relation(
                 ctx,
-                events[0].signature.signer.to_string(),
+                self.owner.to_string(),
                 max_quantity.clone(),
             )
             .await?;
@@ -1286,8 +1355,7 @@ impl Subject {
             if let Err(e) =
                 self.verify_first_ledger_event(events[0].clone()).await
             {
-                // TODO Borrar sujeto.
-                // Eliminar del register relation.
+                self.delete_subject(ctx, true).await?;
                 return Err(ActorError::Functional(e.to_string()));
             }
 
@@ -1782,6 +1850,7 @@ pub enum SubjectMessage {
     /// Get governance if subject is a governance
     GetGovernance,
     GetOwner,
+    DeleteSubject
 }
 
 impl Message for SubjectMessage {}
@@ -1797,6 +1866,7 @@ pub enum SubjectResponse {
     Governance(Governance),
     Owner(KeyIdentifier),
     NewCompilers(Vec<String>),
+    Ok
 }
 
 impl Response for SubjectResponse {}
@@ -1876,6 +1946,10 @@ impl Handler<Subject> for Subject {
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
+            SubjectMessage::DeleteSubject => {
+                self.delete_subject(ctx, false).await?;
+                Ok(SubjectResponse::Ok)
+            }
             SubjectMessage::CreateCompilers(compilers) => {
                 let new_compilers =
                     match Self::create_compilers(ctx, &compilers).await {
@@ -2039,6 +2113,19 @@ impl PersistentActor for Subject {
                         }
                     };
 
+                    if self.schema_id != "governance" {
+                        let propierties = match event.content.value.clone() {
+                            LedgerValue::Patch(value_wrapper) => value_wrapper,
+                            LedgerValue::Error(e) => {
+                                let error = format!("Apply, event value can not be an error if protocols was successful: {:?}", e);
+                                error!(TARGET_SUBJECT, error);
+                                return Err(ActorError::Functional(error));
+                            }
+                        };
+    
+                        self.properties = propierties;
+                    }
+                    
                     self.last_event_hash = last_event_hash;
                     return Ok(());
                 }

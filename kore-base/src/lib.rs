@@ -46,7 +46,7 @@ use network::{Monitor, NetworkWorker};
 use node::register::{
     GovsData, Register, RegisterData, RegisterMessage, RegisterResponse,
 };
-use node::{Node, NodeMessage, NodeResponse, SubjectsTypes};
+use node::{Node, NodeMessage, NodeResponse};
 use once_cell::sync::OnceCell;
 use prometheus_client::registry::Registry;
 use query::{Query, QueryMessage, QueryResponse};

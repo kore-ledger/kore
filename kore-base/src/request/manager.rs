@@ -27,8 +27,7 @@ use crate::{
     intermediary::Intermediary,
     model::{
         common::{
-            change_temp_subj, emit_fail, get_gov, get_metadata, get_sign,
-            update_event,
+            emit_fail, get_gov, get_metadata, get_sign, update_event
         },
         event::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError, ProtocolsSignatures
@@ -292,6 +291,30 @@ impl RequestManager {
         (Ledger::from(event.clone()), event)
     }
 
+    pub async fn delete_subject(
+        ctx: &mut ActorContext<RequestManager>,
+        subject_id: &str,
+    ) -> Result<(), ActorError>
+    {
+        let subject_path = ActorPath::from(format!("/user/node/{}", subject_id));
+        let subject_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&subject_path).await;
+    
+        let response = if let Some(subject_actor) = subject_actor {
+            subject_actor.ask(SubjectMessage::DeleteSubject).await?
+        } else {
+            return Err(ActorError::NotFound(subject_path));
+        };
+    
+        match response {
+            SubjectResponse::Ok => Ok(()),
+            _ => Err(ActorError::UnexpectedResponse(
+                subject_path,
+                "SubjectResponse::Ok".to_owned(),
+            )),
+        }
+    }
+
     async fn safe_ledger_event(
         &mut self,
         ctx: &mut ActorContext<RequestManager>,
@@ -318,19 +341,11 @@ impl RequestManager {
 
         if let Err(e) = update_event(ctx, signed_event.clone()).await {
             if let ActorError::Functional(_) = e {
+                return self.abort_request_manager(ctx, &e.to_string()).await;
             } else {
-                return Err(emit_fail(ctx, e).await);
+                return Err(e);
             }
         };
-
-        if let EventRequest::Create(_) = self.request.content {
-            change_temp_subj(
-                ctx,
-                signed_event.content.subject_id.to_string(),
-                signed_event.signature.signer.to_string(),
-            )
-            .await?;
-        }
 
         self.on_event(
             RequestManagerEvent::UpdateState {
@@ -421,6 +436,27 @@ impl RequestManager {
                     id: self.id.clone(),
                     subject_id: self.subject_id.to_string(),
                 })
+                .await?
+        } else {
+            return Err(ActorError::NotFound(request_path));
+        };
+
+        Ok(())
+    }
+
+    async fn abort_request(
+        &self,
+        ctx: &mut ActorContext<RequestManager>,
+        error: &str
+    ) -> Result<(), ActorError> {
+        let request_path = ActorPath::from("/user/request");
+        let request_actor: Option<ActorRef<RequestHandler>> =
+            ctx.system().get_actor(&request_path).await;
+
+        if let Some(request_actor) = request_actor {
+            request_actor
+                .tell(RequestHandlerMessage::AbortRequest {id: self.id.clone(),
+                    subject_id: self.subject_id.to_string(), error: error.to_string() } )
                 .await?
         } else {
             return Err(ActorError::NotFound(request_path));
@@ -589,6 +625,40 @@ impl RequestManager {
             }
             AuthWitness::None => return Err(ActorError::Functional("Attempts have been made to obtain witnesses to update governance but there are none authorized".to_owned())),
         };
+
+        Ok(())
+    }
+
+    async fn patch_not_fact_event(&self, ctx: &mut ActorContext<RequestManager>) -> Result<LedgerValue, ActorError> {
+        if let EventRequest::Create(create_req) = self.request.content.clone() {
+            if create_req.schema_id == "governance" {
+                Ok(LedgerValue::Patch(ValueWrapper(
+                    serde_json::Value::String("[]".to_owned()),
+                )))
+            } else {
+                let governance =
+                    get_gov(ctx, &create_req.governance_id.to_string()).await?;
+
+                let value = governance
+                    .get_init_state(&create_req.schema_id)
+                        .map_err(|e| ActorError::Functional(e.to_string()))?;
+                
+                Ok(LedgerValue::Patch(value))
+            }
+        } else {
+            Ok(LedgerValue::Patch(ValueWrapper(
+                serde_json::Value::String("[]".to_owned()),
+            )))
+        }
+    }
+
+    async fn abort_request_manager(&self, ctx: &mut ActorContext<RequestManager>, error: &str) -> Result<(), ActorError> {
+        Self::delete_subject(ctx, &self.subject_id).await?;
+        
+        self.abort_request(ctx, error).await?;
+
+        Self::purge_storage(ctx).await?;
+        ctx.stop().await;
 
         Ok(())
     }
@@ -780,13 +850,27 @@ impl Handler<RequestManager> for RequestManager {
                         };
                     }
                     _ => {
+                        let value = match self.patch_not_fact_event(ctx).await {
+                            Ok(ledger_value) => ledger_value,
+                            Err(e) => {
+                                if let ActorError::Functional(_) = e {
+                                    if let Err(e) = self.abort_request_manager(ctx, &e.to_string()).await {
+                                        error!(TARGET_MANAGER, "FinishReboot, {}", e);
+                                        return Err(emit_fail(ctx, e).await);    
+                                    }
+                                    return Ok(());
+                                } else {
+                                    error!(TARGET_MANAGER, "FinishReboot, {}", e);
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                            }
+                        };
+
                         let data = match self
                             .build_data_event_proof(
                                 ctx,
                                 None,
-                                LedgerValue::Patch(ValueWrapper(
-                                    serde_json::Value::String("[]".to_owned()),
-                                )),
+                                value,
                                 None,
                                 ProtocolsResult::default(),
                             )
@@ -825,15 +909,27 @@ impl Handler<RequestManager> for RequestManager {
                                 };
                             }
                             _ => {
+                                let value = match self.patch_not_fact_event(ctx).await {
+                                    Ok(ledger_value) => ledger_value,
+                                    Err(e) => {
+                                        if let ActorError::Functional(_) = e {
+                                            if let Err(e) = self.abort_request_manager(ctx, &e.to_string()).await {
+                                                error!(TARGET_MANAGER, "Run, {}", e);
+                                                return Err(emit_fail(ctx, e).await);    
+                                            }
+                                            return Ok(());
+                                        } else {
+                                            error!(TARGET_MANAGER, "Run, {}", e);
+                                            return Err(emit_fail(ctx, e).await);
+                                        }
+                                    }
+                                };
+
                                 let data = match self
                                     .build_data_event_proof(
                                         ctx,
                                         None,
-                                        LedgerValue::Patch(ValueWrapper(
-                                            serde_json::Value::String(
-                                                "[]".to_owned(),
-                                            ),
-                                        )),
+                                        value,
                                         None,
                                         ProtocolsResult::default(),
                                     )
@@ -1126,13 +1222,27 @@ impl Handler<RequestManager> for RequestManager {
                     return Err(emit_fail(ctx, e).await);
                 };
 
+                let value = match self.patch_not_fact_event(ctx).await {
+                    Ok(ledger_value) => ledger_value,
+                    Err(e) => {
+                        if let ActorError::Functional(_) = e {
+                            if let Err(e) = self.abort_request_manager(ctx, &e.to_string()).await {
+                                error!(TARGET_MANAGER, "Other, {}", e);
+                                return Err(emit_fail(ctx, e).await);    
+                            }
+                            return Ok(());
+                        } else {
+                            error!(TARGET_MANAGER, "Other, {}", e);
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    }
+                };
+
                 let data = match self
                     .build_data_event_proof(
                         ctx,
                         None,
-                        LedgerValue::Patch(ValueWrapper(
-                            serde_json::Value::String("[]".to_owned()),
-                        )),
+                        value,
                         None,
                         ProtocolsResult::default(),
                     )
