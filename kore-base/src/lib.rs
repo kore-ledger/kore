@@ -31,7 +31,7 @@ use error::Error;
 use governance::json_schema::JsonSchema;
 use governance::schema;
 use governance::{init::init_state, Governance};
-use helpers::db::ExternalDB;
+use helpers::db::{ExternalDB, RequestDB};
 use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use identity::identifier::DigestIdentifier;
@@ -321,7 +321,7 @@ impl Api {
     pub async fn request_state(
         &self,
         request_id: DigestIdentifier,
-    ) -> Result<String, Error> {
+    ) -> Result<RequestDB, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetRequestState {
@@ -364,7 +364,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::ApprovalState { data } => Ok(data),
+            QueryResponse::ApprovalState( data ) => Ok(data),
             _ => {
                 error!(
                     TARGET_API,
@@ -620,7 +620,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Events { data } => Ok(data),
+            QueryResponse::Events( data ) => Ok(data),
             _ => {
                 error!(
                     TARGET_API,
@@ -651,7 +651,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Events { data } => Ok(data),
+            QueryResponse::Events( data ) => Ok(data),
             _ => {
                 error!(TARGET_API, "A response was received that was not the expected one");
                 Err(Error::Query(
@@ -683,7 +683,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Events { data } => Ok(data),
+            QueryResponse::Events( data ) => Ok(data),
             _ => {
                 error!(TARGET_API, "A response was received that was not the expected one");
                 Err(Error::Query(
@@ -710,7 +710,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Subject { subject } => Ok(subject),
+            QueryResponse::Subject( subject ) => Ok(subject),
             _ => {
                 error!(
                     TARGET_API,
@@ -740,7 +740,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Signatures { signatures } => Ok(signatures),
+            QueryResponse::Signatures (signatures ) => Ok(signatures),
             _ => {
                 error!(
                     TARGET_API,

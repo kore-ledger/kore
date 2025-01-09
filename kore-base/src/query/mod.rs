@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{error, warn};
 
-use crate::helpers::db::{ExternalDB, Querys};
+use crate::helpers::db::{ExternalDB, Querys, RequestDB};
 
 const TARGET_QUERY: &str = "Kore-Query";
 
@@ -61,11 +61,11 @@ impl Message for QueryMessage {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryResponse {
-    Signatures { signatures: Value },
-    Subject { subject: Value },
-    Events { data: Value },
-    RequestState(String),
-    ApprovalState { data: Value },
+    Signatures(Value),
+    Subject(Value),
+    Events(Value),
+    RequestState(RequestDB),
+    ApprovalState(Value),
 }
 
 impl Response for QueryResponse {}
@@ -117,7 +117,7 @@ impl Handler<Query> for Query {
                         );
                         ActorError::Functional(e.to_string())
                     })?;
-                Ok(QueryResponse::Signatures { signatures })
+                Ok(QueryResponse::Signatures(signatures))
             }
             QueryMessage::GetSubject { subject_id } => {
                 let subject = helper
@@ -130,7 +130,7 @@ impl Handler<Query> for Query {
                         );
                         ActorError::Functional(e.to_string())
                     })?;
-                Ok(QueryResponse::Subject { subject })
+                Ok(QueryResponse::Subject(subject))
             }
             QueryMessage::GetEvents {
                 subject_id,
@@ -147,7 +147,7 @@ impl Handler<Query> for Query {
                         );
                         ActorError::Functional(e.to_string())
                     })?;
-                Ok(QueryResponse::Events { data })
+                Ok(QueryResponse::Events(data))
             }
             QueryMessage::GetEventSn { subject_id, sn } => {
                 let data = helper
@@ -156,7 +156,7 @@ impl Handler<Query> for Query {
                     .map_err(|e| {
                         warn!(TARGET_QUERY, "GetEventSn, Can not obtain event sn: {}", e);
                         ActorError::Functional(e.to_string())})?;
-                Ok(QueryResponse::Events { data })
+                Ok(QueryResponse::Events(data))
             }
             QueryMessage::GetFirstOrEndEvents {
                 subject_id,
@@ -170,7 +170,7 @@ impl Handler<Query> for Query {
                     .map_err(|e| {
                         warn!(TARGET_QUERY, "GetFirstOrEndEvents, Can not obtain first or end events: {}", e);
                         ActorError::Functional(e.to_string())})?;
-                Ok(QueryResponse::Events { data })
+                Ok(QueryResponse::Events(data))
             }
             QueryMessage::GetRequestState { request_id } => {
                 let res = helper
@@ -191,7 +191,7 @@ impl Handler<Query> for Query {
                         );
                         ActorError::Functional(e.to_string())
                     })?;
-                Ok(QueryResponse::ApprovalState { data })
+                Ok(QueryResponse::ApprovalState(data))
             }
         }
     }

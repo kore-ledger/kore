@@ -21,7 +21,7 @@ use crate::subject::event::LedgerEventEvent;
 use crate::subject::sinkdata::SinkDataEvent;
 use crate::Signed;
 
-use super::{Paginator, Querys, SignaturesDB, SubjectDB};
+use super::{Paginator, Querys, RequestDB, SignaturesDB, SubjectDB};
 
 const TARGET_SQLITE: &str = "Kore-Helper-DB-Sqlite";
 
@@ -347,14 +347,14 @@ impl Querys for SqliteLocal {
     async fn get_request_id_status(
         &self,
         request_id: &str,
-    ) -> Result<String, Error> {
+    ) -> Result<RequestDB, Error> {
         let request_id = request_id.to_owned();
-        let state: String = match self
+        let state: RequestDB = match self
             .conn
             .call(move |conn| {
-                let sql = "SELECT state FROM request WHERE id = ?1";
+                let sql = "SELECT state, version, error FROM request WHERE id = ?1";
 
-                match conn.query_row(sql, params![request_id], |row| row.get(0))
+                match conn.query_row(sql, params![request_id], |row| Ok(RequestDB { status: row.get(0)?, version: row.get(1)?, error: row.get(2)? }))
                 {
                     Ok(result) => Ok(result),
                     Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),

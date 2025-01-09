@@ -25,7 +25,7 @@ pkcs8 = { version = "0.10.2", features = ["encryption"]}
 borsh = { workspace = true }
 config = {version = "0.15.3", features = ["json", "toml", "yaml"]}
 clap = { version = "4.5.4", features = ["derive"] }
-axum = { version = "0.7.5", optional = true }
+axum = { version = "0.8.1", optional = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

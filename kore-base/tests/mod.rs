@@ -46,7 +46,7 @@ async fn test_governance_copy() {
         .request_state(DigestIdentifier::from_str(&data.request_id).unwrap())
         .await
         .unwrap();
-    println!("{}", response);
+    println!("{:?}", response);
 
     let response = node2
         .auth_subject(
@@ -147,7 +147,7 @@ async fn test_governance_copy() {
         .request_state(DigestIdentifier::from_str(&data.request_id).unwrap())
         .await
         .unwrap();
-    println!("{}", response);
+    println!("{:?}", response);
 
     node1
         .approve(governance_id.clone(), ApprovalStateRes::RespondedAccepted)
@@ -159,7 +159,7 @@ async fn test_governance_copy() {
         .request_state(DigestIdentifier::from_str(&data.request_id).unwrap())
         .await
         .unwrap();
-    println!("{}", response);
+    println!("{:?}", response);
 
     tokio::time::sleep(Duration::from_secs(3)).await;
     let _response = node2.get_subject(governance_id.clone()).await.unwrap();
@@ -214,7 +214,7 @@ async fn test_governance_copy() {
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     let event = node2
-        .get_first_or_end_events(subject_id.clone(), 5, false, Some(true))
+        .get_first_or_end_events(subject_id.clone(), Some(5), Some(false), Some(true))
         .await
         .unwrap();
     // verify if have 5 events
@@ -381,8 +381,8 @@ async fn test_basic_use_case_1b_1e_1a() {
             )
             .await
             .unwrap();
-        println!("{}", response);
-        if response == "Finish" {
+        println!("{}", response.status);
+        if response.status == "Finish" {
             break;
         }
     }

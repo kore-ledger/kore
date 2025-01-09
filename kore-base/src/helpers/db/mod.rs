@@ -63,13 +63,20 @@ pub struct Paginator {
     pub prev: Option<u64>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RequestDB {
+    pub status: String,
+    pub version: u64,
+    pub error: Option<String>
+}
+
 #[async_trait]
 pub trait Querys {
     // request
     async fn get_request_id_status(
         &self,
         request_id: &str,
-    ) -> Result<String, Error>;
+    ) -> Result<RequestDB, Error>;
     async fn del_request(&self, request_id: &str) -> Result<(), Error>;
     // approver
     async fn get_approve_req(&self, subject_id: &str) -> Result<Value, Error>;
@@ -249,7 +256,7 @@ impl Querys for ExternalDB {
     async fn get_request_id_status(
         &self,
         request_id: &str,
-    ) -> Result<String, Error> {
+    ) -> Result<RequestDB, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {

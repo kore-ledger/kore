@@ -9,7 +9,7 @@ pub use kore_base::{
     approval::approver::ApprovalStateRes,
     auth::AuthWitness,
     error::Error,
-    helpers::db::{EventDB, Paginator, SignaturesDB, SubjectDB},
+    helpers::db::{EventDB, Paginator, SignaturesDB, SubjectDB, RequestDB},
     model::{
         request::EventRequest,
         signature::{Signature, Signed},
@@ -119,7 +119,7 @@ impl Bridge {
     pub async fn get_request_state(
         &self,
         request_id: String,
-    ) -> Result<String, Error> {
+    ) -> Result<RequestDB, Error> {
         let request_id = DigestIdentifier::from_str(&request_id)
             .map_err(|e| Error::Bridge(format!("Invalid request id: {}", e)))?;
         self.api.request_state(request_id).await
