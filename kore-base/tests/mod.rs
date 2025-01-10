@@ -149,6 +149,10 @@ async fn test_governance_copy() {
         .unwrap();
     println!("{:?}", response);
 
+    let response = node1.get_approval(governance_id.clone()).await.unwrap();
+
+    println!("{:#?}", response);
+
     node1
         .approve(governance_id.clone(), ApprovalStateRes::RespondedAccepted)
         .await

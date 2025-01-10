@@ -31,7 +31,8 @@ use error::Error;
 use governance::json_schema::JsonSchema;
 use governance::schema;
 use governance::{init::init_state, Governance};
-use helpers::db::{ExternalDB, RequestDB};
+use helpers::db::common::{ApproveInfo, RequestInfo};
+use helpers::db::ExternalDB;
 use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use identity::identifier::DigestIdentifier;
@@ -321,7 +322,7 @@ impl Api {
     pub async fn request_state(
         &self,
         request_id: DigestIdentifier,
-    ) -> Result<RequestDB, Error> {
+    ) -> Result<RequestInfo, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetRequestState {
@@ -351,7 +352,7 @@ impl Api {
     pub async fn get_approval(
         &self,
         subject_id: DigestIdentifier,
-    ) -> Result<Value, Error> {
+    ) -> Result<ApproveInfo, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetApproval {

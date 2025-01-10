@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{error, warn};
 
-use crate::helpers::db::{ExternalDB, Querys, RequestDB};
+use crate::helpers::db::{common::{ApproveInfo, RequestInfo}, ExternalDB, Querys};
 
 const TARGET_QUERY: &str = "Kore-Query";
 
@@ -64,8 +64,8 @@ pub enum QueryResponse {
     Signatures(Value),
     Subject(Value),
     Events(Value),
-    RequestState(RequestDB),
-    ApprovalState(Value),
+    RequestState(RequestInfo),
+    ApprovalState(ApproveInfo),
 }
 
 impl Response for QueryResponse {}

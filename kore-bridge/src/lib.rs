@@ -9,11 +9,11 @@ pub use kore_base::{
     approval::approver::ApprovalStateRes,
     auth::AuthWitness,
     error::Error,
-    helpers::db::{EventDB, Paginator, SignaturesDB, SubjectDB, RequestDB},
     model::{
         request::EventRequest,
         signature::{Signature, Signed},
     },
+    helpers::db::common::{ApproveInfo, RequestInfo, ApprovalReqInfo, SignedInfo, FactInfo, SignatureInfo},
     node::register::GovsData,
     node::register::RegisterData,
     request::RequestData,
@@ -119,7 +119,7 @@ impl Bridge {
     pub async fn get_request_state(
         &self,
         request_id: String,
-    ) -> Result<RequestDB, Error> {
+    ) -> Result<RequestInfo, Error> {
         let request_id = DigestIdentifier::from_str(&request_id)
             .map_err(|e| Error::Bridge(format!("Invalid request id: {}", e)))?;
         self.api.request_state(request_id).await
@@ -128,7 +128,7 @@ impl Bridge {
     pub async fn get_approval(
         &self,
         subject_id: String,
-    ) -> Result<Value, Error> {
+    ) -> Result<ApproveInfo, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id)
             .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_approval(subject_id).await

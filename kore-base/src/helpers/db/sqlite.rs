@@ -12,7 +12,7 @@ use tracing::error;
 use crate::approval::approver::ApproverEvent;
 use crate::error::Error;
 use crate::external_db::{DBManager, DBManagerMessage, DeleteTypes};
-use crate::helpers::db::EventDB;
+use crate::helpers::db::common::{ApproveInfo, EventDB};
 use crate::model::event::{Ledger, LedgerValue};
 use crate::request::manager::RequestManagerEvent;
 use crate::request::types::RequestManagerState;
@@ -21,7 +21,8 @@ use crate::subject::event::LedgerEventEvent;
 use crate::subject::sinkdata::SinkDataEvent;
 use crate::Signed;
 
-use super::{Paginator, Querys, RequestDB, SignaturesDB, SubjectDB};
+use super::common::{Paginator, SignaturesDB, SubjectDB};
+use super::{Querys, RequestInfo};
 
 const TARGET_SQLITE: &str = "Kore-Helper-DB-Sqlite";
 
@@ -347,14 +348,14 @@ impl Querys for SqliteLocal {
     async fn get_request_id_status(
         &self,
         request_id: &str,
-    ) -> Result<RequestDB, Error> {
+    ) -> Result<RequestInfo, Error> {
         let request_id = request_id.to_owned();
-        let state: RequestDB = match self
+        let state: RequestInfo = match self
             .conn
             .call(move |conn| {
                 let sql = "SELECT state, version, error FROM request WHERE id = ?1";
 
-                match conn.query_row(sql, params![request_id], |row| Ok(RequestDB { status: row.get(0)?, version: row.get(1)?, error: row.get(2)? }))
+                match conn.query_row(sql, params![request_id], |row| Ok(RequestInfo { status: row.get(0)?, version: row.get(1)?, error: row.get(2)? }))
                 {
                     Ok(result) => Ok(result),
                     Err(e) => Err(tokio_rusqlite::Error::Rusqlite(e)),
@@ -387,7 +388,7 @@ impl Querys for SqliteLocal {
         Ok(())
     }
 
-    async fn get_approve_req(&self, subject_id: &str) -> Result<Value, Error> {
+    async fn get_approve_req(&self, subject_id: &str) -> Result<ApproveInfo, Error> {
         let subject_id = subject_id.to_owned();
         let approve: (String, String) = match self
             .conn
@@ -408,12 +409,8 @@ impl Querys for SqliteLocal {
             Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
-        let approve = json!({
-            "request": Value::from_str(&approve.0).map_err(|e| Error::ExtDB(format!("Can not convert data into Value: {}", e)))?,
-            "state": approve.1
-        });
-
-        Ok(approve)
+        
+        Ok(ApproveInfo { state: approve.1, request: serde_json::from_str(&approve.0).map_err(|e| Error::ExtDB(format!("Can not convert str to ApprovalReqInfo {}", e)))?})
     }
 
     async fn get_last_validators(

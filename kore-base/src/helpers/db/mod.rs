@@ -16,7 +16,7 @@ use crate::config::ExternalDbConfig;
 use actor::{ActorRef, Subscriber};
 use async_std::fs;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use common::{ApproveInfo, RequestInfo};
 use serde_json::Value;
 #[cfg(feature = "ext-sqlite")]
 use sqlite::SqliteLocal;
@@ -24,51 +24,7 @@ use std::path::Path;
 #[cfg(feature = "ext-sqlite")]
 mod sqlite;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SignaturesDB {
-    pub subject_id: String,
-    pub sn: u64,
-    pub signatures_eval: String,
-    pub signatures_appr: String,
-    pub signatures_vali: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SubjectDB {
-    pub subject_id: String,
-    pub governance_id: String,
-    pub genesis_gov_version: u64,
-    pub namespace: String,
-    pub schema_id: String,
-    pub owner: String,
-    pub creator: String,
-    pub active: String,
-    pub sn: u64,
-    pub properties: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct EventDB {
-    pub subject_id: String,
-    pub sn: u64,
-    pub data: String,
-    pub event_req: String,
-    pub succes: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Paginator {
-    pub pages: u64,
-    pub next: Option<u64>,
-    pub prev: Option<u64>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RequestDB {
-    pub status: String,
-    pub version: u64,
-    pub error: Option<String>
-}
+pub mod common;
 
 #[async_trait]
 pub trait Querys {
@@ -76,10 +32,10 @@ pub trait Querys {
     async fn get_request_id_status(
         &self,
         request_id: &str,
-    ) -> Result<RequestDB, Error>;
+    ) -> Result<RequestInfo, Error>;
     async fn del_request(&self, request_id: &str) -> Result<(), Error>;
     // approver
-    async fn get_approve_req(&self, subject_id: &str) -> Result<Value, Error>;
+    async fn get_approve_req(&self, subject_id: &str) -> Result<ApproveInfo, Error>;
     // validators (not for user use).
     async fn get_last_validators(
         &self,
@@ -256,7 +212,7 @@ impl Querys for ExternalDB {
     async fn get_request_id_status(
         &self,
         request_id: &str,
-    ) -> Result<RequestDB, Error> {
+    ) -> Result<RequestInfo, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -274,7 +230,7 @@ impl Querys for ExternalDB {
         }
     }
 
-    async fn get_approve_req(&self, subject_id: &str) -> Result<Value, Error> {
+    async fn get_approve_req(&self, subject_id: &str) -> Result<ApproveInfo, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {

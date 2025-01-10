@@ -626,7 +626,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(data["state"], "Pending");
+        assert_eq!(data.state, "Pending");
 
         let RequestHandlerResponse::Response(res) = request_actor
             .ask(RequestHandlerMessage::ChangeApprovalState {
@@ -652,7 +652,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(data["state"], "RespondedAccepted");
+        assert_eq!(data.state, "RespondedAccepted");
 
         let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
             .ask(LedgerEventMessage::GetLastEvent)
@@ -851,7 +851,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(data["state"], "Pending");
+        assert_eq!(data.state, "Pending");
 
         let RequestHandlerResponse::Response(res) = request_actor
             .ask(RequestHandlerMessage::ChangeApprovalState {
@@ -877,7 +877,7 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(data["state"], "RespondedAccepted");
+        assert_eq!(data.state, "RespondedAccepted");
 
         let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
             .ask(LedgerEventMessage::GetLastEvent)
