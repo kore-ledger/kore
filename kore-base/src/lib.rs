@@ -31,7 +31,7 @@ use error::Error;
 use governance::json_schema::JsonSchema;
 use governance::schema;
 use governance::{init::init_state, Governance};
-use helpers::db::common::{ApproveInfo, RequestInfo};
+use helpers::db::common::{ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo, SubjectInfo};
 use helpers::db::ExternalDB;
 use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
@@ -606,7 +606,7 @@ impl Api {
         subject_id: DigestIdentifier,
         quantity: Option<u64>,
         page: Option<u64>,
-    ) -> Result<Value, Error> {
+    ) -> Result<PaginatorEvents, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetEvents {
@@ -621,7 +621,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Events( data ) => Ok(data),
+            QueryResponse::PaginatorEvents( data ) => Ok(data),
             _ => {
                 error!(
                     TARGET_API,
@@ -639,7 +639,7 @@ impl Api {
         &self,
         subject_id: DigestIdentifier,
         sn: u64,
-    ) -> Result<Value, Error> {
+    ) -> Result<EventInfo, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetEventSn {
@@ -652,7 +652,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Events( data ) => Ok(data),
+            QueryResponse::Event( data ) => Ok(data),
             _ => {
                 error!(TARGET_API, "A response was received that was not the expected one");
                 Err(Error::Query(
@@ -669,7 +669,7 @@ impl Api {
         quantity: Option<u64>,
         reverse: Option<bool>,
         success: Option<bool>,
-    ) -> Result<Value, Error> {
+    ) -> Result<Vec<EventInfo>, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetFirstOrEndEvents {
@@ -698,7 +698,7 @@ impl Api {
     pub async fn get_subject(
         &self,
         subject_id: DigestIdentifier,
-    ) -> Result<Value, Error> {
+    ) -> Result<SubjectInfo, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetSubject {
@@ -728,7 +728,7 @@ impl Api {
     pub async fn get_signatures(
         &self,
         subject_id: DigestIdentifier,
-    ) -> Result<Value, Error> {
+    ) -> Result<SignaturesInfo, Error> {
         let response = self
             .query
             .ask(QueryMessage::GetSignatures {

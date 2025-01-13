@@ -8,10 +8,9 @@ use actor::{
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tracing::{error, warn};
 
-use crate::helpers::db::{common::{ApproveInfo, RequestInfo}, ExternalDB, Querys};
+use crate::helpers::db::{common::{ApproveInfo, EventInfo, RequestInfo, SignaturesInfo, SubjectInfo, PaginatorEvents}, ExternalDB, Querys};
 
 const TARGET_QUERY: &str = "Kore-Query";
 
@@ -61,9 +60,11 @@ impl Message for QueryMessage {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum QueryResponse {
-    Signatures(Value),
-    Subject(Value),
-    Events(Value),
+    Signatures(SignaturesInfo),
+    Subject(SubjectInfo),
+    PaginatorEvents(PaginatorEvents),
+    Event(EventInfo),
+    Events(Vec<EventInfo>),
     RequestState(RequestInfo),
     ApprovalState(ApproveInfo),
 }
@@ -147,7 +148,7 @@ impl Handler<Query> for Query {
                         );
                         ActorError::Functional(e.to_string())
                     })?;
-                Ok(QueryResponse::Events(data))
+                Ok(QueryResponse::PaginatorEvents(data))
             }
             QueryMessage::GetEventSn { subject_id, sn } => {
                 let data = helper
@@ -156,7 +157,7 @@ impl Handler<Query> for Query {
                     .map_err(|e| {
                         warn!(TARGET_QUERY, "GetEventSn, Can not obtain event sn: {}", e);
                         ActorError::Functional(e.to_string())})?;
-                Ok(QueryResponse::Events(data))
+                Ok(QueryResponse::Event(data))
             }
             QueryMessage::GetFirstOrEndEvents {
                 subject_id,

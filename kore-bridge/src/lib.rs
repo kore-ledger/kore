@@ -12,8 +12,10 @@ pub use kore_base::{
     model::{
         request::EventRequest,
         signature::{Signature, Signed},
+        event::ProtocolsError,
+        Namespace
     },
-    helpers::db::common::{ApproveInfo, RequestInfo, ApprovalReqInfo, SignedInfo, FactInfo, SignatureInfo},
+    helpers::db::common::{ApproveInfo, RequestInfo, ApprovalReqInfo, SignedInfo, FactInfo, SignatureInfo, SubjectInfo, SignaturesInfo, ProtocolsSignaturesInfo, TimeOutResponseInfo, PaginatorEvents, EventInfo, Paginator, EventRequestInfo, ConfirmRequestInfo, CreateRequestInfo, FactRequestInfo, EOLRequestInfo, TransferRequestInfo},
     node::register::GovsData,
     node::register::RegisterData,
     request::RequestData,
@@ -22,7 +24,6 @@ pub use kore_base::{
 use model::BridgeSignedEventRequest;
 use prometheus::run_prometheus;
 use prometheus_client::registry::Registry;
-use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use utils::key_pair;
 
@@ -246,7 +247,7 @@ impl Bridge {
         subject_id: String,
         quantity: Option<u64>,
         page: Option<u64>,
-    ) -> Result<Value, Error> {
+    ) -> Result<PaginatorEvents, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id)
             .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_events(subject_id, quantity, page).await
@@ -256,7 +257,7 @@ impl Bridge {
         &self,
         subject_id: String,
         sn: u64,
-    ) -> Result<Value, Error> {
+    ) -> Result<EventInfo, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_event_sn(subject_id, sn).await
     }
@@ -267,7 +268,7 @@ impl Bridge {
         quantity: Option<u64>,
         reverse: Option<bool>,
         success: Option<bool>,
-    ) -> Result<Value, Error> {
+    ) -> Result<Vec<EventInfo>, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_first_or_end_events(subject_id, quantity, reverse, success).await
     }
@@ -275,7 +276,7 @@ impl Bridge {
     pub async fn get_subject(
         &self,
         subject_id: String,
-    ) -> Result<Value, Error> {
+    ) -> Result<SubjectInfo, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id)
             .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_subject(subject_id).await
@@ -284,7 +285,7 @@ impl Bridge {
     pub async fn get_signatures(
         &self,
         subject_id: String,
-    ) -> Result<Value, Error> {
+    ) -> Result<SignaturesInfo, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id)
             .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_signatures(subject_id).await

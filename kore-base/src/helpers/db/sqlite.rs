@@ -21,7 +21,7 @@ use crate::subject::event::LedgerEventEvent;
 use crate::subject::sinkdata::SinkDataEvent;
 use crate::Signed;
 
-use super::common::{Paginator, SignaturesDB, SubjectDB};
+use super::common::{EventInfo, Paginator, PaginatorEvents, SignaturesDB, SignaturesInfo, SubjectDB, SubjectInfo};
 use super::{Querys, RequestInfo};
 
 const TARGET_SQLITE: &str = "Kore-Helper-DB-Sqlite";
@@ -34,7 +34,7 @@ pub struct SqliteLocal {
 
 #[async_trait]
 impl Querys for SqliteLocal {
-    async fn get_signatures(&self, subject_id: &str) -> Result<Value, Error> {
+    async fn get_signatures(&self, subject_id: &str) -> Result<SignaturesInfo, Error> {
         let subject_id = subject_id.to_owned();
 
         let signatures: SignaturesDB = match self
@@ -60,21 +60,32 @@ impl Querys for SqliteLocal {
             Ok(signatures) => signatures,
             Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
-        let signatures = json!({
-            "subject_id": signatures.subject_id,
-            "sn": signatures.sn,
-            "signatures_eval": Value::from_str(&signatures.signatures_eval).map_err(|e| Error::ExtDB(format!("Can not convert signatures_eval into Value: {}", e)))?,
-            "signatures_appr": Value::from_str(&signatures.signatures_appr).map_err(|e| Error::ExtDB(format!("Can not convert signatures_appr into Value: {}", e)))?,
-            "signatures_vali": Value::from_str(&signatures.signatures_vali).map_err(|e| Error::ExtDB(format!("Can not convert signatures_vali into Value: {}", e)))?
-        });
 
-        Ok(signatures)
+        let signatures_eval = if let Some(sig_eval) = signatures.signatures_eval {
+            Some(serde_json::from_str(&sig_eval).map_err(|e| Error::ExtDB(format!("Can not convert signatures_eval into Option<HashSet<ProtocolsSignaturesInfo>>: {}", e)))?)
+        } else {
+            None
+        };
+    
+        let signatures_appr = if let Some(sig_appr) = signatures.signatures_appr {
+            Some(serde_json::from_str(&sig_appr).map_err(|e| Error::ExtDB(format!("Can not convert signatures_appr into Option<HashSet<ProtocolsSignaturesInfo>>: {}", e)))?)
+        } else {
+            None
+        };
+
+        Ok(SignaturesInfo {
+            subject_id: signatures.subject_id,
+            sn: signatures.sn,
+            signatures_eval,
+            signatures_appr,
+            signatures_vali: serde_json::from_str(&signatures.signatures_vali).map_err(|e| Error::ExtDB(format!("Can not convert signatures_vali into HashSet<ProtocolsSignaturesInfo>: {}", e)))?
+        })
     }
 
     async fn get_subject_state(
         &self,
         subject_id: &str,
-    ) -> Result<Value, Error> {
+    ) -> Result<SubjectInfo, Error> {
         let subject_id = subject_id.to_owned();
 
         let subject: SubjectDB = match self
@@ -106,20 +117,18 @@ impl Querys for SqliteLocal {
             Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
-        let subject = json!({
-            "subject_id": subject.subject_id,
-            "governance_id": subject.governance_id,
-            "genesis_gov_version": subject.genesis_gov_version,
-            "namespace": subject.namespace,
-            "schema_id": subject.schema_id,
-            "owner": subject.owner,
-            "creator": subject.creator,
-            "active": bool::from_str(&subject.active).map_err(|e| Error::ExtDB(format!("Can not convert active into bool: {}", e)))?,
-            "sn": subject.sn,
-            "properties": Value::from_str(&subject.properties).map_err(|e| Error::ExtDB(format!("Can not convert properties into Value: {}", e)))?
-        });
-
-        Ok(subject)
+        Ok(SubjectInfo {
+            subject_id: subject.subject_id,
+            governance_id: subject.governance_id,
+            genesis_gov_version: subject.genesis_gov_version,
+            namespace: subject.namespace,
+            schema_id: subject.schema_id,
+            owner: subject.owner,
+            creator: subject.creator,
+            active: bool::from_str(&subject.active).map_err(|e| Error::ExtDB(format!("Can not convert active into bool: {}", e)))?,
+            sn: subject.sn,
+            properties: Value::from_str(&subject.properties).map_err(|e| Error::ExtDB(format!("Can not convert properties into Value: {}", e)))?
+        })
     }
 
     async fn get_events(
@@ -127,7 +136,7 @@ impl Querys for SqliteLocal {
         subject_id: &str,
         quantity: Option<u64>,
         page: Option<u64>,
-    ) -> Result<Value, Error> {
+    ) -> Result<PaginatorEvents, Error> {
         let mut quantity = quantity.unwrap_or(50);
         let mut page = page.unwrap_or(1);
         if page == 0 {
@@ -193,29 +202,31 @@ impl Querys for SqliteLocal {
                     Ok(EventDB {
                         subject_id: row.get(0)?,
                         sn: row.get(1)?,
-                        data: row.get(2)?,
-                        event_req: row.get(3)?,
-                        succes: row.get(4)?,
+                        patch: row.get(2)?,
+                        error: row.get(3)?,
+                        event_req: row.get(4)?,
+                        succes: row.get(5)?,
                     })
                 })?.map(|x| {
                     match x {
                         Ok(event) => {
-                            let mut event_req = Value::from_str(&event.event_req).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req into Value: {}", e)))))?;
+                            let patch = if let Some(patch) = event.patch {
+                                Some(Value::from_str(&patch).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert patch into Value: {}", e)))))?)
+                            } else {
+                                None
+                            };
 
-                            if let Value::String(string) = &event_req["Fact"]["payload"] {
-                                event_req["Fact"]["payload"] = Value::from_str(&string).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req payload into Value: {}", e)))))?;
-                            }
-                            Ok(json!({
-                            "subject_id": event.subject_id,
-                            "sn": event.sn,
-                            "data": Value::from_str(&event.data).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req into Value: {}", e)))))?,
-                            "event_req": event_req,
-                            "succes": bool::from_str(&event.succes).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert succes into bool: {}", e)))))?,
-                        }))
+                            let error =  if let Some(error) = event.error {
+                                Some(serde_json::from_str(&error).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert patch into Value: {}", e)))))?)
+                            } else {
+                                None
+                            };
+                            
+                            Ok(EventInfo { subject_id: event.subject_id, sn: event.sn, patch, error, event_req: serde_json::from_str(&event.event_req).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req into EventRequestInfo: {}", e)))))?, succes: bool::from_str(&event.succes).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert succes into bool: {}", e)))))?})
                         },
                         Err(error) => Err(tokio_rusqlite::Error::Rusqlite(error)),
                     }
-                }).collect::<std::result::Result<Vec<Value>, tokio_rusqlite::Error>>()?;
+                }).collect::<std::result::Result<Vec<EventInfo>, tokio_rusqlite::Error>>()?;
 
                 Ok(events)
             })
@@ -230,17 +241,14 @@ impl Querys for SqliteLocal {
         let next = if page < pages { Some(page + 1) } else { None };
         let paginator = Paginator { pages, next, prev };
 
-        Ok(json!({
-            "events": events,
-            "paginator": paginator
-        }))
+        Ok(PaginatorEvents { paginator, events })
     }
 
     async fn get_events_sn(
         &self,
         subject_id: &str,
         sn: u64,
-    ) -> Result<Value, Error> {
+    ) -> Result<EventInfo, Error> {
         let subject_id = subject_id.to_owned();
 
         let event = match self.conn.call(move |conn| {
@@ -249,9 +257,10 @@ impl Querys for SqliteLocal {
                 Ok(EventDB {
                     subject_id: row.get(0)?,
                     sn: row.get(1)?,
-                    data: row.get(2)?,
-                    event_req: row.get(3)?,
-                    succes: row.get(4)?,
+                    patch: row.get(2)?,
+                    error: row.get(3)?,
+                    event_req: row.get(4)?,
+                    succes: row.get(5)?,
                 })
             }) {
                 Ok(result) => Ok(result),
@@ -261,21 +270,20 @@ impl Querys for SqliteLocal {
             Ok(event) => event,
             Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
-
-        let mut event_req = Value::from_str(&event.event_req).map_err(|e| Error::ExtDB(format!("Can not convert event_req into Value: {}", e)))?;
-
-        if let Value::String(string) = &event_req["Fact"]["payload"] {
-            event_req["Fact"]["payload"] = Value::from_str(&string).map_err(|e| Error::ExtDB(format!("Can not convert event_req payload into Value: {}", e)))?;
-        }
         
-        Ok(json!({
-        "subject_id": event.subject_id,
-        "sn": event.sn,
-        "data": Value::from_str(&event.data).map_err(|e| Error::ExtDB(format!("Can not convert event_req into Value: {}", e)))?,
-        "event_req": event_req,
-        "succes": bool::from_str(&event.succes).map_err(|e| Error::ExtDB(format!("Can not convert succes into bool: {}", e)))?,
-    }))
+        let patch = if let Some(patch) = event.patch {
+            Some(Value::from_str(&patch).map_err(|e| Error::ExtDB(format!("Can not convert patch into Value: {}", e)))?)
+        } else {
+            None
+        };
 
+        let error =  if let Some(error) = event.error {
+            Some(serde_json::from_str(&error).map_err(|e| Error::ExtDB(format!("Can not convert patch into Value: {}", e)))?)
+        } else {
+            None
+        };
+        
+        Ok(EventInfo { subject_id: event.subject_id, sn: event.sn, patch, error, event_req: serde_json::from_str(&event.event_req).map_err(|e| Error::ExtDB(format!("Can not convert event_req into EventRequestInfo: {}", e)))?, succes: bool::from_str(&event.succes).map_err(|e| Error::ExtDB(format!("Can not convert succes into bool: {}", e)))?})
     }
 
     async fn get_first_or_end_events(
@@ -284,7 +292,7 @@ impl Querys for SqliteLocal {
         quantity: Option<u64>,
         reverse: Option<bool>,
         sucess: Option<bool>,
-    ) -> Result<Value, Error> {
+    ) -> Result<Vec<EventInfo>, Error> {
         let subject_id = subject_id.to_owned();
         let mut quantity= quantity.unwrap_or(50);
         if quantity==0{
@@ -311,28 +319,31 @@ impl Querys for SqliteLocal {
                     Ok(EventDB {
                         subject_id: row.get(0)?,
                         sn: row.get(1)?,
-                        data: row.get(2)?,
-                        event_req: row.get(3)?,
-                        succes: row.get(4)?,
+                        patch: row.get(2)?,
+                        error: row.get(3)?,
+                        event_req: row.get(4)?,
+                        succes: row.get(5)?,
                     })
                 })?.map(|x| {
                     match x {
                         Ok(event) => {
-                            let mut event_req = Value::from_str(&event.event_req).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req into Value: {}", e)))))?;
-                            if let Value::String(string) = &event_req["Fact"]["payload"] {
-                                event_req["Fact"]["payload"] = Value::from_str(&string).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req payload into Value: {}", e)))))?;
-                            }
-                            Ok(json!({
-                                "subject_id": event.subject_id,
-                                "sn": event.sn,
-                                "data": Value::from_str(&event.data).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert data into Value: {}", e)))))?,
-                                "event_req": event_req,
-                                "succes": bool::from_str(&event.succes).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert succes into bool: {}", e)))))?,
-                            }))
+                            let patch = if let Some(patch) = event.patch {
+                                Some(Value::from_str(&patch).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert patch into Value: {}", e)))))?)
+                            } else {
+                                None
+                            };
+
+                            let error =  if let Some(error) = event.error {
+                                Some(serde_json::from_str(&error).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert patch into Value: {}", e)))))?)
+                            } else {
+                                None
+                            };
+                            
+                            Ok(EventInfo { subject_id: event.subject_id, sn: event.sn, patch, error, event_req: serde_json::from_str(&event.event_req).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert event_req into EventRequestInfo: {}", e)))))?, succes: bool::from_str(&event.succes).map_err(|e| tokio_rusqlite::Error::Other(Box::new(Error::ExtDB(format!("Can not convert succes into bool: {}", e)))))?})
                         },
                         Err(error) => Err(tokio_rusqlite::Error::Rusqlite(error)),
                     }
-                }).collect::<std::result::Result<Vec<Value>, tokio_rusqlite::Error>>()?;
+                }).collect::<std::result::Result<Vec<EventInfo>, tokio_rusqlite::Error>>()?;
 
                 Ok(events)
             })
@@ -342,7 +353,7 @@ impl Querys for SqliteLocal {
             Err(e) => return Err(Error::ExtDB(e.to_string())),
         };
 
-        Ok(json!({ "events": events }))
+        Ok(events)
     }
 
     async fn get_request_id_status(
@@ -463,13 +474,13 @@ impl SqliteLocal {
             let sql = "CREATE TABLE IF NOT EXISTS validations (subject_id TEXT NOT NULL, validators TEXT NOT NULL, PRIMARY KEY (subject_id))";
             let _ = conn.execute(sql, ())?;
 
-            let sql = "CREATE TABLE IF NOT EXISTS events (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, data TEXT NOT NULL, event_req TEXT NOT NULL, succes TEXT NOT NULL, PRIMARY KEY (subject_id, sn))";
+            let sql = "CREATE TABLE IF NOT EXISTS events (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, patch TEXT, error TEXT, event_req TEXT NOT NULL, succes TEXT NOT NULL, PRIMARY KEY (subject_id, sn))";
             let _ = conn.execute(sql, ())?;
 
             let sql = "CREATE TABLE IF NOT EXISTS subjects (subject_id TEXT NOT NULL, governance_id TEXT NOT NULL, genesis_gov_version INTEGER NOT NULL, namespace TEXT NOT NULL, schema_id TEXT NOT NULL, owner TEXT NOT NULL, creator TEXT NOT NULL, active TEXT NOT NULL, sn INTEGER NOT NULL, properties TEXT NOT NULL, PRIMARY KEY (subject_id))";
             let _ = conn.execute(sql, ())?;
 
-            let sql = "CREATE TABLE IF NOT EXISTS signatures (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, signatures_eval TEXT NOT NULL, signatures_appr TEXT NOT NULL, signatures_vali TEXT NOT NULL, PRIMARY KEY (subject_id))";
+            let sql = "CREATE TABLE IF NOT EXISTS signatures (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, signatures_eval TEXT, signatures_appr TEXT, signatures_vali TEXT NOT NULL, PRIMARY KEY (subject_id))";
             let _ = conn.execute(sql, ())?;
             Ok(())
         }).await.map_err(|e| Error::ExtDB(format!("Can not create request table: {}",e)))?;
@@ -525,6 +536,7 @@ impl Subscriber<RequestManagerEvent> for SqliteLocal {
                 Error::ExtDB(format!("Can not update request state: {}", e))
             })
         {
+            error!(TARGET_SQLITE, "Subscriber<RequestManagerEvent>: {}", e);
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
                 error!(
@@ -583,6 +595,7 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
                 ))
             })
         {
+            error!(TARGET_SQLITE, "Subscriber<RequestHandlerEvent>: {}", e);
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
                 error!(
@@ -627,6 +640,7 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                     .await
                     .map_err(|e| Error::ExtDB(format!(": {}", e)))
                 {
+                    error!(TARGET_SQLITE, "Subscriber<ApproverEvent> ApproverEvent::ChangeState: {}", e);
                     if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
                         error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                     }
@@ -642,6 +656,7 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                     let e = Error::ExtDB(
                         "Can not Serialize request as String".to_owned(),
                     );
+                    error!(TARGET_SQLITE, "Subscriber<ApproverEvent> ApproverEvent::SafeState: {}", e);
                     if let Err(e) =
                         self.manager.tell(DBManagerMessage::Error(e)).await
                     {
@@ -666,6 +681,7 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                         Error::ExtDB(format!(": {}", e))
                     })
                 {
+                    error!(TARGET_SQLITE, "Subscriber<ApproverEvent> ApproverEvent::SafeState: {}", e);
                     if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
                         error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                     }
@@ -685,6 +701,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
                     let e = Error::ExtDB(
                         "Can not Serialize validators as String".to_owned(),
                     );
+                    error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent> LedgerEventEvent::WithVal: {}", e);
                     if let Err(e) =
                         self.manager.tell(DBManagerMessage::Error(e)).await
                     {
@@ -709,6 +726,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
                         Error::ExtDB(format!(": {}", e))
                     })
                 {
+                    error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent> LedgerEventEvent::WithVal: {}", e);
                     if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
                         error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                     }
@@ -720,39 +738,59 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
         };
         let sn = event.content.sn;
         let subject_id = event.content.subject_id.to_string();
-        let Ok(sig_eval) = serde_json::to_string(&event.content.evaluators)
-        else {
-            let e = Error::ExtDB(
-                "Can not Serialize evaluators as String".to_owned(),
-            );
-            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
-            {
-                error!(
-                    TARGET_SQLITE,
-                    "Can no send message to DBManager actor: {}", e
+
+        let sig_eval = if let Some(sig_eval) = event.content.evaluators {
+            let Ok(sig_eval) = serde_json::to_string(&sig_eval)
+            else {
+                let e = Error::ExtDB(
+                    "Can not Serialize evaluators as String".to_owned(),
                 );
-            }
-            return;
+                error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent>: {}", e);
+                if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
+                {
+                    error!(
+                        TARGET_SQLITE,
+                        "Can no send message to DBManager actor: {}", e
+                    );
+                }
+                return;
+            };
+
+            Some(sig_eval)
+        } else {
+            None
         };
-        let Ok(sig_appr) = serde_json::to_string(&event.content.approvers)
-        else {
-            let e = Error::ExtDB(
-                "Can not Serialize approvers as String".to_owned(),
-            );
-            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
-            {
-                error!(
-                    TARGET_SQLITE,
-                    "Can no send message to DBManager actor: {}", e
+        
+
+        let sig_appr = if let Some(sig_appr) = event.content.approvers {
+            let Ok(sig_appr) = serde_json::to_string(&sig_appr)
+            else {
+                let e = Error::ExtDB(
+                    "Can not Serialize approvers as String".to_owned(),
                 );
-            }
-            return;
+                error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent>: {}", e);
+                if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
+                {
+                    error!(
+                        TARGET_SQLITE,
+                        "Can no send message to DBManager actor: {}", e
+                    );
+                }
+                return;
+            };
+
+            Some(sig_appr)
+        } else {
+            None
         };
+
+        
         let Ok(sig_vali) = serde_json::to_string(&event.content.validators)
         else {
             let e = Error::ExtDB(
                 "Can not Serialize validators as String".to_owned(),
             );
+            error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent>: {}", e);
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
                 error!(
@@ -775,6 +813,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
                 Error::ExtDB(format!(": {}", e))
             })
         {
+            error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent>: {}", e);
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
                 error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }
@@ -794,6 +833,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
             let e = Error::ExtDB(
                 "Can not Serialize protocols_error as String".to_owned(),
             );
+            error!(TARGET_SQLITE, "Subscriber<Signed<Ledger>>: {}", e);
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await
             {
                 error!(
@@ -803,10 +843,10 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
             }
             return;
         };
-        let data = match event.content.value {
+        let (patch, error): (Option<String>, Option<String>) = match event.content.value {
             LedgerValue::Patch(value_wrapper) => {
                 succes = "true".to_owned();
-                value_wrapper.0.to_string()
+                (Some(value_wrapper.0.to_string()), None)
             }
             LedgerValue::Error(protocols_error) => {
                 let Ok(string) = serde_json::to_string(&protocols_error) else {
@@ -814,6 +854,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
                         "Can not Serialize protocols_error as String"
                             .to_owned(),
                     );
+                    error!(TARGET_SQLITE, "Subscriber<Signed<Ledger>> LedgerValue::Error: {}", e);
                     if let Err(e) =
                         self.manager.tell(DBManagerMessage::Error(e)).await
                     {
@@ -825,15 +866,17 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
                     return;
                 };
                 succes = "false".to_owned();
-                string
+                (None, Some(string))
             }
         };
+
+
 
         if let Err(e) = self
             .conn
             .call(move |conn| {
                 let _ =
-                    conn.execute("INSERT INTO events (subject_id, sn, data, event_req, succes) VALUES (?1, ?2, ?3, ?4, ?5)", params![subject_id, sn, data, event_req, succes])?;
+                    conn.execute("INSERT INTO events (subject_id, sn, patch, error, event_req, succes) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", params![subject_id, sn, patch, error, event_req, succes])?;
 
                 Ok(())
             })
@@ -842,6 +885,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
                 Error::ExtDB(format!(": {}", e))
             })
             {
+                error!(TARGET_SQLITE, "Subscriber<Signed<Ledger>>: {}", e);
                 if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
                     error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
                 }
@@ -875,6 +919,7 @@ impl Subscriber<SinkDataEvent> for SqliteLocal {
             Error::ExtDB(e.to_string())
         })
         {
+            error!(TARGET_SQLITE, "Subscriber<SinkDataEvent>: {}", e);
             if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
                 error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
             }

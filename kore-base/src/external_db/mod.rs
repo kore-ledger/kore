@@ -147,7 +147,7 @@ impl Handler<DBManager> for DBManager {
             DBManagerMessage::Error(error) => {
                 error!(
                     TARGET_EXTERNAL,
-                    "Error, Problem un Subscriber: {}", error
+                    "Error, Problem in Subscriber: {}", error
                 );
                 let e = ActorError::FunctionalFail(error.to_string());
                 ctx.system().send_event(SystemEvent::StopSystem).await;

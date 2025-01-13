@@ -158,18 +158,6 @@ pub struct EOLRequest {
     pub subject_id: DigestIdentifier,
 }
 
-impl EventRequest {
-    pub fn requires_eval_appr(&self) -> bool {
-        match self {
-            EventRequest::Fact(_) => true,
-            EventRequest::Create(_)
-            | EventRequest::Transfer(_)
-            | EventRequest::EOL(_)
-            | EventRequest::Confirm(_) => false,
-        }
-    }
-}
-
 impl HashId for EventRequest {
     fn hash_id(
         &self,

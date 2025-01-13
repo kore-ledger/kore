@@ -16,8 +16,7 @@ use crate::config::ExternalDbConfig;
 use actor::{ActorRef, Subscriber};
 use async_std::fs;
 use async_trait::async_trait;
-use common::{ApproveInfo, RequestInfo};
-use serde_json::Value;
+use common::{ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo, SubjectInfo};
 #[cfg(feature = "ext-sqlite")]
 use sqlite::SqliteLocal;
 use std::path::Path;
@@ -47,14 +46,14 @@ pub trait Querys {
         subject_id: &str,
         quantity: Option<u64>,
         page: Option<u64>,
-    ) -> Result<Value, Error>;
+    ) -> Result<PaginatorEvents, Error>;
     
     // events sn
     async fn get_events_sn(
         &self,
         subject_id: &str,
         sn: u64,
-    ) -> Result<Value, Error>;
+    ) -> Result<EventInfo, Error>;
 
     // n first or last events
     async fn get_first_or_end_events(
@@ -63,14 +62,14 @@ pub trait Querys {
         quantity: Option<u64>,
         reverse: Option<bool>,
         sucess: Option<bool>,
-    ) -> Result<Value, Error>;
+    ) -> Result<Vec<EventInfo>, Error>;
 
     // subject
     async fn get_subject_state(&self, subject_id: &str)
-        -> Result<Value, Error>;
+        -> Result<SubjectInfo, Error>;
 
     // signatures
-    async fn get_signatures(&self, subject_id: &str) -> Result<Value, Error>;
+    async fn get_signatures(&self, subject_id: &str) -> Result<SignaturesInfo, Error>;
 }
 
 #[derive(Clone)]
@@ -144,7 +143,7 @@ impl ExternalDB {
 
 #[async_trait]
 impl Querys for ExternalDB {
-    async fn get_signatures(&self, subject_id: &str) -> Result<Value, Error> {
+    async fn get_signatures(&self, subject_id: &str) -> Result<SignaturesInfo, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -156,7 +155,7 @@ impl Querys for ExternalDB {
     async fn get_subject_state(
         &self,
         subject_id: &str,
-    ) -> Result<Value, Error> {
+    ) -> Result<SubjectInfo, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -170,7 +169,7 @@ impl Querys for ExternalDB {
         subject_id: &str,
         quantity: Option<u64>,
         page: Option<u64>,
-    ) -> Result<Value, Error> {
+    ) -> Result<PaginatorEvents, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -183,7 +182,7 @@ impl Querys for ExternalDB {
         &self,
         subject_id: &str,
         sn: u64,
-    ) -> Result<Value, Error> {
+    ) -> Result<EventInfo, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -198,7 +197,7 @@ impl Querys for ExternalDB {
         quantity: Option<u64>,
         reverse: Option<bool>,
         sucess: Option<bool>,
-    ) -> Result<Value, Error> {
+    ) -> Result<Vec<EventInfo>, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {

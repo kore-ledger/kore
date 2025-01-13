@@ -1,18 +1,136 @@
-use std::str::FromStr;
+use std::{collections::HashSet, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use crate::model::{event::ProtocolsError, Namespace};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PaginatorEvents {
+    pub paginator: Paginator,
+    pub events: Vec<EventInfo>
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateRequestInfo {
+    pub governance_id: String,
+    pub schema_id: String,
+    pub namespace: Namespace,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TransferRequestInfo {
+    pub subject_id: String,
+    pub new_owner: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ConfirmRequestInfo {
+    pub subject_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EOLRequestInfo {
+    pub subject_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FactRequestInfo {
+    pub subject_id: String,
+    pub payload: Value,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub enum EventRequestInfo {
+    Create(CreateRequestInfo),
+    Fact(FactRequestInfo),
+    Transfer(TransferRequestInfo),
+    Confirm(ConfirmRequestInfo),
+    EOL(EOLRequestInfo),
+}
+
+impl<'de> Deserialize<'de> for EventRequestInfo {
+    fn deserialize<D>(deserializer: D) -> Result<EventRequestInfo, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let value: Value = Deserialize::deserialize(deserializer)?;
+
+        if let Some(create) = value.get("Create") {
+            let namespace = create.get("namespace").ok_or_else(|| serde::de::Error::missing_field("namespace"))?;
+
+            return Ok(Self::Create(CreateRequestInfo {
+                governance_id: create.get("governance_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("governance_id"))?.to_owned(),
+                schema_id: create.get("schema_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("schema_id"))?.to_owned(),
+                namespace: serde_json::from_value(namespace.clone()).map_err(|e| serde::de::Error::custom(e.to_string()))?,
+            }));
+        };
+        
+        if let Some(fact) = value.get("Fact") {
+            let payload_str = fact.get("payload").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("payload"))?;
+            let payload = Value::from_str(payload_str).map_err(serde::de::Error::custom)?;
+            return Ok(Self::Fact(FactRequestInfo { subject_id: fact.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned(), payload }));
+        };
+
+        if let Some(transfer) = value.get("Transfer") {
+            return Ok(Self::Transfer(TransferRequestInfo { subject_id: transfer.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned(), 
+            new_owner: transfer.get("new_owner").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("new_owner"))?.to_owned() }));
+        };
+
+        if let Some(confirm) = value.get("Confirm") {
+            return Ok(Self::Confirm(ConfirmRequestInfo { subject_id: confirm.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned() }));
+        };
+
+        if let Some(eol) = value.get("EOL") {
+            return Ok(Self::EOL(EOLRequestInfo { subject_id: eol.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned() }));
+        };
+
+        Err(serde::de::Error::custom("Invalid EventRequest type"))
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EventInfo {
+    pub subject_id: String,
+    pub sn: u64,
+    pub patch: Option<Value>,
+    pub error: Option<ProtocolsError>,
+    pub event_req: EventRequestInfo,
+    pub succes: bool,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SignaturesDB {
     pub subject_id: String,
     pub sn: u64,
-    pub signatures_eval: String,
-    pub signatures_appr: String,
+    pub signatures_eval: Option<String>,
+    pub signatures_appr: Option<String>,
     pub signatures_vali: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SignaturesInfo {
+    pub subject_id: String,
+    pub sn: u64,
+    pub signatures_eval: Option<HashSet<ProtocolsSignaturesInfo>>,
+    pub signatures_appr: Option<HashSet<ProtocolsSignaturesInfo>>,
+    pub signatures_vali: HashSet<ProtocolsSignaturesInfo>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum ProtocolsSignaturesInfo {
+    Signature(SignatureInfo),
+    TimeOut(TimeOutResponseInfo)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct TimeOutResponseInfo {
+    pub who: String,
+    pub re_trys: u32,
+    pub timestamp: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct SubjectDB {
     pub subject_id: String,
     pub governance_id: String,
@@ -27,10 +145,25 @@ pub struct SubjectDB {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubjectInfo {
+    pub subject_id: String,
+    pub governance_id: String,
+    pub genesis_gov_version: u64,
+    pub namespace: String,
+    pub schema_id: String,
+    pub owner: String,
+    pub creator: String,
+    pub active: bool,
+    pub sn: u64,
+    pub properties: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EventDB {
     pub subject_id: String,
     pub sn: u64,
-    pub data: String,
+    pub patch: Option<String>,
+    pub error: Option<String>,
     pub event_req: String,
     pub succes: String,
 }
@@ -125,7 +258,7 @@ pub struct SignedInfo<T: Serialize + Clone> {
     pub signature: SignatureInfo,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct SignatureInfo {
     /// Signer identifier
     pub signer: String,

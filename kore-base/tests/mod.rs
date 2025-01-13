@@ -143,15 +143,15 @@ async fn test_governance_copy() {
 
     let data = node1.own_request(request).await.unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await;
-    let response = node1
+    let _response = node1
         .request_state(DigestIdentifier::from_str(&data.request_id).unwrap())
         .await
         .unwrap();
+
+    let response = node1.get_signatures(governance_id.clone()).await.unwrap();
     println!("{:?}", response);
 
-    let response = node1.get_approval(governance_id.clone()).await.unwrap();
-
-    println!("{:#?}", response);
+    let _response = node1.get_approval(governance_id.clone()).await.unwrap();
 
     node1
         .approve(governance_id.clone(), ApprovalStateRes::RespondedAccepted)
@@ -217,16 +217,12 @@ async fn test_governance_copy() {
 
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    let event = node2
+    let events = node2
         .get_first_or_end_events(subject_id.clone(), Some(5), Some(false), Some(true))
         .await
         .unwrap();
-    // verify if have 5 events
-    if let Some(events_array) = event.get("events").and_then(|v| v.as_array()) {
-        assert_eq!(events_array.len(), 5);
-    } else {
-        panic!("Expected 'events' to be an array but got {:?}", event);
-    }
+    
+    assert_eq!(events.len(), 5);
 }
 
 #[tokio::test]
