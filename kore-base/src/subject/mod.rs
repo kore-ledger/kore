@@ -66,11 +66,13 @@ use serde_json::to_value;
 use sinkdata::{SinkData, SinkDataMessage};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, warn};
+use validata::ValiData;
 
 use std::{collections::HashSet, str::FromStr};
 
 pub mod event;
 pub mod sinkdata;
+pub mod validata;
 
 const TARGET_SUBJECT: &str = "Kore-Subject";
 
@@ -1901,6 +1903,14 @@ impl Actor for Subject {
         let sink = Sink::new(
             ledger_event_actor.subscribe(),
             ext_db.get_ledger_event(),
+        );
+        ctx.system().run_sink(sink).await;
+
+        let vali_data = ValiData::default();
+        let vali_data_actor = ctx.create_child("vali_data", vali_data).await?;
+        let sink = Sink::new(
+            vali_data_actor.subscribe(),
+            ext_db.get_vali_data(),
         );
         ctx.system().run_sink(sink).await;
 

@@ -119,7 +119,7 @@ impl Validator {
         };
 
         if previous_proof.event != EventProof::Confirm
-            && previous_proof.subject_public_key
+            && previous_proof.public_key
                 != subject_signature.signer.clone()
         {
             return Err(ActorError::Functional("Previous event proof is not a confirm event but subject signer and old previous subject is not the same".to_owned()));
@@ -213,8 +213,6 @@ impl Validator {
     ) -> Result<(), ActorError> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
-            // subject_public_key is not verified because it can change if a transfer of the subject is made. is correct?
-            // Governance_version can be the same or not, if in the last event gov was changed
             if previous_proof.event_hash != new_proof.prev_event_hash
                 || previous_proof.sn + 1 != new_proof.sn
                 || previous_proof.genesis_governance_version

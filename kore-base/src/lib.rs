@@ -54,7 +54,6 @@ use query::{Query, QueryMessage, QueryResponse};
 use request::{
     RequestData, RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
 };
-use serde_json::Value;
 use subject::{Subject, SubjectMessage, SubjectResponse};
 use system::system;
 use tokio_util::sync::CancellationToken;

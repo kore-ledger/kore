@@ -16,16 +16,10 @@ use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, info, warn};
 
 use crate::{
-    approval::{Approval, ApprovalMessage},
-    auth::{Auth, AuthMessage, AuthResponse, AuthWitness},
-    db::Storable,
-    distribution::{Distribution, DistributionMessage},
-    evaluation::{
+    approval::{Approval, ApprovalMessage}, auth::{Auth, AuthMessage, AuthResponse, AuthWitness}, db::Storable, distribution::{Distribution, DistributionMessage}, evaluation::{
         request::EvaluationReq, response::EvalLedgerResponse, Evaluation,
         EvaluationMessage,
-    },
-    intermediary::Intermediary,
-    model::{
+    }, intermediary::Intermediary, model::{
         common::{
             emit_fail, get_gov, get_metadata, get_sign, update_event
         },
@@ -33,12 +27,7 @@ use crate::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError, ProtocolsSignatures
         },
         SignTypesNode,
-    },
-    update::{Update, UpdateMessage, UpdateNew, UpdateType},
-    validation::proof::EventProof,
-    ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage,
-    Signed, Subject, SubjectMessage, SubjectResponse, Validation,
-    ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR,
+    }, subject::validata::{ValiData, ValiDataMessage, ValiDataResponse}, update::{Update, UpdateMessage, UpdateNew, UpdateType}, validation::proof::{EventProof, ValidationProof}, ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
 };
 
 const TARGET_MANAGER: &str = "Kore-Request-Manager";
@@ -79,6 +68,8 @@ impl RequestManager {
         &self,
         ctx: &mut ActorContext<RequestManager>,
         val_info: ValidationInfo,
+        last_proof: Option<ValidationProof>,
+        prev_event_validation_response: Vec<ProtocolsSignatures>
     ) -> Result<(), ActorError> {
         info!(TARGET_MANAGER, "Init validation {}", self.id);
         let validation_path = ActorPath::from(format!(
@@ -92,6 +83,8 @@ impl RequestManager {
             validation_actor
                 .tell(ValidationMessage::Create {
                     request_id: self.id.clone(),
+                    last_proof,
+                    prev_event_validation_response,
                     version: self.version,
                     info: val_info,
                 })
@@ -196,17 +189,75 @@ impl RequestManager {
             event_proof,
         };
 
+        let (last_proof, prev_event_validation_response) = self.get_vali_data(ctx).await?;
+
         self.on_event(
             RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
-                state: RequestManagerState::Validation(val_info.clone()),
+                state: RequestManagerState::Validation { val_info: val_info.clone(), last_proof: last_proof.clone(), prev_event_validation_response: prev_event_validation_response.clone()},
             },
             ctx,
         )
         .await;
 
-        self.send_validation(ctx, val_info.clone()).await
+        self.send_validation(ctx, val_info.clone(), last_proof, prev_event_validation_response).await
     }
+
+    async fn get_vali_data(
+        &self,
+        ctx: &mut ActorContext<RequestManager>,
+    ) -> Result<(Option<ValidationProof>, Vec<ProtocolsSignatures>), ActorError> {
+        let vali_data_path =
+            ActorPath::from(format!("/user/node/{}/vali_data", self.subject_id));
+        let vali_data_actor: Option<ActorRef<ValiData>> =
+            ctx.system().get_actor(&vali_data_path).await;
+
+        let response = if let Some(vali_data_actor) = vali_data_actor {
+            vali_data_actor.ask(ValiDataMessage::GetLastValiData)
+                .await?
+        } else {
+            return Err(ActorError::NotFound(vali_data_path));
+        };
+
+        match response {
+            ValiDataResponse::LastValiData { previous_proof, prev_event_validation_response } => Ok((previous_proof, prev_event_validation_response)),
+            _ => {
+                Err(ActorError::UnexpectedResponse(
+                    vali_data_path,
+                    "ValiDataResponse::LastValiData".to_owned(),
+                ))
+            }
+        }
+    }
+
+    async fn post_vali_data(
+        &self,
+        ctx: &mut ActorContext<RequestManager>,
+        previous_proof: ValidationProof,
+        prev_event_validation_response: Vec<ProtocolsSignatures>
+    ) -> Result<(), ActorError> {
+        let vali_data_path =
+            ActorPath::from(format!("/user/node/{}/vali_data", self.subject_id));
+        let vali_data_actor: Option<ActorRef<ValiData>> =
+            ctx.system().get_actor(&vali_data_path).await;
+
+        let response = if let Some(vali_data_actor) = vali_data_actor {
+            vali_data_actor.ask(ValiDataMessage::UpdateValiData { previous_proof, prev_event_validation_response })
+                .await?
+        } else {
+            return Err(ActorError::NotFound(vali_data_path));
+        };
+
+        match response {
+            ValiDataResponse::Ok => Ok(()),
+            _ => {
+                Err(ActorError::UnexpectedResponse(
+                    vali_data_path,
+                    "ValiDataResponse::Ok".to_owned(),
+                ))
+            }
+        }
+    } 
 
     async fn approval(
         &mut self,
@@ -320,6 +371,8 @@ impl RequestManager {
         ctx: &mut ActorContext<RequestManager>,
         event: KoreEvent,
         ledger: Ledger,
+        last_proof: ValidationProof,
+        prev_event_validation_response: Vec<ProtocolsSignatures>
     ) -> Result<(), ActorError> {
         let signature_ledger =
             get_sign(ctx, SignTypesNode::Ledger(ledger.clone())).await?;
@@ -347,12 +400,22 @@ impl RequestManager {
             }
         };
 
+        if let Err(e) = self.post_vali_data(ctx, last_proof.clone(), prev_event_validation_response.clone()).await {
+            if let ActorError::Functional(_) = e {
+                return self.abort_request_manager(ctx, &e.to_string()).await;
+            } else {
+                return Err(e);
+            }
+        };
+
         self.on_event(
             RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
                 state: RequestManagerState::Distribution {
                     event: signed_event.clone(),
                     ledger: signed_ledger.clone(),
+                    last_proof,
+                    prev_event_validation_response,
                 },
             },
             ctx,
@@ -704,6 +767,7 @@ pub enum RequestManagerMessage {
     ValidationRes {
         result: bool,
         signatures: Vec<ProtocolsSignatures>,
+        last_proof: ValidationProof,
         errors: String,
     },
     EvaluationRes {
@@ -977,9 +1041,9 @@ impl Handler<RequestManager> for RequestManager {
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
-                    RequestManagerState::Validation(val_info) => {
+                    RequestManagerState::Validation { val_info, last_proof, prev_event_validation_response } => {
                         if let Err(e) =
-                            self.send_validation(ctx, val_info).await
+                            self.send_validation(ctx, val_info, last_proof, prev_event_validation_response).await
                         {
                             error!(
                                 TARGET_MANAGER,
@@ -988,7 +1052,7 @@ impl Handler<RequestManager> for RequestManager {
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
-                    RequestManagerState::Distribution { event, ledger } => {
+                    RequestManagerState::Distribution {event,ledger, last_proof, prev_event_validation_response } => {
                         if let Err(e) =
                             self.init_distribution(ctx, event, ledger).await
                         {
@@ -1161,13 +1225,14 @@ impl Handler<RequestManager> for RequestManager {
                 result,
                 signatures,
                 errors,
+                last_proof
             } => {
                 info!(TARGET_MANAGER, "Validation response {}", self.id);
-                let actual_state =
-                    if let RequestManagerState::Validation(state) =
+                let val_info =
+                    if let RequestManagerState::Validation { val_info, ..} =
                         self.state.clone()
                     {
-                        state
+                        val_info
                     } else {
                         let e = ActorError::FunctionalFail(
                             "Invalid request state".to_owned(),
@@ -1177,13 +1242,13 @@ impl Handler<RequestManager> for RequestManager {
                     };
 
                 let (ledger, event) = self.create_ledger_event(
-                    actual_state,
-                    signatures,
+                    val_info,
+                    signatures.clone(),
                     result,
                     &errors,
                 );
 
-                if let Err(e) = self.safe_ledger_event(ctx, event, ledger).await
+                if let Err(e) = self.safe_ledger_event(ctx, event, ledger, last_proof, signatures).await
                 {
                     error!(
                         TARGET_MANAGER,

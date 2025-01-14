@@ -1,10 +1,12 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use actor::{ActorRef, Subscriber};
 use async_trait::async_trait;
+use identity::identifier::KeyIdentifier;
 use serde_json::{json, Value};
 use tokio_rusqlite::{params, Connection, OpenFlags};
 use tracing::error;
@@ -13,12 +15,13 @@ use crate::approval::approver::ApproverEvent;
 use crate::error::Error;
 use crate::external_db::{DBManager, DBManagerMessage, DeleteTypes};
 use crate::helpers::db::common::{ApproveInfo, EventDB};
-use crate::model::event::{Ledger, LedgerValue};
+use crate::model::event::{Ledger, LedgerValue, ProtocolsSignatures};
 use crate::request::manager::RequestManagerEvent;
 use crate::request::types::RequestManagerState;
 use crate::request::RequestHandlerEvent;
 use crate::subject::event::LedgerEventEvent;
 use crate::subject::sinkdata::SinkDataEvent;
+use crate::subject::validata::ValiDataEvent;
 use crate::Signed;
 
 use super::common::{EventInfo, Paginator, PaginatorEvents, SignaturesDB, SignaturesInfo, SubjectDB, SubjectInfo};
@@ -503,7 +506,7 @@ impl Subscriber<RequestManagerEvent> for SqliteLocal {
                     RequestManagerState::Approval { .. } => {
                         "In Approval".to_owned()
                     }
-                    RequestManagerState::Validation(..) => {
+                    RequestManagerState::Validation { .. } => {
                         "In Validation".to_owned()
                     }
                     RequestManagerState::Distribution { .. } => {
@@ -692,54 +695,66 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
 }
 
 #[async_trait]
+impl Subscriber<ValiDataEvent> for SqliteLocal {
+    async fn notify(&self, event: ValiDataEvent) {
+        let subject_id = event.previous_proof.subject_id.to_string();
+
+        let validators: HashSet<KeyIdentifier> = event.prev_event_validation_response
+        .iter()
+        .map(|x| match x {
+            ProtocolsSignatures::Signature(
+                signature,
+            ) => signature.signer.clone(),
+            ProtocolsSignatures::TimeOut(
+                time_out_response,
+            ) => time_out_response.who.clone(),
+        })
+        .collect();
+
+        let Ok(validators) = serde_json::to_string(&validators) else {
+            let e = Error::ExtDB(
+                "Can not Serialize validators as String".to_owned(),
+            );
+            error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent> LedgerEventEvent::WithVal: {}", e);
+            if let Err(e) =
+                self.manager.tell(DBManagerMessage::Error(e)).await
+            {
+                error!(
+                    TARGET_SQLITE,
+                    "Can no send message to DBManager actor: {}", e
+                );
+            }
+            return;
+        };
+
+            if let Err(e) = self
+            .conn
+            .call(move |conn| {
+                let _ =
+                    conn.execute("INSERT OR REPLACE INTO validations (subject_id, validators) VALUES (?1, ?2)", params![subject_id, validators])?;
+
+                Ok(())
+            })
+            .await
+            .map_err(|e| {
+                Error::ExtDB(format!(": {}", e))
+            })
+        {
+            error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent> LedgerEventEvent::WithVal: {}", e);
+            if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
+                error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
+            }
+        };
+    }
+}
+
+#[async_trait]
 impl Subscriber<LedgerEventEvent> for SqliteLocal {
     async fn notify(&self, event: LedgerEventEvent) {
-        let event = match event {
-            LedgerEventEvent::WithVal { validators, event } => {
-                let subject_id = event.content.subject_id.to_string();
-                let Ok(validators) = serde_json::to_string(&validators) else {
-                    let e = Error::ExtDB(
-                        "Can not Serialize validators as String".to_owned(),
-                    );
-                    error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent> LedgerEventEvent::WithVal: {}", e);
-                    if let Err(e) =
-                        self.manager.tell(DBManagerMessage::Error(e)).await
-                    {
-                        error!(
-                            TARGET_SQLITE,
-                            "Can no send message to DBManager actor: {}", e
-                        );
-                    }
-                    return;
-                };
+        let sn = event.event.content.sn;
+        let subject_id = event.event.content.subject_id.to_string();
 
-                if let Err(e) = self
-                    .conn
-                    .call(move |conn| {
-                        let _ =
-                            conn.execute("INSERT OR REPLACE INTO validations (subject_id, validators) VALUES (?1, ?2)", params![subject_id, validators])?;
-
-                        Ok(())
-                    })
-                    .await
-                    .map_err(|e| {
-                        Error::ExtDB(format!(": {}", e))
-                    })
-                {
-                    error!(TARGET_SQLITE, "Subscriber<LedgerEventEvent> LedgerEventEvent::WithVal: {}", e);
-                    if let Err(e) = self.manager.tell(DBManagerMessage::Error(e)).await {
-                        error!(TARGET_SQLITE, "Can no send message to DBManager actor: {}", e);
-                    }
-                };
-
-                event
-            }
-            LedgerEventEvent::WithOutVal { event } => event,
-        };
-        let sn = event.content.sn;
-        let subject_id = event.content.subject_id.to_string();
-
-        let sig_eval = if let Some(sig_eval) = event.content.evaluators {
+        let sig_eval = if let Some(sig_eval) = event.event.content.evaluators {
             let Ok(sig_eval) = serde_json::to_string(&sig_eval)
             else {
                 let e = Error::ExtDB(
@@ -762,7 +777,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
         };
         
 
-        let sig_appr = if let Some(sig_appr) = event.content.approvers {
+        let sig_appr = if let Some(sig_appr) = event.event.content.approvers {
             let Ok(sig_appr) = serde_json::to_string(&sig_appr)
             else {
                 let e = Error::ExtDB(
@@ -785,7 +800,7 @@ impl Subscriber<LedgerEventEvent> for SqliteLocal {
         };
 
         
-        let Ok(sig_vali) = serde_json::to_string(&event.content.validators)
+        let Ok(sig_vali) = serde_json::to_string(&event.event.content.validators)
         else {
             let e = Error::ExtDB(
                 "Can not Serialize validators as String".to_owned(),

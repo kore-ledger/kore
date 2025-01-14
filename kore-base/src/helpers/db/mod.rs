@@ -7,7 +7,7 @@ use crate::{
     external_db::DBManager,
     model::event::Ledger,
     request::{manager::RequestManagerEvent, RequestHandlerEvent},
-    subject::{event::LedgerEventEvent, sinkdata::SinkDataEvent},
+    subject::{event::LedgerEventEvent, sinkdata::SinkDataEvent, validata::ValiDataEvent},
     Signed,
 };
 
@@ -99,6 +99,13 @@ impl ExternalDB {
     }
 
     pub fn get_request_manager(&self) -> impl Subscriber<RequestManagerEvent> {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+        }
+    }
+
+    pub fn get_vali_data(&self) -> impl Subscriber<ValiDataEvent> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),

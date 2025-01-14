@@ -18,7 +18,6 @@ use serde_json::json;
 mod node_builder;
 
 #[tokio::test]
-#[tracing_test::traced_test]
 async fn test_governance_copy() {
     // Bootstrap ≤- Addressable
     let nodes = create_nodes_and_connections(
