@@ -10,7 +10,9 @@ use crate::{
     approval::{request::ApprovalReq, response::ApprovalRes},
     evaluation::{request::EvaluationReq, response::EvaluationRes},
     model::event::{Ledger, ProtocolsSignatures},
-    validation::{proof::ValidationProof, request::ValidationReq, response::ValidationRes},
+    validation::{
+        proof::ValidationProof, request::ValidationReq, response::ValidationRes,
+    },
     Event as KoreEvent, Signed,
 };
 

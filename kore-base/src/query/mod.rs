@@ -10,7 +10,13 @@ use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 
-use crate::helpers::db::{common::{ApproveInfo, EventInfo, RequestInfo, SignaturesInfo, SubjectInfo, PaginatorEvents}, ExternalDB, Querys};
+use crate::helpers::db::{
+    common::{
+        ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo,
+        SubjectInfo,
+    },
+    ExternalDB, Querys,
+};
 
 const TARGET_QUERY: &str = "Kore-Query";
 
@@ -155,8 +161,12 @@ impl Handler<Query> for Query {
                     .get_events_sn(&subject_id, sn)
                     .await
                     .map_err(|e| {
-                        warn!(TARGET_QUERY, "GetEventSn, Can not obtain event sn: {}", e);
-                        ActorError::Functional(e.to_string())})?;
+                        warn!(
+                            TARGET_QUERY,
+                            "GetEventSn, Can not obtain event sn: {}", e
+                        );
+                        ActorError::Functional(e.to_string())
+                    })?;
                 Ok(QueryResponse::Event(data))
             }
             QueryMessage::GetFirstOrEndEvents {

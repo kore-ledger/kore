@@ -375,7 +375,7 @@ impl Intermediary {
                                 ledger,
                                 info: message.info,
                                 last_proof,
-                                prev_event_validation_response
+                                prev_event_validation_response,
                             })
                             .await
                         {
@@ -433,7 +433,7 @@ impl Intermediary {
                                 .tell(ValidatorMessage::NetworkResponse {
                                     validation_res: res,
                                     request_id: message.info.request_id,
-                                    version: message.info.version
+                                    version: message.info.version,
                                 })
                                 .await
                             {
@@ -463,7 +463,7 @@ impl Intermediary {
                                 .tell(EvaluatorMessage::NetworkResponse {
                                     evaluation_res: res,
                                     request_id: message.info.request_id,
-                                    version: message.info.version
+                                    version: message.info.version,
                                 })
                                 .await
                             {
@@ -493,7 +493,7 @@ impl Intermediary {
                                 .tell(ApproverMessage::NetworkResponse {
                                     approval_res: *res,
                                     request_id: message.info.request_id,
-                                    version: message.info.version
+                                    version: message.info.version,
                                 })
                                 .await
                             {
@@ -555,7 +555,7 @@ impl Intermediary {
                                 last_event,
                                 info: message.info,
                                 last_proof,
-                                prev_event_validation_response
+                                prev_event_validation_response,
                             })
                             .await
                         {

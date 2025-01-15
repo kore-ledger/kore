@@ -540,7 +540,9 @@ impl Governance {
                     Who::ID { ID } => return &id.to_string() == ID,
                     Who::NAME { NAME } => return name == NAME,
                     Who::MEMBERS => return self.is_member(&id.to_string()),
-                    Who::NOT_MEMBERS => return !self.is_member(&id.to_string()),
+                    Who::NOT_MEMBERS => {
+                        return !self.is_member(&id.to_string())
+                    }
                 }
             }
         }

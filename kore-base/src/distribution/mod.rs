@@ -13,10 +13,14 @@ use identity::identifier::KeyIdentifier;
 use tracing::error;
 
 use crate::{
-    governance::model::Roles, model::{
+    governance::model::Roles,
+    model::{
         common::{emit_fail, get_gov},
         event::{Ledger, ProtocolsSignatures},
-    }, request::manager::{RequestManager, RequestManagerMessage}, validation::proof::ValidationProof, Event as KoreEvent, Signed
+    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    validation::proof::ValidationProof,
+    Event as KoreEvent, Signed,
 };
 
 pub mod distributor;
@@ -49,7 +53,7 @@ impl Distribution {
         ledger: Signed<Ledger>,
         signer: KeyIdentifier,
         last_proof: ValidationProof,
-        prev_event_validation_response: Vec<ProtocolsSignatures>
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     ) -> Result<(), ActorError> {
         let child = ctx
             .create_child(
@@ -73,7 +77,7 @@ impl Distribution {
                 node_key: signer,
                 our_key,
                 last_proof,
-                prev_event_validation_response
+                prev_event_validation_response,
             })
             .await
     }
@@ -110,8 +114,8 @@ pub enum DistributionMessage {
         request_id: String,
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
-        last_proof: ValidationProof,
-        prev_event_validation_response: Vec<ProtocolsSignatures>
+        last_proof: Box<ValidationProof>,
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
     Response {
         sender: KeyIdentifier,
@@ -129,7 +133,13 @@ impl Handler<Distribution> for Distribution {
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
         match msg {
-            DistributionMessage::Create {request_id,event,ledger, last_proof, prev_event_validation_response} => {
+            DistributionMessage::Create {
+                request_id,
+                event,
+                ledger,
+                last_proof,
+                prev_event_validation_response,
+            } => {
                 self.request_id = request_id;
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
@@ -172,6 +182,7 @@ impl Handler<Distribution> for Distribution {
 
                 self.witnesses.clone_from(&witnesses);
 
+                let last_proof = *last_proof;
                 for witness in witnesses {
                     self.create_distributors(
                         ctx,
@@ -179,7 +190,7 @@ impl Handler<Distribution> for Distribution {
                         ledger.clone(),
                         witness,
                         last_proof.clone(),
-                        prev_event_validation_response.clone()
+                        prev_event_validation_response.clone(),
                     )
                     .await?
                 }

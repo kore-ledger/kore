@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    model::{
-        common::emit_fail,
-        event::ProtocolsSignatures,
-    }, validation::proof::ValidationProof
+    model::{common::emit_fail, event::ProtocolsSignatures},
+    validation::proof::ValidationProof,
 };
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event,
-    Handler, Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+    Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -28,9 +26,9 @@ pub struct ValiData {
 
 #[derive(Debug, Clone)]
 pub enum ValiDataMessage {
-    UpdateValiData { 
-        last_proof: ValidationProof,
-        prev_event_validation_response: Vec<ProtocolsSignatures>
+    UpdateValiData {
+        last_proof: Box<ValidationProof>,
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
     GetLastValiData,
 }
@@ -38,9 +36,9 @@ pub enum ValiDataMessage {
 impl Message for ValiDataMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValiDataEvent {    
+pub struct ValiDataEvent {
     pub last_proof: ValidationProof,
-    pub prev_event_validation_response: Vec<ProtocolsSignatures>
+    pub prev_event_validation_response: Vec<ProtocolsSignatures>,
 }
 
 impl Event for ValiDataEvent {}
@@ -48,7 +46,7 @@ impl Event for ValiDataEvent {}
 #[derive(Debug, Clone)]
 pub enum ValiDataResponse {
     LastValiData {
-        last_proof: Option<ValidationProof>,
+        last_proof: Box<Option<ValidationProof>>,
         prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
     Ok,
@@ -87,16 +85,29 @@ impl Handler<ValiData> for ValiData {
         ctx: &mut ActorContext<ValiData>,
     ) -> Result<ValiDataResponse, ActorError> {
         match msg {
-            ValiDataMessage::UpdateValiData { last_proof, prev_event_validation_response } => {
+            ValiDataMessage::UpdateValiData {
+                last_proof,
+                prev_event_validation_response,
+            } => {
                 self.on_event(
-                    ValiDataEvent { last_proof, prev_event_validation_response },
+                    ValiDataEvent {
+                        last_proof: *last_proof,
+                        prev_event_validation_response,
+                    },
                     ctx,
-                ).await;
+                )
+                .await;
 
                 Ok(ValiDataResponse::Ok)
-            },
-            ValiDataMessage::GetLastValiData =>
-                Ok(ValiDataResponse::LastValiData { last_proof: self.last_proof.clone(), prev_event_validation_response: self.prev_event_validation_response.clone() }),
+            }
+            ValiDataMessage::GetLastValiData => {
+                Ok(ValiDataResponse::LastValiData {
+                    last_proof: Box::new(self.last_proof.clone()),
+                    prev_event_validation_response: self
+                        .prev_event_validation_response
+                        .clone(),
+                })
+            }
         }
     }
 
@@ -106,12 +117,18 @@ impl Handler<ValiData> for ValiData {
         ctx: &mut ActorContext<ValiData>,
     ) {
         if let Err(e) = self.persist_light(&event, ctx).await {
-            error!(TARGET_VALIDATA, "OnEvent, can not persist information: {}", e);
+            error!(
+                TARGET_VALIDATA,
+                "OnEvent, can not persist information: {}", e
+            );
             emit_fail(ctx, e).await;
         };
 
         if let Err(e) = ctx.publish_event(event).await {
-            error!(TARGET_VALIDATA, "PublishEvent, can not publish event: {}", e);
+            error!(
+                TARGET_VALIDATA,
+                "PublishEvent, can not publish event: {}", e
+            );
             emit_fail(ctx, e).await;
         }
     }
@@ -121,7 +138,8 @@ impl Handler<ValiData> for ValiData {
 impl PersistentActor for ValiData {
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         self.last_proof = Some(event.last_proof.clone());
-        self.prev_event_validation_response = event.prev_event_validation_response.clone();
+        self.prev_event_validation_response =
+            event.prev_event_validation_response.clone();
 
         Ok(())
     }

@@ -25,7 +25,8 @@ use crate::{
     helpers::db::ExternalDB,
     model::{
         common::{
-            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data, register_relation, verify_protocols_state
+            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
+            register_relation, verify_protocols_state,
         },
         event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
         request::EventRequest,
@@ -38,7 +39,10 @@ use crate::{
         NodeMessage, NodeResponse,
     },
     validation::{
-        proof::ValidationProof, schema::{ValidationSchema, ValidationSchemaMessage}, validator::Validator, Validation
+        proof::ValidationProof,
+        schema::{ValidationSchema, ValidationSchemaMessage},
+        validator::Validator,
+        Validation,
     },
     CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
 };
@@ -1187,7 +1191,7 @@ impl Subject {
                 self.verify_first_ledger_event(events[0].clone()).await
             {
                 self.delete_subject(ctx, false).await?;
-            
+
                 return Err(ActorError::Functional(e.to_string()));
             }
 
@@ -1276,29 +1280,41 @@ impl Subject {
         Ok(())
     }
 
-    pub async fn delet_node_subject(ctx: &mut ActorContext<Subject>, owner: &str, subject_id: &str) -> Result<(), ActorError>
-{
-    let node_path = ActorPath::from("/user/node");
-    let node_actor: Option<ActorRef<Node>> =
-        ctx.system().get_actor(&node_path).await;
+    pub async fn delet_node_subject(
+        ctx: &mut ActorContext<Subject>,
+        owner: &str,
+        subject_id: &str,
+    ) -> Result<(), ActorError> {
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
 
-    // We obtain the validator
-    let node_response = if let Some(node_actor) = node_actor {
-        node_actor.ask(NodeMessage::DeleteSubject { owner: owner.to_owned(), subject_id: subject_id.to_owned() }).await?
-    } else {
-        return Err(ActorError::NotFound(node_path));
-    };
+        // We obtain the validator
+        let node_response = if let Some(node_actor) = node_actor {
+            node_actor
+                .ask(NodeMessage::DeleteSubject {
+                    owner: owner.to_owned(),
+                    subject_id: subject_id.to_owned(),
+                })
+                .await?
+        } else {
+            return Err(ActorError::NotFound(node_path));
+        };
 
-    match node_response {
-        NodeResponse::None => Ok(()),
-        _ => Err(ActorError::UnexpectedResponse(
-            node_path,
-            "NodeResponse::None".to_owned(),
-        )),
+        match node_response {
+            NodeResponse::None => Ok(()),
+            _ => Err(ActorError::UnexpectedResponse(
+                node_path,
+                "NodeResponse::None".to_owned(),
+            )),
+        }
     }
-}
 
-    async fn delete_subject(&self, ctx: &mut ActorContext<Subject>, relation: bool) -> Result<(), ActorError> {
+    async fn delete_subject(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        relation: bool,
+    ) -> Result<(), ActorError> {
         if relation {
             delete_relation(
                 ctx,
@@ -1310,13 +1326,18 @@ impl Subject {
             )
             .await?;
         }
-    
-        Self::delet_node_subject(ctx, &self.subject_id.to_string(), &self.owner.to_string()).await?;
+
+        Self::delet_node_subject(
+            ctx,
+            &self.subject_id.to_string(),
+            &self.owner.to_string(),
+        )
+        .await?;
 
         Self::purge_storage(ctx).await?;
 
         ctx.stop().await;
-        
+
         Ok(())
     }
 
@@ -1849,7 +1870,7 @@ pub enum SubjectMessage {
     /// Get governance if subject is a governance
     GetGovernance,
     GetOwner,
-    DeleteSubject
+    DeleteSubject,
 }
 
 impl Message for SubjectMessage {}
@@ -1861,16 +1882,16 @@ pub enum SubjectResponse {
     Metadata(Metadata),
     SignRequest(Signature),
     LastSn(u64),
-    Ledger{
+    Ledger {
         ledger: Vec<Signed<Ledger>>,
         last_event: Option<Signed<KoreEvent>>,
-        last_proof: Option<ValidationProof>,
-        prev_event_validation_response: Option<Vec<ProtocolsSignatures>>
+        last_proof: Box<Option<ValidationProof>>,
+        prev_event_validation_response: Option<Vec<ProtocolsSignatures>>,
     },
     Governance(Governance),
     Owner(KeyIdentifier),
     NewCompilers(Vec<String>),
-    Ok
+    Ok,
 }
 
 impl Response for SubjectResponse {}
@@ -1910,10 +1931,8 @@ impl Actor for Subject {
 
         let vali_data = ValiData::default();
         let vali_data_actor = ctx.create_child("vali_data", vali_data).await?;
-        let sink = Sink::new(
-            vali_data_actor.subscribe(),
-            ext_db.get_vali_data(),
-        );
+        let sink =
+            Sink::new(vali_data_actor.subscribe(), ext_db.get_vali_data());
         ctx.system().run_sink(sink).await;
 
         if self.active {
@@ -1982,25 +2001,43 @@ impl Handler<Subject> for Subject {
 
                 if ledger.len() < 100 {
                     let last_event =
-                        get_last_event(ctx, &self.subject_id.to_string()).await.map_err(|e| {
-                            error!(
-                                TARGET_SUBJECT,
-                                "GetLedger, can not get last event: {}", e
-                            );
-                            e
-                        })?;
-                            
-                        let (last_proof, prev_event_validation_response) = get_vali_data(ctx, &self.subject_id.to_string()).await.map_err(|e| {
-                            error!(
-                                TARGET_SUBJECT,
-                                "GetLedger, can not get last vali data: {}", e
-                            );
-                            e
-                        })?;
+                        get_last_event(ctx, &self.subject_id.to_string())
+                            .await
+                            .map_err(|e| {
+                                error!(
+                                    TARGET_SUBJECT,
+                                    "GetLedger, can not get last event: {}", e
+                                );
+                                e
+                            })?;
 
-                    Ok(SubjectResponse::Ledger{ ledger, last_event: Some(last_event), last_proof, prev_event_validation_response: Some(prev_event_validation_response) })
+                    let (last_proof, prev_event_validation_response) =
+                        get_vali_data(ctx, &self.subject_id.to_string())
+                            .await
+                            .map_err(|e| {
+                                error!(
+                                    TARGET_SUBJECT,
+                                    "GetLedger, can not get last vali data: {}",
+                                    e
+                                );
+                                e
+                            })?;
+
+                    Ok(SubjectResponse::Ledger {
+                        ledger,
+                        last_event: Some(last_event),
+                        last_proof: Box::new(last_proof),
+                        prev_event_validation_response: Some(
+                            prev_event_validation_response,
+                        ),
+                    })
                 } else {
-                    Ok(SubjectResponse::Ledger { ledger, last_event: None, last_proof: None, prev_event_validation_response: None })
+                    Ok(SubjectResponse::Ledger {
+                        ledger,
+                        last_event: None,
+                        last_proof: Box::new(None),
+                        prev_event_validation_response: None,
+                    })
                 }
             }
             SubjectMessage::GetOwner => {
@@ -2138,10 +2175,10 @@ impl PersistentActor for Subject {
                                 return Err(ActorError::Functional(error));
                             }
                         };
-    
+
                         self.properties = propierties;
                     }
-                    
+
                     self.last_event_hash = last_event_hash;
                     return Ok(());
                 }
@@ -2608,7 +2645,10 @@ mod tests {
             .ask(SubjectMessage::GetLedger { last_sn: 0 })
             .await
             .unwrap();
-        if let SubjectResponse::Ledger { ledger, last_event, .. } = response {
+        if let SubjectResponse::Ledger {
+            ledger, last_event, ..
+        } = response
+        {
             assert!(ledger.len() == 1);
             last_event.unwrap();
         } else {

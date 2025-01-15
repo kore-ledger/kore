@@ -4,11 +4,15 @@
 use std::collections::HashSet;
 
 use crate::{
-    evaluation::{request::EvaluationReq, response::EvalLedgerResponse}, model::{
+    evaluation::{request::EvaluationReq, response::EvalLedgerResponse},
+    model::{
         event::{Ledger, ProtocolsSignatures},
         request::CreateRequest,
         signature::Signed,
-    }, validation::proof::ValidationProof, ConfirmRequest, EOLRequest, Event as KoreEvent, TransferRequest, ValidationInfo
+    },
+    validation::proof::ValidationProof,
+    ConfirmRequest, EOLRequest, Event as KoreEvent, TransferRequest,
+    ValidationInfo,
 };
 
 use serde::{Deserialize, Serialize};

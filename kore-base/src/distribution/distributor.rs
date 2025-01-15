@@ -16,14 +16,20 @@ use crate::{
     governance::{
         model::{CreatorQuantity, Roles},
         Governance,
-    }, intermediary::Intermediary, model::{
+    },
+    intermediary::Intermediary,
+    model::{
         common::{
             emit_fail, get_gov, get_metadata, get_quantity,
             try_to_update_subject, update_event, update_vali_data,
         },
         event::{Ledger, ProtocolsSignatures},
         network::RetryNetwork,
-    }, validation::proof::ValidationProof, ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
+    },
+    validation::proof::ValidationProof,
+    ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,
+    NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
+    SubjectResponse,
 };
 
 use tracing::{error, warn};
@@ -119,8 +125,15 @@ impl Distributor {
         ctx: &mut ActorContext<Distributor>,
         subject_id: &str,
         last_sn: u64,
-    ) -> Result<(Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>, Option<ValidationProof>, Option<Vec<ProtocolsSignatures>>), ActorError>
-    {
+    ) -> Result<
+        (
+            Vec<Signed<Ledger>>,
+            Option<Signed<KoreEvent>>,
+            Option<ValidationProof>,
+            Option<Vec<ProtocolsSignatures>>,
+        ),
+        ActorError,
+    > {
         let subject_path =
             ActorPath::from(format!("/user/node/{}", subject_id));
         let subject_actor: Option<ActorRef<Subject>> =
@@ -136,7 +149,17 @@ impl Distributor {
         };
 
         match response {
-            SubjectResponse::Ledger{ ledger, last_event, last_proof, prev_event_validation_response } => Ok((ledger, last_event, last_proof, prev_event_validation_response)),
+            SubjectResponse::Ledger {
+                ledger,
+                last_event,
+                last_proof,
+                prev_event_validation_response,
+            } => Ok((
+                ledger,
+                last_event,
+                *last_proof,
+                prev_event_validation_response,
+            )),
             _ => Err(ActorError::UnexpectedResponse(
                 subject_path,
                 "SubjectResponse::Ledger".to_owned(),
@@ -668,17 +691,21 @@ impl Handler<Distributor> for Distributor {
                 let sn = actual_sn.unwrap_or_default();
 
                 // Sacar eventos.
-                let (ledger, last_event, last_proof, prev_event_validation_response) =
-                    match self.get_ledger(ctx, &subject_id, sn).await {
-                        Ok(res) => res,
-                        Err(e) => {
-                            error!(
-                                TARGET_DISTRIBUTOR,
-                                "SendDistribution, Can not obtain ledger {}", e
-                            );
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    };
+                let (
+                    ledger,
+                    last_event,
+                    last_proof,
+                    prev_event_validation_response,
+                ) = match self.get_ledger(ctx, &subject_id, sn).await {
+                    Ok(res) => res,
+                    Err(e) => {
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "SendDistribution, Can not obtain ledger {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
+                };
 
                 let new_info = ComunicateInfo {
                     reciver: info.sender,
@@ -712,7 +739,7 @@ impl Handler<Distributor> for Distributor {
                                 ledger,
                                 last_event,
                                 last_proof,
-                                prev_event_validation_response
+                                prev_event_validation_response,
                             },
                         },
                     })
@@ -722,7 +749,14 @@ impl Handler<Distributor> for Distributor {
                     return Err(emit_fail(ctx, e).await);
                 };
             }
-            DistributorMessage::NetworkDistribution {event,node_key,our_key,ledger, last_proof, prev_event_validation_response } => {
+            DistributorMessage::NetworkDistribution {
+                event,
+                node_key,
+                our_key,
+                ledger,
+                last_proof,
+                prev_event_validation_response,
+            } => {
                 let reciver_actor = format!(
                     "/user/node/{}/distributor",
                     event.content.subject_id
@@ -741,7 +775,7 @@ impl Handler<Distributor> for Distributor {
                         ledger,
                         event,
                         last_proof,
-                        prev_event_validation_response
+                        prev_event_validation_response,
                     },
                 };
 
@@ -818,7 +852,13 @@ impl Handler<Distributor> for Distributor {
                     ctx.stop().await;
                 }
             }
-            DistributorMessage::LastEventDistribution {event,ledger,info, last_proof, prev_event_validation_response } => {
+            DistributorMessage::LastEventDistribution {
+                event,
+                ledger,
+                info,
+                last_proof,
+                prev_event_validation_response,
+            } => {
                 if let Err(e) = self
                     .check_auth(
                         ctx,
@@ -958,7 +998,8 @@ impl Handler<Distributor> for Distributor {
                     if let ActorError::Functional(_) = e {
                         warn!(
                             TARGET_DISTRIBUTOR,
-                            "LastEventDistribution, can not update event: {}", e
+                            "LastEventDistribution, can not update event: {}",
+                            e
                         );
                     } else {
                         error!(
@@ -970,7 +1011,13 @@ impl Handler<Distributor> for Distributor {
                     }
                 };
 
-                if let Err(e) = update_vali_data(ctx, last_proof, prev_event_validation_response).await {
+                if let Err(e) = update_vali_data(
+                    ctx,
+                    last_proof,
+                    prev_event_validation_response,
+                )
+                .await
+                {
                     if let ActorError::Functional(_) = e {
                         warn!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not update validation data: {}", e);
                         return Err(e);
@@ -1020,7 +1067,13 @@ impl Handler<Distributor> for Distributor {
                     return Err(emit_fail(ctx, e).await);
                 };
             }
-            DistributorMessage::LedgerDistribution {mut events,info,last_event, last_proof, prev_event_validation_response } => {
+            DistributorMessage::LedgerDistribution {
+                mut events,
+                info,
+                last_event,
+                last_proof,
+                prev_event_validation_response,
+            } => {
                 // TODO REFACTORIZAR.
                 if events.is_empty() {
                     warn!(
@@ -1165,17 +1218,31 @@ impl Handler<Distributor> for Distributor {
 
                             let Some(last_proof) = last_proof else {
                                 let e = format!("last proof is empty, can not update for {}", subject_id);
-                                error!(TARGET_DISTRIBUTOR, "LedgerDistribution, {}", e);
+                                error!(
+                                    TARGET_DISTRIBUTOR,
+                                    "LedgerDistribution, {}", e
+                                );
                                 return Err(ActorError::Functional(e));
                             };
 
-                            let Some(prev_event_validation_response) = prev_event_validation_response else {
+                            let Some(prev_event_validation_response) =
+                                prev_event_validation_response
+                            else {
                                 let e = format!("prev event validation response is empty, can not update for {}", subject_id);
-                                error!(TARGET_DISTRIBUTOR, "LedgerDistribution, {}", e);
+                                error!(
+                                    TARGET_DISTRIBUTOR,
+                                    "LedgerDistribution, {}", e
+                                );
                                 return Err(ActorError::Functional(e));
                             };
 
-                            if let Err(e) = update_vali_data(ctx, last_proof, prev_event_validation_response).await {
+                            if let Err(e) = update_vali_data(
+                                ctx,
+                                last_proof,
+                                prev_event_validation_response,
+                            )
+                            .await
+                            {
                                 if let ActorError::Functional(_) = e {
                                     warn!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update validation data: {}", e);
                                     return Err(e);

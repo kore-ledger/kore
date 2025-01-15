@@ -16,18 +16,31 @@ use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, info, warn};
 
 use crate::{
-    approval::{Approval, ApprovalMessage}, auth::{Auth, AuthMessage, AuthResponse, AuthWitness}, db::Storable, distribution::{Distribution, DistributionMessage}, evaluation::{
+    approval::{Approval, ApprovalMessage},
+    auth::{Auth, AuthMessage, AuthResponse, AuthWitness},
+    db::Storable,
+    distribution::{Distribution, DistributionMessage},
+    evaluation::{
         request::EvaluationReq, response::EvalLedgerResponse, Evaluation,
         EvaluationMessage,
-    }, intermediary::Intermediary, model::{
+    },
+    intermediary::Intermediary,
+    model::{
         common::{
-            emit_fail, get_gov, get_metadata, get_sign, get_vali_data, update_event, update_vali_data
+            emit_fail, get_gov, get_metadata, get_sign, get_vali_data,
+            update_event, update_vali_data,
         },
         event::{
-            DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError, ProtocolsSignatures
+            DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
+            ProtocolsSignatures,
         },
         SignTypesNode,
-    }, subject::validata::{ValiData, ValiDataMessage, ValiDataResponse}, update::{Update, UpdateMessage, UpdateNew, UpdateType}, validation::proof::{EventProof, ValidationProof}, ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
+    },
+    update::{Update, UpdateMessage, UpdateNew, UpdateType},
+    validation::proof::{EventProof, ValidationProof},
+    ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage,
+    Signed, Subject, SubjectMessage, SubjectResponse, Validation,
+    ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR,
 };
 
 const TARGET_MANAGER: &str = "Kore-Request-Manager";
@@ -61,7 +74,7 @@ impl RequestManager {
             state: RequestManagerState::Starting,
             subject_id,
             request,
-            version: 0
+            version: 0,
         }
     }
     async fn send_validation(
@@ -69,7 +82,7 @@ impl RequestManager {
         ctx: &mut ActorContext<RequestManager>,
         val_info: ValidationInfo,
         last_proof: Option<ValidationProof>,
-        prev_event_validation_response: Vec<ProtocolsSignatures>
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     ) -> Result<(), ActorError> {
         info!(TARGET_MANAGER, "Init validation {}", self.id);
         let validation_path = ActorPath::from(format!(
@@ -189,18 +202,30 @@ impl RequestManager {
             event_proof,
         };
 
-        let (last_proof, prev_event_validation_response) = get_vali_data(ctx, &self.subject_id).await?;
+        let (last_proof, prev_event_validation_response) =
+            get_vali_data(ctx, &self.subject_id).await?;
 
         self.on_event(
             RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
-                state: RequestManagerState::Validation { val_info: val_info.clone(), last_proof: last_proof.clone(), prev_event_validation_response: prev_event_validation_response.clone()},
+                state: RequestManagerState::Validation {
+                    val_info: val_info.clone(),
+                    last_proof: last_proof.clone(),
+                    prev_event_validation_response:
+                        prev_event_validation_response.clone(),
+                },
             },
             ctx,
         )
         .await;
 
-        self.send_validation(ctx, val_info.clone(), last_proof, prev_event_validation_response).await
+        self.send_validation(
+            ctx,
+            val_info.clone(),
+            last_proof,
+            prev_event_validation_response,
+        )
+        .await
     }
 
     async fn approval(
@@ -289,18 +314,18 @@ impl RequestManager {
     pub async fn delete_subject(
         ctx: &mut ActorContext<RequestManager>,
         subject_id: &str,
-    ) -> Result<(), ActorError>
-    {
-        let subject_path = ActorPath::from(format!("/user/node/{}", subject_id));
+    ) -> Result<(), ActorError> {
+        let subject_path =
+            ActorPath::from(format!("/user/node/{}", subject_id));
         let subject_actor: Option<ActorRef<Subject>> =
             ctx.system().get_actor(&subject_path).await;
-    
+
         let response = if let Some(subject_actor) = subject_actor {
             subject_actor.ask(SubjectMessage::DeleteSubject).await?
         } else {
             return Err(ActorError::NotFound(subject_path));
         };
-    
+
         match response {
             SubjectResponse::Ok => Ok(()),
             _ => Err(ActorError::UnexpectedResponse(
@@ -316,7 +341,7 @@ impl RequestManager {
         event: KoreEvent,
         ledger: Ledger,
         last_proof: ValidationProof,
-        prev_event_validation_response: Vec<ProtocolsSignatures>
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     ) -> Result<(), ActorError> {
         let signature_ledger =
             get_sign(ctx, SignTypesNode::Ledger(ledger.clone())).await?;
@@ -344,7 +369,13 @@ impl RequestManager {
             }
         };
 
-        if let Err(e) = update_vali_data(ctx, last_proof.clone(), prev_event_validation_response.clone()).await {
+        if let Err(e) = update_vali_data(
+            ctx,
+            last_proof.clone(),
+            prev_event_validation_response.clone(),
+        )
+        .await
+        {
             if let ActorError::Functional(_) = e {
                 return self.abort_request_manager(ctx, &e.to_string()).await;
             } else {
@@ -359,15 +390,22 @@ impl RequestManager {
                     event: signed_event.clone(),
                     ledger: signed_ledger.clone(),
                     last_proof: last_proof.clone(),
-                    prev_event_validation_response: prev_event_validation_response.clone(),
+                    prev_event_validation_response:
+                        prev_event_validation_response.clone(),
                 },
             },
             ctx,
         )
         .await;
 
-        self.init_distribution(ctx, signed_event, signed_ledger, last_proof, prev_event_validation_response)
-            .await
+        self.init_distribution(
+            ctx,
+            signed_event,
+            signed_ledger,
+            last_proof,
+            prev_event_validation_response,
+        )
+        .await
     }
 
     async fn init_distribution(
@@ -376,7 +414,7 @@ impl RequestManager {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         last_proof: ValidationProof,
-        prev_event_validation_response: Vec<ProtocolsSignatures>
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     ) -> Result<(), ActorError> {
         info!(TARGET_MANAGER, "Init distribution {}", self.id);
         let distribution_path = ActorPath::from(format!(
@@ -392,8 +430,8 @@ impl RequestManager {
                     request_id: self.id.clone(),
                     event,
                     ledger,
-                    last_proof,
-                    prev_event_validation_response
+                    last_proof: Box::new(last_proof),
+                    prev_event_validation_response,
                 })
                 .await?
         } else {
@@ -458,7 +496,7 @@ impl RequestManager {
     async fn abort_request(
         &self,
         ctx: &mut ActorContext<RequestManager>,
-        error: &str
+        error: &str,
     ) -> Result<(), ActorError> {
         let request_path = ActorPath::from("/user/request");
         let request_actor: Option<ActorRef<RequestHandler>> =
@@ -466,8 +504,11 @@ impl RequestManager {
 
         if let Some(request_actor) = request_actor {
             request_actor
-                .tell(RequestHandlerMessage::AbortRequest {id: self.id.clone(),
-                    subject_id: self.subject_id.to_string(), error: error.to_string() } )
+                .tell(RequestHandlerMessage::AbortRequest {
+                    id: self.id.clone(),
+                    subject_id: self.subject_id.to_string(),
+                    error: error.to_string(),
+                })
                 .await?
         } else {
             return Err(ActorError::NotFound(request_path));
@@ -640,32 +681,39 @@ impl RequestManager {
         Ok(())
     }
 
-    async fn patch_not_fact_event(&self, ctx: &mut ActorContext<RequestManager>) -> Result<LedgerValue, ActorError> {
+    async fn patch_not_fact_event(
+        &self,
+        ctx: &mut ActorContext<RequestManager>,
+    ) -> Result<LedgerValue, ActorError> {
         if let EventRequest::Create(create_req) = self.request.content.clone() {
             if create_req.schema_id == "governance" {
-                Ok(LedgerValue::Patch(ValueWrapper(
-                    serde_json::Value::String("[]".to_owned()),
-                )))
+                Ok(LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
+                    "[]".to_owned(),
+                ))))
             } else {
                 let governance =
                     get_gov(ctx, &create_req.governance_id.to_string()).await?;
 
                 let value = governance
                     .get_init_state(&create_req.schema_id)
-                        .map_err(|e| ActorError::Functional(e.to_string()))?;
-                
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
+
                 Ok(LedgerValue::Patch(value))
             }
         } else {
-            Ok(LedgerValue::Patch(ValueWrapper(
-                serde_json::Value::String("[]".to_owned()),
-            )))
+            Ok(LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
+                "[]".to_owned(),
+            ))))
         }
     }
 
-    async fn abort_request_manager(&self, ctx: &mut ActorContext<RequestManager>, error: &str) -> Result<(), ActorError> {
+    async fn abort_request_manager(
+        &self,
+        ctx: &mut ActorContext<RequestManager>,
+        error: &str,
+    ) -> Result<(), ActorError> {
         Self::delete_subject(ctx, &self.subject_id).await?;
-        
+
         self.abort_request(ctx, error).await?;
 
         Self::purge_storage(ctx).await?;
@@ -715,7 +763,7 @@ pub enum RequestManagerMessage {
     ValidationRes {
         result: bool,
         signatures: Vec<ProtocolsSignatures>,
-        last_proof: ValidationProof,
+        last_proof: Box<ValidationProof>,
         errors: String,
     },
     EvaluationRes {
@@ -736,8 +784,8 @@ pub enum RequestManagerEvent {
     },
     UpdateVersion {
         id: String,
-        version: u64
-    }
+        version: u64,
+    },
 }
 
 impl Event for RequestManagerEvent {}
@@ -845,7 +893,7 @@ impl Handler<RequestManager> for RequestManager {
                 self.on_event(
                     RequestManagerEvent::UpdateVersion {
                         id: self.id.clone(),
-                        version: self.version + 1
+                        version: self.version + 1,
                     },
                     ctx,
                 )
@@ -866,13 +914,25 @@ impl Handler<RequestManager> for RequestManager {
                             Ok(ledger_value) => ledger_value,
                             Err(e) => {
                                 if let ActorError::Functional(_) = e {
-                                    if let Err(e) = self.abort_request_manager(ctx, &e.to_string()).await {
-                                        error!(TARGET_MANAGER, "FinishReboot, {}", e);
-                                        return Err(emit_fail(ctx, e).await);    
+                                    if let Err(e) = self
+                                        .abort_request_manager(
+                                            ctx,
+                                            &e.to_string(),
+                                        )
+                                        .await
+                                    {
+                                        error!(
+                                            TARGET_MANAGER,
+                                            "FinishReboot, {}", e
+                                        );
+                                        return Err(emit_fail(ctx, e).await);
                                     }
                                     return Ok(());
                                 } else {
-                                    error!(TARGET_MANAGER, "FinishReboot, {}", e);
+                                    error!(
+                                        TARGET_MANAGER,
+                                        "FinishReboot, {}", e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             }
@@ -921,17 +981,34 @@ impl Handler<RequestManager> for RequestManager {
                                 };
                             }
                             _ => {
-                                let value = match self.patch_not_fact_event(ctx).await {
+                                let value = match self
+                                    .patch_not_fact_event(ctx)
+                                    .await
+                                {
                                     Ok(ledger_value) => ledger_value,
                                     Err(e) => {
                                         if let ActorError::Functional(_) = e {
-                                            if let Err(e) = self.abort_request_manager(ctx, &e.to_string()).await {
-                                                error!(TARGET_MANAGER, "Run, {}", e);
-                                                return Err(emit_fail(ctx, e).await);    
+                                            if let Err(e) = self
+                                                .abort_request_manager(
+                                                    ctx,
+                                                    &e.to_string(),
+                                                )
+                                                .await
+                                            {
+                                                error!(
+                                                    TARGET_MANAGER,
+                                                    "Run, {}", e
+                                                );
+                                                return Err(
+                                                    emit_fail(ctx, e).await
+                                                );
                                             }
                                             return Ok(());
                                         } else {
-                                            error!(TARGET_MANAGER, "Run, {}", e);
+                                            error!(
+                                                TARGET_MANAGER,
+                                                "Run, {}", e
+                                            );
                                             return Err(emit_fail(ctx, e).await);
                                         }
                                     }
@@ -989,9 +1066,19 @@ impl Handler<RequestManager> for RequestManager {
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
-                    RequestManagerState::Validation { val_info, last_proof, prev_event_validation_response } => {
-                        if let Err(e) =
-                            self.send_validation(ctx, val_info, last_proof, prev_event_validation_response).await
+                    RequestManagerState::Validation {
+                        val_info,
+                        last_proof,
+                        prev_event_validation_response,
+                    } => {
+                        if let Err(e) = self
+                            .send_validation(
+                                ctx,
+                                val_info,
+                                last_proof,
+                                prev_event_validation_response,
+                            )
+                            .await
                         {
                             error!(
                                 TARGET_MANAGER,
@@ -1000,9 +1087,21 @@ impl Handler<RequestManager> for RequestManager {
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
-                    RequestManagerState::Distribution {event,ledger, last_proof, prev_event_validation_response } => {
-                        if let Err(e) =
-                            self.init_distribution(ctx, event, ledger, last_proof, prev_event_validation_response).await
+                    RequestManagerState::Distribution {
+                        event,
+                        ledger,
+                        last_proof,
+                        prev_event_validation_response,
+                    } => {
+                        if let Err(e) = self
+                            .init_distribution(
+                                ctx,
+                                event,
+                                ledger,
+                                last_proof,
+                                prev_event_validation_response,
+                            )
+                            .await
                         {
                             error!(
                                 TARGET_MANAGER,
@@ -1173,21 +1272,22 @@ impl Handler<RequestManager> for RequestManager {
                 result,
                 signatures,
                 errors,
-                last_proof
+                last_proof,
             } => {
                 info!(TARGET_MANAGER, "Validation response {}", self.id);
-                let val_info =
-                    if let RequestManagerState::Validation { val_info, ..} =
-                        self.state.clone()
-                    {
-                        val_info
-                    } else {
-                        let e = ActorError::FunctionalFail(
-                            "Invalid request state".to_owned(),
-                        );
-                        error!(TARGET_MANAGER, "ValidationRes, {}", e);
-                        return Err(emit_fail(ctx, e).await);
-                    };
+                let val_info = if let RequestManagerState::Validation {
+                    val_info,
+                    ..
+                } = self.state.clone()
+                {
+                    val_info
+                } else {
+                    let e = ActorError::FunctionalFail(
+                        "Invalid request state".to_owned(),
+                    );
+                    error!(TARGET_MANAGER, "ValidationRes, {}", e);
+                    return Err(emit_fail(ctx, e).await);
+                };
 
                 let (ledger, event) = self.create_ledger_event(
                     val_info,
@@ -1196,7 +1296,15 @@ impl Handler<RequestManager> for RequestManager {
                     &errors,
                 );
 
-                if let Err(e) = self.safe_ledger_event(ctx, event, ledger, last_proof, signatures).await
+                if let Err(e) = self
+                    .safe_ledger_event(
+                        ctx,
+                        event,
+                        ledger,
+                        *last_proof,
+                        signatures,
+                    )
+                    .await
                 {
                     error!(
                         TARGET_MANAGER,
@@ -1239,9 +1347,12 @@ impl Handler<RequestManager> for RequestManager {
                     Ok(ledger_value) => ledger_value,
                     Err(e) => {
                         if let ActorError::Functional(_) = e {
-                            if let Err(e) = self.abort_request_manager(ctx, &e.to_string()).await {
+                            if let Err(e) = self
+                                .abort_request_manager(ctx, &e.to_string())
+                                .await
+                            {
                                 error!(TARGET_MANAGER, "Other, {}", e);
-                                return Err(emit_fail(ctx, e).await);    
+                                return Err(emit_fail(ctx, e).await);
                             }
                             return Ok(());
                         } else {
@@ -1322,8 +1433,12 @@ impl PersistentActor for RequestManager {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
-            RequestManagerEvent::UpdateState { state, .. } => self.state = state.clone(),
-            RequestManagerEvent::UpdateVersion { version, .. } => self.version = version.clone(),
+            RequestManagerEvent::UpdateState { state, .. } => {
+                self.state = state.clone()
+            }
+            RequestManagerEvent::UpdateVersion { version, .. } => {
+                self.version = *version
+            }
         };
 
         Ok(())

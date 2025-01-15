@@ -1,4 +1,3 @@
-
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -217,10 +216,15 @@ async fn test_governance_copy() {
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     let events = node2
-        .get_first_or_end_events(subject_id.clone(), Some(5), Some(false), Some(true))
+        .get_first_or_end_events(
+            subject_id.clone(),
+            Some(5),
+            Some(false),
+            Some(true),
+        )
         .await
         .unwrap();
-    
+
     assert_eq!(events.len(), 5);
 }
 
@@ -423,4 +427,4 @@ async fn test_basic_use_case_1b_1e_1a() {
 // verificar copias de los eventos de un sujeto independientemente del tipo  ✅
 // si no esta autorizado verificar que no recibe la copia
 // denegar cambios de gobernanza
-// 
+//

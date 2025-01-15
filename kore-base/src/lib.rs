@@ -31,7 +31,10 @@ use error::Error;
 use governance::json_schema::JsonSchema;
 use governance::schema;
 use governance::{init::init_state, Governance};
-use helpers::db::common::{ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo, SubjectInfo};
+use helpers::db::common::{
+    ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo,
+    SubjectInfo,
+};
 use helpers::db::ExternalDB;
 use helpers::network::*;
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
@@ -364,7 +367,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::ApprovalState( data ) => Ok(data),
+            QueryResponse::ApprovalState(data) => Ok(data),
             _ => {
                 error!(
                     TARGET_API,
@@ -620,7 +623,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::PaginatorEvents( data ) => Ok(data),
+            QueryResponse::PaginatorEvents(data) => Ok(data),
             _ => {
                 error!(
                     TARGET_API,
@@ -645,20 +648,24 @@ impl Api {
                 subject_id: subject_id.to_string(),
                 sn,
             })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not get event sn: {}", e);
                 Error::Query(format!("Can not get event sn: {}", e))
             })?;
 
         match response {
-            QueryResponse::Event( data ) => Ok(data),
+            QueryResponse::Event(data) => Ok(data),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Query(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -677,20 +684,24 @@ impl Api {
                 reverse,
                 success,
             })
-            .await.map_err(|e| {
+            .await
+            .map_err(|e| {
                 error!(TARGET_API, "Can not get first or end events: {}", e);
                 Error::Query(format!("Can not get first or end events: {}", e))
             })?;
 
         match response {
-            QueryResponse::Events( data ) => Ok(data),
+            QueryResponse::Events(data) => Ok(data),
             _ => {
-                error!(TARGET_API, "A response was received that was not the expected one");
+                error!(
+                    TARGET_API,
+                    "A response was received that was not the expected one"
+                );
                 Err(Error::Query(
-                "A response was received that was not the expected one"
-                    .to_owned(),
-            ))
-        },
+                    "A response was received that was not the expected one"
+                        .to_owned(),
+                ))
+            }
         }
     }
 
@@ -710,7 +721,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Subject( subject ) => Ok(subject),
+            QueryResponse::Subject(subject) => Ok(subject),
             _ => {
                 error!(
                     TARGET_API,
@@ -740,7 +751,7 @@ impl Api {
             })?;
 
         match response {
-            QueryResponse::Signatures (signatures ) => Ok(signatures),
+            QueryResponse::Signatures(signatures) => Ok(signatures),
             _ => {
                 error!(
                     TARGET_API,

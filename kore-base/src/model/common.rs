@@ -13,14 +13,27 @@ use network::ComunicateInfo;
 use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
-    auth::{Auth, AuthMessage}, governance::{
+    auth::{Auth, AuthMessage},
+    governance::{
         model::{CreatorQuantity, Roles},
         Quorum,
-    }, intermediary::Intermediary, model::SignTypesNode, node::relationship::{
+    },
+    intermediary::Intermediary,
+    model::SignTypesNode,
+    node::relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
-    }, request::manager::{RequestManager, RequestManagerMessage}, subject::{
-        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, validata::{ValiData, ValiDataMessage, ValiDataResponse}, Metadata
-    }, validation::proof::ValidationProof, ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance, NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse};
+    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::{
+        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
+        validata::{ValiData, ValiDataMessage, ValiDataResponse},
+        Metadata,
+    },
+    validation::proof::ValidationProof,
+    ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
+    NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
+    Subject, SubjectMessage, SubjectResponse,
+};
 use tracing::error;
 
 use super::{event::ProtocolsSignatures, HashId, Namespace};
@@ -187,7 +200,6 @@ where
 
     Ok(())
 }
-
 
 pub async fn get_quantity<A>(
     ctx: &mut ActorContext<A>,
@@ -499,18 +511,24 @@ where
 pub async fn update_vali_data<A>(
     ctx: &mut ActorContext<A>,
     last_proof: ValidationProof,
-    prev_event_validation_response: Vec<ProtocolsSignatures>
+    prev_event_validation_response: Vec<ProtocolsSignatures>,
 ) -> Result<(), ActorError>
 where
-    A: Actor + Handler<A>
+    A: Actor + Handler<A>,
 {
-    let vali_data_path =
-        ActorPath::from(format!("/user/node/{}/vali_data", last_proof.subject_id));
+    let vali_data_path = ActorPath::from(format!(
+        "/user/node/{}/vali_data",
+        last_proof.subject_id
+    ));
     let vali_data_actor: Option<ActorRef<ValiData>> =
         ctx.system().get_actor(&vali_data_path).await;
 
     let response = if let Some(vali_data_actor) = vali_data_actor {
-        vali_data_actor.ask(ValiDataMessage::UpdateValiData { last_proof, prev_event_validation_response })
+        vali_data_actor
+            .ask(ValiDataMessage::UpdateValiData {
+                last_proof: Box::new(last_proof),
+                prev_event_validation_response,
+            })
             .await?
     } else {
         return Err(ActorError::NotFound(vali_data_path));
@@ -518,14 +536,12 @@ where
 
     match response {
         ValiDataResponse::Ok => Ok(()),
-        _ => {
-            Err(ActorError::UnexpectedResponse(
-                vali_data_path,
-                "ValiDataResponse::Ok".to_owned(),
-            ))
-        }
+        _ => Err(ActorError::UnexpectedResponse(
+            vali_data_path,
+            "ValiDataResponse::Ok".to_owned(),
+        )),
     }
-} 
+}
 
 pub async fn check_request_owner<A, T>(
     ctx: &mut ActorContext<A>,
@@ -696,7 +712,7 @@ where
 pub async fn get_vali_data<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
-) -> Result<(Option<ValidationProof>, Vec<ProtocolsSignatures>), ActorError> 
+) -> Result<(Option<ValidationProof>, Vec<ProtocolsSignatures>), ActorError>
 where
     A: Actor + Handler<A>,
 {
@@ -706,23 +722,24 @@ where
         ctx.system().get_actor(&vali_data_path).await;
 
     let response = if let Some(vali_data_actor) = vali_data_actor {
-        vali_data_actor.ask(ValiDataMessage::GetLastValiData)
+        vali_data_actor
+            .ask(ValiDataMessage::GetLastValiData)
             .await?
     } else {
         return Err(ActorError::NotFound(vali_data_path));
     };
 
     match response {
-        ValiDataResponse::LastValiData { last_proof, prev_event_validation_response } => Ok((last_proof, prev_event_validation_response)),
-        _ => {
-            Err(ActorError::UnexpectedResponse(
-                vali_data_path,
-                "ValiDataResponse::LastValiData".to_owned(),
-            ))
-        }
+        ValiDataResponse::LastValiData {
+            last_proof,
+            prev_event_validation_response,
+        } => Ok((*last_proof, prev_event_validation_response)),
+        _ => Err(ActorError::UnexpectedResponse(
+            vali_data_path,
+            "ValiDataResponse::LastValiData".to_owned(),
+        )),
     }
 }
-
 
 pub async fn send_reboot_to_req<A>(
     ctx: &mut ActorContext<A>,

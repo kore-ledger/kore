@@ -177,13 +177,13 @@ impl RequestHandler {
         ctx: &mut ActorContext<RequestHandler>,
         id: &str,
         subject_id: &str,
-        error: &str
+        error: &str,
     ) -> Result<(), ActorError> {
         self.on_event(
             RequestHandlerEvent::Invalid {
                 id: id.to_owned(),
                 subject_id: subject_id.to_owned(),
-                error: error.to_owned()
+                error: error.to_owned(),
             },
             ctx,
         )
@@ -216,8 +216,8 @@ pub enum RequestHandlerMessage {
     AbortRequest {
         subject_id: String,
         id: String,
-        error: String
-    }
+        error: String,
+    },
 }
 
 impl Message for RequestHandlerMessage {}
@@ -241,12 +241,12 @@ pub enum RequestHandlerEvent {
     Invalid {
         id: String,
         subject_id: String,
-        error: String
+        error: String,
     },
     Abort {
         id: String,
         subject_id: String,
-        error: String
+        error: String,
     },
     FinishHandling {
         id: String,
@@ -322,22 +322,25 @@ impl Handler<RequestHandler> for RequestHandler {
             RequestHandlerMessage::AbortRequest {
                 subject_id,
                 id,
-                error
+                error,
             } => {
                 info!(
                     TARGET_REQUEST,
-                    "AbortRequest, Aborting request {} for {}: {}", id, subject_id, error
+                    "AbortRequest, Aborting request {} for {}: {}",
+                    id,
+                    subject_id,
+                    error
                 );
 
                 self.on_event(
                     RequestHandlerEvent::Abort {
                         id: id.to_owned(),
                         subject_id: subject_id.to_owned(),
-                        error: error.to_owned()
+                        error: error.to_owned(),
                     },
                     ctx,
                 )
-                .await;        
+                .await;
 
                 Ok(RequestHandlerResponse::None)
             }
@@ -758,24 +761,23 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 };
 
-                if let EventRequest::Fact(_) = event.content.clone() {} else {
-                    if metadata.owner != event.signature.signer {
-                        let e = "owner and sign are not the same";
-                        warn!(TARGET_REQUEST, "PopQueue, {} for {}", e, subject_id);
-                        if let Err(e) = self
-                            .error_queue_handling(ctx, &request_id, &subject_id, e)
-                            .await
-                        {
-                            error!(
-                                TARGET_REQUEST,
-                                "PopQueue, Can not enqueue next event: {}", e
-                            );
-                            ctx.system().send_event(SystemEvent::StopSystem).await;
-                            return Err(e);
-                        }
-
-                        return Ok(RequestHandlerResponse::None);
+                if let EventRequest::Fact(_) = event.content.clone() {
+                } else if metadata.owner != event.signature.signer {
+                    let e = "owner and sign are not the same";
+                    warn!(TARGET_REQUEST, "PopQueue, {} for {}", e, subject_id);
+                    if let Err(e) = self
+                        .error_queue_handling(ctx, &request_id, &subject_id, e)
+                        .await
+                    {
+                        error!(
+                            TARGET_REQUEST,
+                            "PopQueue, Can not enqueue next event: {}", e
+                        );
+                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        return Err(e);
                     }
+
+                    return Ok(RequestHandlerResponse::None);
                 }
 
                 let message = match event.content.clone() {
@@ -803,7 +805,7 @@ impl Handler<RequestHandler> for RequestHandler {
                                                 ctx,
                                                 &request_id,
                                                 &subject_id,
-                                                &e.to_string()
+                                                &e.to_string(),
                                             )
                                             .await
                                         {
@@ -826,13 +828,16 @@ impl Handler<RequestHandler> for RequestHandler {
                                 {
                                     if quantity >= max_quantity as usize {
                                         let e = format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id);
-                                        error!(TARGET_REQUEST, "PopQueue, {}", e);
+                                        error!(
+                                            TARGET_REQUEST,
+                                            "PopQueue, {}", e
+                                        );
                                         if let Err(e) = self
                                             .error_queue_handling(
                                                 ctx,
                                                 &request_id,
                                                 &subject_id,
-                                                &e
+                                                &e,
                                             )
                                             .await
                                         {
@@ -852,13 +857,16 @@ impl Handler<RequestHandler> for RequestHandler {
                                 }
                             } else {
                                 let e = "Unable to get the maximum number of subjects that can be created";
-                                error!(TARGET_REQUEST, "PopQueue, {} for {}", e, subject_id);
+                                error!(
+                                    TARGET_REQUEST,
+                                    "PopQueue, {} for {}", e, subject_id
+                                );
                                 if let Err(e) = self
                                     .error_queue_handling(
                                         ctx,
                                         &request_id,
                                         &subject_id,
-                                        e
+                                        e,
                                     )
                                     .await
                                 {
@@ -899,7 +907,7 @@ impl Handler<RequestHandler> for RequestHandler {
                                     ctx,
                                     &request_id,
                                     &subject_id,
-                                    e
+                                    e,
                                 )
                                 .await
                             {

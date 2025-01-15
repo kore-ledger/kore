@@ -8,7 +8,7 @@ use crate::model::{event::ProtocolsError, Namespace};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PaginatorEvents {
     pub paginator: Paginator,
-    pub events: Vec<EventInfo>
+    pub events: Vec<EventInfo>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -57,32 +57,90 @@ impl<'de> Deserialize<'de> for EventRequestInfo {
         let value: Value = Deserialize::deserialize(deserializer)?;
 
         if let Some(create) = value.get("Create") {
-            let namespace = create.get("namespace").ok_or_else(|| serde::de::Error::missing_field("namespace"))?;
+            let namespace = create
+                .get("namespace")
+                .ok_or_else(|| serde::de::Error::missing_field("namespace"))?;
 
             return Ok(Self::Create(CreateRequestInfo {
-                governance_id: create.get("governance_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("governance_id"))?.to_owned(),
-                schema_id: create.get("schema_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("schema_id"))?.to_owned(),
-                namespace: serde_json::from_value(namespace.clone()).map_err(|e| serde::de::Error::custom(e.to_string()))?,
+                governance_id: create
+                    .get("governance_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        serde::de::Error::missing_field("governance_id")
+                    })?
+                    .to_owned(),
+                schema_id: create
+                    .get("schema_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        serde::de::Error::missing_field("schema_id")
+                    })?
+                    .to_owned(),
+                namespace: serde_json::from_value(namespace.clone())
+                    .map_err(|e| serde::de::Error::custom(e.to_string()))?,
             }));
         };
-        
+
         if let Some(fact) = value.get("Fact") {
-            let payload_str = fact.get("payload").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("payload"))?;
-            let payload = Value::from_str(payload_str).map_err(serde::de::Error::custom)?;
-            return Ok(Self::Fact(FactRequestInfo { subject_id: fact.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned(), payload }));
+            let payload_str = fact
+                .get("payload")
+                .and_then(Value::as_str)
+                .ok_or_else(|| serde::de::Error::missing_field("payload"))?;
+            let payload = Value::from_str(payload_str)
+                .map_err(serde::de::Error::custom)?;
+            return Ok(Self::Fact(FactRequestInfo {
+                subject_id: fact
+                    .get("subject_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        serde::de::Error::missing_field("subject_id")
+                    })?
+                    .to_owned(),
+                payload,
+            }));
         };
 
         if let Some(transfer) = value.get("Transfer") {
-            return Ok(Self::Transfer(TransferRequestInfo { subject_id: transfer.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned(), 
-            new_owner: transfer.get("new_owner").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("new_owner"))?.to_owned() }));
+            return Ok(Self::Transfer(TransferRequestInfo {
+                subject_id: transfer
+                    .get("subject_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        serde::de::Error::missing_field("subject_id")
+                    })?
+                    .to_owned(),
+                new_owner: transfer
+                    .get("new_owner")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        serde::de::Error::missing_field("new_owner")
+                    })?
+                    .to_owned(),
+            }));
         };
 
         if let Some(confirm) = value.get("Confirm") {
-            return Ok(Self::Confirm(ConfirmRequestInfo { subject_id: confirm.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned() }));
+            return Ok(Self::Confirm(ConfirmRequestInfo {
+                subject_id: confirm
+                    .get("subject_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        serde::de::Error::missing_field("subject_id")
+                    })?
+                    .to_owned(),
+            }));
         };
 
         if let Some(eol) = value.get("EOL") {
-            return Ok(Self::EOL(EOLRequestInfo { subject_id: eol.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned() }));
+            return Ok(Self::EOL(EOLRequestInfo {
+                subject_id: eol
+                    .get("subject_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        serde::de::Error::missing_field("subject_id")
+                    })?
+                    .to_owned(),
+            }));
         };
 
         Err(serde::de::Error::custom("Invalid EventRequest type"))
@@ -120,7 +178,7 @@ pub struct SignaturesInfo {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum ProtocolsSignaturesInfo {
     Signature(SignatureInfo),
-    TimeOut(TimeOutResponseInfo)
+    TimeOut(TimeOutResponseInfo),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -179,30 +237,30 @@ pub struct Paginator {
 pub struct RequestInfo {
     pub status: String,
     pub version: u64,
-    pub error: Option<String>
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ApproveInfo {
     pub state: String,
-    pub request: ApprovalReqInfo
+    pub request: ApprovalReqInfo,
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ApprovalReqInfo {
-        /// The signed event request.
+    /// The signed event request.
     pub event_request: SignedInfo<FactInfo>,
-        /// The sequence number of the event.
+    /// The sequence number of the event.
     pub sn: u64,
-        /// The version of the governance contract.
+    /// The version of the governance contract.
     pub gov_version: u64,
-        /// The patch to apply to the state.
+    /// The patch to apply to the state.
     pub patch: Value,
-        /// The hash of the state after applying the patch.
+    /// The hash of the state after applying the patch.
     pub state_hash: String,
-        /// The hash of the previous event.
+    /// The hash of the previous event.
     pub hash_prev_event: String,
-        /// The hash of the previous event.
+    /// The hash of the previous event.
     pub subject_id: String,
 }
 
@@ -213,27 +271,78 @@ impl<'de> Deserialize<'de> for ApprovalReqInfo {
     {
         let value: Value = Deserialize::deserialize(deserializer)?;
 
-        let sn = value.get("sn").and_then(Value::as_u64).ok_or_else(|| serde::de::Error::missing_field("sn"))?;
-        let gov_version = value.get("gov_version").and_then(Value::as_u64).ok_or_else(|| serde::de::Error::missing_field("gov_version"))?;
-        let state_hash = value.get("state_hash").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("state_hash"))?.to_owned();
-        let hash_prev_event = value.get("hash_prev_event").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("hash_prev_event"))?.to_owned();
-        let subject_id = value.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned();
-        let patch_str = value.get("patch").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("patch"))?;
-        let patch = Value::from_str(patch_str).map_err(serde::de::Error::custom)?;
+        let sn = value
+            .get("sn")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| serde::de::Error::missing_field("sn"))?;
+        let gov_version = value
+            .get("gov_version")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| serde::de::Error::missing_field("gov_version"))?;
+        let state_hash = value
+            .get("state_hash")
+            .and_then(Value::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("state_hash"))?
+            .to_owned();
+        let hash_prev_event = value
+            .get("hash_prev_event")
+            .and_then(Value::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("hash_prev_event"))?
+            .to_owned();
+        let subject_id = value
+            .get("subject_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("subject_id"))?
+            .to_owned();
+        let patch_str = value
+            .get("patch")
+            .and_then(Value::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("patch"))?;
+        let patch =
+            Value::from_str(patch_str).map_err(serde::de::Error::custom)?;
 
-        let event_request = value.get("event_request").and_then(Value::as_object).ok_or_else(|| serde::de::Error::missing_field("event_request"))?;
-        
-        let content = event_request.get("content").and_then(Value::as_object).ok_or_else(|| serde::de::Error::missing_field("content"))?;
-        let fact = content.get("Fact").and_then(Value::as_object).ok_or_else(|| serde::de::Error::missing_field("Fact"))?;
-        let payload_str = fact.get("payload").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("payload"))?;
-        let payload = Value::from_str(payload_str).map_err(serde::de::Error::custom)?;
-        let subject_id_fact = fact.get("subject_id").and_then(Value::as_str).ok_or_else(|| serde::de::Error::missing_field("subject_id"))?.to_owned();
+        let event_request = value
+            .get("event_request")
+            .and_then(Value::as_object)
+            .ok_or_else(|| serde::de::Error::missing_field("event_request"))?;
 
-        let signature = serde_json::from_value::<SignatureInfo>(event_request.get("signature").ok_or_else(|| serde::de::Error::missing_field("signature"))?.clone()).map_err(|e| serde::de::Error::custom(e.to_string()))?;
-        
+        let content =
+            event_request
+                .get("content")
+                .and_then(Value::as_object)
+                .ok_or_else(|| serde::de::Error::missing_field("content"))?;
+        let fact = content
+            .get("Fact")
+            .and_then(Value::as_object)
+            .ok_or_else(|| serde::de::Error::missing_field("Fact"))?;
+        let payload_str = fact
+            .get("payload")
+            .and_then(Value::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("payload"))?;
+        let payload =
+            Value::from_str(payload_str).map_err(serde::de::Error::custom)?;
+        let subject_id_fact = fact
+            .get("subject_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("subject_id"))?
+            .to_owned();
+
+        let signature = serde_json::from_value::<SignatureInfo>(
+            event_request
+                .get("signature")
+                .ok_or_else(|| serde::de::Error::missing_field("signature"))?
+                .clone(),
+        )
+        .map_err(|e| serde::de::Error::custom(e.to_string()))?;
 
         Ok(Self {
-            event_request: SignedInfo { content: FactInfo { payload, subject_id: subject_id_fact }, signature },
+            event_request: SignedInfo {
+                content: FactInfo {
+                    payload,
+                    subject_id: subject_id_fact,
+                },
+                signature,
+            },
             sn,
             gov_version,
             patch,
@@ -247,7 +356,7 @@ impl<'de> Deserialize<'de> for ApprovalReqInfo {
 #[derive(Clone, Debug, Serialize)]
 pub struct FactInfo {
     pub payload: Value,
-    pub subject_id: String
+    pub subject_id: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
