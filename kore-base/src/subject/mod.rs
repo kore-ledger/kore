@@ -25,10 +25,9 @@ use crate::{
     helpers::db::ExternalDB,
     model::{
         common::{
-            delete_relation, emit_fail, get_gov, get_last_event,
-            register_relation, verify_protocols_state,
+            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data, register_relation, verify_protocols_state
         },
-        event::{Event as KoreEvent, Ledger, LedgerValue},
+        event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
@@ -39,9 +38,7 @@ use crate::{
         NodeMessage, NodeResponse,
     },
     validation::{
-        schema::{ValidationSchema, ValidationSchemaMessage},
-        validator::Validator,
-        Validation,
+        proof::ValidationProof, schema::{ValidationSchema, ValidationSchemaMessage}, validator::Validator, Validation
     },
     CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
 };
@@ -1864,7 +1861,12 @@ pub enum SubjectResponse {
     Metadata(Metadata),
     SignRequest(Signature),
     LastSn(u64),
-    Ledger((Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>)),
+    Ledger{
+        ledger: Vec<Signed<Ledger>>,
+        last_event: Option<Signed<KoreEvent>>,
+        last_proof: Option<ValidationProof>,
+        prev_event_validation_response: Option<Vec<ProtocolsSignatures>>
+    },
     Governance(Governance),
     Owner(KeyIdentifier),
     NewCompilers(Vec<String>),
@@ -1980,21 +1982,25 @@ impl Handler<Subject> for Subject {
 
                 if ledger.len() < 100 {
                     let last_event =
-                        match get_last_event(ctx, &self.subject_id.to_string())
-                            .await
-                        {
-                            Ok(last_event) => last_event,
-                            Err(e) => {
-                                error!(
-                                    TARGET_SUBJECT,
-                                    "GetLedger, can not get last event: {}", e
-                                );
-                                return Err(e);
-                            }
-                        };
-                    Ok(SubjectResponse::Ledger((ledger, Some(last_event))))
+                        get_last_event(ctx, &self.subject_id.to_string()).await.map_err(|e| {
+                            error!(
+                                TARGET_SUBJECT,
+                                "GetLedger, can not get last event: {}", e
+                            );
+                            e
+                        })?;
+                            
+                        let (last_proof, prev_event_validation_response) = get_vali_data(ctx, &self.subject_id.to_string()).await.map_err(|e| {
+                            error!(
+                                TARGET_SUBJECT,
+                                "GetLedger, can not get last vali data: {}", e
+                            );
+                            e
+                        })?;
+
+                    Ok(SubjectResponse::Ledger{ ledger, last_event: Some(last_event), last_proof, prev_event_validation_response: Some(prev_event_validation_response) })
                 } else {
-                    Ok(SubjectResponse::Ledger((ledger, None)))
+                    Ok(SubjectResponse::Ledger { ledger, last_event: None, last_proof: None, prev_event_validation_response: None })
                 }
             }
             SubjectMessage::GetOwner => {
@@ -2602,9 +2608,9 @@ mod tests {
             .ask(SubjectMessage::GetLedger { last_sn: 0 })
             .await
             .unwrap();
-        if let SubjectResponse::Ledger(ledger) = response {
-            assert!(ledger.0.len() == 1);
-            assert!(ledger.1.is_some());
+        if let SubjectResponse::Ledger { ledger, last_event, .. } = response {
+            assert!(ledger.len() == 1);
+            last_event.unwrap();
         } else {
             panic!("Invalid response");
         }

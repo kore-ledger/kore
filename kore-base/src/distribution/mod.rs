@@ -13,13 +13,10 @@ use identity::identifier::KeyIdentifier;
 use tracing::error;
 
 use crate::{
-    governance::model::Roles,
-    model::{
-        common::{emit_fail, get_gov, get_metadata},
-        event::Ledger,
-    },
-    request::manager::{RequestManager, RequestManagerMessage},
-    Event as KoreEvent, Signed,
+    governance::model::Roles, model::{
+        common::{emit_fail, get_gov},
+        event::{Ledger, ProtocolsSignatures},
+    }, request::manager::{RequestManager, RequestManagerMessage}, validation::proof::ValidationProof, Event as KoreEvent, Signed
 };
 
 pub mod distributor;
@@ -51,7 +48,8 @@ impl Distribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         signer: KeyIdentifier,
-        schema_id: &str,
+        last_proof: ValidationProof,
+        prev_event_validation_response: Vec<ProtocolsSignatures>
     ) -> Result<(), ActorError> {
         let child = ctx
             .create_child(
@@ -74,7 +72,8 @@ impl Distribution {
                 event,
                 node_key: signer,
                 our_key,
-                schema_id: schema_id.to_string(),
+                last_proof,
+                prev_event_validation_response
             })
             .await
     }
@@ -111,6 +110,8 @@ pub enum DistributionMessage {
         request_id: String,
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
+        last_proof: ValidationProof,
+        prev_event_validation_response: Vec<ProtocolsSignatures>
     },
     Response {
         sender: KeyIdentifier,
@@ -128,11 +129,7 @@ impl Handler<Distribution> for Distribution {
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
         match msg {
-            DistributionMessage::Create {
-                request_id,
-                event,
-                ledger,
-            } => {
+            DistributionMessage::Create {request_id,event,ledger, last_proof, prev_event_validation_response} => {
                 self.request_id = request_id;
                 let subject_id = ledger.content.subject_id.clone();
                 // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
@@ -148,26 +145,14 @@ impl Handler<Distribution> for Distribution {
                         }
                     };
 
-                let metadata =
-                    match get_metadata(ctx, &subject_id.to_string()).await {
-                        Ok(metadata) => metadata,
-                        Err(e) => {
-                            error!(
-                                TARGET_DISTRIBUTION,
-                                "Create, can not get metadata: {}", e
-                            );
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    };
-
-                let mut witnesses = if metadata.schema_id == "governance" {
+                let mut witnesses = if last_proof.schema_id == "governance" {
                     governance.members_to_key_identifier()
                 } else {
                     governance
                         .get_signers(
                             Roles::WITNESS,
-                            &metadata.schema_id,
-                            metadata.namespace,
+                            &last_proof.schema_id,
+                            last_proof.namespace.clone(),
                         )
                         .0
                 };
@@ -193,7 +178,8 @@ impl Handler<Distribution> for Distribution {
                         event.clone(),
                         ledger.clone(),
                         witness,
-                        &metadata.schema_id,
+                        last_proof.clone(),
+                        prev_event_validation_response.clone()
                     )
                     .await?
                 }

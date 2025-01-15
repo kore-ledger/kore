@@ -11,7 +11,6 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    db::Storable,
     governance::{model::Roles, Quorum},
     model::{
         common::{
@@ -26,8 +25,7 @@ use crate::{
     subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
 };
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, Handler, Message,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError, Handler, Message,
 };
 
 use async_trait::async_trait;

@@ -21,7 +21,7 @@ use crate::{
         EvaluationMessage,
     }, intermediary::Intermediary, model::{
         common::{
-            emit_fail, get_gov, get_metadata, get_sign, update_event
+            emit_fail, get_gov, get_metadata, get_sign, get_vali_data, update_event, update_vali_data
         },
         event::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError, ProtocolsSignatures
@@ -189,7 +189,7 @@ impl RequestManager {
             event_proof,
         };
 
-        let (last_proof, prev_event_validation_response) = self.get_vali_data(ctx).await?;
+        let (last_proof, prev_event_validation_response) = get_vali_data(ctx, &self.subject_id).await?;
 
         self.on_event(
             RequestManagerEvent::UpdateState {
@@ -202,62 +202,6 @@ impl RequestManager {
 
         self.send_validation(ctx, val_info.clone(), last_proof, prev_event_validation_response).await
     }
-
-    async fn get_vali_data(
-        &self,
-        ctx: &mut ActorContext<RequestManager>,
-    ) -> Result<(Option<ValidationProof>, Vec<ProtocolsSignatures>), ActorError> {
-        let vali_data_path =
-            ActorPath::from(format!("/user/node/{}/vali_data", self.subject_id));
-        let vali_data_actor: Option<ActorRef<ValiData>> =
-            ctx.system().get_actor(&vali_data_path).await;
-
-        let response = if let Some(vali_data_actor) = vali_data_actor {
-            vali_data_actor.ask(ValiDataMessage::GetLastValiData)
-                .await?
-        } else {
-            return Err(ActorError::NotFound(vali_data_path));
-        };
-
-        match response {
-            ValiDataResponse::LastValiData { previous_proof, prev_event_validation_response } => Ok((previous_proof, prev_event_validation_response)),
-            _ => {
-                Err(ActorError::UnexpectedResponse(
-                    vali_data_path,
-                    "ValiDataResponse::LastValiData".to_owned(),
-                ))
-            }
-        }
-    }
-
-    async fn post_vali_data(
-        &self,
-        ctx: &mut ActorContext<RequestManager>,
-        previous_proof: ValidationProof,
-        prev_event_validation_response: Vec<ProtocolsSignatures>
-    ) -> Result<(), ActorError> {
-        let vali_data_path =
-            ActorPath::from(format!("/user/node/{}/vali_data", self.subject_id));
-        let vali_data_actor: Option<ActorRef<ValiData>> =
-            ctx.system().get_actor(&vali_data_path).await;
-
-        let response = if let Some(vali_data_actor) = vali_data_actor {
-            vali_data_actor.ask(ValiDataMessage::UpdateValiData { previous_proof, prev_event_validation_response })
-                .await?
-        } else {
-            return Err(ActorError::NotFound(vali_data_path));
-        };
-
-        match response {
-            ValiDataResponse::Ok => Ok(()),
-            _ => {
-                Err(ActorError::UnexpectedResponse(
-                    vali_data_path,
-                    "ValiDataResponse::Ok".to_owned(),
-                ))
-            }
-        }
-    } 
 
     async fn approval(
         &mut self,
@@ -400,7 +344,7 @@ impl RequestManager {
             }
         };
 
-        if let Err(e) = self.post_vali_data(ctx, last_proof.clone(), prev_event_validation_response.clone()).await {
+        if let Err(e) = update_vali_data(ctx, last_proof.clone(), prev_event_validation_response.clone()).await {
             if let ActorError::Functional(_) = e {
                 return self.abort_request_manager(ctx, &e.to_string()).await;
             } else {
@@ -414,15 +358,15 @@ impl RequestManager {
                 state: RequestManagerState::Distribution {
                     event: signed_event.clone(),
                     ledger: signed_ledger.clone(),
-                    last_proof,
-                    prev_event_validation_response,
+                    last_proof: last_proof.clone(),
+                    prev_event_validation_response: prev_event_validation_response.clone(),
                 },
             },
             ctx,
         )
         .await;
 
-        self.init_distribution(ctx, signed_event, signed_ledger)
+        self.init_distribution(ctx, signed_event, signed_ledger, last_proof, prev_event_validation_response)
             .await
     }
 
@@ -431,6 +375,8 @@ impl RequestManager {
         ctx: &mut ActorContext<RequestManager>,
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
+        last_proof: ValidationProof,
+        prev_event_validation_response: Vec<ProtocolsSignatures>
     ) -> Result<(), ActorError> {
         info!(TARGET_MANAGER, "Init distribution {}", self.id);
         let distribution_path = ActorPath::from(format!(
@@ -446,6 +392,8 @@ impl RequestManager {
                     request_id: self.id.clone(),
                     event,
                     ledger,
+                    last_proof,
+                    prev_event_validation_response
                 })
                 .await?
         } else {
@@ -1054,7 +1002,7 @@ impl Handler<RequestManager> for RequestManager {
                     }
                     RequestManagerState::Distribution {event,ledger, last_proof, prev_event_validation_response } => {
                         if let Err(e) =
-                            self.init_distribution(ctx, event, ledger).await
+                            self.init_distribution(ctx, event, ledger, last_proof, prev_event_validation_response).await
                         {
                             error!(
                                 TARGET_MANAGER,

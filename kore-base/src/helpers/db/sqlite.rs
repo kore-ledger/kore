@@ -697,7 +697,7 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
 #[async_trait]
 impl Subscriber<ValiDataEvent> for SqliteLocal {
     async fn notify(&self, event: ValiDataEvent) {
-        let subject_id = event.previous_proof.subject_id.to_string();
+        let subject_id = event.last_proof.subject_id.to_string();
 
         let validators: HashSet<KeyIdentifier> = event.prev_event_validation_response
         .iter()

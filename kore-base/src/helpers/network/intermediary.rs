@@ -332,6 +332,8 @@ impl Intermediary {
                     ActorMessage::DistributionLastEventReq {
                         event,
                         ledger,
+                        last_proof,
+                        prev_event_validation_response,
                     } => {
                         // Distributor path.
                         let distributor_path =
@@ -372,6 +374,8 @@ impl Intermediary {
                                 event,
                                 ledger,
                                 info: message.info,
+                                last_proof,
+                                prev_event_validation_response
                             })
                             .await
                         {
@@ -508,6 +512,8 @@ impl Intermediary {
                     ActorMessage::DistributionLedgerRes {
                         ledger,
                         last_event,
+                        last_proof,
+                        prev_event_validation_response,
                     } => {
                         // Distributor path.
                         let distributor_path =
@@ -548,6 +554,8 @@ impl Intermediary {
                                 events: ledger,
                                 last_event,
                                 info: message.info,
+                                last_proof,
+                                prev_event_validation_response
                             })
                             .await
                         {

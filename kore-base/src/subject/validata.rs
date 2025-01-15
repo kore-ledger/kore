@@ -14,7 +14,7 @@ use actor::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
-use tracing::{error, warn};
+use tracing::error;
 
 use crate::db::Storable;
 
@@ -22,14 +22,14 @@ const TARGET_VALIDATA: &str = "Kore-Subject-ValiData";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ValiData {
-    previous_proof: Option<ValidationProof>,
+    last_proof: Option<ValidationProof>,
     prev_event_validation_response: Vec<ProtocolsSignatures>,
 }
 
 #[derive(Debug, Clone)]
 pub enum ValiDataMessage {
     UpdateValiData { 
-        previous_proof: ValidationProof,
+        last_proof: ValidationProof,
         prev_event_validation_response: Vec<ProtocolsSignatures>
     },
     GetLastValiData,
@@ -39,7 +39,7 @@ impl Message for ValiDataMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValiDataEvent {    
-    pub previous_proof: ValidationProof,
+    pub last_proof: ValidationProof,
     pub prev_event_validation_response: Vec<ProtocolsSignatures>
 }
 
@@ -48,7 +48,7 @@ impl Event for ValiDataEvent {}
 #[derive(Debug, Clone)]
 pub enum ValiDataResponse {
     LastValiData {
-        previous_proof: Option<ValidationProof>,
+        last_proof: Option<ValidationProof>,
         prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
     Ok,
@@ -87,16 +87,16 @@ impl Handler<ValiData> for ValiData {
         ctx: &mut ActorContext<ValiData>,
     ) -> Result<ValiDataResponse, ActorError> {
         match msg {
-            ValiDataMessage::UpdateValiData { previous_proof, prev_event_validation_response } => {
+            ValiDataMessage::UpdateValiData { last_proof, prev_event_validation_response } => {
                 self.on_event(
-                    ValiDataEvent { previous_proof, prev_event_validation_response },
+                    ValiDataEvent { last_proof, prev_event_validation_response },
                     ctx,
                 ).await;
 
                 Ok(ValiDataResponse::Ok)
             },
             ValiDataMessage::GetLastValiData =>
-                Ok(ValiDataResponse::LastValiData { previous_proof: self.previous_proof.clone(), prev_event_validation_response: self.prev_event_validation_response.clone() }),
+                Ok(ValiDataResponse::LastValiData { last_proof: self.last_proof.clone(), prev_event_validation_response: self.prev_event_validation_response.clone() }),
         }
     }
 
@@ -120,7 +120,7 @@ impl Handler<ValiData> for ValiData {
 #[async_trait]
 impl PersistentActor for ValiData {
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
-        self.previous_proof = Some(event.previous_proof.clone());
+        self.last_proof = Some(event.last_proof.clone());
         self.prev_event_validation_response = event.prev_event_validation_response.clone();
 
         Ok(())
