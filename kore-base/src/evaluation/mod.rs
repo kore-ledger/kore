@@ -281,7 +281,6 @@ impl Actor for Evaluation {
     type Response = ();
 }
 
-// TODO: revizar todos los errores, algunos pueden ser ActorError.
 #[async_trait]
 impl Handler<Evaluation> for Evaluation {
     async fn handle_message(

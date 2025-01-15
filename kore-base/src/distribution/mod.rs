@@ -32,12 +32,16 @@ pub struct Distribution {
     witnesses: HashSet<KeyIdentifier>,
     node_key: KeyIdentifier,
     request_id: String,
+    one_shot: bool,
+    manual: bool,
 }
 
 impl Distribution {
-    pub fn new(node_key: KeyIdentifier) -> Self {
+    pub fn new(node_key: KeyIdentifier, one_shot: bool, manual: bool) -> Self {
         Distribution {
             node_key,
+            one_shot,
+            manual,
             ..Default::default()
         }
     }
@@ -70,8 +74,15 @@ impl Distribution {
 
         let our_key = self.node_key.clone();
 
+        let request_id = if self.one_shot {
+            self.request_id.clone()
+        } else {
+            String::default()
+        };
+
         distributor_actor
             .tell(DistributorMessage::NetworkDistribution {
+                request_id,
                 ledger,
                 event,
                 node_key: signer,
@@ -86,16 +97,20 @@ impl Distribution {
         &self,
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
-        let req_path =
-            ActorPath::from(format!("/user/request/{}", self.request_id));
-        let req_actor: Option<ActorRef<RequestManager>> =
-            ctx.system().get_actor(&req_path).await;
-
-        if let Some(req_actor) = req_actor {
-            req_actor.tell(RequestManagerMessage::FinishRequest).await?;
+        if self.manual {
+            // TODO
         } else {
-            return Err(ActorError::NotFound(req_path));
-        };
+            let req_path =
+                ActorPath::from(format!("/user/request/{}", self.request_id));
+            let req_actor: Option<ActorRef<RequestManager>> =
+                ctx.system().get_actor(&req_path).await;
+
+            if let Some(req_actor) = req_actor {
+                req_actor.tell(RequestManagerMessage::FinishRequest).await?;
+            } else {
+                return Err(ActorError::NotFound(req_path));
+            };
+        }
 
         Ok(())
     }
@@ -142,7 +157,6 @@ impl Handler<Distribution> for Distribution {
             } => {
                 self.request_id = request_id;
                 let subject_id = ledger.content.subject_id.clone();
-                // TODO, a lo mejor en el comando de creación se pueden incluir el namespace y el schema
                 let governance =
                     match get_gov(ctx, &subject_id.to_string()).await {
                         Ok(gov) => gov,
@@ -204,6 +218,10 @@ impl Handler<Distribution> for Distribution {
                         );
                         return Err(emit_fail(ctx, e).await);
                     };
+
+                    if self.one_shot {
+                        ctx.stop().await;
+                    }
                 }
             }
         }

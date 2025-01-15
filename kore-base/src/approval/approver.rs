@@ -634,7 +634,7 @@ impl Handler<Approver> for Approver {
 
                     ctx.stop().await;
                 } else {
-                    // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
+                    warn!(TARGET_APPROVER, "NetworkResponse, A response has been received with a request id or a version different from the current one");
                 }
             }
             ApproverMessage::NetworkRequest { approval_req, info } => {

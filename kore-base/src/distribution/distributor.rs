@@ -500,6 +500,7 @@ pub enum DistributorMessage {
     },
     // Enviar a un nodo la replicación.
     NetworkDistribution {
+        request_id: String,
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
         node_key: KeyIdentifier,
@@ -750,6 +751,7 @@ impl Handler<Distributor> for Distributor {
                 };
             }
             DistributorMessage::NetworkDistribution {
+                request_id,
                 event,
                 node_key,
                 our_key,
@@ -764,7 +766,7 @@ impl Handler<Distributor> for Distributor {
 
                 let message = NetworkMessage {
                     info: ComunicateInfo {
-                        request_id: "".to_owned(),
+                        request_id,
                         version: 0,
                         sender: our_key,
                         reciver: node_key,
@@ -1027,6 +1029,12 @@ impl Handler<Distributor> for Distributor {
                     }
                 };
 
+                let objetive = if info.request_id.is_empty() {
+                    event.content.subject_id.to_string()
+                } else {
+                    info.request_id.clone()
+                };
+
                 let new_info = ComunicateInfo {
                     reciver: info.sender,
                     sender: info.reciver.clone(),
@@ -1034,7 +1042,7 @@ impl Handler<Distributor> for Distributor {
                     version: info.version,
                     reciver_actor: format!(
                         "/user/node/{}/distribution/{}",
-                        event.content.subject_id,
+                        objetive,
                         info.reciver.clone()
                     ),
                     schema: info.schema.clone(),

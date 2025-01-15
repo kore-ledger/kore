@@ -674,8 +674,6 @@ impl Handler<RequestHandler> for RequestHandler {
                 }))
             }
             RequestHandlerMessage::PopQueue { subject_id } => {
-                // TODO, Ver si los que usan derivator nos renta que lo tengan directamente en memoria,
-                // Para no estar pidiendolo a cada rato.
                 let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
                     *derivator
                 } else {

@@ -342,7 +342,7 @@ impl RequestManager {
         ledger: Ledger,
         last_proof: ValidationProof,
         prev_event_validation_response: Vec<ProtocolsSignatures>,
-    ) -> Result<(), ActorError> {
+    ) -> Result<(Signed<Ledger>, Signed<KoreEvent>), ActorError> {
         let signature_ledger =
             get_sign(ctx, SignTypesNode::Ledger(ledger.clone())).await?;
 
@@ -363,10 +363,9 @@ impl RequestManager {
 
         if let Err(e) = update_event(ctx, signed_event.clone()).await {
             if let ActorError::Functional(_) = e {
-                return self.abort_request_manager(ctx, &e.to_string()).await;
-            } else {
-                return Err(e);
+                self.abort_request_manager(ctx, &e.to_string()).await?;
             }
+            return Err(e)
         };
 
         if let Err(e) = update_vali_data(
@@ -377,10 +376,9 @@ impl RequestManager {
         .await
         {
             if let ActorError::Functional(_) = e {
-                return self.abort_request_manager(ctx, &e.to_string()).await;
-            } else {
-                return Err(e);
+                self.abort_request_manager(ctx, &e.to_string()).await?;
             }
+            return Err(e)
         };
 
         self.on_event(
@@ -398,14 +396,7 @@ impl RequestManager {
         )
         .await;
 
-        self.init_distribution(
-            ctx,
-            signed_event,
-            signed_ledger,
-            last_proof,
-            prev_event_validation_response,
-        )
-        .await
+        Ok((signed_ledger, signed_event))
     }
 
     async fn init_distribution(
@@ -433,12 +424,21 @@ impl RequestManager {
                     last_proof: Box::new(last_proof),
                     prev_event_validation_response,
                 })
-                .await?
+                .await
         } else {
-            return Err(ActorError::NotFound(distribution_path));
-        };
-
-        Ok(())
+            // Crear distribution
+            let distribution = Distribution::new(self.our_key.clone(), true, false);
+            let distribution_actor = ctx.create_child("distribution", distribution).await?;
+            distribution_actor
+            .tell(DistributionMessage::Create {
+                request_id: self.id.clone(),
+                event,
+                ledger,
+                last_proof: Box::new(last_proof),
+                prev_event_validation_response,
+            })
+            .await
+        }
     }
 
     async fn update_ledger(
@@ -1296,19 +1296,40 @@ impl Handler<RequestManager> for RequestManager {
                     &errors,
                 );
 
-                if let Err(e) = self
-                    .safe_ledger_event(
-                        ctx,
-                        event,
-                        ledger,
-                        *last_proof,
-                        signatures,
-                    )
-                    .await
-                {
+                let (signed_ledger, signed_event) = match self
+                .safe_ledger_event(
+                    ctx,
+                    event,
+                    ledger.clone(),
+                    *last_proof.clone(),
+                    signatures.clone(),
+                )
+                .await {
+                    Ok(signed_data) => signed_data,
+                    Err(e) => {
+                        error!(
+                            TARGET_MANAGER,
+                            "ValidationRes, Can not safe ledger or event: {}", e
+                        );
+                        if let ActorError::Functional(_) = e {
+                            return Err(e);
+                        } else {
+                            return Err(emit_fail(ctx, e).await)
+                        }
+                    }
+                };
+                
+                if let Err(e) = self.init_distribution(
+                    ctx,
+                    signed_event,
+                    signed_ledger,
+                    *last_proof,
+                    signatures,
+                )
+                .await {
                     error!(
                         TARGET_MANAGER,
-                        "ValidationRes, Can not safe ledger or event: {}", e
+                        "ValidationRes, Can not init distribution: {}", e
                     );
                     return Err(emit_fail(ctx, e).await);
                 }

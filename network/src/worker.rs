@@ -733,7 +733,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             })
                             .await
                     } else {
-                        // TODO: No se puede comunicar con el helper, se debe cerrar
                         error!(TARGET_WORKER, "Could not get network helper");
                         self.cancel.cancel();
                         return;
@@ -794,7 +793,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                 })
                                 .await
                         } else {
-                            // TODO: No se puede comunicar con el helper, se debe cerrar
                             self.cancel.cancel();
                             return;
                         };
@@ -846,7 +844,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                         })
                                         .await
                                 } else {
-                                    // TODO: No se puede comunicar con el helper, se debe cerrar
                                     self.cancel.cancel();
                                     return;
                                 };

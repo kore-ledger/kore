@@ -300,7 +300,6 @@ impl Runner {
         schemas: &[Schema],
         mut policies_names: HashSet<String>,
     ) -> Result<(), Error> {
-        // También se tiene que comprobar que los estados iniciales sean válidos según el json_schema, TODO
         for schema in schemas {
             if &schema.id == "governance" {
                 return Err(Error::Runner(

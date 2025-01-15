@@ -334,7 +334,6 @@ impl PersistentActor for Node {
     }
 }
 
-// TODO: SI algo falla cuando un sujeto es temporal hay que eliminarlo y limpiar la base de datos.
 #[async_trait]
 impl Handler<Node> for Node {
     async fn handle_message(

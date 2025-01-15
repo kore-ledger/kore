@@ -377,7 +377,7 @@ impl Subject {
         let evaluation = Evaluation::new(our_key.clone());
         ctx.create_child("evaluation", evaluation).await?;
 
-        let distribution = Distribution::new(our_key);
+        let distribution = Distribution::new(our_key, false, false);
         ctx.create_child("distribution", distribution).await?;
 
         Ok(())
@@ -649,7 +649,7 @@ impl Subject {
         let sink = Sink::new(approver_actor.subscribe(), ext_db.get_approver());
         ctx.system().run_sink(sink).await;
 
-        let distribution = Distribution::new(our_key.clone());
+        let distribution = Distribution::new(our_key.clone(), false, false);
         ctx.create_child("distribution", distribution).await?;
 
         Ok(())
