@@ -44,15 +44,9 @@ pub enum Error {
     /// SN error.
     #[error("SN error: Incorrect sn ledger")]
     Sn,
-    /// Register error.
-    #[error("Register error: {0}")]
-    Register(String),
     /// Auth error.
-    #[error("Auth error: {0}")]
-    Auth(String),
-    /// Query error.
-    #[error("Query error: {0}")]
-    Query(String),
+    #[error("Api error: {0}")]
+    Api(String),
     /// Node error.
     #[error("Node error: {0}")]
     Node(String),
@@ -62,9 +56,6 @@ pub enum Error {
     /// Password
     #[error("Password error: {0}")]
     Password(String),
-    /// Request Handler
-    #[error("Request handler error: {0}")]
-    RequestHandler(String),
     /// Governance error.
     #[error("Governance error: {0}")]
     Governance(String),

@@ -28,20 +28,26 @@ pub mod distributor;
 const TARGET_DISTRIBUTION: &str = "Kore-Distribution";
 
 #[derive(Default)]
+pub enum DistributionType {
+    Manual,
+    #[default]
+    Subject,
+    Request
+}
+
+#[derive(Default)]
 pub struct Distribution {
     witnesses: HashSet<KeyIdentifier>,
     node_key: KeyIdentifier,
     request_id: String,
-    one_shot: bool,
-    manual: bool,
+    dis_type: DistributionType,
 }
 
 impl Distribution {
-    pub fn new(node_key: KeyIdentifier, one_shot: bool, manual: bool) -> Self {
+    pub fn new(node_key: KeyIdentifier, dis_type: DistributionType) -> Self {
         Distribution {
             node_key,
-            one_shot,
-            manual,
+            dis_type,
             ..Default::default()
         }
     }
@@ -74,10 +80,10 @@ impl Distribution {
 
         let our_key = self.node_key.clone();
 
-        let request_id = if self.one_shot {
-            self.request_id.clone()
-        } else {
+        let request_id = if let DistributionType::Subject = self.dis_type {
             String::default()
+        } else {
+            self.request_id.clone()
         };
 
         distributor_actor
@@ -97,11 +103,11 @@ impl Distribution {
         &self,
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
-        if self.manual {
-            // TODO
+
+        if let DistributionType::Manual = self.dis_type {
         } else {
             let req_path =
-                ActorPath::from(format!("/user/request/{}", self.request_id));
+            ActorPath::from(format!("/user/request/{}", self.request_id));
             let req_actor: Option<ActorRef<RequestManager>> =
                 ctx.system().get_actor(&req_path).await;
 
@@ -111,7 +117,7 @@ impl Distribution {
                 return Err(ActorError::NotFound(req_path));
             };
         }
-
+    
         Ok(())
     }
 }
@@ -219,9 +225,9 @@ impl Handler<Distribution> for Distribution {
                         return Err(emit_fail(ctx, e).await);
                     };
 
-                    if self.one_shot {
+                    if let DistributionType::Subject = self.dis_type {} else {
                         ctx.stop().await;
-                    }
+                    };
                 }
             }
         }

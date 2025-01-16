@@ -24,7 +24,7 @@ use crate::{
     governance::model::{CreatorQuantity, Roles},
     helpers::db::ExternalDB,
     init_state,
-    model::common::{get_gov, get_metadata, get_quantity},
+    model::common::{get_gov, get_metadata, get_quantity, subject_owner},
     subject::{CreateSubjectData, SubjectID},
     CreateRequest, EventRequest, HashId, Node, NodeMessage, NodeResponse,
     Signed, DIGEST_DERIVATOR,
@@ -55,31 +55,6 @@ impl RequestHandler {
             node_key,
             handling: HashMap::new(),
             in_queue: HashMap::new(),
-        }
-    }
-
-    async fn subject_owner(
-        ctx: &mut ActorContext<RequestHandler>,
-        subject_id: &str,
-    ) -> Result<bool, ActorError> {
-        let node_path = ActorPath::from("/user/node");
-        let node_actor: Option<actor::ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        let response = if let Some(node_actor) = node_actor {
-            node_actor
-                .ask(NodeMessage::AmISubjectOwner(subject_id.to_owned()))
-                .await?
-        } else {
-            return Err(ActorError::NotFound(node_path));
-        };
-
-        match response {
-            NodeResponse::AmIOwner(owner) => Ok(owner),
-            _ => Err(ActorError::UnexpectedResponse(
-                node_path,
-                "NodeResponse::AmIOwner".to_owned(),
-            )),
         }
     }
 
@@ -587,7 +562,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 }
 
                 // Primero check que seamos el owner.
-                let owner = match Self::subject_owner(
+                let owner = match subject_owner(
                     ctx,
                     &subject_id.to_string(),
                 )

@@ -13,21 +13,11 @@ use relationship::RelationShip;
 use tracing::{error, warn};
 
 use crate::{
-    auth::{Auth, AuthMessage, AuthResponse},
-    config::Config,
-    db::Storable,
-    distribution::distributor::Distributor,
-    governance::init::init_state,
-    helpers::{db::ExternalDB, sink::KoreSink},
-    model::{
-        event::Ledger,
-        event::LedgerValue,
+    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, governance::init::init_state, helpers::{db::ExternalDB, sink::KoreSink}, manual_distribution::ManualUpdate, model::{
+        event::{Ledger, LedgerValue},
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    },
-    subject::CreateSubjectData,
-    Error, EventRequest, Subject, SubjectMessage, SubjectResponse,
-    DIGEST_DERIVATOR,
+    }, subject::CreateSubjectData, Error, EventRequest, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -279,6 +269,9 @@ impl Actor for Node {
 
         let node_key = NodeKey::new(self.owner());
         ctx.create_child("key", node_key).await?;
+
+        let manual_dis = ManualUpdate::new(self.owner());
+        ctx.create_child("manual_dis", manual_dis).await?;
 
         self.create_subjects(ctx).await?;
 

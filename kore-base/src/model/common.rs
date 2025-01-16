@@ -116,6 +116,34 @@ where
     }
 }
 
+pub async fn subject_owner<A>(
+    ctx: &mut ActorContext<A>,
+    subject_id: &str,
+) -> Result<bool, ActorError> 
+where 
+    A: Actor + Handler<A>,
+{
+    let node_path = ActorPath::from("/user/node");
+    let node_actor: Option<actor::ActorRef<Node>> =
+        ctx.system().get_actor(&node_path).await;
+
+    let response = if let Some(node_actor) = node_actor {
+        node_actor
+            .ask(NodeMessage::AmISubjectOwner(subject_id.to_owned()))
+            .await?
+    } else {
+        return Err(ActorError::NotFound(node_path));
+    };
+
+    match response {
+        NodeResponse::AmIOwner(owner) => Ok(owner),
+        _ => Err(ActorError::UnexpectedResponse(
+            node_path,
+            "NodeResponse::AmIOwner".to_owned(),
+        )),
+    }
+}
+
 pub async fn get_metadata<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,

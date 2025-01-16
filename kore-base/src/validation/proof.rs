@@ -89,6 +89,7 @@ pub struct ValidationProof {
     pub event_hash: DigestIdentifier,
     /// The version of the governance contract used to validate the subject.
     pub governance_version: u64,
+    pub owner: KeyIdentifier,
     pub event: EventProof,
 }
 
@@ -106,6 +107,7 @@ impl Default for ValidationProof {
             public_key: KeyIdentifier::default(),
             genesis_governance_version: 0,
             event: EventProof::Create,
+            owner: KeyIdentifier::default()
         }
     }
 }
@@ -155,6 +157,7 @@ impl ValidationProof {
             public_key: info.metadata.subject_public_key.clone(),
             genesis_governance_version: info.metadata.genesis_gov_version,
             event: info.event_proof.content.event_proof.clone(),
+            owner: info.metadata.owner.clone()
         };
 
         match request {

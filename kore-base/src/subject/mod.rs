@@ -11,7 +11,7 @@ use crate::{
     },
     config::Config,
     db::Storable,
-    distribution::{distributor::Distributor, Distribution},
+    distribution::{distributor::Distributor, Distribution, DistributionType},
     evaluation::{
         compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
@@ -377,7 +377,7 @@ impl Subject {
         let evaluation = Evaluation::new(our_key.clone());
         ctx.create_child("evaluation", evaluation).await?;
 
-        let distribution = Distribution::new(our_key, false, false);
+        let distribution = Distribution::new(our_key, DistributionType::Subject);
         ctx.create_child("distribution", distribution).await?;
 
         Ok(())
@@ -649,7 +649,7 @@ impl Subject {
         let sink = Sink::new(approver_actor.subscribe(), ext_db.get_approver());
         ctx.system().run_sink(sink).await;
 
-        let distribution = Distribution::new(our_key.clone(), false, false);
+        let distribution = Distribution::new(our_key.clone(), DistributionType::Subject);
         ctx.create_child("distribution", distribution).await?;
 
         Ok(())
@@ -1832,6 +1832,51 @@ impl Subject {
 
         Ok(new_compilers)
     }
+
+    async fn get_ledger_data(&self, ctx: &mut ActorContext<Subject>, last_sn: u64) -> Result<SubjectResponse, ActorError>{
+        let ledger = self.get_ledger(ctx, last_sn).await?;
+
+                if ledger.len() < 100 {
+                    let last_event =
+                        get_last_event(ctx, &self.subject_id.to_string())
+                            .await
+                            .map_err(|e| {
+                                error!(
+                                    TARGET_SUBJECT,
+                                    "GetLedger, can not get last event: {}", e
+                                );
+                                e
+                            })?;
+
+                    let (last_proof, prev_event_validation_response) =
+                        get_vali_data(ctx, &self.subject_id.to_string())
+                            .await
+                            .map_err(|e| {
+                                error!(
+                                    TARGET_SUBJECT,
+                                    "GetLedger, can not get last vali data: {}",
+                                    e
+                                );
+                                e
+                            })?;
+
+                    Ok(SubjectResponse::Ledger {
+                        ledger,
+                        last_event: Some(last_event),
+                        last_proof: Box::new(last_proof),
+                        prev_event_validation_response: Some(
+                            prev_event_validation_response,
+                        ),
+                    })
+                } else {
+                    Ok(SubjectResponse::Ledger {
+                        ledger,
+                        last_event: None,
+                        last_proof: Box::new(None),
+                        prev_event_validation_response: None,
+                    })
+                }
+    }
 }
 
 impl Clone for Subject {
@@ -1862,6 +1907,7 @@ pub enum SubjectMessage {
     GetLedger {
         last_sn: u64,
     },
+    GetLastLedger,
     UpdateLedger {
         events: Vec<Signed<Ledger>>,
     },
@@ -1997,48 +2043,10 @@ impl Handler<Subject> for Subject {
                 Ok(SubjectResponse::NewCompilers(new_compilers))
             }
             SubjectMessage::GetLedger { last_sn } => {
-                let ledger = self.get_ledger(ctx, last_sn).await?;
-
-                if ledger.len() < 100 {
-                    let last_event =
-                        get_last_event(ctx, &self.subject_id.to_string())
-                            .await
-                            .map_err(|e| {
-                                error!(
-                                    TARGET_SUBJECT,
-                                    "GetLedger, can not get last event: {}", e
-                                );
-                                e
-                            })?;
-
-                    let (last_proof, prev_event_validation_response) =
-                        get_vali_data(ctx, &self.subject_id.to_string())
-                            .await
-                            .map_err(|e| {
-                                error!(
-                                    TARGET_SUBJECT,
-                                    "GetLedger, can not get last vali data: {}",
-                                    e
-                                );
-                                e
-                            })?;
-
-                    Ok(SubjectResponse::Ledger {
-                        ledger,
-                        last_event: Some(last_event),
-                        last_proof: Box::new(last_proof),
-                        prev_event_validation_response: Some(
-                            prev_event_validation_response,
-                        ),
-                    })
-                } else {
-                    Ok(SubjectResponse::Ledger {
-                        ledger,
-                        last_event: None,
-                        last_proof: Box::new(None),
-                        prev_event_validation_response: None,
-                    })
-                }
+                self.get_ledger_data(ctx, last_sn).await
+            }
+            SubjectMessage::GetLastLedger => {
+                self.get_ledger_data(ctx, self.sn).await
             }
             SubjectMessage::GetOwner => {
                 Ok(SubjectResponse::Owner(self.owner.clone()))

@@ -248,6 +248,15 @@ impl Bridge {
         self.api.all_subjs(gov_id, active, schema).await
     }
 
+    pub async fn manual_update(
+        &self,
+        subject_id: String,
+    ) -> Result<String, Error> {
+        let subject_id = DigestIdentifier::from_str(&subject_id)
+            .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
+        self.api.manual_update(subject_id).await
+    }
+
     pub async fn get_events(
         &self,
         subject_id: String,

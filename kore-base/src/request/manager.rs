@@ -19,7 +19,7 @@ use crate::{
     approval::{Approval, ApprovalMessage},
     auth::{Auth, AuthMessage, AuthResponse, AuthWitness},
     db::Storable,
-    distribution::{Distribution, DistributionMessage},
+    distribution::{Distribution, DistributionMessage, DistributionType},
     evaluation::{
         request::EvaluationReq, response::EvalLedgerResponse, Evaluation,
         EvaluationMessage,
@@ -427,7 +427,7 @@ impl RequestManager {
                 .await
         } else {
             // Crear distribution
-            let distribution = Distribution::new(self.our_key.clone(), true, false);
+            let distribution = Distribution::new(self.our_key.clone(), DistributionType::Request);
             let distribution_actor = ctx.create_child("distribution", distribution).await?;
             distribution_actor
             .tell(DistributionMessage::Create {
