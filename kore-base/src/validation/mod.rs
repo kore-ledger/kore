@@ -11,7 +11,6 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    db::Storable,
     governance::{model::Roles, Quorum},
     model::{
         common::{
@@ -27,7 +26,7 @@ use crate::{
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, Handler, Message,
+    Handler, Message,
 };
 
 use async_trait::async_trait;
@@ -36,7 +35,6 @@ use proof::ValidationProof;
 use request::ValidationReq;
 use response::ValidationRes;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
 use tracing::{error, warn};
 use validator::{Validator, ValidatorMessage};
 
@@ -72,9 +70,6 @@ pub struct Validation {
     request_id: String,
     version: u64,
 
-    previous_proof: Option<ValidationProof>,
-    prev_event_validation_response: Vec<ProtocolsSignatures>,
-
     reboot: bool,
 }
 
@@ -104,9 +99,11 @@ impl Validation {
         &self,
         ctx: &mut ActorContext<Validation>,
         validation_info: ValidationInfo,
+        previous_proof: Option<ValidationProof>,
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     ) -> Result<(ValidationReq, ValidationProof), ActorError> {
         let prev_evet_hash =
-            if let Some(previous_proof) = self.previous_proof.clone() {
+            if let Some(previous_proof) = previous_proof.clone() {
                 previous_proof.event_hash
             } else {
                 DigestIdentifier::default()
@@ -149,9 +146,8 @@ impl Validation {
             ValidationReq {
                 proof: proof.clone(),
                 subject_signature,
-                previous_proof: self.previous_proof.clone(),
-                prev_event_validation_response: self
-                    .prev_event_validation_response
+                previous_proof: previous_proof.clone(),
+                prev_event_validation_response: prev_event_validation_response
                     .clone(),
             },
             proof,
@@ -169,7 +165,11 @@ impl Validation {
         let child = ctx
             .create_child(
                 &format!("{}", signer),
-                Validator::new(self.request_id.to_owned(),self.version, signer.clone()),
+                Validator::new(
+                    self.request_id.to_owned(),
+                    self.version,
+                    signer.clone(),
+                ),
             )
             .await;
         let validator_actor = match child {
@@ -217,12 +217,8 @@ impl Validation {
             };
             "who: ALL, error: No validator was able to validate the event."
                 .clone_into(&mut error);
-            try_to_update(
-                self.validators_response.clone(),
-                ctx,
-                gov_id,
-            )
-            .await?;
+            try_to_update(self.validators_response.clone(), ctx, gov_id)
+                .await?;
         }
 
         let req_path =
@@ -234,6 +230,7 @@ impl Validation {
             req_actor
                 .tell(RequestManagerMessage::ValidationRes {
                     result,
+                    last_proof: Box::new(self.actual_proof.clone()),
                     signatures: self.validators_response.clone(),
                     errors: error,
                 })
@@ -252,8 +249,9 @@ pub enum ValidationMessage {
         request_id: String,
         version: u64,
         info: ValidationInfo,
+        last_proof: Option<ValidationProof>,
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
-
     Response {
         validation_res: ValidationRes,
         sender: KeyIdentifier,
@@ -262,34 +260,24 @@ pub enum ValidationMessage {
 
 impl Message for ValidationMessage {}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationEvent {
-    pub actual_proof: ValidationProof,
-    pub actual_event_validation_response: Vec<ProtocolsSignatures>,
-}
-
-impl Event for ValidationEvent {}
-
 #[async_trait]
 impl Actor for Validation {
-    type Event = ValidationEvent;
+    type Event = ();
     type Message = ValidationMessage;
     type Response = ();
 
     async fn pre_start(
         &mut self,
-        ctx: &mut ActorContext<Self>,
+        _ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        let prefix = ctx.path().parent().key();
-        self.init_store("validation", Some(prefix), false, ctx)
-            .await
+        Ok(())
     }
 
     async fn pre_stop(
         &mut self,
-        ctx: &mut ActorContext<Self>,
+        _ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.stop_store(ctx).await
+        Ok(())
     }
 }
 
@@ -302,19 +290,31 @@ impl Handler<Validation> for Validation {
         ctx: &mut ActorContext<Validation>,
     ) -> Result<(), ActorError> {
         match msg {
-            ValidationMessage::Create { request_id, info, version } => {
-                let (validation_req, proof) =
-                    match self.create_validation_req(ctx, info.clone()).await {
-                        Ok(validation_req) => validation_req,
-                        Err(e) => {
-                            error!(
-                                TARGET_VALIDATION,
-                                "Create, can not create validation request: {}",
-                                e
-                            );
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    };
+            ValidationMessage::Create {
+                request_id,
+                info,
+                version,
+                last_proof,
+                prev_event_validation_response,
+            } => {
+                let (validation_req, proof) = match self
+                    .create_validation_req(
+                        ctx,
+                        info.clone(),
+                        last_proof,
+                        prev_event_validation_response,
+                    )
+                    .await
+                {
+                    Ok(validation_req) => validation_req,
+                    Err(e) => {
+                        error!(
+                            TARGET_VALIDATION,
+                            "Create, can not create validation request: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
+                };
                 self.actual_proof = proof;
 
                 // Get signers and quorum
@@ -426,18 +426,6 @@ impl Handler<Validation> for Validation {
                             self.validators_response.len() as u32,
                         ) && self.valid_validation
                         {
-                            // The quorum was met, we persisted, and we applied the status
-                            self.on_event(
-                                ValidationEvent {
-                                    actual_proof: self.actual_proof.clone(),
-                                    actual_event_validation_response: self
-                                        .validators_response
-                                        .clone(),
-                                },
-                                ctx,
-                            )
-                            .await;
-
                             if let Err(e) =
                                 self.send_validation_to_req(ctx, true).await
                             {
@@ -446,16 +434,6 @@ impl Handler<Validation> for Validation {
                             };
                         } else if self.validators.is_empty() {
                             // we have received all the responses and the quorum has not been met
-                            self.on_event(
-                                ValidationEvent {
-                                    actual_proof: self.actual_proof.clone(),
-                                    actual_event_validation_response: self
-                                        .validators_response
-                                        .clone(),
-                                },
-                                ctx,
-                            )
-                            .await;
 
                             if let Err(e) =
                                 self.send_validation_to_req(ctx, false).await
@@ -472,19 +450,6 @@ impl Handler<Validation> for Validation {
         };
         Ok(())
     }
-    async fn on_event(
-        &mut self,
-        event: ValidationEvent,
-        ctx: &mut ActorContext<Validation>,
-    ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
-            error!(
-                TARGET_VALIDATION,
-                "OnEvent, can not persist information: {}", e
-            );
-            emit_fail(ctx, e).await;
-        };
-    }
 
     async fn on_child_fault(
         &mut self,
@@ -496,19 +461,6 @@ impl Handler<Validation> for Validation {
         ChildAction::Stop
     }
 }
-
-#[async_trait]
-impl PersistentActor for Validation {
-    fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
-        self.prev_event_validation_response
-            .clone_from(&event.actual_event_validation_response);
-        self.previous_proof = Some(event.actual_proof.clone());
-
-        Ok(())
-    }
-}
-
-impl Storable for Validation {}
 
 #[cfg(test)]
 pub mod tests {
@@ -599,7 +551,6 @@ pub mod tests {
             panic!("Invalid response")
         };
 
-
         tokio::time::sleep(Duration::from_millis(1000)).await;
         let NodeResponse::Subjects(subjects) =
             node_actor.ask(NodeMessage::GetSubjects).await.unwrap()
@@ -610,10 +561,7 @@ pub mod tests {
         let owned_subj = subjects.owned_subjects[0].clone();
 
         let subject_actor: ActorRef<Subject> = system
-            .get_actor(&ActorPath::from(format!(
-                "/user/node/{}",
-                owned_subj
-            )))
+            .get_actor(&ActorPath::from(format!("/user/node/{}", owned_subj)))
             .await
             .unwrap();
 
@@ -704,6 +652,7 @@ pub mod tests {
     }
 
     #[tokio::test]
+    #[tracing_test::traced_test]
     async fn test_eol_req() {
         let (
             _system,
@@ -744,7 +693,7 @@ pub mod tests {
             panic!("Invalid response")
         };
 
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::time::sleep(Duration::from_secs(3)).await;
 
         let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
             .ask(LedgerEventMessage::GetLastEvent)

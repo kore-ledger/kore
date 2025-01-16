@@ -121,7 +121,9 @@ impl Governance {
 
                 match rol.who.clone() {
                     Who::MEMBERS => {
-                        return true;
+                        if self.is_member(user) {
+                            return true;
+                        }
                     }
                     Who::ID { ID } => {
                         if user == ID {
@@ -537,8 +539,10 @@ impl Governance {
                 match &rol.who {
                     Who::ID { ID } => return &id.to_string() == ID,
                     Who::NAME { NAME } => return name == NAME,
-                    Who::MEMBERS => return self.is_member(&id),
-                    Who::NOT_MEMBERS => return !self.is_member(&id),
+                    Who::MEMBERS => return self.is_member(&id.to_string()),
+                    Who::NOT_MEMBERS => {
+                        return !self.is_member(&id.to_string())
+                    }
                 }
             }
         }
@@ -546,9 +550,9 @@ impl Governance {
     }
 
     /// Check if the key is a member.
-    fn is_member(&self, id: &KeyIdentifier) -> bool {
+    fn is_member(&self, id: &str) -> bool {
         for member in &self.members {
-            if member.id == id.to_string() {
+            if member.id == id {
                 return true;
             }
         }
@@ -561,8 +565,8 @@ impl TryFrom<ValueWrapper> for Governance {
 
     fn try_from(value: ValueWrapper) -> Result<Self, Self::Error> {
         let governance: Governance =
-            serde_json::from_value(value.0).map_err(|_| {
-                Error::Governance("Governance model not found.".to_owned())
+            serde_json::from_value(value.0).map_err(|e| {
+                Error::Governance(format!("Can not convert Value into Governance: {}", e))
             })?;
         Ok(governance)
     }

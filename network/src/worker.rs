@@ -733,7 +733,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             })
                             .await
                     } else {
-                        // TODO: No se puede comunicar con el helper, se debe cerrar
                         error!(TARGET_WORKER, "Could not get network helper");
                         self.cancel.cancel();
                         return;
@@ -794,7 +793,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                 })
                                 .await
                         } else {
-                            // TODO: No se puede comunicar con el helper, se debe cerrar
                             self.cancel.cancel();
                             return;
                         };
@@ -846,7 +844,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                         })
                                         .await
                                 } else {
-                                    // TODO: No se puede comunicar con el helper, se debe cerrar
                                     self.cancel.cancel();
                                     return;
                                 };
@@ -986,7 +983,11 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                     self.swarm.add_external_address(address);
                 }
             }
-            SwarmEvent::OutgoingConnectionError { error, peer_id, connection_id} => match error {
+            SwarmEvent::OutgoingConnectionError {
+                error,
+                peer_id,
+                connection_id,
+            } => match error {
                 DialError::Transport(errors) => {
                     for (address, error) in errors {
                         // TODO: revisar si se debe enviar un evento de error por puertos ocupados

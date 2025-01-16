@@ -56,7 +56,11 @@ pub struct Validator {
 
 impl Validator {
     pub fn new(request_id: String, version: u64, node: KeyIdentifier) -> Self {
-        Validator { request_id, version, node }
+        Validator {
+            request_id,
+            version,
+            node,
+        }
     }
 
     fn check_event_proof(
@@ -119,8 +123,7 @@ impl Validator {
         };
 
         if previous_proof.event != EventProof::Confirm
-            && previous_proof.subject_public_key
-                != subject_signature.signer.clone()
+            && previous_proof.public_key != subject_signature.signer.clone()
         {
             return Err(ActorError::Functional("Previous event proof is not a confirm event but subject signer and old previous subject is not the same".to_owned()));
         }
@@ -213,8 +216,6 @@ impl Validator {
     ) -> Result<(), ActorError> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
-            // subject_public_key is not verified because it can change if a transfer of the subject is made. is correct?
-            // Governance_version can be the same or not, if in the last event gov was changed
             if previous_proof.event_hash != new_proof.prev_event_hash
                 || previous_proof.sn + 1 != new_proof.sn
                 || previous_proof.genesis_governance_version
@@ -318,7 +319,7 @@ pub enum ValidatorMessage {
     NetworkResponse {
         validation_res: Signed<ValidationRes>,
         request_id: String,
-        version: u64
+        version: u64,
     },
     NetworkRequest {
         validation_req: Box<Signed<ValidationReq>>,
@@ -465,7 +466,7 @@ impl Handler<Validator> for Validator {
             ValidatorMessage::NetworkResponse {
                 validation_res,
                 request_id,
-                version
+                version,
             } => {
                 if request_id == self.request_id && version == self.version {
                     if self.node != validation_res.signature.signer {

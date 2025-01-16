@@ -11,7 +11,7 @@ use crate::{
     },
     config::Config,
     db::Storable,
-    distribution::{distributor::Distributor, Distribution},
+    distribution::{distributor::Distributor, Distribution, DistributionType},
     evaluation::{
         compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
@@ -25,10 +25,10 @@ use crate::{
     helpers::db::ExternalDB,
     model::{
         common::{
-            delete_relation, emit_fail, get_gov, get_last_event,
+            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
             register_relation, verify_protocols_state,
         },
-        event::{Event as KoreEvent, Ledger, LedgerValue},
+        event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
         HashId, Namespace, SignTypesSubject, ValueWrapper,
@@ -39,6 +39,7 @@ use crate::{
         NodeMessage, NodeResponse,
     },
     validation::{
+        proof::ValidationProof,
         schema::{ValidationSchema, ValidationSchemaMessage},
         validator::Validator,
         Validation,
@@ -66,11 +67,13 @@ use serde_json::to_value;
 use sinkdata::{SinkData, SinkDataMessage};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, warn};
+use validata::ValiData;
 
 use std::{collections::HashSet, str::FromStr};
 
 pub mod event;
 pub mod sinkdata;
+pub mod validata;
 
 const TARGET_SUBJECT: &str = "Kore-Subject";
 
@@ -374,7 +377,7 @@ impl Subject {
         let evaluation = Evaluation::new(our_key.clone());
         ctx.create_child("evaluation", evaluation).await?;
 
-        let distribution = Distribution::new(our_key);
+        let distribution = Distribution::new(our_key, DistributionType::Subject);
         ctx.create_child("distribution", distribution).await?;
 
         Ok(())
@@ -646,7 +649,7 @@ impl Subject {
         let sink = Sink::new(approver_actor.subscribe(), ext_db.get_approver());
         ctx.system().run_sink(sink).await;
 
-        let distribution = Distribution::new(our_key.clone());
+        let distribution = Distribution::new(our_key.clone(), DistributionType::Subject);
         ctx.create_child("distribution", distribution).await?;
 
         Ok(())
@@ -1188,7 +1191,7 @@ impl Subject {
                 self.verify_first_ledger_event(events[0].clone()).await
             {
                 self.delete_subject(ctx, false).await?;
-            
+
                 return Err(ActorError::Functional(e.to_string()));
             }
 
@@ -1277,29 +1280,41 @@ impl Subject {
         Ok(())
     }
 
-    pub async fn delet_node_subject(ctx: &mut ActorContext<Subject>, owner: &str, subject_id: &str) -> Result<(), ActorError>
-{
-    let node_path = ActorPath::from("/user/node");
-    let node_actor: Option<ActorRef<Node>> =
-        ctx.system().get_actor(&node_path).await;
+    pub async fn delet_node_subject(
+        ctx: &mut ActorContext<Subject>,
+        owner: &str,
+        subject_id: &str,
+    ) -> Result<(), ActorError> {
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
 
-    // We obtain the validator
-    let node_response = if let Some(node_actor) = node_actor {
-        node_actor.ask(NodeMessage::DeleteSubject { owner: owner.to_owned(), subject_id: subject_id.to_owned() }).await?
-    } else {
-        return Err(ActorError::NotFound(node_path));
-    };
+        // We obtain the validator
+        let node_response = if let Some(node_actor) = node_actor {
+            node_actor
+                .ask(NodeMessage::DeleteSubject {
+                    owner: owner.to_owned(),
+                    subject_id: subject_id.to_owned(),
+                })
+                .await?
+        } else {
+            return Err(ActorError::NotFound(node_path));
+        };
 
-    match node_response {
-        NodeResponse::None => Ok(()),
-        _ => Err(ActorError::UnexpectedResponse(
-            node_path,
-            "NodeResponse::None".to_owned(),
-        )),
+        match node_response {
+            NodeResponse::None => Ok(()),
+            _ => Err(ActorError::UnexpectedResponse(
+                node_path,
+                "NodeResponse::None".to_owned(),
+            )),
+        }
     }
-}
 
-    async fn delete_subject(&self, ctx: &mut ActorContext<Subject>, relation: bool) -> Result<(), ActorError> {
+    async fn delete_subject(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        relation: bool,
+    ) -> Result<(), ActorError> {
         if relation {
             delete_relation(
                 ctx,
@@ -1311,13 +1326,18 @@ impl Subject {
             )
             .await?;
         }
-    
-        Self::delet_node_subject(ctx, &self.subject_id.to_string(), &self.owner.to_string()).await?;
+
+        Self::delet_node_subject(
+            ctx,
+            &self.subject_id.to_string(),
+            &self.owner.to_string(),
+        )
+        .await?;
 
         Self::purge_storage(ctx).await?;
 
         ctx.stop().await;
-        
+
         Ok(())
     }
 
@@ -1812,6 +1832,51 @@ impl Subject {
 
         Ok(new_compilers)
     }
+
+    async fn get_ledger_data(&self, ctx: &mut ActorContext<Subject>, last_sn: u64) -> Result<SubjectResponse, ActorError>{
+        let ledger = self.get_ledger(ctx, last_sn).await?;
+
+                if ledger.len() < 100 {
+                    let last_event =
+                        get_last_event(ctx, &self.subject_id.to_string())
+                            .await
+                            .map_err(|e| {
+                                error!(
+                                    TARGET_SUBJECT,
+                                    "GetLedger, can not get last event: {}", e
+                                );
+                                e
+                            })?;
+
+                    let (last_proof, prev_event_validation_response) =
+                        get_vali_data(ctx, &self.subject_id.to_string())
+                            .await
+                            .map_err(|e| {
+                                error!(
+                                    TARGET_SUBJECT,
+                                    "GetLedger, can not get last vali data: {}",
+                                    e
+                                );
+                                e
+                            })?;
+
+                    Ok(SubjectResponse::Ledger {
+                        ledger,
+                        last_event: Some(last_event),
+                        last_proof: Box::new(last_proof),
+                        prev_event_validation_response: Some(
+                            prev_event_validation_response,
+                        ),
+                    })
+                } else {
+                    Ok(SubjectResponse::Ledger {
+                        ledger,
+                        last_event: None,
+                        last_proof: Box::new(None),
+                        prev_event_validation_response: None,
+                    })
+                }
+    }
 }
 
 impl Clone for Subject {
@@ -1842,6 +1907,7 @@ pub enum SubjectMessage {
     GetLedger {
         last_sn: u64,
     },
+    GetLastLedger,
     UpdateLedger {
         events: Vec<Signed<Ledger>>,
     },
@@ -1850,7 +1916,7 @@ pub enum SubjectMessage {
     /// Get governance if subject is a governance
     GetGovernance,
     GetOwner,
-    DeleteSubject
+    DeleteSubject,
 }
 
 impl Message for SubjectMessage {}
@@ -1862,11 +1928,16 @@ pub enum SubjectResponse {
     Metadata(Metadata),
     SignRequest(Signature),
     LastSn(u64),
-    Ledger((Vec<Signed<Ledger>>, Option<Signed<KoreEvent>>)),
+    Ledger {
+        ledger: Vec<Signed<Ledger>>,
+        last_event: Option<Signed<KoreEvent>>,
+        last_proof: Box<Option<ValidationProof>>,
+        prev_event_validation_response: Option<Vec<ProtocolsSignatures>>,
+    },
     Governance(Governance),
     Owner(KeyIdentifier),
     NewCompilers(Vec<String>),
-    Ok
+    Ok,
 }
 
 impl Response for SubjectResponse {}
@@ -1902,6 +1973,12 @@ impl Actor for Subject {
             ledger_event_actor.subscribe(),
             ext_db.get_ledger_event(),
         );
+        ctx.system().run_sink(sink).await;
+
+        let vali_data = ValiData::default();
+        let vali_data_actor = ctx.create_child("vali_data", vali_data).await?;
+        let sink =
+            Sink::new(vali_data_actor.subscribe(), ext_db.get_vali_data());
         ctx.system().run_sink(sink).await;
 
         if self.active {
@@ -1966,26 +2043,10 @@ impl Handler<Subject> for Subject {
                 Ok(SubjectResponse::NewCompilers(new_compilers))
             }
             SubjectMessage::GetLedger { last_sn } => {
-                let ledger = self.get_ledger(ctx, last_sn).await?;
-
-                if ledger.len() < 100 {
-                    let last_event =
-                        match get_last_event(ctx, &self.subject_id.to_string())
-                            .await
-                        {
-                            Ok(last_event) => last_event,
-                            Err(e) => {
-                                error!(
-                                    TARGET_SUBJECT,
-                                    "GetLedger, can not get last event: {}", e
-                                );
-                                return Err(e);
-                            }
-                        };
-                    Ok(SubjectResponse::Ledger((ledger, Some(last_event))))
-                } else {
-                    Ok(SubjectResponse::Ledger((ledger, None)))
-                }
+                self.get_ledger_data(ctx, last_sn).await
+            }
+            SubjectMessage::GetLastLedger => {
+                self.get_ledger_data(ctx, self.sn).await
             }
             SubjectMessage::GetOwner => {
                 Ok(SubjectResponse::Owner(self.owner.clone()))
@@ -2122,10 +2183,10 @@ impl PersistentActor for Subject {
                                 return Err(ActorError::Functional(error));
                             }
                         };
-    
+
                         self.properties = propierties;
                     }
-                    
+
                     self.last_event_hash = last_event_hash;
                     return Ok(());
                 }
@@ -2592,9 +2653,12 @@ mod tests {
             .ask(SubjectMessage::GetLedger { last_sn: 0 })
             .await
             .unwrap();
-        if let SubjectResponse::Ledger(ledger) = response {
-            assert!(ledger.0.len() == 1);
-            assert!(ledger.1.is_some());
+        if let SubjectResponse::Ledger {
+            ledger, last_event, ..
+        } = response
+        {
+            assert!(ledger.len() == 1);
+            last_event.unwrap();
         } else {
             panic!("Invalid response");
         }

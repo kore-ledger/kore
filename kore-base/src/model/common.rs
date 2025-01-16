@@ -26,11 +26,14 @@ use crate::{
     request::manager::{RequestManager, RequestManagerMessage},
     subject::{
         event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
+        validata::{ValiData, ValiDataMessage, ValiDataResponse},
         Metadata,
     },
+    validation::proof::ValidationProof,
     ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
     NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
-    Subject, SubjectMessage, SubjectResponse};
+    Subject, SubjectMessage, SubjectResponse,
+};
 use tracing::error;
 
 use super::{event::ProtocolsSignatures, HashId, Namespace};
@@ -109,6 +112,34 @@ where
         _ => Err(ActorError::UnexpectedResponse(
             subject_path,
             "SubjectResponse::Governance".to_owned(),
+        )),
+    }
+}
+
+pub async fn subject_owner<A>(
+    ctx: &mut ActorContext<A>,
+    subject_id: &str,
+) -> Result<bool, ActorError> 
+where 
+    A: Actor + Handler<A>,
+{
+    let node_path = ActorPath::from("/user/node");
+    let node_actor: Option<actor::ActorRef<Node>> =
+        ctx.system().get_actor(&node_path).await;
+
+    let response = if let Some(node_actor) = node_actor {
+        node_actor
+            .ask(NodeMessage::AmISubjectOwner(subject_id.to_owned()))
+            .await?
+    } else {
+        return Err(ActorError::NotFound(node_path));
+    };
+
+    match response {
+        NodeResponse::AmIOwner(owner) => Ok(owner),
+        _ => Err(ActorError::UnexpectedResponse(
+            node_path,
+            "NodeResponse::AmIOwner".to_owned(),
         )),
     }
 }
@@ -197,7 +228,6 @@ where
 
     Ok(())
 }
-
 
 pub async fn get_quantity<A>(
     ctx: &mut ActorContext<A>,
@@ -506,6 +536,41 @@ where
     Ok(())
 }
 
+pub async fn update_vali_data<A>(
+    ctx: &mut ActorContext<A>,
+    last_proof: ValidationProof,
+    prev_event_validation_response: Vec<ProtocolsSignatures>,
+) -> Result<(), ActorError>
+where
+    A: Actor + Handler<A>,
+{
+    let vali_data_path = ActorPath::from(format!(
+        "/user/node/{}/vali_data",
+        last_proof.subject_id
+    ));
+    let vali_data_actor: Option<ActorRef<ValiData>> =
+        ctx.system().get_actor(&vali_data_path).await;
+
+    let response = if let Some(vali_data_actor) = vali_data_actor {
+        vali_data_actor
+            .ask(ValiDataMessage::UpdateValiData {
+                last_proof: Box::new(last_proof),
+                prev_event_validation_response,
+            })
+            .await?
+    } else {
+        return Err(ActorError::NotFound(vali_data_path));
+    };
+
+    match response {
+        ValiDataResponse::Ok => Ok(()),
+        _ => Err(ActorError::UnexpectedResponse(
+            vali_data_path,
+            "ValiDataResponse::Ok".to_owned(),
+        )),
+    }
+}
+
 pub async fn check_request_owner<A, T>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
@@ -668,6 +733,38 @@ where
         _ => Err(ActorError::UnexpectedResponse(
             ledger_event_path,
             "LedgerEventResponse::LastEvent".to_owned(),
+        )),
+    }
+}
+
+pub async fn get_vali_data<A>(
+    ctx: &mut ActorContext<A>,
+    subject_id: &str,
+) -> Result<(Option<ValidationProof>, Vec<ProtocolsSignatures>), ActorError>
+where
+    A: Actor + Handler<A>,
+{
+    let vali_data_path =
+        ActorPath::from(format!("/user/node/{}/vali_data", subject_id));
+    let vali_data_actor: Option<ActorRef<ValiData>> =
+        ctx.system().get_actor(&vali_data_path).await;
+
+    let response = if let Some(vali_data_actor) = vali_data_actor {
+        vali_data_actor
+            .ask(ValiDataMessage::GetLastValiData)
+            .await?
+    } else {
+        return Err(ActorError::NotFound(vali_data_path));
+    };
+
+    match response {
+        ValiDataResponse::LastValiData {
+            last_proof,
+            prev_event_validation_response,
+        } => Ok((*last_proof, prev_event_validation_response)),
+        _ => Err(ActorError::UnexpectedResponse(
+            vali_data_path,
+            "ValiDataResponse::LastValiData".to_owned(),
         )),
     }
 }
