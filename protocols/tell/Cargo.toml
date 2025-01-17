@@ -35,3 +35,6 @@ default = ["binary", "borsh", "json", "cbor"]
 json = ["serde_json"]
 binary = []
 cbor = ["cbor4ii"]
+
+[lib]
+bench = false

@@ -64,3 +64,6 @@ tracing-test = "0.2.4"
 serial_test = { workspace = true }
 
 [features]
+
+[lib]
+bench = false
