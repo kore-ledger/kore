@@ -589,6 +589,16 @@ impl Governance {
     pub fn get_schemas(&self) -> Vec<Schema> {
         self.schemas.clone()
     }
+
+    /// Check if the key is a member.
+    fn is_member(&self, id: &str) -> bool {
+        for member in &self.members {
+            if member.id == id {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl TryFrom<ValueWrapper> for Governance {
@@ -597,7 +607,10 @@ impl TryFrom<ValueWrapper> for Governance {
     fn try_from(value: ValueWrapper) -> Result<Self, Self::Error> {
         let governance: Governance =
             serde_json::from_value(value.0).map_err(|e| {
-                Error::Governance(format!("Can not convert Value into Governance: {}", e))
+                Error::Governance(format!(
+                    "Can not convert Value into Governance: {}",
+                    e
+                ))
             })?;
         Ok(governance)
     }
