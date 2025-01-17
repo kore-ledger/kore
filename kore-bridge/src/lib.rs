@@ -9,13 +9,19 @@ pub use kore_base::{
     approval::approver::ApprovalStateRes,
     auth::AuthWitness,
     error::Error,
+    helpers::db::common::{
+        ApprovalReqInfo, ApproveInfo, ConfirmRequestInfo, CreateRequestInfo,
+        EOLRequestInfo, EventInfo, EventRequestInfo, FactInfo, FactRequestInfo,
+        Paginator, PaginatorEvents, ProtocolsSignaturesInfo, RequestInfo,
+        SignatureInfo, SignaturesInfo, SignedInfo, SubjectInfo,
+        TimeOutResponseInfo, TransferRequestInfo,
+    },
     model::{
+        event::ProtocolsError,
         request::EventRequest,
         signature::{Signature, Signed},
-        event::ProtocolsError,
-        Namespace
+        Namespace,
     },
-    helpers::db::common::{ApproveInfo, RequestInfo, ApprovalReqInfo, SignedInfo, FactInfo, SignatureInfo, SubjectInfo, SignaturesInfo, ProtocolsSignaturesInfo, TimeOutResponseInfo, PaginatorEvents, EventInfo, Paginator, EventRequestInfo, ConfirmRequestInfo, CreateRequestInfo, FactRequestInfo, EOLRequestInfo, TransferRequestInfo},
     node::register::GovsData,
     node::register::RegisterData,
     request::RequestData,
@@ -242,6 +248,15 @@ impl Bridge {
         self.api.all_subjs(gov_id, active, schema).await
     }
 
+    pub async fn manual_distribution(
+        &self,
+        subject_id: String,
+    ) -> Result<String, Error> {
+        let subject_id = DigestIdentifier::from_str(&subject_id)
+            .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
+        self.api.manual_distribution(subject_id).await
+    }
+
     pub async fn get_events(
         &self,
         subject_id: String,
@@ -258,7 +273,8 @@ impl Bridge {
         subject_id: String,
         sn: u64,
     ) -> Result<EventInfo, Error> {
-        let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
+        let subject_id = DigestIdentifier::from_str(&subject_id)
+            .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
         self.api.get_event_sn(subject_id, sn).await
     }
 
@@ -269,8 +285,11 @@ impl Bridge {
         reverse: Option<bool>,
         success: Option<bool>,
     ) -> Result<Vec<EventInfo>, Error> {
-        let subject_id = DigestIdentifier::from_str(&subject_id).map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
-        self.api.get_first_or_end_events(subject_id, quantity, reverse, success).await
+        let subject_id = DigestIdentifier::from_str(&subject_id)
+            .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
+        self.api
+            .get_first_or_end_events(subject_id, quantity, reverse, success)
+            .await
     }
 
     pub async fn get_subject(

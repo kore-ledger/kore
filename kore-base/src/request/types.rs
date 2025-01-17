@@ -10,6 +10,7 @@ use crate::{
         request::CreateRequest,
         signature::Signed,
     },
+    validation::proof::ValidationProof,
     ConfirmRequest, EOLRequest, Event as KoreEvent, TransferRequest,
     ValidationInfo,
 };
@@ -26,10 +27,16 @@ pub enum RequestManagerState {
         eval_res: EvalLedgerResponse,
         eval_signatures: HashSet<ProtocolsSignatures>,
     },
-    Validation(ValidationInfo),
+    Validation {
+        val_info: ValidationInfo,
+        last_proof: Option<ValidationProof>,
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
+    },
     Distribution {
         event: Signed<KoreEvent>,
         ledger: Signed<Ledger>,
+        last_proof: ValidationProof,
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
 }
 

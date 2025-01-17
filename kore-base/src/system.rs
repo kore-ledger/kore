@@ -30,8 +30,8 @@ pub async fn system(
     system.add_helper("config", config.clone()).await;
 
     // Build database manager.
-    let db_manager = Database::open(&config.kore_db);
-    system.add_helper("store", db_manager).await;
+    let db = Database::open(&config.kore_db);
+    system.add_helper("store", db).await;
 
     // Build sink manager.
     let kore_sink = KoreSink::new(config.sink);
@@ -81,6 +81,7 @@ pub mod tests {
     pub struct Dummy;
 
     #[tokio::test]
+    #[tracing_test::traced_test]
     async fn test_system() {
         let system = create_system().await;
         let db: Option<Database> = system.get_helper("store").await;

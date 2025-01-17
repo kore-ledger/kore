@@ -147,7 +147,9 @@ impl Governance {
 
                 match rol.who.clone() {
                     Who::MEMBERS => {
-                        return true;
+                        if self.is_member(user) {
+                            return true;
+                        }
                     }
                     Who::ID { ID } => {
                         if user == ID {
@@ -594,8 +596,8 @@ impl TryFrom<ValueWrapper> for Governance {
 
     fn try_from(value: ValueWrapper) -> Result<Self, Self::Error> {
         let governance: Governance =
-            serde_json::from_value(value.0).map_err(|_| {
-                Error::Governance("Governance model not found.".to_owned())
+            serde_json::from_value(value.0).map_err(|e| {
+                Error::Governance(format!("Can not convert Value into Governance: {}", e))
             })?;
         Ok(governance)
     }

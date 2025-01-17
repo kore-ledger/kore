@@ -277,7 +277,7 @@ pub enum ApproverMessage {
     NetworkResponse {
         approval_res: Signed<ApprovalRes>,
         request_id: String,
-        version: u64
+        version: u64,
     },
     // Mensaje para pedir aprobación desde el helper y devolver ahi
     NetworkRequest {
@@ -315,7 +315,7 @@ impl Actor for Approver {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        if let Some(_) = ctx.parent::<Subject>().await {
+        if ctx.parent::<Subject>().await.is_some() {
             let prefix = ctx.path().parent().key();
             self.init_store("approver", Some(prefix), false, ctx).await
         } else {
@@ -327,7 +327,7 @@ impl Actor for Approver {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        if let Some(_) = ctx.parent::<Subject>().await {
+        if ctx.parent::<Subject>().await.is_some() {
             self.stop_store(ctx).await
         } else {
             Ok(())
@@ -436,7 +436,9 @@ impl Handler<Approver> for Approver {
                         return Err(emit_fail(ctx, e).await);
                     }
 
-                    let state = if self.pass_votation == VotationType::AlwaysAccept {
+                    let state = if self.pass_votation
+                        == VotationType::AlwaysAccept
+                    {
                         let sign_type = SignTypesNode::ApprovalSignature(
                             ApprovalSignature {
                                 request: approval_req.clone(),
@@ -571,7 +573,7 @@ impl Handler<Approver> for Approver {
             ApproverMessage::NetworkResponse {
                 approval_res,
                 request_id,
-                version
+                version,
             } => {
                 if request_id == self.request_id && version == self.version {
                     if self.node != approval_res.signature.signer {
@@ -632,7 +634,7 @@ impl Handler<Approver> for Approver {
 
                     ctx.stop().await;
                 } else {
-                    // TODO llegó una respuesta con una request_id que no es la que estamos esperando, no es válido.
+                    warn!(TARGET_APPROVER, "NetworkResponse, A response has been received with a request id or a version different from the current one");
                 }
             }
             ApproverMessage::NetworkRequest { approval_req, info } => {
@@ -648,7 +650,9 @@ impl Handler<Approver> for Approver {
                     return Err(ActorError::Functional(e.to_owned()));
                 }
 
-                if info.request_id != self.request_id || info.version != self.version {
+                if info.request_id != self.request_id
+                    || info.version != self.version
+                {
                     if let Err(e) = check_request_owner(
                         ctx,
                         &approval_req.content.subject_id.to_string(),
@@ -696,7 +700,9 @@ impl Handler<Approver> for Approver {
                         return Err(emit_fail(ctx, e).await);
                     }
 
-                    let state = if self.pass_votation == VotationType::AlwaysAccept {
+                    let state = if self.pass_votation
+                        == VotationType::AlwaysAccept
+                    {
                         if let Err(e) = self
                             .send_response(
                                 ctx,

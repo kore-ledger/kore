@@ -373,7 +373,7 @@ impl Handler<Approval> for Approval {
                     self.on_event(
                         ApprovalEvent::SafeState {
                             request_id: request_id.clone(),
-                            version: version,
+                            version,
                             quorum: quorum.clone(),
                             request: Some(signed_approval_req.clone()),
                             approvers: signers.clone(),

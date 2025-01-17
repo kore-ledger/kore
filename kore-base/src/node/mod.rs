@@ -13,21 +13,11 @@ use relationship::RelationShip;
 use tracing::{error, warn};
 
 use crate::{
-    auth::{Auth, AuthMessage, AuthResponse},
-    config::Config,
-    db::Storable,
-    distribution::distributor::Distributor,
-    governance::init::init_state,
-    helpers::{db::ExternalDB, sink::KoreSink},
-    model::{
-        event::LedgerValue,
-        event::Ledger,
+    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, governance::init::init_state, helpers::{db::ExternalDB, sink::KoreSink}, manual_distribution::ManualDistribution, model::{
+        event::{Ledger, LedgerValue},
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    },
-    subject::CreateSubjectData,
-    Error, EventRequest, Subject, SubjectMessage, SubjectResponse,
-    DIGEST_DERIVATOR,
+    }, subject::CreateSubjectData, Error, EventRequest, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -214,7 +204,7 @@ impl Node {
 pub enum NodeMessage {
     DeleteSubject {
         owner: String,
-        subject_id: String
+        subject_id: String,
     },
     GetSubjects,
     CreateNewSubjectLedger(Signed<Ledger>),
@@ -254,14 +244,8 @@ impl Response for NodeResponse {}
 pub enum NodeEvent {
     OwnedSubject(String),
     KnownSubject(String),
-    ChangeSubjectOwner {
-        iam_owner: bool,
-        subject_id: String,
-    },
-    DeleteSubject{
-        iam_owner: bool,
-        subject_id: String,
-    }
+    ChangeSubjectOwner { iam_owner: bool, subject_id: String },
+    DeleteSubject { iam_owner: bool, subject_id: String },
 }
 
 impl Event for NodeEvent {}
@@ -285,6 +269,9 @@ impl Actor for Node {
 
         let node_key = NodeKey::new(self.owner());
         ctx.create_child("key", node_key).await?;
+
+        let manual_dis = ManualDistribution::new(self.owner());
+        ctx.create_child("manual_dis", manual_dis).await?;
 
         self.create_subjects(ctx).await?;
 
@@ -328,7 +315,10 @@ impl PersistentActor for Node {
             } => {
                 self.change_subject_owner(subject_id.clone(), *iam_owner);
             }
-            NodeEvent::DeleteSubject { iam_owner, subject_id } => {
+            NodeEvent::DeleteSubject {
+                iam_owner,
+                subject_id,
+            } => {
                 self.delete_subject(subject_id.clone(), *iam_owner);
             }
         };
@@ -337,7 +327,6 @@ impl PersistentActor for Node {
     }
 }
 
-// TODO: SI algo falla cuando un sujeto es temporal hay que eliminarlo y limpiar la base de datos.
 #[async_trait]
 impl Handler<Node> for Node {
     async fn handle_message(
@@ -350,24 +339,30 @@ impl Handler<Node> for Node {
             NodeMessage::DeleteSubject { owner, subject_id } => {
                 if owner == self.owner.key_identifier().to_string() {
                     self.on_event(
-                        NodeEvent::DeleteSubject { iam_owner: true, subject_id },
+                        NodeEvent::DeleteSubject {
+                            iam_owner: true,
+                            subject_id,
+                        },
                         ctx,
                     )
                     .await;
                 } else {
                     self.on_event(
-                        NodeEvent::DeleteSubject { iam_owner: false, subject_id },
+                        NodeEvent::DeleteSubject {
+                            iam_owner: false,
+                            subject_id,
+                        },
                         ctx,
                     )
                     .await;
                 }
 
-                Ok(NodeResponse::None) 
-            },
+                Ok(NodeResponse::None)
+            }
             NodeMessage::GetSubjects => {
                 Ok(NodeResponse::Subjects(SubjectsVectors {
                     owned_subjects: self.owned_subjects.clone(),
-                    known_subjects: self.known_subjects.clone()
+                    known_subjects: self.known_subjects.clone(),
                 }))
             }
             NodeMessage::ChangeSubjectOwner {
@@ -432,15 +427,16 @@ impl Handler<Node> for Node {
                                 .signer
                                 .to_string(),
                         )
+                    } else if let LedgerValue::Patch(init_state) =
+                        ledger.content.value.clone()
+                    {
+                        init_state
                     } else {
-                        if let LedgerValue::Patch(init_state) = ledger.content.value.clone() {
-                            init_state
-                        } else {
-                            let e = "Can not create subject, ledgerValue is not a patch";
-                            warn!(TARGET_NODE, "CreateNewSubjectLedger, {}", e);
-                            return Err(ActorError::Functional(e.to_string()))
-                        }
+                        let e = "Can not create subject, ledgerValue is not a patch";
+                        warn!(TARGET_NODE, "CreateNewSubjectLedger, {}", e);
+                        return Err(ActorError::Functional(e.to_string()));
                     };
+
                     Subject::from_event(None, &ledger, properties)
                         .map_err(|e| {
                             warn!(TARGET_NODE, "CreateNewSubjectLedger, Can not create subject from event {}", e);
@@ -475,19 +471,19 @@ impl Handler<Node> for Node {
 
                 match response {
                     SubjectResponse::LastSn(_) => {
-                        let event = if ledger.signature.signer == self.owner.key_identifier() {
-                            NodeEvent::OwnedSubject(ledger
-                                .content
-                                .subject_id
-                                .to_string())
+                        let event = if ledger.signature.signer
+                            == self.owner.key_identifier()
+                        {
+                            NodeEvent::OwnedSubject(
+                                ledger.content.subject_id.to_string(),
+                            )
                         } else {
-                            NodeEvent::KnownSubject(ledger
-                                .content
-                                .subject_id
-                                .to_string())
+                            NodeEvent::KnownSubject(
+                                ledger.content.subject_id.to_string(),
+                            )
                         };
 
-                        self.on_event(event, ctx,).await;
+                        self.on_event(event, ctx).await;
                         Ok(NodeResponse::SonWasCreated)
                     }
                     _ => {
@@ -535,7 +531,11 @@ impl Handler<Node> for Node {
                 let sink = Sink::new(child.subscribe(), kore_sink.clone());
                 ctx.system().run_sink(sink).await;
 
-                self.on_event(NodeEvent::OwnedSubject(data.subject_id.to_string()),ctx,).await;
+                self.on_event(
+                    NodeEvent::OwnedSubject(data.subject_id.to_string()),
+                    ctx,
+                )
+                .await;
 
                 Ok(NodeResponse::SonWasCreated)
             }

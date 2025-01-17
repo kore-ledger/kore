@@ -91,9 +91,8 @@ async fn governance_copy_benchmark() {
     loop {
         let response = node1
             .request_state(data.request_id.parse().unwrap())
-            .await
-            .unwrap_or_default();
-        if response == "Finish" {
+            .await.unwrap();
+        if response.status == "Finish" {
             break;
         }
     }

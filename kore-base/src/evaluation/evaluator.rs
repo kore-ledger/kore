@@ -63,7 +63,11 @@ pub struct Evaluator {
 
 impl Evaluator {
     pub fn new(request_id: String, version: u64, node: KeyIdentifier) -> Self {
-        Evaluator { request_id, version, node }
+        Evaluator {
+            request_id,
+            version,
+            node,
+        }
     }
 
     async fn execute_contract(
@@ -510,7 +514,7 @@ impl Handler<Evaluator> for Evaluator {
             EvaluatorMessage::NetworkResponse {
                 evaluation_res,
                 request_id,
-                version
+                version,
             } => {
                 if request_id == self.request_id && version == self.version {
                     if self.node != evaluation_res.signature.signer {

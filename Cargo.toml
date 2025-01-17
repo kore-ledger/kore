@@ -10,7 +10,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.6.3"
+version = "0.6.4"
 edition = "2021"
 authors = ["Kore Ledger, SL <info@kore-ledger.net>"]
 description = "Kore Ledger base library"
@@ -29,20 +29,20 @@ base64 = "0.22"
 bincode = "1.3"
 blake2 = "0.10"
 blake3 = "1.5.5"
-borsh = { version = "1.5.3", features = ["std", "derive"] }
+borsh = { version = "1.5.4", features = ["std", "derive"] }
 ed25519-dalek = { version = "2", features = ["alloc", "pkcs8"] }
 either = "1.10"
 fnv = "1.0"
 futures = "0.3.31"
 futures-timer = "3.0"
-generic-array = "1.1.1"
+generic-array = "1.2.0"
 getrandom = "0.2"
 hex = "0.4"
 ip_network = "0.4"
 k256 = { version = "0.13.4", features = ["ecdsa-core"] }
 lazy_static = "1.5.0"
-libp2p = { version = "0.54.0", default-features = false}
-libp2p-swarm-test = { version = "0.4.0" }
+libp2p = { version = "0.55.0", default-features = false}
+libp2p-swarm-test = { version = "0.5.0" }
 linked_hash_set = "0.1.5"
 lru = "0.12.5"
 memsecurity = { version = "3.4.0", features = ["encryption"] }
@@ -60,7 +60,7 @@ serde_json = "1.0.135"
 smallvec = "1.11.1"
 tempfile = "3.15.0"
 time = "0.3.37"
-thiserror = "2.0.10"
+thiserror = "2.0.11"
 tokio = { version = "1.43.0" }
 tokio-util = { version = "0.7.13" }
 tracing ={ version = "0.1.41" }

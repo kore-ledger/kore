@@ -371,13 +371,13 @@ impl From<request_response::Event<ReqResMessage, ReqResMessage>> for Event {
         event: request_response::Event<ReqResMessage, ReqResMessage>,
     ) -> Self {
         match event {
-            request_response::Event::Message { peer, message } => {
+            request_response::Event::Message { peer, message, .. } => {
                 Event::ReqresMessage {
                     peer_id: peer,
                     message,
                 }
             }
-            request_response::Event::ResponseSent { peer, request_id } => {
+            request_response::Event::ResponseSent { peer, request_id, .. } => {
                 Event::ReqresMessageSent {
                     peer_id: peer,
                     inbound_id: request_id,
@@ -387,6 +387,7 @@ impl From<request_response::Event<ReqResMessage, ReqResMessage>> for Event {
                 peer,
                 request_id,
                 error,
+                ..
             } => Event::ReqresInboundFailure {
                 peer_id: peer,
                 inbound_id: request_id,
@@ -396,6 +397,7 @@ impl From<request_response::Event<ReqResMessage, ReqResMessage>> for Event {
                 peer,
                 request_id,
                 error,
+                ..
             } => Event::ReqresOutboundFailure {
                 peer_id: peer,
                 outbound_id: request_id,

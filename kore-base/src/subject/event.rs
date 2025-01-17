@@ -1,13 +1,8 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::collections::HashSet;
-
 use crate::{
-    model::{
-        common::{emit_fail, verify_protocols_state},
-        event::ProtocolsSignatures,
-    },
+    model::common::{emit_fail, verify_protocols_state},
     EventRequestType,
 };
 use actor::{
@@ -15,7 +10,6 @@ use actor::{
     Handler, Message, Response,
 };
 use async_trait::async_trait;
-use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 use store::store::PersistentActor;
 use tracing::{error, warn};
@@ -52,14 +46,8 @@ pub enum LedgerEventMessage {
 impl Message for LedgerEventMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum LedgerEventEvent {
-    WithVal {
-        event: Signed<KoreEvent>,
-        validators: HashSet<KeyIdentifier>,
-    },
-    WithOutVal {
-        event: Signed<KoreEvent>,
-    },
+pub struct LedgerEventEvent {
+    pub event: Signed<KoreEvent>,
 }
 
 impl Event for LedgerEventEvent {}
@@ -112,7 +100,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     }
                 };
 
-                let valid_event = match verify_protocols_state(
+                if let Err(e) = verify_protocols_state(
                     EventRequestType::from(
                         event.content.event_request.content.clone(),
                     ),
@@ -121,50 +109,17 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     event.content.appr_required,
                     event.content.vali_success,
                 ) {
-                    Ok(is_ok) => is_ok,
-                    Err(e) => {
-                        warn!(TARGET_EVENT, "UpdateLastEvent, {}", e);
-                        return Err(ActorError::Functional(e.to_string()));
-                    }
+                    warn!(TARGET_EVENT, "UpdateLastEvent, {}", e);
+                    return Err(ActorError::Functional(e.to_string()));
                 };
 
-                if valid_event {
-                    let validators: HashSet<KeyIdentifier> =
-                        if let Some(last_event) = self.last_event.clone() {
-                            last_event
-                                .content
-                                .validators
-                                .iter()
-                                .map(|x| match x {
-                                    ProtocolsSignatures::Signature(
-                                        signature,
-                                    ) => signature.signer.clone(),
-                                    ProtocolsSignatures::TimeOut(
-                                        time_out_response,
-                                    ) => time_out_response.who.clone(),
-                                })
-                                .collect()
-                        } else {
-                            HashSet::new()
-                        };
-
-                    self.on_event(
-                        LedgerEventEvent::WithVal {
-                            event: event.clone(),
-                            validators,
-                        },
-                        ctx,
-                    )
-                    .await;
-                } else {
-                    self.on_event(
-                        LedgerEventEvent::WithOutVal {
-                            event: event.clone(),
-                        },
-                        ctx,
-                    )
-                    .await;
-                }
+                self.on_event(
+                    LedgerEventEvent {
+                        event: event.clone(),
+                    },
+                    ctx,
+                )
+                .await;
 
                 if self.is_gov {
                     if let EventRequest::EOL(_) =
@@ -234,12 +189,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
 #[async_trait]
 impl PersistentActor for LedgerEvent {
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
-        let event = match event {
-            LedgerEventEvent::WithVal { event, .. } => event,
-            LedgerEventEvent::WithOutVal { event } => event,
-        };
-        self.last_event = Some(event.clone());
-
+        self.last_event = Some(event.event.clone());
         Ok(())
     }
 }

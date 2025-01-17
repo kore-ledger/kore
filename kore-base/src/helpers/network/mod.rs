@@ -9,8 +9,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     approval::{request::ApprovalReq, response::ApprovalRes},
     evaluation::{request::EvaluationReq, response::EvaluationRes},
-    model::event::Ledger,
-    validation::{request::ValidationReq, response::ValidationRes},
+    model::event::{Ledger, ProtocolsSignatures},
+    validation::{
+        proof::ValidationProof, request::ValidationReq, response::ValidationRes,
+    },
     Event as KoreEvent, Signed,
 };
 
@@ -40,6 +42,8 @@ pub enum ActorMessage {
     DistributionLastEventReq {
         ledger: Signed<Ledger>,
         event: Signed<KoreEvent>,
+        last_proof: ValidationProof,
+        prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
     DistributionLastEventRes {
         signer: KeyIdentifier,
@@ -52,6 +56,8 @@ pub enum ActorMessage {
     DistributionLedgerRes {
         ledger: Vec<Signed<Ledger>>,
         last_event: Option<Signed<KoreEvent>>,
+        last_proof: Option<ValidationProof>,
+        prev_event_validation_response: Option<Vec<ProtocolsSignatures>>,
     },
     DistributionGetLastSn {
         subject_id: DigestIdentifier,

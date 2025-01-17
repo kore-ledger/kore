@@ -7,7 +7,10 @@ use crate::{
     external_db::DBManager,
     model::event::Ledger,
     request::{manager::RequestManagerEvent, RequestHandlerEvent},
-    subject::{event::LedgerEventEvent, sinkdata::SinkDataEvent},
+    subject::{
+        event::LedgerEventEvent, sinkdata::SinkDataEvent,
+        validata::ValiDataEvent,
+    },
     Signed,
 };
 
@@ -16,7 +19,10 @@ use crate::config::ExternalDbConfig;
 use actor::{ActorRef, Subscriber};
 use async_std::fs;
 use async_trait::async_trait;
-use common::{ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo, SubjectInfo};
+use common::{
+    ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo,
+    SubjectInfo,
+};
 #[cfg(feature = "ext-sqlite")]
 use sqlite::SqliteLocal;
 use std::path::Path;
@@ -34,7 +40,10 @@ pub trait Querys {
     ) -> Result<RequestInfo, Error>;
     async fn del_request(&self, request_id: &str) -> Result<(), Error>;
     // approver
-    async fn get_approve_req(&self, subject_id: &str) -> Result<ApproveInfo, Error>;
+    async fn get_approve_req(
+        &self,
+        subject_id: &str,
+    ) -> Result<ApproveInfo, Error>;
     // validators (not for user use).
     async fn get_last_validators(
         &self,
@@ -47,7 +56,7 @@ pub trait Querys {
         quantity: Option<u64>,
         page: Option<u64>,
     ) -> Result<PaginatorEvents, Error>;
-    
+
     // events sn
     async fn get_events_sn(
         &self,
@@ -65,11 +74,16 @@ pub trait Querys {
     ) -> Result<Vec<EventInfo>, Error>;
 
     // subject
-    async fn get_subject_state(&self, subject_id: &str)
-        -> Result<SubjectInfo, Error>;
+    async fn get_subject_state(
+        &self,
+        subject_id: &str,
+    ) -> Result<SubjectInfo, Error>;
 
     // signatures
-    async fn get_signatures(&self, subject_id: &str) -> Result<SignaturesInfo, Error>;
+    async fn get_signatures(
+        &self,
+        subject_id: &str,
+    ) -> Result<SignaturesInfo, Error>;
 }
 
 #[derive(Clone)]
@@ -85,7 +99,7 @@ impl ExternalDB {
     ) -> Result<Self, Error> {
         match ext_db {
             #[cfg(feature = "ext-sqlite")]
-            ExternalDbConfig::SQLite { path } => {
+            ExternalDbConfig::Sqlite { path } => {
                 if !Path::new(&path).exists() {
                     fs::create_dir_all(&path).await.map_err(|e| {
                         Error::Node(format!("Can not create src dir: {}", e))
@@ -99,6 +113,13 @@ impl ExternalDB {
     }
 
     pub fn get_request_manager(&self) -> impl Subscriber<RequestManagerEvent> {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
+        }
+    }
+
+    pub fn get_vali_data(&self) -> impl Subscriber<ValiDataEvent> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => sqlite_local.clone(),
@@ -143,7 +164,10 @@ impl ExternalDB {
 
 #[async_trait]
 impl Querys for ExternalDB {
-    async fn get_signatures(&self, subject_id: &str) -> Result<SignaturesInfo, Error> {
+    async fn get_signatures(
+        &self,
+        subject_id: &str,
+    ) -> Result<SignaturesInfo, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
@@ -202,7 +226,9 @@ impl Querys for ExternalDB {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
                 sqlite_local
-                    .get_first_or_end_events(subject_id, quantity, reverse, sucess)
+                    .get_first_or_end_events(
+                        subject_id, quantity, reverse, sucess,
+                    )
                     .await
             }
         }
@@ -229,7 +255,10 @@ impl Querys for ExternalDB {
         }
     }
 
-    async fn get_approve_req(&self, subject_id: &str) -> Result<ApproveInfo, Error> {
+    async fn get_approve_req(
+        &self,
+        subject_id: &str,
+    ) -> Result<ApproveInfo, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {

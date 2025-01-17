@@ -36,7 +36,7 @@ impl Database {
                 Database::RocksDb(manager)
             }
             #[cfg(feature = "sqlite")]
-            KoreDbConfig::SQLite { path } => {
+            KoreDbConfig::Sqlite { path } => {
                 let manager = SqliteManager::new(&path);
                 Database::SQLite(manager)
             }

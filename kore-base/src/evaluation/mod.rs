@@ -121,7 +121,11 @@ impl Evaluation {
         let child = ctx
             .create_child(
                 &format!("{}", signer),
-                Evaluator::new(self.request_id.to_string(), self.version, signer.clone()),
+                Evaluator::new(
+                    self.request_id.to_string(),
+                    self.version,
+                    signer.clone(),
+                ),
             )
             .await;
         let evaluator_actor = match child {
@@ -277,7 +281,6 @@ impl Actor for Evaluation {
     type Response = ();
 }
 
-// TODO: revizar todos los errores, algunos pueden ser ActorError.
 #[async_trait]
 impl Handler<Evaluation> for Evaluation {
     async fn handle_message(
