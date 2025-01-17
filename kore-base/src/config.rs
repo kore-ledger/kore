@@ -40,9 +40,9 @@ pub enum KoreDbConfig {
         /// Path to the database.
         path: String,
     },
-    /// SQLite database.
+    /// Sqlite database.
     #[cfg(feature = "sqlite")]
-    SQLite {
+    Sqlite {
         /// Path to the database.
         path: String,
     },
@@ -55,7 +55,7 @@ impl Default for KoreDbConfig {
             path: "db/local/rockdb".to_owned(),
         };
         #[cfg(feature = "sqlite")]
-        return KoreDbConfig::SQLite {
+        return KoreDbConfig::Sqlite {
             path: "db/local/sqlite".to_owned(),
         };
     }
@@ -68,7 +68,7 @@ impl KoreDbConfig {
             path: path.to_owned(),
         };
         #[cfg(feature = "sqlite")]
-        return KoreDbConfig::SQLite {
+        return KoreDbConfig::Sqlite {
             path: path.to_owned(),
         };
     }
@@ -83,16 +83,16 @@ impl KoreDbConfig {
         #[cfg(feature = "rocksdb")]
         return Ok(KoreDbConfig::Rocksdb { path });
         #[cfg(feature = "sqlite")]
-        return Ok(DbSettings::Sqlite { path });
+        return Ok(KoreDbConfig::Sqlite { path });
     }
 }
 
 /// Database configuration.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub enum ExternalDbConfig {
-    /// SQLite database.
+    /// Sqlite database.
     #[cfg(feature = "ext-sqlite")]
-    SQLite {
+    Sqlite {
         /// Path to the database.
         path: String,
     },
@@ -101,7 +101,7 @@ pub enum ExternalDbConfig {
 impl Default for ExternalDbConfig {
     fn default() -> Self {
         #[cfg(feature = "ext-sqlite")]
-        return ExternalDbConfig::SQLite {
+        return ExternalDbConfig::Sqlite {
             path: "db/ext/ext-sqlite".to_owned(),
         };
     }
@@ -110,7 +110,7 @@ impl Default for ExternalDbConfig {
 impl ExternalDbConfig {
     pub fn build(path: &str) -> Self {
         #[cfg(feature = "ext-sqlite")]
-        return ExternalDbConfig::SQLite {
+        return ExternalDbConfig::Sqlite {
             path: path.to_owned(),
         };
     }
@@ -123,6 +123,6 @@ impl ExternalDbConfig {
     {
         let path: String = String::deserialize(deserializer)?;
         #[cfg(feature = "ext-sqlite")]
-        return Ok(ExternalDbConfig::SQLite { path });
+        return Ok(ExternalDbConfig::Sqlite { path });
     }
 }

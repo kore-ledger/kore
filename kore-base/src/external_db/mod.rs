@@ -98,7 +98,7 @@ impl Actor for DBManager {
         &mut self,
         ctx: &mut actor::ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store("ext_db", None, false, ctx).await
+        self.init_store("db_manager", None, false, ctx).await
     }
 
     async fn pre_stop(

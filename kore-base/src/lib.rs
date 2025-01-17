@@ -42,7 +42,7 @@ use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use identity::identifier::DigestIdentifier;
 use identity::keys::KeyPair;
 use intermediary::Intermediary;
-use manual_distribution::{ManualUpdate, ManualUpdateMessage};
+use manual_distribution::{ManualDistribution, ManualDistributionMessage};
 use model::event::Event;
 use model::signature::*;
 use model::HashId;
@@ -96,7 +96,7 @@ pub struct Api {
     auth: ActorRef<Auth>,
     query: ActorRef<Query>,
     register: ActorRef<Register>,
-    manual_dis: ActorRef<ManualUpdate>
+    manual_dis: ActorRef<ManualDistribution>
 }
 
 impl Api {
@@ -180,7 +180,7 @@ impl Api {
             return Err(Error::System(e.to_owned()));
         };
 
-        let manual_dis: Option<ActorRef<ManualUpdate>> = system
+        let manual_dis: Option<ActorRef<ManualDistribution>> = system
         .get_actor(&ActorPath::from("/user/node/manual_dis"))
         .await;
 
@@ -401,13 +401,13 @@ impl Api {
         }
     }
 
-    pub async fn manual_update(
+    pub async fn manual_distribution(
         &self,
         subject_id: DigestIdentifier,
     ) -> Result<String, Error> {
         self
             .manual_dis
-            .ask(ManualUpdateMessage::Update(subject_id))
+            .ask(ManualDistributionMessage::Update(subject_id))
             .await
             .map_err(|e| {
                 error!(TARGET_API, "Can not post manual update {}", e);

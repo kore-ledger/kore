@@ -99,7 +99,7 @@ impl ExternalDB {
     ) -> Result<Self, Error> {
         match ext_db {
             #[cfg(feature = "ext-sqlite")]
-            ExternalDbConfig::SQLite { path } => {
+            ExternalDbConfig::Sqlite { path } => {
                 if !Path::new(&path).exists() {
                     fs::create_dir_all(&path).await.map_err(|e| {
                         Error::Node(format!("Can not create src dir: {}", e))
