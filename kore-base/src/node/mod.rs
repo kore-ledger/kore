@@ -271,7 +271,7 @@ impl Actor for Node {
         ctx.create_child("key", node_key).await?;
 
         let manual_dis = ManualDistribution::new(self.owner());
-        ctx.create_child("manual_dis", manual_dis).await?;
+        ctx.create_child("manual_distribution", manual_dis).await?;
 
         self.create_subjects(ctx).await?;
 
@@ -437,7 +437,7 @@ impl Handler<Node> for Node {
                         return Err(ActorError::Functional(e.to_string()));
                     };
 
-                    Subject::from_event(None, &ledger, properties)
+                    Subject::from_event(&ledger, properties)
                         .map_err(|e| {
                             warn!(TARGET_NODE, "CreateNewSubjectLedger, Can not create subject from event {}", e);
                             ActorError::Functional(e.to_string())

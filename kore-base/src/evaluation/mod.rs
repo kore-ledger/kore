@@ -533,7 +533,7 @@ mod tests {
 
     use actor::{ActorPath, ActorRef, SystemRef};
     use identity::identifier::{
-        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+        derive::digest::DigestDerivator, DigestIdentifier,
     };
     use serde_json::json;
     use serial_test::serial;
@@ -700,7 +700,6 @@ mod tests {
         assert_eq!(metadata.subject_id, subject_id);
         assert_eq!(metadata.governance_id.to_string(), "");
         assert_eq!(metadata.genesis_gov_version, 0);
-        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 1);
@@ -982,7 +981,6 @@ mod tests {
         assert_eq!(metadata.subject_id, subject_id);
         assert_eq!(metadata.governance_id.to_string(), "");
         assert_eq!(metadata.genesis_gov_version, 0);
-        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 1);
@@ -1143,7 +1141,6 @@ mod tests {
         assert_eq!(metadata.subject_id.to_string(), request_id.subject_id);
         assert_eq!(metadata.governance_id.to_string(), gov_id.to_string());
         assert_eq!(metadata.genesis_gov_version, 1);
-        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
         assert_eq!(metadata.schema_id, "Example");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 0);
@@ -1254,7 +1251,6 @@ mod tests {
 
         assert_eq!(metadata.subject_id.to_string(), request_id.subject_id);
         assert_eq!(metadata.genesis_gov_version, 1);
-        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
         assert_eq!(metadata.schema_id, "Example");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 1);

@@ -66,7 +66,7 @@ impl Validator {
     fn check_event_proof(
         &self,
         proof: &ValidationProof,
-        subject_signature: &Signature,
+        owner: &KeyIdentifier,
         previous_proof: &Option<ValidationProof>,
     ) -> Result<(), ActorError> {
         let previous_proof = if let Some(previous_proof) = previous_proof {
@@ -107,7 +107,7 @@ impl Validator {
                 if let EventProof::Transfer { new_owner } =
                     previous_proof.event.clone()
                 {
-                    if new_owner == subject_signature.signer {
+                    if new_owner == *owner {
                         return Ok(());
                     }
                 }
@@ -121,12 +121,6 @@ impl Validator {
                 }
             }
         };
-
-        if previous_proof.event != EventProof::Confirm
-            && previous_proof.public_key != subject_signature.signer.clone()
-        {
-            return Err(ActorError::Functional("Previous event proof is not a confirm event but subject signer and old previous subject is not the same".to_owned()));
-        }
 
         Ok(())
     }
@@ -173,20 +167,11 @@ impl Validator {
         &self,
         ctx: &mut ActorContext<Validator>,
         validation_req: ValidationReq,
+        owner: KeyIdentifier
     ) -> Result<Signature, ActorError> {
-        if let Err(e) = validation_req
-            .subject_signature
-            .verify(&validation_req.proof)
-        {
-            return Err(ActorError::Functional(format!(
-                "Can not verify signature: {}",
-                e
-            )));
-        }
-
         self.check_event_proof(
             &validation_req.proof,
-            &validation_req.subject_signature,
+            &owner,
             &validation_req.previous_proof,
         )?;
 
@@ -351,7 +336,7 @@ impl Handler<Validator> for Validator {
             } => {
                 // Validate event
                 let validation_res =
-                    match self.validation(ctx, validation_req).await {
+                    match self.validation(ctx, validation_req, our_key.clone()).await {
                         Ok(validation) => ValidationRes::Signature(validation),
                         Err(e) => {
                             if let ActorError::Functional(_) = e {
@@ -619,7 +604,7 @@ impl Handler<Validator> for Validator {
                     ValidationRes::Reboot
                 } else {
                     match self
-                        .validation(ctx, validation_req.content.clone())
+                        .validation(ctx, validation_req.content.clone(), validation_req.signature.signer)
                         .await
                     {
                         Ok(validation) => ValidationRes::Signature(validation),

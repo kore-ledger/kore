@@ -80,10 +80,10 @@ impl Distribution {
 
         let our_key = self.node_key.clone();
 
-        let request_id = if let DistributionType::Subject = self.dis_type {
-            String::default()
-        } else {
-            self.request_id.clone()
+        let request_id = match self.dis_type  {
+            DistributionType::Manual => format!("node/manual_distribution/{}", self.request_id.clone()),
+            DistributionType::Subject => String::default(),
+            DistributionType::Request => format!("request/{}/distribution", self.request_id.clone()),
         };
 
         distributor_actor

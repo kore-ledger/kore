@@ -6,12 +6,10 @@ use actor::{
     Event, Handler, Message, Response, Sink, SystemEvent,
 };
 use async_trait::async_trait;
-use identity::{
+use identity::
     identifier::{
         derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
-    },
-    keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
-};
+    };
 use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -25,7 +23,7 @@ use crate::{
     helpers::db::ExternalDB,
     init_state,
     model::common::{get_gov, get_metadata, get_quantity, subject_owner},
-    subject::{CreateSubjectData, SubjectID},
+    subject::CreateSubjectData,
     CreateRequest, EventRequest, HashId, Node, NodeMessage, NodeResponse,
     Signed, DIGEST_DERIVATOR,
 };
@@ -83,12 +81,6 @@ impl RequestHandler {
         create_req: CreateRequest,
         request: Signed<EventRequest>,
     ) -> Result<DigestIdentifier, ActorError> {
-        let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let subject_id = SubjectID {
-            request: request.clone(),
-            keys: keys.clone(),
-        };
-
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
@@ -96,13 +88,12 @@ impl RequestHandler {
             DigestDerivator::Blake3_256
         };
 
-        let subject_id = subject_id
+        let subject_id = request
             .hash_id(derivator)
             .map_err(|e| ActorError::Functional(e.to_string()))?;
 
         let data = if create_req.schema_id == "governance" {
             CreateSubjectData {
-                keys,
                 create_req,
                 subject_id,
                 creator: request.signature.signer.clone(),
@@ -117,7 +108,6 @@ impl RequestHandler {
                 .map_err(|e| ActorError::Functional(e.to_string()))?;
 
             CreateSubjectData {
-                keys,
                 create_req,
                 subject_id,
                 creator: request.signature.signer.clone(),

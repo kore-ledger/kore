@@ -31,7 +31,7 @@ use crate::{
         event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
-        HashId, Namespace, SignTypesSubject, ValueWrapper,
+        HashId, Namespace, ValueWrapper,
     },
     node::{
         nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
@@ -44,20 +44,14 @@ use crate::{
         validator::Validator,
         Validation,
     },
-    CreateRequest, Error, EventRequestType, Governance, Node, DIGEST_DERIVATOR,
-};
+    CreateRequest, Error, EventRequestType, Governance, Node};
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
     Event, Handler, Message, Response, Sink,
 };
 use event::LedgerEvent;
-use identity::{
-    identifier::{
-        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
-    },
-    keys::{Ed25519KeyPair, KeyGenerator, KeyMaterial, KeyPair},
-};
+use identity::identifier::{DigestIdentifier, KeyIdentifier};
 
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -79,7 +73,6 @@ const TARGET_SUBJECT: &str = "Kore-Subject";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateSubjectData {
-    pub keys: KeyPair,
     pub create_req: CreateRequest,
     pub subject_id: DigestIdentifier,
     pub creator: KeyIdentifier,
@@ -98,7 +91,6 @@ pub struct Metadata {
     pub governance_id: DigestIdentifier,
     pub genesis_gov_version: u64,
     pub last_event_hash: DigestIdentifier,
-    pub subject_public_key: KeyIdentifier,
     /// The identifier of the schema used to validate the event.
     pub schema_id: String,
     /// The namespace of the subject.
@@ -115,35 +107,9 @@ pub struct Metadata {
     pub properties: ValueWrapper,
 }
 
-#[derive(
-    Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
-)]
-pub struct SubjectID {
-    // La generamos nosotros
-    pub request: Signed<EventRequest>,
-    // La generamos nosotros, keypair, derivator (del sujeto) Lo tiene que generar el sujeto
-    pub keys: KeyPair,
-}
-
-impl HashId for SubjectID {
-    fn hash_id(
-        &self,
-        derivator: DigestDerivator,
-    ) -> Result<DigestIdentifier, Error> {
-        DigestIdentifier::from_serializable_borsh(self, derivator).map_err(
-            |e| {
-                error!(TARGET_SUBJECT, "HashId for SubjectID fails: {}", e);
-                Error::HashID(format!("HashId for SubjectID fails: {}", e))
-            },
-        )
-    }
-}
-
 /// Suject header
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Subject {
-    /// The key pair used to sign the subject.
-    keys: Option<KeyPair>,
     /// The identifier of the subject.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance that drives this subject.
@@ -171,7 +137,6 @@ pub struct Subject {
 impl Subject {
     pub fn new(data: CreateSubjectData) -> Self {
         Subject {
-            keys: Some(data.keys),
             subject_id: data.subject_id,
             governance_id: data.create_req.governance_id,
             genesis_gov_version: data.genesis_gov_version,
@@ -202,7 +167,6 @@ impl Subject {
     /// An error is returned if the event is invalid.
     ///
     pub fn from_event(
-        subject_keys: Option<KeyPair>,
         ledger: &Signed<Ledger>,
         properties: ValueWrapper,
     ) -> Result<Self, Error> {
@@ -210,7 +174,6 @@ impl Subject {
             &ledger.content.event_request.content
         {
             let subject = Subject {
-                keys: subject_keys,
                 subject_id: ledger.content.subject_id.clone(),
                 governance_id: request.governance_id.clone(),
                 genesis_gov_version: ledger.content.gov_version,
@@ -252,59 +215,6 @@ impl Subject {
         }
     }
 
-    /// Updates the subject with a new subject id.
-    ///
-    /// # Arguments
-    ///
-    /// * `subject_id` - The subject identifier.
-    ///
-    pub fn with_subject_id(&mut self, subject_id: DigestIdentifier) {
-        self.subject_id = subject_id;
-    }
-
-    /// Creates subject identifier.
-    ///
-    /// # Arguments
-    ///
-    /// * `namespace` - The namespace.
-    /// * `schema_id` - The schema identifier.
-    /// * `public_key` - The public key identifier.
-    /// * `governance_id` - The governance identifier.
-    /// * `governance_version` - The governance version.
-    /// * `derivator` - The digest derivator.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the `DigestIdentifier` or an `Error`.
-    ///
-    /// # Errors
-    ///
-    /// An error is returned if the subject identifier cannot be generated.
-    ///
-    pub fn subject_id(
-        namespace: Namespace,
-        schema_id: &str,
-        public_key: KeyIdentifier,
-        governance_id: DigestIdentifier,
-        governance_version: u64,
-        derivator: DigestDerivator,
-    ) -> Result<DigestIdentifier, Error> {
-        let subject_id = DigestIdentifier::from_serializable_borsh(
-            (
-                namespace,
-                schema_id,
-                public_key,
-                governance_id,
-                governance_version,
-            ),
-            derivator,
-        )
-        .map_err(|_| {
-            Error::Subject("Error generating subject id".to_owned())
-        })?;
-        Ok(subject_id)
-    }
-
     /// Returns subject metadata.
     ///
     /// # Returns
@@ -312,17 +222,7 @@ impl Subject {
     /// The subject metadata.
     ///
     fn get_metadata(&self) -> Metadata {
-        let subject_public_key = if let Some(keys) = self.keys.clone() {
-            KeyIdentifier::new(
-                keys.get_key_derivator(),
-                &keys.public_key_bytes(),
-            )
-        } else {
-            KeyIdentifier::default()
-        };
-
         Metadata {
-            subject_public_key,
             creator: self.creator.clone(),
             genesis_gov_version: self.genesis_gov_version,
             last_event_hash: self.last_event_hash.clone(),
@@ -335,23 +235,6 @@ impl Subject {
             active: self.active,
             sn: self.sn,
         }
-    }
-
-    fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
-        let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
-            *derivator
-        } else {
-            error!(TARGET_SUBJECT, "Error getting derivator");
-            DigestDerivator::Blake3_256
-        };
-
-        let keys = self
-            .keys
-            .clone()
-            .ok_or(Error::Signature("Can not get Subject Keys".to_owned()))?;
-
-        Signature::new(content, &keys, derivator)
-            .map_err(|e| Error::Signature(format!("{}", e)))
     }
 
     async fn build_childs_not_governance(
@@ -1882,7 +1765,6 @@ impl Subject {
 impl Clone for Subject {
     fn clone(&self) -> Self {
         Subject {
-            keys: self.keys.clone(),
             subject_id: self.subject_id.clone(),
             governance_id: self.governance_id.clone(),
             genesis_gov_version: self.genesis_gov_version,
@@ -1911,8 +1793,6 @@ pub enum SubjectMessage {
     UpdateLedger {
         events: Vec<Signed<Ledger>>,
     },
-    /// Sign request
-    SignRequest(Box<SignTypesSubject>),
     /// Get governance if subject is a governance
     GetGovernance,
     GetOwner,
@@ -1926,7 +1806,6 @@ impl Message for SubjectMessage {}
 pub enum SubjectResponse {
     /// The subject metadata.
     Metadata(Metadata),
-    SignRequest(Signature),
     LastSn(u64),
     Ledger {
         ledger: Vec<Signed<Ledger>>,
@@ -2066,24 +1945,6 @@ impl Handler<Subject> for Subject {
                 };
                 Ok(SubjectResponse::LastSn(self.sn))
             }
-            SubjectMessage::SignRequest(content) => {
-                let sign = match *content {
-                    SignTypesSubject::Validation(validation) => {
-                        self.sign(&validation)
-                    }
-                }
-                .map_err(|e| {
-                    error!(
-                        TARGET_SUBJECT,
-                        "SignRequest, can not sign request: {}", e
-                    );
-                    ActorError::FunctionalFail(format!(
-                        "Can not sign event: {}",
-                        e
-                    ))
-                })?;
-                Ok(SubjectResponse::SignRequest(sign))
-            }
             SubjectMessage::GetGovernance => {
                 // If is a governance
                 if self.governance_id.is_empty() {
@@ -2221,13 +2082,10 @@ impl PersistentActor for Subject {
                     };
                 }
                 EventRequest::Transfer(transfer_request) => {
-                    self.keys = None;
                     self.owner = transfer_request.new_owner.clone();
                 }
                 EventRequest::EOL(_eolrequest) => self.active = false,
-                EventRequest::Confirm(_confirm_request) => {
-                    self.keys = Some(KeyPair::Ed25519(Ed25519KeyPair::new()));
-                }
+                EventRequest::Confirm(_confirm_request) => {}
             }
 
             if self.governance_id.is_empty() {
@@ -2307,9 +2165,7 @@ mod tests {
         let node = Node::new(&node_keys).unwrap();
         let _ = system.create_root_actor("node", node).await.unwrap();
         let request = create_start_request_mock("issuer", node_keys.clone());
-        let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let event = KoreEvent::from_create_request(
-            &keys,
             &request,
             0,
             &init_state(&node_keys.key_identifier().to_string()),
@@ -2338,7 +2194,6 @@ mod tests {
         };
 
         let subject = Subject::from_event(
-            Some(keys.clone()),
             &signed_ledger,
             init_state(&signed_ledger.signature.signer.to_string()),
         )
@@ -2472,34 +2327,23 @@ mod tests {
 
     impl KoreEvent {
         pub fn from_create_request(
-            subject_keys: &KeyPair,
             request: &Signed<EventRequest>,
             governance_version: u64,
             init_state: &ValueWrapper,
             derivator: DigestDerivator,
         ) -> Result<Self, Error> {
-            let EventRequest::Create(start_request) = &request.content else {
+            let EventRequest::Create(_start_request) = &request.content else {
                 panic!("Invalid Event Request")
             };
-            let public_key = KeyIdentifier::new(
-                subject_keys.get_key_derivator(),
-                &subject_keys.public_key_bytes(),
-            );
 
-            let subject_id = Subject::subject_id(
-                start_request.namespace.clone(),
-                &start_request.schema_id,
-                public_key,
-                start_request.governance_id.clone(),
-                governance_version,
-                derivator,
-            )?;
             let state_hash = DigestIdentifier::from_serializable_borsh(
                 init_state, derivator,
             )
             .map_err(|_| {
                 Error::HashID("Error converting state to hash".to_owned())
             })?;
+
+            let subject_id = request.hash_id(derivator).unwrap();
 
             Ok(KoreEvent {
                 subject_id,
@@ -2523,8 +2367,8 @@ mod tests {
     use actor::SystemRef;
     use event::LedgerEventMessage;
     use identity::{
-        identifier::derive::KeyDerivator,
-        keys::{Ed25519KeyPair, KeyGenerator},
+        identifier::derive::{digest::DigestDerivator, KeyDerivator},
+        keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
     use serde_json::{json, Value};
 
@@ -2535,9 +2379,7 @@ mod tests {
         let node = Node::new(&node_keys).unwrap();
         let _ = system.create_root_actor("node", node).await.unwrap();
         let request = create_start_request_mock("issuer", node_keys.clone());
-        let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let event = KoreEvent::from_create_request(
-            &keys,
             &request,
             0,
             &init_state(&node_keys.key_identifier().to_string()),
@@ -2554,7 +2396,6 @@ mod tests {
         };
 
         let subject = Subject::from_event(
-            Some(keys),
             &signed_ledger,
             init_state(&signed_ledger.signature.signer.to_string()),
         )
@@ -2608,9 +2449,7 @@ mod tests {
         let value = init_state("");
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let request = create_start_request_mock("issuer", node_keys.clone());
-        let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let event = KoreEvent::from_create_request(
-            &keys,
             &request,
             0,
             &value,
@@ -2629,7 +2468,6 @@ mod tests {
         };
 
         let subject_a = Subject::from_event(
-            Some(keys),
             &signed_ledger,
             init_state(&signed_ledger.signature.signer.to_string()),
         )
