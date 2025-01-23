@@ -181,7 +181,7 @@ impl Api {
         };
 
         let manual_dis: Option<ActorRef<ManualDistribution>> = system
-        .get_actor(&ActorPath::from("/user/node/manual_dis"))
+        .get_actor(&ActorPath::from("/user/node/manual_distribution"))
         .await;
 
         let Some(manual_dis_actor) = manual_dis else {

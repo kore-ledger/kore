@@ -4,7 +4,7 @@
 use super::proof::ValidationProof;
 
 use crate::{
-    model::{event::ProtocolsSignatures, signature::Signature, HashId},
+    model::{event::ProtocolsSignatures, HashId},
     Error,
 };
 
@@ -22,8 +22,6 @@ const TARGET_REQUEST: &str = "Kore-Validation-Request";
 pub struct ValidationReq {
     // La generamos nosotros
     pub proof: ValidationProof,
-    // La generamos nosotros, keypair, derivator (del sujeto) Lo tiene que generar el sujeto
-    pub subject_signature: Signature,
     // Hay que sacarlo de la base de datos,
     pub previous_proof: Option<ValidationProof>,
     // Hay que sacarlo de la base de datos,

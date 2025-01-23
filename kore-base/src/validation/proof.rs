@@ -75,8 +75,6 @@ pub struct ValidationProof {
     pub schema_id: String,
     /// The namespace of the subject being validated.
     pub namespace: Namespace,
-    /// The identifier of the public key of the subject being validated or new owner public key in transfer event.
-    pub public_key: KeyIdentifier,
     /// The identifier of the governance contract associated with the subject being validated.
     pub governance_id: DigestIdentifier,
     /// The version of the governance contract that created the subject being validated.
@@ -104,7 +102,6 @@ impl Default for ValidationProof {
             namespace: Namespace::default(),
             prev_event_hash: DigestIdentifier::default(),
             event_hash: DigestIdentifier::default(),
-            public_key: KeyIdentifier::default(),
             genesis_governance_version: 0,
             event: EventProof::Create,
             owner: KeyIdentifier::default()
@@ -135,8 +132,6 @@ impl ValidationProof {
         info: ValidationInfo,
         prev_event_hash: DigestIdentifier,
     ) -> Result<Self, Error> {
-        let request = &info.event_proof.content.event_proof;
-
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
         } else {
@@ -145,7 +140,7 @@ impl ValidationProof {
         };
         let event_hash = info.event_proof.hash_id(derivator)?;
 
-        let mut validation_proof: ValidationProof = Self {
+        let validation_proof: ValidationProof = Self {
             governance_id: info.metadata.governance_id.clone(),
             governance_version: info.event_proof.content.gov_version,
             subject_id: info.metadata.subject_id.clone(),
@@ -154,26 +149,11 @@ impl ValidationProof {
             namespace: info.metadata.namespace.clone(),
             prev_event_hash,
             event_hash,
-            public_key: info.metadata.subject_public_key.clone(),
             genesis_governance_version: info.metadata.genesis_gov_version,
             event: info.event_proof.content.event_proof.clone(),
             owner: info.metadata.owner.clone()
         };
 
-        match request {
-            EventProof::Create | EventProof::Fact | EventProof::EOL => {
-                Ok(validation_proof)
-            }
-            EventProof::Transfer { new_owner } => {
-                validation_proof.event = EventProof::Transfer {
-                    new_owner: new_owner.clone(),
-                };
-                Ok(validation_proof)
-            }
-            EventProof::Confirm => {
-                validation_proof.public_key = info.metadata.owner;
-                Ok(validation_proof)
-            }
-        }
+        Ok(validation_proof)
     }
 }

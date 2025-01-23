@@ -1030,7 +1030,7 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 let objetive = if info.request_id.is_empty() {
-                    event.content.subject_id.to_string()
+                    format!("node/{}/distribution", event.content.subject_id)
                 } else {
                     info.request_id.clone()
                 };
@@ -1041,7 +1041,7 @@ impl Handler<Distributor> for Distributor {
                     request_id: info.request_id,
                     version: info.version,
                     reciver_actor: format!(
-                        "/user/node/{}/distribution/{}",
+                        "/user/{}/{}",
                         objetive,
                         info.reciver.clone()
                     ),

@@ -19,10 +19,10 @@ use crate::{
         },
         event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
-        SignTypesNode, SignTypesSubject,
+        SignTypesNode
     },
     request::manager::{RequestManager, RequestManagerMessage},
-    subject::{Metadata, Subject, SubjectMessage, SubjectResponse},
+    subject::Metadata,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
@@ -97,11 +97,10 @@ impl Validation {
 
     async fn create_validation_req(
         &self,
-        ctx: &mut ActorContext<Validation>,
         validation_info: ValidationInfo,
         previous_proof: Option<ValidationProof>,
         prev_event_validation_response: Vec<ProtocolsSignatures>,
-    ) -> Result<(ValidationReq, ValidationProof), ActorError> {
+    ) -> Result<ValidationReq, ActorError> {
         let prev_evet_hash =
             if let Some(previous_proof) = previous_proof.clone() {
                 previous_proof.event_hash
@@ -113,45 +112,14 @@ impl Validation {
         let proof = ValidationProof::from_info(validation_info, prev_evet_hash)
             .map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
 
-        // Subject path.
-        let subject_path = ctx.path().parent();
-
-        // Subject actor.
-        let subject_actor: Option<ActorRef<Subject>> =
-            ctx.system().get_actor(&subject_path).await;
-
-        // We obtain the actor subject
-        let response = if let Some(subject_actor) = subject_actor {
-            subject_actor
-                .ask(SubjectMessage::SignRequest(Box::new(
-                    SignTypesSubject::Validation(proof.clone()),
-                )))
-                .await?
-        } else {
-            return Err(ActorError::NotFound(subject_path));
-        };
-
-        // We handle the possible responses of subject
-        let subject_signature = match response {
-            SubjectResponse::SignRequest(sign) => sign,
-            _ => {
-                return Err(ActorError::UnexpectedResponse(
-                    subject_path,
-                    "SubjectResponse::SignRequest".to_owned(),
-                ));
-            }
-        };
-
-        Ok((
+        Ok(
             ValidationReq {
                 proof: proof.clone(),
-                subject_signature,
                 previous_proof: previous_proof.clone(),
                 prev_event_validation_response: prev_event_validation_response
                     .clone(),
-            },
-            proof,
-        ))
+            }
+        )
     }
 
     async fn create_validators(
@@ -297,9 +265,8 @@ impl Handler<Validation> for Validation {
                 last_proof,
                 prev_event_validation_response,
             } => {
-                let (validation_req, proof) = match self
+                let validation_req = match self
                     .create_validation_req(
-                        ctx,
                         info.clone(),
                         last_proof,
                         prev_event_validation_response,
@@ -315,7 +282,7 @@ impl Handler<Validation> for Validation {
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
-                self.actual_proof = proof;
+                self.actual_proof = validation_req.proof.clone();
 
                 // Get signers and quorum
                 let (signers, quorum, _) = match get_signers_quorum_gov_version(
@@ -470,7 +437,7 @@ pub mod tests {
 
     use actor::{ActorPath, ActorRef, Sink, SystemRef};
     use identity::{
-        identifier::{DigestIdentifier, KeyIdentifier},
+        identifier::DigestIdentifier,
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
 
@@ -621,7 +588,6 @@ pub mod tests {
         assert_eq!(metadata.subject_id.to_string(), owned_subj);
         assert_eq!(metadata.governance_id.to_string(), "");
         assert_eq!(metadata.genesis_gov_version, 0);
-        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 0);
@@ -732,7 +698,6 @@ pub mod tests {
         assert_eq!(metadata.subject_id, subject_id);
         assert_eq!(metadata.governance_id.to_string(), "");
         assert_eq!(metadata.genesis_gov_version, 0);
-        assert_ne!(metadata.subject_public_key, KeyIdentifier::default());
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 1);
@@ -838,7 +803,6 @@ pub mod tests {
         assert_eq!(metadata.subject_id, subject_id);
         assert_eq!(metadata.governance_id.to_string(), "");
         assert_eq!(metadata.genesis_gov_version, 0);
-        assert_eq!(metadata.subject_public_key, KeyIdentifier::default());
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 1);
