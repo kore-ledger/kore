@@ -14,7 +14,7 @@ pub use kore_base::{
         EOLRequestInfo, EventInfo, EventRequestInfo, FactInfo, FactRequestInfo,
         Paginator, PaginatorEvents, ProtocolsSignaturesInfo, RequestInfo,
         SignatureInfo, SignaturesInfo, SignedInfo, SubjectInfo,
-        TimeOutResponseInfo, TransferRequestInfo,
+        TimeOutResponseInfo, TransferRequestInfo, RejectRequestInfo
     },
     model::{
         event::ProtocolsError,

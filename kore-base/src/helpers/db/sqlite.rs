@@ -114,8 +114,9 @@ impl Querys for SqliteLocal {
                         owner: row.get(5)?,
                         creator: row.get(6)?,
                         active: row.get(7)?,
-                        sn: row.get(8)?,
+                        sn: row.get(8)?,                        
                         properties: row.get(9)?,
+                        new_owner: row.get(10)?
                     })
                 }) {
                     Ok(result) => Ok(result),
@@ -146,6 +147,7 @@ impl Querys for SqliteLocal {
                     e
                 ))
             })?,
+            new_owner: subject.new_owner
         })
     }
 
@@ -554,7 +556,7 @@ impl SqliteLocal {
             let sql = "CREATE TABLE IF NOT EXISTS events (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, patch TEXT, error TEXT, event_req TEXT NOT NULL, succes TEXT NOT NULL, PRIMARY KEY (subject_id, sn))";
             let _ = conn.execute(sql, ())?;
 
-            let sql = "CREATE TABLE IF NOT EXISTS subjects (subject_id TEXT NOT NULL, governance_id TEXT NOT NULL, genesis_gov_version INTEGER NOT NULL, namespace TEXT NOT NULL, schema_id TEXT NOT NULL, owner TEXT NOT NULL, creator TEXT NOT NULL, active TEXT NOT NULL, sn INTEGER NOT NULL, properties TEXT NOT NULL, PRIMARY KEY (subject_id))";
+            let sql = "CREATE TABLE IF NOT EXISTS subjects (subject_id TEXT NOT NULL, governance_id TEXT NOT NULL, genesis_gov_version INTEGER NOT NULL, namespace TEXT NOT NULL, schema_id TEXT NOT NULL, owner TEXT NOT NULL, creator TEXT NOT NULL, active TEXT NOT NULL, sn INTEGER NOT NULL, properties TEXT NOT NULL, new_owner Text, PRIMARY KEY (subject_id))";
             let _ = conn.execute(sql, ())?;
 
             let sql = "CREATE TABLE IF NOT EXISTS signatures (subject_id TEXT NOT NULL, sn INTEGER NOT NULL, signatures_eval TEXT, signatures_appr TEXT, signatures_vali TEXT NOT NULL, PRIMARY KEY (subject_id))";
@@ -1005,12 +1007,17 @@ impl Subscriber<SinkDataEvent> for SqliteLocal {
         let active = event.metadata.active.to_string();
         let sn = event.metadata.sn;
         let properties = event.metadata.properties.0.to_string();
+        let new_owner = if let Some(new_owner) = event.metadata.new_owner {
+            Some(new_owner.to_string())
+        } else {
+            None
+        };
 
         if let Err(e) = self
         .conn
         .call(move |conn| {
             let _ =
-                conn.execute("INSERT OR REPLACE INTO subjects (subject_id, governance_id, genesis_gov_version, namespace, schema_id, owner, creator, active, sn, properties) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)", params![subject_id, governance_id, genesis_gov_version, namespace, schema_id, owner, creator, active, sn, properties])?;
+                conn.execute("INSERT OR REPLACE INTO subjects (subject_id, governance_id, genesis_gov_version, namespace, schema_id, owner, creator, active, sn, properties, new_owner) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)", params![subject_id, governance_id, genesis_gov_version, namespace, schema_id, owner, creator, active, sn, properties, new_owner])?;
             Ok(())
         })
         .await

@@ -220,6 +220,7 @@ pub struct SubjectDB {
     pub active: String,
     pub sn: u64,
     pub properties: String,
+    pub new_owner: Option<String>
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -230,10 +231,11 @@ pub struct SubjectInfo {
     pub namespace: String,
     pub schema_id: String,
     pub owner: String,
+    pub new_owner: Option<String>,
     pub creator: String,
     pub active: bool,
     pub sn: u64,
-    pub properties: Value,
+    pub properties: Value
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
