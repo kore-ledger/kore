@@ -143,6 +143,55 @@ impl Intermediary {
                     };
 
                 match message.message {
+                    ActorMessage::TransferRes { res } => {
+                        let authorizer_path =
+                        ActorPath::from(message.info.reciver_actor.clone());
+                    let authorizer_actor: Option<ActorRef<Updater>> =
+                        self.system.get_actor(&authorizer_path).await;
+
+                    if let Some(authorizer_actor) = authorizer_actor {
+                        if let Err(e) = authorizer_actor
+                            .tell(UpdaterMessage::TransferResponse { res })
+                            .await
+                        {
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not send a message to {}: {}",
+                                authorizer_path, e
+                            )));
+                        };
+                    } else {
+                        return Err(Error::NetworkHelper(format!(
+                            "Can not get Actor: {}",
+                            authorizer_path
+                        )));
+                    };
+                    }
+                    ActorMessage::Transfer { subject_id } => {
+                        let distributor_path =
+                            ActorPath::from(message.info.reciver_actor.clone());
+                        let distributor_actor: Option<ActorRef<Distributor>> =
+                            self.system.get_actor(&distributor_path).await;
+
+                        if let Some(distributor_actor) = distributor_actor {
+                            if let Err(e) = distributor_actor
+                                .tell(DistributorMessage::Transfer {
+                                    subject_id: subject_id.to_string(),
+                                    info: message.info,
+                                })
+                                .await
+                            {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    distributor_path, e
+                                )));
+                            };
+                        } else {
+                            return Err(Error::NetworkHelper(format!(
+                                "Can not get Actor: {}",
+                                distributor_path
+                            )));
+                        };
+                    }
                     ActorMessage::DistributionGetLastSn { subject_id } => {
                         let distributor_path =
                             ActorPath::from(message.info.reciver_actor.clone());

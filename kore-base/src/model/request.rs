@@ -4,9 +4,11 @@
 //! # Request data model.
 //!
 
+use std::collections::HashSet;
+
 use super::{signature::Signed, wrapper::ValueWrapper, HashId, Namespace};
 
-use crate::Error;
+use crate::{governance::{model::Roles, Governance}, subject::Metadata, Error};
 
 use identity::identifier::{
     derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
@@ -23,7 +25,13 @@ pub enum EventRequestType {
     Fact,
     Transfer,
     Confirm,
+    Reject,
     EOL,
+}
+
+pub enum SignerTypes {
+    One(KeyIdentifier),
+    List(HashSet<KeyIdentifier>, bool)
 }
 
 impl From<EventRequest> for EventRequestType {
@@ -34,6 +42,7 @@ impl From<EventRequest> for EventRequestType {
             EventRequest::Transfer(_transfer_request) => Self::Transfer,
             EventRequest::Confirm(_confirm_request) => Self::Confirm,
             EventRequest::EOL(_eolrequest) => Self::EOL,
+            EventRequest::Reject(_reject_request) => Self::Reject
         }
     }
 }
@@ -58,16 +67,83 @@ pub enum EventRequest {
     Transfer(TransferRequest),
 
     Confirm(ConfirmRequest),
+
+    Reject(RejectRequest),
     /// A request to mark a subject as end-of-life.
     EOL(EOLRequest),
 }
 
 impl EventRequest {
+    pub fn check_ledger_signature(&self, signer: &KeyIdentifier, owner: &KeyIdentifier, new_owner: &Option<KeyIdentifier>) -> Result<bool, Error> {
+        match self {
+            EventRequest::Create(..) |
+            EventRequest::Fact(..) |
+            EventRequest::Transfer(..) | 
+            EventRequest::EOL(..) => {
+                Ok(signer == owner)
+            },
+            EventRequest::Confirm(..) | 
+            EventRequest::Reject(..) => {
+                let Some(new_owner) = new_owner else {
+                    return Err(Error::Subject("new_owner can not be None in Confirm or Reject event".to_owned()));
+                };
+                Ok(new_owner == signer)
+            },
+        }
+    }
+
+    pub fn check_event_signature(&self, signer: &KeyIdentifier, owner: &KeyIdentifier, new_owner: &Option<KeyIdentifier>) -> Result<bool, Error> {
+        match self {
+            EventRequest::Create(..) |
+            EventRequest::Transfer(..) | 
+            EventRequest::EOL(..) => {
+                Ok(signer == owner)
+            },
+            EventRequest::Confirm(..) | 
+            EventRequest::Reject(..) => {
+                let Some(new_owner) = new_owner else {
+                    return Err(Error::Subject("new_owner can not be None in Confirm or Reject event".to_owned()));
+                };
+                Ok(new_owner == signer)
+            },
+            EventRequest::Fact(..) => Ok(true)
+        }
+    }
+
     pub fn is_create_event(&self) -> bool {
         matches!(self, EventRequest::Create(_create_request))
     }
     pub fn is_fact_event(&self) -> bool {
         matches!(self, EventRequest::Fact(_fact_request))
+    }
+    pub fn check_signers(&self, signer: &KeyIdentifier, metadata: &Metadata, gov: &Governance) -> bool {
+        match self {
+            EventRequest::Create(_) | 
+            EventRequest::EOL(_) | 
+            EventRequest::Transfer(_)
+            => {
+                return metadata.owner == *signer;
+            },
+            EventRequest::Fact(_) => {
+                let (set, any) = gov.get_signers(
+                    Roles::ISSUER,
+                    &metadata.schema_id,
+                    metadata.namespace.clone(),
+                );
+
+                if any {
+                    return true;
+                }
+
+                return set.iter().any(|x| x == signer);
+            },
+            EventRequest::Confirm(_) | EventRequest::Reject(_) => {
+                if let Some(new_owner) = metadata.new_owner.clone() {
+                    return new_owner == *signer;
+                }
+            },
+        }
+        false
     }
 }
 
@@ -140,6 +216,8 @@ pub struct TransferRequest {
 )]
 pub struct ConfirmRequest {
     pub subject_id: DigestIdentifier,
+    /// The new name of old owner, only for governance confirm, if is None in governance confirm, old owner will not add to members
+    pub name_old_owner: Option<String>
 }
 
 /// A struct representing a request to mark a subject as end-of-life.
@@ -155,6 +233,20 @@ pub struct ConfirmRequest {
 )]
 pub struct EOLRequest {
     /// The identifier of the subject to mark as end-of-life.
+    pub subject_id: DigestIdentifier,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    Eq,
+    PartialEq,
+    BorshSerialize,
+    BorshDeserialize,
+)]
+pub struct RejectRequest {
     pub subject_id: DigestIdentifier,
 }
 
@@ -252,6 +344,9 @@ impl TryFrom<Signed<EventRequest>> for KoreRequest {
             }
             EventRequest::Confirm(confirm_request) => {
                 Some(confirm_request.subject_id.clone())
+            },
+            EventRequest::Reject(reject_request) => {
+                Some(reject_request.subject_id.clone())
             }
         };
         Ok(Self {

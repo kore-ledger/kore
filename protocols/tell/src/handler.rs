@@ -13,7 +13,7 @@ use crate::{InboundTellId, OutboundTellId, EMPTY_QUEUE_SHRINK_THRESHOLD};
 use libp2p::swarm::{
     handler::{
         ConnectionEvent, DialUpgradeError, FullyNegotiatedInbound,
-        FullyNegotiatedOutbound, ListenUpgradeError,
+        FullyNegotiatedOutbound,
     },
     ConnectionHandler,
     ConnectionHandlerEvent, //ConnectionHandlerUpgrErr, KeepAlive,
@@ -112,8 +112,7 @@ where
             protocol: (mut stream, protocol),
             info: (),
         }: FullyNegotiatedInbound<
-            <Self as ConnectionHandler>::InboundProtocol,
-            <Self as ConnectionHandler>::InboundOpenInfo,
+            <Self as ConnectionHandler>::InboundProtocol
         >,
     ) {
         let mut codec = self.codec.clone();
@@ -147,9 +146,7 @@ where
             protocol: (mut stream, protocol),
             info: (),
         }: FullyNegotiatedOutbound<
-            <Self as ConnectionHandler>::OutboundProtocol,
-            <Self as ConnectionHandler>::OutboundOpenInfo,
-        >,
+            <Self as ConnectionHandler>::OutboundProtocol>,
     ) {
         let message = self
             .requested_outbound
@@ -182,7 +179,7 @@ where
     fn on_dial_upgrade_error(
         &mut self,
         DialUpgradeError { error, info: () }: DialUpgradeError<
-            <Self as ConnectionHandler>::OutboundOpenInfo,
+            (),
             <Self as ConnectionHandler>::OutboundProtocol,
         >,
     ) {
@@ -215,17 +212,6 @@ where
                 self.requested_outbound.push_back(message);
             }
         }
-    }
-
-    /// Manages fail upgrading an inbound substream to the given protocol (can't happen).
-    fn on_listen_upgrade_error(
-        &mut self,
-        ListenUpgradeError { error, .. }: ListenUpgradeError<
-            <Self as ConnectionHandler>::InboundOpenInfo,
-            <Self as ConnectionHandler>::InboundProtocol,
-        >,
-    ) {
-        void::unreachable(error)
     }
 }
 
@@ -319,7 +305,7 @@ where
 
     fn listen_protocol(
         &self,
-    ) -> SubstreamProtocol<Self::InboundProtocol, Self::InboundOpenInfo> {
+    ) -> SubstreamProtocol<Self::InboundProtocol> {
         SubstreamProtocol::new(
             TellProtocol {
                 protocols: self.inbound_protocols.clone(),
@@ -438,8 +424,6 @@ where
         event: ConnectionEvent<
             Self::InboundProtocol,
             Self::OutboundProtocol,
-            Self::InboundOpenInfo,
-            Self::OutboundOpenInfo,
         >,
     ) {
         match event {
@@ -451,9 +435,6 @@ where
             ) => self.on_fully_negotiated_outbound(fully_negotiated_outbound),
             ConnectionEvent::DialUpgradeError(dial_upgrade_error) => {
                 self.on_dial_upgrade_error(dial_upgrade_error)
-            }
-            ConnectionEvent::ListenUpgradeError(listen_upgrade_error) => {
-                self.on_listen_upgrade_error(listen_upgrade_error)
             }
             _ => {}
         }

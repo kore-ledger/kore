@@ -5,7 +5,7 @@ use crate::{
     model::{request::EventRequest, signature::Signed, HashId, ValueWrapper},
     Error,
 };
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
+use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,10 @@ pub struct EvaluationReq {
     pub sn: u64,
     /// The version of the governance contract.
     pub gov_version: u64,
+
+    pub state: ValueWrapper,
+
+    pub new_owner: Option<KeyIdentifier>
 }
 
 /// A struct representing the context in which the evaluation is being performed.
@@ -50,8 +54,7 @@ pub struct SubjectContext {
     pub governance_id: DigestIdentifier,
     pub schema_id: String,
     pub is_owner: bool,
-    pub state: ValueWrapper,
-    pub namespace: String,
+    pub namespace: String
 }
 
 impl HashId for EvaluationReq {

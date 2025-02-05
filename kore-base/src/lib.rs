@@ -259,19 +259,21 @@ impl Api {
             .ask(RequestHandlerMessage::NewRequest { request })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not send external request {}", e);
-                Error::Api(e.to_string())
+                let e = format!("Can not send external request {}", e);
+                error!(TARGET_API,e );
+                Error::Api(e)
             })?;
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -290,23 +292,25 @@ impl Api {
             )))
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not sign request {}", e);
+                let e = format!("The node was unable to sign the request: {}", e);
+                error!(TARGET_API, e);
                 Error::Node(
-                    "The node was unable to sign the request".to_owned(),
+                    e
                 )
             })?;
 
         let signature = match response {
             NodeResponse::SignRequest(signature) => signature,
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
-                return Err(Error::Node(
-                    "A response was received that was not the expected one"
+                return Err(Error::Api(
+                    e
                         .to_owned(),
-                ));
+                ))
             }
         };
 
@@ -322,19 +326,21 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not send our request {}", e);
-                Error::Api(e.to_string())
+                let e = format!("Can not send our request {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             RequestHandlerResponse::Ok(request_data) => Ok(request_data),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -352,19 +358,21 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get request state {}", e);
-                Error::Api(e.to_string())
+                let e = format!("Can not get request state {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             QueryResponse::RequestState(state) => Ok(state),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -382,19 +390,21 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get approval request {}", e);
-                Error::Api(e.to_string())
+                let e = format!("Can not get approval request {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             QueryResponse::ApprovalState(data) => Ok(data),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -410,8 +420,9 @@ impl Api {
             .ask(ManualDistributionMessage::Update(subject_id))
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not post manual update {}", e);
-                Error::Api(e.to_string())
+                let e = format!("Can not post manual update {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
         })?;
 
         Ok("Manual update in progress".to_owned())
@@ -423,9 +434,10 @@ impl Api {
         state: ApprovalStateRes,
     ) -> Result<String, Error> {
         if let ApprovalStateRes::Obsolete = state {
-            error!(TARGET_API, "Invalid approval state");
+            let e = "Invalid approval state";
+            error!(TARGET_API, e);
             return Err(Error::Api(
-                "Invalid approval state".to_owned(),
+               e.to_owned(),
             ));
         }
 
@@ -437,22 +449,24 @@ impl Api {
             })
             .await
             .map_err(|e| {
+                let e = format!("Can not change approve request state: {}", e);
                 error!(
                     TARGET_API,
-                    "Can not change approve request state: {}", e
+                    e
                 );
-                Error::Api(e.to_string())
+                Error::Api(e)
             })?;
 
         match response {
             RequestHandlerResponse::Response(res) => Ok(res),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -471,8 +485,9 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get auth subject: {}", e);
-                Error::Api(format!("Can not get auth subject: {}", e))
+                let e = format!("Can not get auth subject: {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         Ok("Ok".to_owned())
@@ -488,12 +503,13 @@ impl Api {
         match response {
             AuthResponse::Auths { subjects } => Ok(subjects),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -509,19 +525,21 @@ impl Api {
             .ask(AuthMessage::GetAuth { subject_id })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get witnesses of subject: {}", e);
-                Error::Api(format!("Can not get witnesses of subjects: {}", e))
+                let e = format!("Can not get witnesses of subjects: {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             AuthResponse::Witnesses(witnesses) => Ok(witnesses),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -536,11 +554,42 @@ impl Api {
             .tell(AuthMessage::DeleteAuth { subject_id })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not delete auth of subjects: {}", e);
-                Error::Api(format!("Can not delete auth of subjects: {}", e))
+                let e = format!("Can not delete auth of subjects: {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         Ok("Ok".to_owned())
+    }
+
+    pub async fn check_transfer(
+        &self,
+        subject_id: DigestIdentifier,
+    ) -> Result<String, Error> {
+        let response = self
+        .auth
+        .ask(AuthMessage::CheckTransfer { subject_id })
+        .await
+        .map_err(|e| {
+            let e = format!("Can not check Transfer: {}", e);
+            error!(TARGET_API, e);
+            Error::Api(e)
+        })?;
+
+    match response {
+        AuthResponse::None => Ok("Checking in progress".to_owned()),
+        _ => {
+            let e = "A response was received that was not the expected one";
+            error!(
+                TARGET_API,
+                e
+            );
+            Err(Error::Api(
+                e
+                    .to_owned(),
+            ))
+        }
+    }
     }
 
     pub async fn update_subject(
@@ -552,19 +601,21 @@ impl Api {
             .ask(AuthMessage::Update { subject_id })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not update subject: {}", e);
-                Error::Api(format!("Can not update subject: {}", e))
+                let e = format!("Can not update subject: {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             AuthResponse::None => Ok("Update in progress".to_owned()),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -580,22 +631,24 @@ impl Api {
             .ask(RegisterMessage::GetGovs { active })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get resgister governances: {}", e);
-                Error::Api(format!(
+                let e = format!(
                     "Can not get resgister governances: {}",
                     e
-                ))
+                );
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             RegisterResponse::Govs { governances } => Ok(governances),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -617,22 +670,24 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get resgister subjects: {}", e);
-                Error::Api(format!(
+                let e = format!(
                     "Can not get resgister subjects: {}",
                     e
-                ))
+                );
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             RegisterResponse::Subjs { subjects } => Ok(subjects),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -654,19 +709,21 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get events: {}", e);
-                Error::Api(format!("Can not get events: {}", e))
+                let e = format!("Can not get events: {}", e); 
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             QueryResponse::PaginatorEvents(data) => Ok(data),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -686,19 +743,21 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get event sn: {}", e);
-                Error::Api(format!("Can not get event sn: {}", e))
+                let e = format!("Can not get event sn: {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             QueryResponse::Event(data) => Ok(data),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -722,19 +781,21 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get first or end events: {}", e);
-                Error::Api(format!("Can not get first or end events: {}", e))
+                let e = format!("Can not get first or end events: {}", e); 
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             QueryResponse::Events(data) => Ok(data),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }
@@ -752,20 +813,21 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get subject: {}", e);
-                Error::Api(format!("Can not get subject: {}", e))
+                let e = format!("Can not get subject: {}", e); 
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             QueryResponse::Subject(subject) => Ok(subject),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
-                        .to_owned(),
+                    e.to_owned()
                 ))
             }
         }
@@ -782,19 +844,21 @@ impl Api {
             })
             .await
             .map_err(|e| {
-                error!(TARGET_API, "Can not get signatures: {}", e);
-                Error::Api(format!("Can not get signatures: {}", e))
+                let e = format!("Can not get signatures: {}", e);
+                error!(TARGET_API, e);
+                Error::Api(e)
             })?;
 
         match response {
             QueryResponse::Signatures(signatures) => Ok(signatures),
             _ => {
+                let e = "A response was received that was not the expected one";
                 error!(
                     TARGET_API,
-                    "A response was received that was not the expected one"
+                    e
                 );
                 Err(Error::Api(
-                    "A response was received that was not the expected one"
+                    e
                         .to_owned(),
                 ))
             }

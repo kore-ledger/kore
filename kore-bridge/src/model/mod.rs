@@ -9,8 +9,7 @@ use kore_base::{
     model::{
         namespace::Namespace,
         request::{
-            ConfirmRequest, CreateRequest, EOLRequest, EventRequest,
-            FactRequest, TransferRequest,
+            ConfirmRequest, CreateRequest, EOLRequest, EventRequest, FactRequest, RejectRequest, TransferRequest
         },
         ValueWrapper,
     },
@@ -38,6 +37,7 @@ pub enum BridgeEventRequest {
     Transfer(BridgeTransferRequest),
     EOL(BridgeEOLRequest),
     Confirm(BridgeConfirmRequest),
+    Reject(BridgeRejectRequest)
 }
 
 impl From<EventRequest> for BridgeEventRequest {
@@ -48,6 +48,7 @@ impl From<EventRequest> for BridgeEventRequest {
             EventRequest::Transfer(request) => Self::Transfer(request.into()),
             EventRequest::EOL(request) => Self::EOL(request.into()),
             EventRequest::Confirm(request) => Self::Confirm(request.into()),
+            EventRequest::Reject(request) => Self::Reject(request.into())
         }
     }
 }
@@ -71,7 +72,33 @@ impl TryFrom<BridgeEventRequest> for EventRequest {
             BridgeEventRequest::Confirm(request) => {
                 Ok(Self::Confirm(request.try_into()?))
             }
+            BridgeEventRequest::Reject(request) => Ok(Self::Reject(request.try_into()?)),
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BridgeRejectRequest {
+        /// Subject identifier
+        pub subject_id: String,
+}
+
+impl From<RejectRequest> for BridgeRejectRequest {
+    fn from(request: RejectRequest) -> Self {
+        Self {
+            subject_id: request.subject_id.to_str(),
+        }
+    }
+}
+
+impl TryFrom<BridgeRejectRequest> for RejectRequest {
+    type Error = Error;
+    fn try_from(request: BridgeRejectRequest) -> Result<Self, Self::Error> {
+        Ok(Self { subject_id: DigestIdentifier::from_str(&request.subject_id)
+            .map_err(|_| {
+                Error::Bridge("Invalid subject identifier".to_string())
+            })?
+        })
     }
 }
 
@@ -201,12 +228,14 @@ impl TryFrom<BridgeEOLRequest> for EOLRequest {
 pub struct BridgeConfirmRequest {
     /// Subject identifier
     pub subject_id: String,
+    pub name_old_owner: Option<String>
 }
 
 impl From<ConfirmRequest> for BridgeConfirmRequest {
     fn from(request: ConfirmRequest) -> Self {
         Self {
             subject_id: request.subject_id.to_str(),
+            name_old_owner: request.name_old_owner
         }
     }
 }
@@ -219,6 +248,7 @@ impl TryFrom<BridgeConfirmRequest> for ConfirmRequest {
                 .map_err(|_| {
                     Error::Bridge("Invalid subject identifier".to_string())
                 })?,
+            name_old_owner: request.name_old_owner
         })
     }
 }

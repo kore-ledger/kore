@@ -48,6 +48,10 @@ impl KeyIdentifier {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.public_key.is_empty()
+    }
+
     pub fn to_signature_derivator(&self) -> SignatureDerivator {
         match self.derivator {
             KeyDerivator::Ed25519 => SignatureDerivator::Ed25519Sha512,

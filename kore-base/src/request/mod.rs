@@ -12,17 +12,18 @@ use identity::
     };
 use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
+use types::ReqManInitMessage;
 use std::collections::{HashMap, VecDeque};
 use store::store::PersistentActor;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use crate::{
     approval::approver::{ApprovalStateRes, Approver, ApproverMessage},
     db::Storable,
-    governance::model::{CreatorQuantity, Roles},
+    governance::{model::CreatorQuantity, Governance},
     helpers::db::ExternalDB,
     init_state,
-    model::common::{get_gov, get_metadata, get_quantity, subject_owner},
+    model::{common::{get_gov, get_metadata, get_quantity, subject_owner}, Namespace},
     subject::CreateSubjectData,
     CreateRequest, EventRequest, HashId, Node, NodeMessage, NodeResponse,
     Signed, DIGEST_DERIVATOR,
@@ -156,6 +157,72 @@ impl RequestHandler {
 
         RequestHandler::queued_event(ctx, subject_id).await
     }
+
+    async fn error(&mut self, ctx: &mut ActorContext<RequestHandler>, e: &str, subject_id: &str, request_id: &str) -> Result<RequestHandlerResponse, ActorError> {
+        error!(
+            TARGET_REQUEST,
+            "PopQueue, {} for {}", e, subject_id
+        );
+        if let Err(e) = self
+            .error_queue_handling(
+                ctx,
+                request_id,
+                subject_id,
+                e,
+            )
+            .await
+        {
+            error!(TARGET_REQUEST, "PopQueue, Can not enqueue next event: {}", e);
+            ctx.system()
+                .send_event(SystemEvent::StopSystem)
+                .await;
+            return Err(e);
+        }
+
+        Ok(RequestHandlerResponse::None)
+    }
+
+    pub async fn check_creations(&self, message: &str, ctx: &mut ActorContext<RequestHandler>, governance_id: &str, schema_id: &str, namespace: Namespace, gov: Governance) -> Result<(), ActorError> {
+        if let Some(max_quantity) = gov.max_creations(
+            &self.node_key.to_string(),
+            schema_id,
+            namespace.clone(),
+        ) {
+            if let CreatorQuantity::QUANTITY(max_quantity) =
+                max_quantity
+            {
+                let quantity = match get_quantity(
+                    ctx,
+                    governance_id.to_string(),
+                    schema_id.to_owned(),
+                    self.node_key.to_string(),
+                    namespace.to_string(),
+                )
+                .await
+                {
+                    Ok(quantity) => quantity,
+                    Err(e) => {
+                        error!(TARGET_REQUEST, "{}, can not get subject quatity of node: {}", message, e);
+                        return Err(ActorError::Functional(format!("Can not get subject quatity of node: {}", e)));
+                    }
+                };
+
+                if quantity >= max_quantity as usize {
+                    error!(TARGET_REQUEST, "{}, The maximum number of subjects you can create for schema {} in governance {} has been reached.", message, schema_id, governance_id);
+                    return Err(ActorError::Functional(format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.", schema_id, governance_id)));
+                }
+            }
+
+            Ok(())
+        } else {
+            let e = "The Scheme does not exist or does not have permissions for the creation of subjects, it needs to be assigned the creator role.";
+            error!(TARGET_REQUEST, "{}, {}", message, e);
+            
+            Err(ActorError::Functional(
+                e.to_owned(),
+            ))
+        }
+    }
 }
 
 // Enviar un evento sin firmar
@@ -250,6 +317,7 @@ impl Actor for RequestHandler {
                 request_id.clone(),
                 subject_id,
                 request,
+                ReqManInitMessage::Validate
             );
             let request_manager_actor =
                 ctx.create_child(&request_id, request_manager).await?;
@@ -376,7 +444,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     DigestDerivator::Blake3_256
                 };
 
-                let subject_id = match request.content.clone() {
+                let metadata = match request.content.clone() {
                     EventRequest::Create(create_request) => {
                         // verificar que el firmante sea el nodo.
                         if request.signature.signer != self.node_key {
@@ -423,44 +491,7 @@ impl Handler<RequestHandler> for RequestHandler {
                                 }
                             };
 
-                            if let Some(max_quantity) = gov.max_creations(
-                                &self.node_key.to_string(),
-                                &create_request.schema_id,
-                                create_request.namespace.clone(),
-                            ) {
-                                if let CreatorQuantity::QUANTITY(max_quantity) =
-                                    max_quantity
-                                {
-                                    let quantity = match get_quantity(
-                                        ctx,
-                                        create_request
-                                            .governance_id
-                                            .to_string(),
-                                        create_request.schema_id.clone(),
-                                        self.node_key.to_string(),
-                                        create_request.namespace.to_string(),
-                                    )
-                                    .await
-                                    {
-                                        Ok(quantity) => quantity,
-                                        Err(e) => {
-                                            error!(TARGET_REQUEST, "NewRequest, can not get subject quatity of node: {}", e);
-                                            return Err(ActorError::Functional(format!("Can not get subject quatity of node: {}", e)));
-                                        }
-                                    };
-
-                                    if quantity >= max_quantity as usize {
-                                        error!(TARGET_REQUEST, "NewRequest, The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id);
-                                        return Err(ActorError::Functional(format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id)));
-                                    }
-                                }
-                            } else {
-                                let e = "The Scheme does not exist or does not have permissions for the creation of subjects, it needs to be assigned the creator role.";
-                                error!(TARGET_REQUEST, "NewRequest, {}", e);
-                                return Err(ActorError::Functional(
-                                    e.to_owned(),
-                                ));
-                            };
+                            self.check_creations("NewRequest", ctx, &create_request.governance_id.to_string(), &create_request.schema_id, create_request.namespace.clone(), gov).await?;
                         }
                         let subject_id = match RequestHandler::create_subject(
                             ctx,
@@ -518,73 +549,149 @@ impl Handler<RequestHandler> for RequestHandler {
                             subject_id: subject_id.to_string(),
                         }));
                     }
-                    EventRequest::Fact(fact_request) => fact_request.subject_id,
+                    EventRequest::Fact(fact_request) => {
+                        let metadata = get_metadata(ctx, &fact_request.subject_id.to_string()).await?;
+
+                        if metadata.new_owner.is_some() {
+                            let e = "After Transfer event only can emit Confirm or Reject event";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        }
+
+                        metadata
+                    }
                     EventRequest::Transfer(transfer_request) => {
                         if request.signature.signer != self.node_key {
                             let e = "Only the node can sign transfer events.";
                             error!(TARGET_REQUEST, "NewRequest, {}", e);
                             return Err(ActorError::Functional(e.to_owned()));
                         }
-                        transfer_request.subject_id
-                    }
-                    EventRequest::Confirm(confirm_request) => {
-                        if request.signature.signer != self.node_key {
-                            let e = "Only the node can sign confirm events.";
+
+                        let metadata = get_metadata(ctx, &transfer_request.subject_id.to_string()).await?;
+
+                        if metadata.new_owner.is_some() {
+                            let e = "After Transfer event only can emit Confirm or Reject event";
                             error!(TARGET_REQUEST, "NewRequest, {}", e);
                             return Err(ActorError::Functional(e.to_owned()));
                         }
-                        confirm_request.subject_id
+
+                        metadata
                     }
+                    EventRequest::Confirm(confirm_request) => {
+                        if request.signature.signer != self.node_key {
+                            let e = "Only the node can sign Confirm events.";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        }
+                        let metadata =
+                            get_metadata(ctx, &confirm_request.subject_id.to_string()).await?;
+
+                        let Some(new_owner) = metadata.new_owner.clone() else {
+                            let e = "Confirm event need Transfer event before";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        };
+
+                        if new_owner != self.node_key {
+                            let e = "You are not new owner";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        }
+
+                        if !metadata.governance_id.is_empty() {
+
+                            let gov = match get_gov(
+                                ctx,
+                                &metadata.governance_id.to_string(),
+                            )
+                            .await
+                            {
+                                Ok(gov) => gov,
+                                Err(e) => {
+                                    error!(TARGET_REQUEST, "NewRequest, can not get governance: {}", e);
+                                    return Err(ActorError::Functional(format!("It has not been possible to obtain governance: {}", e)));
+                                }
+                            };
+
+                            self.check_creations("NewRequest", ctx, &metadata.governance_id.to_string(), &metadata.schema_id, metadata.namespace.clone(), gov).await?;
+                        }
+
+                        metadata
+                    }
+                    EventRequest::Reject(reject_request) => {
+                        if request.signature.signer != self.node_key {
+                            let e = "Only the node can sign reject events.";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        }
+                        let metadata =
+                        get_metadata(ctx, &reject_request.subject_id.to_string()).await?;
+
+                        let Some(new_owner) = metadata.new_owner.clone() else {
+                            let e = "Confirm event need Transfer event before";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        };
+
+                        if new_owner != self.node_key {
+                            let e = "You are not new owner";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        }
+
+                        metadata
+                    },
                     EventRequest::EOL(eol_request) => {
                         if request.signature.signer != self.node_key {
                             let e = "Only the node can sign eol events.";
                             error!(TARGET_REQUEST, "NewRequest, {}", e);
                             return Err(ActorError::Functional(e.to_owned()));
                         }
-                        eol_request.subject_id
-                    }
+
+                        let metadata = get_metadata(ctx, &eol_request.subject_id.to_string()).await?;
+
+                        if metadata.new_owner.is_some() {
+                            let e = "After Transfer event only can emit Confirm or Reject event";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        }
+
+                        metadata
+                    },
                 };
 
-                if subject_id.is_empty() {
-                    let e = "Subject_id cannot be empty.";
-                    error!(TARGET_REQUEST, "NewRequest, {}", e);
+                // TODO MIRAR QUE NO ESTÉ COMO TEMPORAL EL SUBJECT.
+
+                // Primero check que seamos el owner.
+                let (is_owner, is_pending) = subject_owner(
+                    ctx,
+                    &metadata.subject_id.to_string(),
+                )
+                .await.map_err(|e| {
+                    error!(TARGET_REQUEST, "NewRequest, Could not determine if the node is the owner of the subject: {}", e);
+                    ActorError::Functional(format!(
+                        "An error has occurred: {}",
+                        e
+                    ))
+                })?;
+
+                if !is_owner && !is_pending {
+                    let e =  "An event is being sent for a subject that does not belong to us and subject is not pending to confirm event";
+                    error!(
+                        TARGET_REQUEST,
+                        "NewRequest, {}", e
+                    );
                     return Err(ActorError::Functional(e.to_owned()));
                 }
 
-                // Primero check que seamos el owner.
-                let owner = match subject_owner(
-                    ctx,
-                    &subject_id.to_string(),
-                )
-                .await
-                {
-                    Ok(owner) => owner,
-                    Err(e) => {
-                        error!(TARGET_REQUEST, "NewRequest, Could not determine if the node is the owner of the subject: {}", e);
-                        return Err(ActorError::Functional(format!(
-                            "An error has occurred: {}",
-                            e
-                        )));
-                    }
-                };
-
-                if !owner {
-                    if let EventRequest::Confirm(_confirm_request) =
-                        request.content.clone()
-                    {
-                        warn!(TARGET_REQUEST, "NewRequest, We are not the owner of the subject, trying to update the node the ledger");
-                        // TODO VAMOS A Intentar actualizarnos, a lo mejor se ha hecho un evento de transferencia pero no lo hemos recibido.
-                    } else {
-                        error!(
-                            TARGET_REQUEST,
-                            "NewRequest, we are not subject owner"
-                        );
-                        return Err(ActorError::Functional("An event is being sent for a subject that does not belong to us.".to_owned()));
-                    }
+                if is_owner && is_pending {
+                    let e =  "We are the owner of the subject but this subject is pending transfer";
+                    error!(
+                        TARGET_REQUEST,
+                        "NewRequest, {}", e
+                    );
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
-
-                let metadata =
-                    get_metadata(ctx, &subject_id.to_string()).await?;
 
                 if !metadata.active {
                     let e = "The subject is no longer active.";
@@ -610,17 +717,17 @@ impl Handler<RequestHandler> for RequestHandler {
                 self.on_event(
                     RequestHandlerEvent::EventToQueue {
                         id: request_id.clone(),
-                        subject_id: subject_id.to_string(),
+                        subject_id: metadata.subject_id.to_string(),
                         event: request,
                     },
                     ctx,
                 )
                 .await;
 
-                if !self.handling.contains_key(&subject_id.to_string()) {
+                if !self.handling.contains_key(&metadata.subject_id.to_string()) {
                     if let Err(e) = RequestHandler::queued_event(
                         ctx,
-                        &subject_id.to_string(),
+                        &metadata.subject_id.to_string(),
                     )
                     .await
                     {
@@ -635,7 +742,7 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 Ok(RequestHandlerResponse::Ok(RequestData {
                     request_id,
-                    subject_id: subject_id.to_string(),
+                    subject_id: metadata.subject_id.to_string(),
                 }))
             }
             RequestHandlerMessage::PopQueue { subject_id } => {
@@ -694,20 +801,7 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 if !metadata.active {
                     let e = "Subject is not active";
-                    warn!(TARGET_REQUEST, "PopQueue, {} for {}", e, subject_id);
-                    if let Err(e) = self
-                        .error_queue_handling(ctx, &request_id, &subject_id, e)
-                        .await
-                    {
-                        error!(
-                            TARGET_REQUEST,
-                            "PopQueue, Can not enqueue next event: {}", e
-                        );
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
-                        return Err(e);
-                    }
-
-                    return Ok(RequestHandlerResponse::None);
+                    return self.error(ctx, e, &subject_id, &request_id).await
                 }
 
                 let gov = match get_gov(ctx, &subject_id).await {
@@ -724,172 +818,48 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 };
 
-                if let EventRequest::Fact(_) = event.content.clone() {
-                } else if metadata.owner != event.signature.signer {
-                    let e = "owner and sign are not the same";
-                    warn!(TARGET_REQUEST, "PopQueue, {} for {}", e, subject_id);
-                    if let Err(e) = self
-                        .error_queue_handling(ctx, &request_id, &subject_id, e)
-                        .await
-                    {
-                        error!(
-                            TARGET_REQUEST,
-                            "PopQueue, Can not enqueue next event: {}", e
-                        );
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
-                        return Err(e);
-                    }
-
-                    return Ok(RequestHandlerResponse::None);
+                if !event.content.check_signers(&event.signature.signer, &metadata, &gov) {
+                    let e = "Invalid signer for this event";
+                    return self.error(ctx, e, &subject_id, &request_id).await
                 }
 
-                let message = match event.content.clone() {
+                let (message, command) = match event.content.clone() {
                     EventRequest::Create(create_request) => {
                         if create_request.schema_id != "governance" {
-                            if let Some(max_quantity) = gov.max_creations(
-                                &self.node_key.to_string(),
-                                &create_request.schema_id,
-                                create_request.namespace.clone(),
-                            ) {
-                                let quantity = match get_quantity(
-                                    ctx,
-                                    create_request.governance_id.to_string(),
-                                    create_request.schema_id.clone(),
-                                    self.node_key.to_string(),
-                                    create_request.namespace.to_string(),
-                                )
-                                .await
-                                {
-                                    Ok(quantity) => quantity,
-                                    Err(e) => {
-                                        error!(TARGET_REQUEST, "PopQueue, Can not get subject quantity for {} : {}", subject_id, e);
-                                        if let Err(e) = self
-                                            .error_queue_handling(
-                                                ctx,
-                                                &request_id,
-                                                &subject_id,
-                                                &e.to_string(),
-                                            )
-                                            .await
-                                        {
-                                            error!(TARGET_REQUEST, "PopQueue, Can not enqueue next event: {}", e);
-                                            ctx.system()
-                                                .send_event(
-                                                    SystemEvent::StopSystem,
-                                                )
-                                                .await;
-                                            return Err(e);
-                                        }
 
-                                        return Ok(
-                                            RequestHandlerResponse::None,
-                                        );
-                                    }
-                                };
-                                if let CreatorQuantity::QUANTITY(max_quantity) =
-                                    max_quantity
-                                {
-                                    if quantity >= max_quantity as usize {
-                                        let e = format!("The maximum number of subjects you can create for schema {} in governance {} has been reached.",create_request.schema_id, create_request.governance_id);
-                                        error!(
-                                            TARGET_REQUEST,
-                                            "PopQueue, {}", e
-                                        );
-                                        if let Err(e) = self
-                                            .error_queue_handling(
-                                                ctx,
-                                                &request_id,
-                                                &subject_id,
-                                                &e,
-                                            )
-                                            .await
-                                        {
-                                            error!(TARGET_REQUEST, "PopQueue, Can not enqueue next event: {}", e);
-                                            ctx.system()
-                                                .send_event(
-                                                    SystemEvent::StopSystem,
-                                                )
-                                                .await;
-                                            return Err(e);
-                                        }
-
-                                        return Ok(
-                                            RequestHandlerResponse::None,
-                                        );
-                                    }
-                                }
-                            } else {
-                                let e = "Unable to get the maximum number of subjects that can be created";
-                                error!(
-                                    TARGET_REQUEST,
-                                    "PopQueue, {} for {}", e, subject_id
-                                );
-                                if let Err(e) = self
-                                    .error_queue_handling(
-                                        ctx,
-                                        &request_id,
-                                        &subject_id,
-                                        e,
-                                    )
-                                    .await
-                                {
-                                    error!(TARGET_REQUEST, "PopQueue, Can not enqueue next event: {}", e);
-                                    ctx.system()
-                                        .send_event(SystemEvent::StopSystem)
-                                        .await;
-                                    return Err(e);
-                                }
-
-                                return Ok(RequestHandlerResponse::None);
+                            if let Err(e) = self.check_creations("PopQueue", ctx, &metadata.governance_id.to_string(), &metadata.schema_id, metadata.namespace.clone(), gov).await {
+                                return self.error(ctx, &e.to_string(), &subject_id, &request_id).await
                             };
                         }
-                        RequestManagerMessage::Other
+                        (RequestManagerMessage::Validate, ReqManInitMessage::Validate)
                     }
-                    EventRequest::Fact(_fact_request) => {
-                        let (signers, not_members) = gov.get_signers(
-                            Roles::ISSUER,
-                            &metadata.schema_id,
-                            metadata.namespace.clone(),
-                        );
-
-                        if !signers
-                            .iter()
-                            .any(|x| x.clone() == event.signature.signer)
-                            && (!not_members
-                                || gov.members_to_key_identifier().iter().any(
-                                    |x| x.clone() == event.signature.signer,
-                                ))
-                        {
-                            let e = "Invalid request signer";
-                            error!(
-                                TARGET_REQUEST,
-                                "PopQueue, {} for {}", e, subject_id
-                            );
-                            if let Err(e) = self
-                                .error_queue_handling(
-                                    ctx,
-                                    &request_id,
-                                    &subject_id,
-                                    e,
-                                )
-                                .await
-                            {
-                                error!(
-                                    TARGET_REQUEST,
-                                    "PopQueue, Can not enqueue next event: {}",
-                                    e
-                                );
-                                ctx.system()
-                                    .send_event(SystemEvent::StopSystem)
-                                    .await;
-                                return Err(e);
+                    
+                    EventRequest::Confirm(confirm_req) => {
+                        if metadata.governance_id.is_empty() {
+                            if let Some(name) = confirm_req.name_old_owner {
+                                if name.is_empty() {
+                                    let e = "Name of old owner can not be a empty String";
+                                    return self.error(ctx, e, &subject_id, &request_id).await
+                                }
+                            }
+                            (RequestManagerMessage::Evaluate, ReqManInitMessage::Evaluate)
+                        } else {
+                            if confirm_req.name_old_owner.is_some() {
+                                let e = "Name of old owner must be None";
+                                return self.error(ctx, e, &subject_id, &request_id).await
                             }
 
-                            return Ok(RequestHandlerResponse::None);
+                            if let Err(e) = self.check_creations("PopQueue", ctx, &metadata.governance_id.to_string(), &metadata.schema_id, metadata.namespace.clone(), gov).await {
+                                return self.error(ctx, &e.to_string(), &subject_id, &request_id).await
+                            };
+                            (RequestManagerMessage::Validate, ReqManInitMessage::Validate)
                         }
-                        RequestManagerMessage::Fact
-                    }
-                    _ => RequestManagerMessage::Other,
+                    },
+                    EventRequest::Fact(_) |
+                    EventRequest::Transfer(_)  => {
+                        (RequestManagerMessage::Evaluate, ReqManInitMessage::Evaluate)
+                    },
+                    _ => (RequestManagerMessage::Validate, ReqManInitMessage::Validate),
                 };
 
                 let request_manager = RequestManager::new(
@@ -897,6 +867,7 @@ impl Handler<RequestHandler> for RequestHandler {
                     request_id.clone(),
                     subject_id.clone(),
                     event.clone(),
+                    command
                 );
 
                 let request_actor = match ctx

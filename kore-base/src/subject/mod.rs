@@ -8,50 +8,43 @@ use crate::{
     approval::{
         approver::{Approver, VotationType},
         Approval,
-    },
-    config::Config,
-    db::Storable,
-    distribution::{distributor::Distributor, Distribution, DistributionType},
-    evaluation::{
+    }, config::Config, db::Storable, distribution::{distributor::Distributor, Distribution, DistributionType}, evaluation::{
         compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
         schema::{EvaluationSchema, EvaluationSchemaMessage},
         Evaluation,
-    },
-    governance::{
+    }, governance::{
         model::{CreatorQuantity, Roles},
         Schema,
-    },
-    helpers::db::ExternalDB,
-    model::{
+    }, helpers::db::ExternalDB, model::{
         common::{
             delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
             register_relation, verify_protocols_state,
         },
         event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
         request::EventRequest,
-        signature::{Signature, Signed},
+        signature::Signed,
         HashId, Namespace, ValueWrapper,
-    },
-    node::{
+    }, node::{
         nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
         register::{Register, RegisterData, RegisterMessage},
-        NodeMessage, NodeResponse,
-    },
-    validation::{
+        NodeMessage, NodeResponse, TransferSubject,
+    }, update::TransferResponse, validation::{
         proof::ValidationProof,
         schema::{ValidationSchema, ValidationSchemaMessage},
         validator::Validator,
         Validation,
-    },
-    CreateRequest, Error, EventRequestType, Governance, Node};
+    }, CreateRequest, Error, EventRequestType, Governance, Node
+};
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
     Event, Handler, Message, Response, Sink,
 };
 use event::LedgerEvent;
-use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use identity::identifier::{
+    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+};
 
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -61,6 +54,7 @@ use serde_json::to_value;
 use sinkdata::{SinkData, SinkDataMessage};
 use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, warn};
+use transfer::{TransferRegister, TransferRegisterMessage};
 use validata::ValiData;
 
 use std::{collections::HashSet, str::FromStr};
@@ -68,6 +62,7 @@ use std::{collections::HashSet, str::FromStr};
 pub mod event;
 pub mod sinkdata;
 pub mod validata;
+pub mod transfer;
 
 const TARGET_SUBJECT: &str = "Kore-Subject";
 
@@ -101,6 +96,7 @@ pub struct Metadata {
     pub creator: KeyIdentifier,
     /// The identifier of the public key of the subject owner.
     pub owner: KeyIdentifier,
+    pub new_owner: Option<KeyIdentifier>,
     /// Indicates whether the subject is active or not.
     pub active: bool,
     /// The current status of the subject.
@@ -122,6 +118,8 @@ pub struct Subject {
     pub schema_id: String,
     /// The identifier of the public key of the subject owner.
     pub owner: KeyIdentifier,
+    /// The identifier of the public key of the new subject owner.
+    pub new_owner: Option<KeyIdentifier>,
 
     pub last_event_hash: DigestIdentifier,
     /// The identifier of the public key of the subject creator.
@@ -143,6 +141,7 @@ impl Subject {
             namespace: data.create_req.namespace,
             schema_id: data.create_req.schema_id,
             owner: data.creator.clone(),
+            new_owner: None,
             creator: data.creator,
             last_event_hash: DigestIdentifier::default(),
             active: true,
@@ -181,6 +180,7 @@ impl Subject {
                 schema_id: request.schema_id.clone(),
                 last_event_hash: DigestIdentifier::default(),
                 owner: ledger.content.event_request.signature.signer.clone(),
+                new_owner: None,
                 creator: ledger.content.event_request.signature.signer.clone(),
                 active: true,
                 sn: 0,
@@ -232,6 +232,7 @@ impl Subject {
             namespace: self.namespace.clone(),
             properties: self.properties.clone(),
             owner: self.owner.clone(),
+            new_owner: self.new_owner.clone(),
             active: self.active,
             sn: self.sn,
         }
@@ -260,7 +261,8 @@ impl Subject {
         let evaluation = Evaluation::new(our_key.clone());
         ctx.create_child("evaluation", evaluation).await?;
 
-        let distribution = Distribution::new(our_key, DistributionType::Subject);
+        let distribution =
+            Distribution::new(our_key, DistributionType::Subject);
         ctx.create_child("distribution", distribution).await?;
 
         Ok(())
@@ -532,7 +534,8 @@ impl Subject {
         let sink = Sink::new(approver_actor.subscribe(), ext_db.get_approver());
         ctx.system().run_sink(sink).await;
 
-        let distribution = Distribution::new(our_key.clone(), DistributionType::Subject);
+        let distribution =
+            Distribution::new(our_key.clone(), DistributionType::Subject);
         ctx.create_child("distribution", distribution).await?;
 
         Ok(())
@@ -786,37 +789,83 @@ impl Subject {
         Ok(())
     }
 
+    async fn new_transfer_subject(
+        ctx: &mut ActorContext<Subject>,
+        subject_id: &str,
+        new_owner: &str,
+        actual_owner: &str,
+    ) -> Result<(), ActorError> {
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+
+        if let Some(node_actor) = node_actor {
+            node_actor
+                .tell(NodeMessage::TransferSubject(TransferSubject {
+                    subject: subject_id.to_owned(),
+                    new_owner: new_owner.to_owned(),
+                    actual_owner: actual_owner.to_owned(),
+                }))
+                .await?;
+        } else {
+            return Err(ActorError::NotFound(node_path));
+        }
+        Ok(())
+    }
+
+    async fn reject_transfer_subject(
+        ctx: &mut ActorContext<Subject>,
+        subject_id: &str,
+    ) -> Result<(), ActorError> {
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+
+        if let Some(node_actor) = node_actor {
+            node_actor
+                .tell(NodeMessage::RejectTransfer(subject_id.to_owned()))
+                .await?;
+        } else {
+            return Err(ActorError::NotFound(node_path));
+        }
+        Ok(())
+    }
+
     async fn verify_new_ledger_event(
         &self,
         last_ledger: &Signed<Ledger>,
         new_ledger: &Signed<Ledger>,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
         // Si no sigue activo
         if !self.active {
             return Err(Error::Subject("Subject is not active".to_owned()));
         }
 
-        // SI no es el dueño el que firmó el evento
-        if new_ledger.signature.signer != self.owner {
-            return Err(Error::Subject(
-                "Signer of the event is not the owner".to_owned(),
-            ));
+        if !new_ledger
+            .content
+            .event_request
+            .content
+            .check_ledger_signature(
+                &new_ledger.signature.signer,
+                &self.owner,
+                &self.new_owner,
+            )?
+        {
+            return Err(Error::Subject("Invalid ledger signer".to_owned()));
         }
 
-        match new_ledger.content.event_request.content.clone() {
-            EventRequest::Transfer(..)
-            | EventRequest::Confirm(..)
-            | EventRequest::EOL(..) => {
-                if new_ledger.content.event_request.signature.signer
-                    != self.owner
-                {
-                    return Err(Error::Subject(
-                        "Signer of the request is not the owner".to_owned(),
-                    ));
-                }
-            }
-            _ => {}
-        };
+        if !new_ledger
+            .content
+            .event_request
+            .content
+            .check_ledger_signature(
+                &new_ledger.content.event_request.signature.signer,
+                &self.owner,
+                &self.new_owner,
+            )?
+        {
+            return Err(Error::Subject("Invalid event signer".to_owned()));
+        }
 
         if let Err(e) = new_ledger.verify() {
             return Err(Error::Subject(format!(
@@ -853,32 +902,18 @@ impl Subject {
             last_ledger.content.appr_success,
             last_ledger.content.appr_required,
             last_ledger.content.vali_success,
+            self.governance_id.is_empty(),
         )?;
 
-        // Si el último evento guardado fue correcto, por ende se aplicó lo que ese
-        // evento decía.
         if valid_last_event {
-            // Comprobar firma,
-            if let EventRequest::Transfer(transfer) =
-                last_ledger.content.event_request.content.clone()
-            {
-                if transfer.new_owner != new_ledger.signature.signer {
-                    return Err(Error::Subject("The last event was a transfer and the new event received is not signed by the new owner".to_owned()));
-                }
-            } else if let EventRequest::EOL(_end) =
+            if let EventRequest::EOL(..) =
                 last_ledger.content.event_request.content.clone()
             {
                 return Err(Error::Subject(
                     "The last event was EOL, no more events can be received"
                         .to_owned(),
                 ));
-            } else if last_ledger.signature.signer
-                != new_ledger.signature.signer
-            {
-                return Err(Error::Subject("The signer of the new event and the previous one should be the same".to_owned()));
             }
-        } else if last_ledger.signature.signer != new_ledger.signature.signer {
-            return Err(Error::Subject("The signer of the new event and the previous one should be the same".to_owned()));
         }
 
         let valid_new_event = verify_protocols_state(
@@ -889,6 +924,7 @@ impl Subject {
             new_ledger.content.appr_success,
             new_ledger.content.appr_required,
             new_ledger.content.vali_success,
+            self.governance_id.is_empty(),
         )?;
 
         // Si el nuevo evento a registrar fue correcto.
@@ -898,36 +934,68 @@ impl Subject {
                     return Err(Error::Subject("A creation event is being logged when the subject has already been created previously".to_owned()));
                 }
                 EventRequest::Fact(_fact_request) => {
-                    let LedgerValue::Patch(json_patch) =
-                        new_ledger.content.value.clone()
-                    else {
-                        return Err(Error::Subject("The event was successful but does not have a json patch to apply".to_owned()));
-                    };
+                    if self.new_owner.is_some() {
+                        return Err(Error::Subject("After a transfer event there must be a confirmation or a reject event.".to_owned()));
+                    }
 
-                    let patch_json = serde_json::from_value::<Patch>(
-                        json_patch.0,
-                    )
-                    .map_err(|e| {
-                        Error::Subject(format!(
-                            "Failed to extract event patch: {}",
-                            e
-                        ))
-                    })?;
-                    let mut propierties = self.properties.0.clone();
-                    let Ok(()) = patch(&mut propierties, &patch_json) else {
-                        return Err(Error::Subject(
-                            "Failed to apply event patch".to_owned(),
-                        ));
-                    };
+                    self.check_patch(
+                        &new_ledger.content.value,
+                        &new_ledger.content.state_hash,
+                        &new_ledger.signature.content_hash.derivator,
+                    )?;
+                }
+                EventRequest::Transfer(..) => {
+                    if self.new_owner.is_some() {
+                        return Err(Error::Subject("After a transfer event there must be a confirmation or a reject event.".to_owned()));
+                    }
 
-                    let hash_state_after_patch = ValueWrapper(propierties)
+                    let hash_without_patch = self
+                        .properties
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
-                    if hash_state_after_patch != new_ledger.content.state_hash {
-                        return Err(Error::Subject("The new patch has been applied and we have obtained a different hash than the event after applying the patch".to_owned()));
+                    if hash_without_patch != new_ledger.content.state_hash {
+                        return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
                     }
                 }
-                _ => {
+                EventRequest::Confirm(..) => {
+                    if self.new_owner.is_none() {
+                        return Err(Error::Subject("Before a confirm event there must be a transfer event.".to_owned()));
+                    }
+
+                    if self.governance_id.is_empty() {
+                        self.check_patch(
+                            &new_ledger.content.value,
+                            &new_ledger.content.state_hash,
+                            &new_ledger.signature.content_hash.derivator,
+                        )?;
+                    } else {
+                        let hash_without_patch = self.properties.hash_id(
+                            new_ledger.signature.content_hash.derivator,
+                        )?;
+
+                        if hash_without_patch != new_ledger.content.state_hash {
+                            return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
+                        }
+                    }
+                }
+                EventRequest::Reject(..) => {
+                    if self.new_owner.is_none() {
+                        return Err(Error::Subject("Before a reject event there must be a transfer event.".to_owned()));
+                    }
+
+                    let hash_without_patch = self
+                        .properties
+                        .hash_id(new_ledger.signature.content_hash.derivator)?;
+
+                    if hash_without_patch != new_ledger.content.state_hash {
+                        return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
+                    }
+                }
+                EventRequest::EOL(..) => {
+                    if self.new_owner.is_some() {
+                        return Err(Error::Subject("After a transfer event there must be a confirmation or a reject event.".to_owned()));
+                    }
+
                     let hash_without_patch = self
                         .properties
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
@@ -938,7 +1006,6 @@ impl Subject {
                 }
             };
         }
-        // Si el nuevo evento falló en algún protocolo
         else {
             if let LedgerValue::Patch(_) = new_ledger.content.value {
                 return Err(Error::Subject("The event failed in some protocol but a patch arrived to apply".to_owned()));
@@ -952,7 +1019,7 @@ impl Subject {
                 return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
             }
         }
-        Ok(())
+        Ok(valid_new_event)
     }
 
     async fn verify_first_ledger_event(
@@ -1017,6 +1084,7 @@ impl Subject {
             event.content.appr_success,
             event.content.appr_required,
             event.content.vali_success,
+            self.governance_id.is_empty(),
         )? {
             Ok(())
         } else {
@@ -1082,34 +1150,43 @@ impl Subject {
             self.register(ctx, true).await?;
             events.remove(0)
         };
-
+        
         for event in events {
-            if let Err(e) =
-                self.verify_new_ledger_event(&last_ledger, &event).await
-            {
-                if let Error::Sn = e {
-                    // El evento que estamos aplicando no es el siguiente.
-                    continue;
-                } else {
-                    return Err(ActorError::Functional(e.to_string()));
+            let last_event_is_ok = match self.verify_new_ledger_event(&last_ledger, &event).await {
+                Ok(last_event_is_ok) => {
+                    last_event_is_ok
+                }, Err(e) => {
+                    if let Error::Sn = e {
+                        // El evento que estamos aplicando no es el siguiente.
+                        continue;
+                    } else {
+                        return Err(ActorError::Functional(e.to_string()));
+                    }
                 }
-            }
-
-            match event.content.event_request.content.clone() {
-                EventRequest::Transfer(transfer_request) => {
-                    Subject::change_node_subject(
-                        ctx,
-                        &transfer_request.subject_id.to_string(),
-                        &transfer_request.new_owner.to_string(),
-                        &self.owner.to_string(),
-                    )
-                    .await?;
-                }
-                EventRequest::EOL(_eolrequest) => {
-                    self.register(ctx, false).await?
-                }
-                _ => {}
             };
+            if last_event_is_ok {
+                match event.content.event_request.content.clone() {
+                    EventRequest::Transfer(transfer_request) => {
+                        Subject::new_transfer_subject(ctx, &transfer_request.subject_id.to_string(), &transfer_request.new_owner.to_string(), &self.owner.to_string()).await?
+                    }
+                    EventRequest::Reject(reject_request) => {
+                        Subject::reject_transfer_subject(ctx, &reject_request.subject_id.to_string()).await?;
+                    }
+                    EventRequest::Confirm(confirm_request) => {
+                        Subject::change_node_subject(
+                            ctx,
+                            &confirm_request.subject_id.to_string(),
+                            &event.signature.signer.to_string(),
+                            &self.owner.to_string(),
+                        )
+                        .await?;
+                    }
+                    EventRequest::EOL(_eolrequest) => {
+                        self.register(ctx, false).await?
+                    }
+                    _ => {}
+                };
+            }
 
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
@@ -1268,50 +1345,61 @@ impl Subject {
         };
 
         for event in events {
-            if let Err(e) =
-                self.verify_new_ledger_event(&last_ledger, &event).await
-            {
-                if let Error::Sn = e {
-                    // El evento que estamos aplicando no es el siguiente.
-                    continue;
-                } else {
-                    return Err(ActorError::Functional(e.to_string()));
+            let last_event_is_ok = match self.verify_new_ledger_event(&last_ledger, &event).await {
+                Ok(last_event_is_ok) => {
+                    last_event_is_ok
+                }, Err(e) => {
+                    if let Error::Sn = e {
+                        // El evento que estamos aplicando no es el siguiente.
+                        continue;
+                    } else {
+                        return Err(ActorError::Functional(e.to_string()));
+                    }
                 }
-            }
-
-            match event.content.event_request.content.clone() {
-                EventRequest::Confirm(_confirm_request) => {
-                    self.register_relation(
-                        ctx,
-                        event.signature.signer.to_string(),
-                        max_quantity.clone(),
-                    )
-                    .await?;
-                }
-                EventRequest::Transfer(transfer_request) => {
-                    delete_relation(
-                        ctx,
-                        self.governance_id.to_string(),
-                        self.schema_id.clone(),
-                        event.signature.signer.to_string(),
-                        self.subject_id.to_string(),
-                        self.namespace.to_string(),
-                    )
-                    .await?;
-
-                    Subject::change_node_subject(
-                        ctx,
-                        &transfer_request.subject_id.to_string(),
-                        &transfer_request.new_owner.to_string(),
-                        &self.owner.to_string(),
-                    )
-                    .await?;
-                }
-                EventRequest::EOL(_eolrequest) => {
-                    self.register(ctx, false).await?
-                }
-                _ => {}
             };
+
+            if last_event_is_ok {
+                match event.content.event_request.content.clone() {
+                    EventRequest::Transfer(transfer_request) => {
+                        Subject::new_transfer_subject(ctx, &transfer_request.subject_id.to_string(), &transfer_request.new_owner.to_string(), &self.owner.to_string()).await?;
+                    }
+                    EventRequest::Reject(reject_request) => {
+                        Subject::reject_transfer_subject(ctx, &reject_request.subject_id.to_string()).await?;
+                    }
+                    EventRequest::Confirm(confirm_request) => {
+                        self.register_relation(
+                            ctx,
+                            event.signature.signer.to_string(),
+                            max_quantity.clone(),
+                        )
+                        .await?;
+
+                        Subject::change_node_subject(
+                            ctx,
+                            &confirm_request.subject_id.to_string(),
+                            &event.signature.signer.to_string(),
+                            &self.owner.to_string(),
+                        )
+                        .await?;
+
+                        delete_relation(
+                            ctx,
+                            self.governance_id.to_string(),
+                            self.schema_id.clone(),
+                            self.owner.to_string(),
+                            self.subject_id.to_string(),
+                            self.namespace.to_string(),
+                        )
+                        .await?;
+
+                        Subject::transfer_register(ctx, event.signature.signer.clone(), self.owner.clone()).await?;
+                    }
+                    EventRequest::EOL(_eolrequest) => {
+                        self.register(ctx, false).await?
+                    }
+                    _ => {}
+                };
+            }
 
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
@@ -1319,6 +1407,20 @@ impl Subject {
             // Acutalizar último evento.
             last_ledger = event.clone();
         }
+
+        Ok(())
+    }
+
+    async fn transfer_register(ctx: &mut ActorContext<Subject>, new: KeyIdentifier, old: KeyIdentifier) -> Result<(), ActorError>{
+        let actor: Option<ActorRef<TransferRegister>> = ctx.get_child("transfer_register").await;
+        let Some(actor) = actor else {
+            return Err(ActorError::NotFound(ActorPath::from(format!(
+                "{}/transfer_register",
+                ctx.path()
+            ))))
+        };
+
+        actor.tell(TransferRegisterMessage::RegisterNewOldOwner { old, new }).await?;
 
         Ok(())
     }
@@ -1716,49 +1818,109 @@ impl Subject {
         Ok(new_compilers)
     }
 
-    async fn get_ledger_data(&self, ctx: &mut ActorContext<Subject>, last_sn: u64) -> Result<SubjectResponse, ActorError>{
+    async fn get_ledger_data(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        last_sn: u64,
+    ) -> Result<SubjectResponse, ActorError> {
         let ledger = self.get_ledger(ctx, last_sn).await?;
 
-                if ledger.len() < 100 {
-                    let last_event =
-                        get_last_event(ctx, &self.subject_id.to_string())
-                            .await
-                            .map_err(|e| {
-                                error!(
-                                    TARGET_SUBJECT,
-                                    "GetLedger, can not get last event: {}", e
-                                );
-                                e
-                            })?;
+        if ledger.len() < 100 {
+            let last_event = get_last_event(ctx, &self.subject_id.to_string())
+                .await
+                .map_err(|e| {
+                    error!(
+                        TARGET_SUBJECT,
+                        "GetLedger, can not get last event: {}", e
+                    );
+                    e
+                })?;
 
-                    let (last_proof, prev_event_validation_response) =
-                        get_vali_data(ctx, &self.subject_id.to_string())
-                            .await
-                            .map_err(|e| {
-                                error!(
-                                    TARGET_SUBJECT,
-                                    "GetLedger, can not get last vali data: {}",
-                                    e
-                                );
-                                e
-                            })?;
+            let (last_proof, prev_event_validation_response) =
+                get_vali_data(ctx, &self.subject_id.to_string())
+                    .await
+                    .map_err(|e| {
+                        error!(
+                            TARGET_SUBJECT,
+                            "GetLedger, can not get last vali data: {}", e
+                        );
+                        e
+                    })?;
 
-                    Ok(SubjectResponse::Ledger {
-                        ledger,
-                        last_event: Some(last_event),
-                        last_proof: Box::new(last_proof),
-                        prev_event_validation_response: Some(
-                            prev_event_validation_response,
-                        ),
-                    })
-                } else {
-                    Ok(SubjectResponse::Ledger {
-                        ledger,
-                        last_event: None,
-                        last_proof: Box::new(None),
-                        prev_event_validation_response: None,
-                    })
-                }
+            Ok(SubjectResponse::Ledger {
+                ledger,
+                last_event: Some(last_event),
+                last_proof: Box::new(last_proof),
+                prev_event_validation_response: Some(
+                    prev_event_validation_response,
+                ),
+            })
+        } else {
+            Ok(SubjectResponse::Ledger {
+                ledger,
+                last_event: None,
+                last_proof: Box::new(None),
+                prev_event_validation_response: None,
+            })
+        }
+    }
+
+    fn check_patch(
+        &self,
+        value: &LedgerValue,
+        state_hash: &DigestIdentifier,
+        derivator: &DigestDerivator,
+    ) -> Result<(), Error> {
+        let LedgerValue::Patch(json_patch) = value.clone() else {
+            return Err(Error::Subject("The event was successful but does not have a json patch to apply".to_owned()));
+        };
+
+        let patch_json = serde_json::from_value::<Patch>(json_patch.0)
+            .map_err(|e| {
+                Error::Subject(format!("Failed to extract event patch: {}", e))
+            })?;
+        let mut propierties = self.properties.0.clone();
+        let Ok(()) = patch(&mut propierties, &patch_json) else {
+            return Err(Error::Subject(
+                "Failed to apply event patch".to_owned(),
+            ));
+        };
+
+        let hash_state_after_patch =
+            ValueWrapper(propierties).hash_id(*derivator)?;
+
+        if hash_state_after_patch != *state_hash {
+            return Err(Error::Subject("The new patch has been applied and we have obtained a different hash than the event after applying the patch".to_owned()));
+        }
+        Ok(())
+    }
+
+    fn apply_patch(&mut self, value: LedgerValue) -> Result<(), ActorError> {
+        let json_patch = match value {
+            LedgerValue::Patch(value_wrapper) => value_wrapper,
+            LedgerValue::Error(e) => {
+                let error = format!("Apply, event value can not be an error if protocols was successful: {:?}", e);
+                error!(TARGET_SUBJECT, error);
+                return Err(ActorError::Functional(error));
+            }
+        };
+
+        let patch_json = match serde_json::from_value::<Patch>(json_patch.0) {
+            Ok(patch) => patch,
+            Err(e) => {
+                let error = format!("Apply, can not obtain json patch: {}", e);
+                error!(TARGET_SUBJECT, error);
+                return Err(ActorError::Functional(error));
+            }
+        };
+
+        if let Err(e) = patch(&mut self.properties.0, &patch_json) {
+            let error = format!("Apply, can not apply json patch: {}", e);
+            error!(TARGET_SUBJECT, error);
+            return Err(ActorError::Functional(error));
+        };
+
+        Ok(())
     }
 }
 
@@ -1772,6 +1934,7 @@ impl Clone for Subject {
             schema_id: self.schema_id.clone(),
             last_event_hash: self.last_event_hash.clone(),
             owner: self.owner.clone(),
+            new_owner: self.new_owner.clone(),
             creator: self.creator.clone(),
             active: self.active,
             sn: self.sn,
@@ -1783,6 +1946,7 @@ impl Clone for Subject {
 /// Subject command.
 #[derive(Debug, Clone)]
 pub enum SubjectMessage {
+    UpdateTransfer(TransferResponse),
     CreateCompilers(Vec<String>),
     /// Get the subject metadata.
     GetMetadata,
@@ -1860,6 +2024,12 @@ impl Actor for Subject {
             Sink::new(vali_data_actor.subscribe(), ext_db.get_vali_data());
         ctx.system().run_sink(sink).await;
 
+        if !self.governance_id.is_empty() {
+            let transfer_register = TransferRegister::default();
+            let _transfer_register_actor = ctx.create_child("transfer_register", transfer_register).await?;
+        }
+        
+
         if self.active {
             if self.governance_id.is_empty() {
                 self.build_childs_governance(
@@ -1902,6 +2072,40 @@ impl Handler<Subject> for Subject {
         ctx: &mut ActorContext<Subject>,
     ) -> Result<SubjectResponse, ActorError> {
         match msg {
+            SubjectMessage::UpdateTransfer(res) => {
+                match res {
+                    TransferResponse::Confirm => {
+                        let Some(new_owner) = self.new_owner.clone() else {
+                            let e = "Can not obtain new_owner";
+                            error!(TARGET_SUBJECT, "Confirm, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        };
+
+                        Subject::change_node_subject(
+                            ctx,
+                            &self.subject_id.to_string(),
+                            &new_owner.to_string(),
+                            &self.owner.to_string(),
+                        )
+                        .await?;
+
+                        delete_relation(
+                            ctx,
+                            self.governance_id.to_string(),
+                            self.schema_id.clone(),
+                            self.owner.to_string(),
+                            self.subject_id.to_string(),
+                            self.namespace.to_string(),
+                        )
+                        .await?;
+                    },
+                    TransferResponse::Reject => {
+                        Subject::reject_transfer_subject(ctx, &self.subject_id.to_string()).await?;
+                    },
+                }
+
+                Ok(SubjectResponse::Ok)
+            }
             SubjectMessage::DeleteSubject => {
                 self.delete_subject(ctx, false).await?;
                 Ok(SubjectResponse::Ok)
@@ -2008,6 +2212,7 @@ impl PersistentActor for Subject {
             event.content.appr_success,
             event.content.appr_required,
             event.content.vali_success,
+            self.governance_id.is_empty(),
         ) {
             Ok(is_ok) => is_ok,
             Err(e) => {
@@ -2052,40 +2257,29 @@ impl PersistentActor for Subject {
                     return Ok(());
                 }
                 EventRequest::Fact(_fact_request) => {
-                    let json_patch = match event.content.value.clone() {
-                        LedgerValue::Patch(value_wrapper) => value_wrapper,
-                        LedgerValue::Error(e) => {
-                            let error = format!("Apply, event value can not be an error if protocols was successful: {:?}", e);
-                            error!(TARGET_SUBJECT, error);
-                            return Err(ActorError::Functional(error));
-                        }
-                    };
-
-                    let patch_json =
-                        match serde_json::from_value::<Patch>(json_patch.0) {
-                            Ok(patch) => patch,
-                            Err(e) => {
-                                let error = format!(
-                                    "Apply, can not obtain json patch: {}",
-                                    e
-                                );
-                                error!(TARGET_SUBJECT, error);
-                                return Err(ActorError::Functional(error));
-                            }
-                        };
-
-                    if let Err(e) = patch(&mut self.properties.0, &patch_json) {
-                        let error =
-                            format!("Apply, can not apply json patch: {}", e);
-                        error!(TARGET_SUBJECT, error);
-                        return Err(ActorError::Functional(error));
-                    };
+                    self.apply_patch(event.content.value.clone())?;
                 }
                 EventRequest::Transfer(transfer_request) => {
-                    self.owner = transfer_request.new_owner.clone();
+                    self.new_owner = Some(transfer_request.new_owner.clone());
+                }
+                EventRequest::Confirm(_confirm_request) => {
+                    if self.governance_id.is_empty() {
+                        self.apply_patch(event.content.value.clone())?;
+                    }
+
+                    let Some(new_owner) = self.new_owner.clone() else {
+                        let error = "In confirm event was succefully but new owner is empty:";
+                        error!(TARGET_SUBJECT, error);
+                        return Err(ActorError::Functional(error.to_owned()));
+                    };
+
+                    self.owner = new_owner;
+                    self.new_owner = None;
+                }
+                EventRequest::Reject(_reject_request) => {
+                    self.new_owner = None;
                 }
                 EventRequest::EOL(_eolrequest) => self.active = false,
-                EventRequest::Confirm(_confirm_request) => {}
             }
 
             if self.governance_id.is_empty() {
@@ -2127,7 +2321,6 @@ impl PersistentActor for Subject {
         };
 
         self.last_event_hash = last_event_hash;
-
         self.sn += 1;
 
         Ok(())
@@ -2302,8 +2495,8 @@ mod tests {
                 value: LedgerValue::Patch(ValueWrapper(patch_event_req)),
                 state_hash,
                 eval_success: Some(true),
-                appr_required: false,
-                appr_success: None,
+                appr_required: true,
+                appr_success: Some(true),
                 vali_success: true,
                 hash_prev_event: hash_prev_event.clone(),
             };

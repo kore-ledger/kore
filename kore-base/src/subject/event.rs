@@ -108,6 +108,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     event.content.appr_success,
                     event.content.appr_required,
                     event.content.vali_success,
+                    self.is_gov
                 ) {
                     warn!(TARGET_EVENT, "UpdateLastEvent, {}", e);
                     return Err(ActorError::Functional(e.to_string()));

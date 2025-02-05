@@ -6,18 +6,16 @@ use std::time::Duration;
 use crate::{
     config::Config,
     evaluation::response::Response as EvalRes,
-    governance::Schema,
+    governance::{Governance, Schema},
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
         common::{
             check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
             update_ledger_network, UpdateData,
-        },
-        network::{RetryNetwork, TimeOutResponse},
-        HashId, SignTypesNode, TimeStamp,
+        }, network::{RetryNetwork, TimeOutResponse}, HashId, Namespace, SignTypesNode, TimeStamp
     },
     subject::{SubjectMessage, SubjectResponse},
-    Error, EventRequest, FactRequest, Signed, Subject, ValueWrapper, CONTRACTS,
+    Error, EventRequest, Signed, Subject, ValueWrapper, CONTRACTS,
     DIGEST_DERIVATOR,
 };
 
@@ -45,7 +43,7 @@ use super::{
     request::EvaluationReq,
     response::EvaluationRes,
     runner::{
-        types::{Contract, GovernanceData, RunnerResult},
+        types::{EvaluateType, RunnerResult},
         Runner, RunnerMessage, RunnerResponse,
     },
     Evaluation, EvaluationMessage,
@@ -74,8 +72,7 @@ impl Evaluator {
         &self,
         ctx: &mut ActorContext<Evaluator>,
         state: &ValueWrapper,
-        event: &ValueWrapper,
-        compiled_contract: Contract,
+        evaluate_type: EvaluateType,
         is_owner: bool,
     ) -> Result<RunnerResponse, ActorError> {
         let runner_actor =
@@ -84,8 +81,7 @@ impl Evaluator {
         runner_actor
             .ask(RunnerMessage {
                 state: state.clone(),
-                event: event.clone(),
-                compiled_contract,
+                evaluate_type,
                 is_owner,
             })
             .await
@@ -180,25 +176,54 @@ impl Evaluator {
     async fn evaluate(
         &self,
         ctx: &mut ActorContext<Evaluator>,
-        execute_contract: &EvaluationReq,
-        event: &FactRequest,
+        evaluation_req: &EvaluationReq,
         governance_id: DigestIdentifier,
         is_governance: bool,
     ) -> Result<RunnerResult, ActorError> {
-        let contract: Contract = if is_governance {
-            Contract::GovContract
-        } else {
-            let contracts = { CONTRACTS.read().await };
 
-            if let Some(contract) = contracts.get(&format!(
-                "{}_{}",
-                governance_id, execute_contract.context.schema_id
-            )) {
-                Contract::CompiledContract(contract.clone())
-            } else {
-                return Err(ActorError::FunctionalFail(
-                    "Contract not found".to_owned(),
-                ));
+        let evaluate_type = match evaluation_req.event_request.content.clone() {
+            EventRequest::Fact(fact_event) => {
+                if is_governance {
+                    EvaluateType::GovFact { payload: fact_event.payload }
+                } else {
+                    let contracts = { CONTRACTS.read().await };
+
+                    if let Some(contract) = contracts.get(&format!(
+                        "{}_{}",
+                        governance_id, evaluation_req.context.schema_id
+                    )) {
+                        EvaluateType::NotGovFact { contract: contract.to_vec(), payload: fact_event.payload }
+                    } else {
+                        return Err(ActorError::Functional(
+                            "Contract not found".to_owned(),
+                        ));
+                    }
+                }
+            },
+            EventRequest::Transfer(transfer_event) => {
+                if !is_governance {
+                    EvaluateType::NotGovTransfer { new_owner: transfer_event.new_owner, namespace: Namespace::from(evaluation_req.context.namespace.clone()), schema_id: evaluation_req.context.schema_id.clone() }
+                } else {
+                    EvaluateType::GovTransfer { new_owner: transfer_event.new_owner }
+                }
+                
+            },
+            EventRequest::Confirm(confirm_request) => {
+                if !is_governance {
+                    let e = "Confirm event in trazability subjects do not need be evaluate";
+                    return  Err(ActorError::Functional(e.to_owned()));
+                }
+                if let Some(new_owner) =  evaluation_req.new_owner.clone() {
+                    EvaluateType::GovConfirm { old_owner_name: confirm_request.name_old_owner, new_owner }
+                } else {
+                    let e = "New Owner is empty in Confirm event";
+                    return  Err(ActorError::Functional(e.to_owned()));
+                }
+            },
+            _ => {
+                let e = "The only event that can be evaluated is the Fact, Transfer and Confirm event";
+                error!(TARGET_EVALUATOR, "LocalEvaluation, {}", e);
+                return Err(ActorError::Functional(e.to_owned()));
             }
         };
 
@@ -206,18 +231,16 @@ impl Evaluator {
         let response = self
             .execute_contract(
                 ctx,
-                &execute_contract.context.state,
-                &event.payload,
-                contract,
-                execute_contract.context.is_owner,
+                &evaluation_req.state,
+                evaluate_type,
+                evaluation_req.context.is_owner,
             )
             .await?;
 
-        if response.result.success
-            && is_governance
+        if is_governance
             && !response.compilations.is_empty()
         {
-            let governance_data = serde_json::from_value::<GovernanceData>(
+            let governance_data = serde_json::from_value::<Governance>(
                 response.result.final_state.0.clone(),
             )
             .map_err(|e| {
@@ -290,6 +313,7 @@ impl Evaluator {
     async fn build_response(
         evaluation: RunnerResult,
         evaluation_req: EvaluationReq,
+        is_governance: bool
     ) -> EvaluationRes {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
@@ -298,28 +322,66 @@ impl Evaluator {
             DigestDerivator::Blake3_256
         };
 
-        if evaluation.success {
-            let state_hash = match evaluation.final_state.hash_id(derivator) {
-                Ok(state_hash) => state_hash,
-                Err(e) => return EvaluationRes::Error(e.to_string()),
+            let (patch, state_hash) = match evaluation_req.event_request.content.clone() {
+                EventRequest::Fact(..) => {
+                    let state_hash = match evaluation.final_state.hash_id(derivator) {
+                        Ok(state_hash) => state_hash,
+                        Err(e) => return EvaluationRes::Error(e.to_string()),
+                    };
+
+                    let patch = match Self::generate_json_patch(
+                        &evaluation_req.state.0,
+                        &evaluation.final_state.0,
+                    ) {
+                        Ok(patch) => patch,
+                        Err(e) => return EvaluationRes::Error(e.to_string())
+                    };
+
+                    (ValueWrapper(patch), state_hash)
+                },
+                EventRequest::Transfer(..) => {
+                    let state_hash = match evaluation_req.state.hash_id(derivator) {
+                        Ok(state_hash) => state_hash,
+                        Err(e) => return EvaluationRes::Error(e.to_string()),
+                    };
+
+                    (evaluation.final_state, state_hash)
+                },
+                EventRequest::Confirm(..) => {
+                    if !is_governance {
+                        let state_hash = match evaluation_req.state.hash_id(derivator) {
+                            Ok(state_hash) => state_hash,
+                            Err(e) => return EvaluationRes::Error(e.to_string()),
+                        };
+    
+                        (evaluation.final_state, state_hash)
+                    } else {
+                        let state_hash = match evaluation.final_state.hash_id(derivator) {
+                            Ok(state_hash) => state_hash,
+                            Err(e) => return EvaluationRes::Error(e.to_string()),
+                        };
+
+                        let patch = match Self::generate_json_patch(
+                            &evaluation_req.state.0,
+                            &evaluation.final_state.0,
+                        ) {
+                            Ok(patch) => patch,
+                            Err(e) => return EvaluationRes::Error(e.to_string())
+                        };
+
+                        (ValueWrapper(patch), state_hash)
+                    }
+                },
+                _ => {
+                    unreachable!()
+                }
             };
 
-            let patch = match Self::generate_json_patch(
-                &evaluation_req.context.state.0,
-                &evaluation.final_state.0,
-            ) {
-                Ok(patch) => patch,
-                Err(e) => return EvaluationRes::Error(e.to_string()),
-            };
-
-            return EvaluationRes::Response(EvalRes {
-                patch: ValueWrapper(patch),
+            EvaluationRes::Response(EvalRes {
+                patch,
                 state_hash,
-                eval_success: evaluation.success,
                 appr_required: evaluation.approval_required,
-            });
-        }
-        EvaluationRes::Error("The evaluation was not success".to_string())
+            })
     }
 }
 
@@ -368,14 +430,6 @@ impl Handler<Evaluator> for Evaluator {
                 evaluation_req,
                 our_key,
             } => {
-                let EventRequest::Fact(state_data) =
-                    &evaluation_req.event_request.content
-                else {
-                    error!(TARGET_EVALUATOR, "LocalEvaluation, The only event that can be evaluated is the Fact event");
-                    let e = ActorError::FunctionalFail("The only event that can be evaluated is the Fact event".to_owned());
-                    return Err(emit_fail(ctx, e).await);
-                };
-
                 let is_governance =
                     evaluation_req.context.schema_id == "governance";
 
@@ -390,14 +444,13 @@ impl Handler<Evaluator> for Evaluator {
                     .evaluate(
                         ctx,
                         &evaluation_req,
-                        state_data,
                         governance_id,
                         is_governance,
                     )
                     .await
                 {
                     Ok(evaluation) => {
-                        Self::build_response(evaluation, evaluation_req).await
+                        Self::build_response(evaluation, evaluation_req, is_governance).await
                     }
                     Err(e) => {
                         error!(TARGET_EVALUATOR, "LocalEvaluation, can not build evaluator response: {}", e);
@@ -593,14 +646,6 @@ impl Handler<Evaluator> for Evaluator {
                 evaluation_req,
                 info,
             } => {
-                let EventRequest::Fact(state_data) =
-                    &evaluation_req.content.event_request.content
-                else {
-                    let e = "The only event that can be evaluated is the Fact event";
-                    error!(TARGET_EVALUATOR, "NetworkRequest, {}", e);
-                    return Err(ActorError::Functional(e.to_owned()));
-                };
-
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
                 // Nos llegó una eval donde en la request se indica un sujeto pero en el info otro
@@ -686,7 +731,6 @@ impl Handler<Evaluator> for Evaluator {
                         .evaluate(
                             ctx,
                             &evaluation_req.content,
-                            state_data,
                             governance_id,
                             is_governance,
                         )
@@ -696,6 +740,7 @@ impl Handler<Evaluator> for Evaluator {
                             Self::build_response(
                                 evaluation,
                                 evaluation_req.content.clone(),
+                                is_governance
                             )
                             .await
                         }

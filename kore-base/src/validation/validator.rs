@@ -23,7 +23,7 @@ use crate::{
 };
 
 use super::{
-    proof::{EventProof, ValidationProof},
+    proof::ValidationProof,
     request::ValidationReq,
     response::ValidationRes,
     Validation, ValidationMessage,
@@ -61,68 +61,6 @@ impl Validator {
             version,
             node,
         }
-    }
-
-    fn check_event_proof(
-        &self,
-        proof: &ValidationProof,
-        owner: &KeyIdentifier,
-        previous_proof: &Option<ValidationProof>,
-    ) -> Result<(), ActorError> {
-        let previous_proof = if let Some(previous_proof) = previous_proof {
-            previous_proof
-        } else {
-            if proof.event != EventProof::Create {
-                return Err(ActorError::Functional("Event proof is not a create event but does not has previous proof".to_owned()));
-            }
-            return Ok(());
-        };
-
-        let transfer_event = EventProof::Transfer {
-            new_owner: KeyIdentifier::default(),
-        };
-
-        match proof.event.clone() {
-            EventProof::Create => {
-                return Err(ActorError::Functional(
-                    "Event proof is a create event but has previous proof"
-                        .to_owned(),
-                ));
-            }
-            EventProof::Fact => {
-                if previous_proof.event == EventProof::EOL
-                    || previous_proof.event == transfer_event
-                {
-                    return Err(ActorError::Functional("Event proof is a fact event but previous proof event is a eol or transfer event".to_owned()));
-                }
-            }
-            EventProof::Transfer { .. } => {
-                if previous_proof.event == EventProof::EOL
-                    || previous_proof.event == transfer_event
-                {
-                    return Err(ActorError::Functional("Event proof is a transfer event but previous proof event is a eol or transfer event".to_owned()));
-                }
-            }
-            EventProof::Confirm => {
-                if let EventProof::Transfer { new_owner } =
-                    previous_proof.event.clone()
-                {
-                    if new_owner == *owner {
-                        return Ok(());
-                    }
-                }
-                return Err(ActorError::Functional("Event proof is a confirm event but previous proof event is not a transfer event".to_owned()));
-            }
-            EventProof::EOL => {
-                if previous_proof.event == EventProof::EOL
-                    || previous_proof.event == transfer_event
-                {
-                    return Err(ActorError::Functional("Event proof is a eol event but previous proof event is eol or transfer event".to_owned()));
-                }
-            }
-        };
-
-        Ok(())
     }
 
     async fn check_governance(
@@ -167,14 +105,7 @@ impl Validator {
         &self,
         ctx: &mut ActorContext<Validator>,
         validation_req: ValidationReq,
-        owner: KeyIdentifier
     ) -> Result<Signature, ActorError> {
-        self.check_event_proof(
-            &validation_req.proof,
-            &owner,
-            &validation_req.previous_proof,
-        )?;
-
         self.check_proofs(
             ctx,
             &validation_req.proof,
@@ -201,14 +132,7 @@ impl Validator {
     ) -> Result<(), ActorError> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
-            if previous_proof.event_hash != new_proof.prev_event_hash
-                || previous_proof.sn + 1 != new_proof.sn
-                || previous_proof.genesis_governance_version
-                    != new_proof.genesis_governance_version
-                || previous_proof.namespace != new_proof.namespace
-                || previous_proof.subject_id != new_proof.subject_id
-                || previous_proof.schema_id != new_proof.schema_id
-                || previous_proof.governance_id != new_proof.governance_id
+            if new_proof.error_not_create(&previous_proof)
             {
                 return Err(ActorError::Functional("There are fields that do not match in the comparison of the previous validation proof and the new proof.".to_owned()));
             }
@@ -284,6 +208,10 @@ impl Validator {
 
         // Genesis event, it is first proof
         } else {
+            if new_proof.error_create() {
+                return Err(ActorError::Functional("There are incorrect fields in the validation test".to_owned()));
+            }   
+
             Ok(())
         }
     }
@@ -336,7 +264,7 @@ impl Handler<Validator> for Validator {
             } => {
                 // Validate event
                 let validation_res =
-                    match self.validation(ctx, validation_req, our_key.clone()).await {
+                    match self.validation(ctx, validation_req).await {
                         Ok(validation) => ValidationRes::Signature(validation),
                         Err(e) => {
                             if let ActorError::Functional(_) = e {
@@ -604,7 +532,7 @@ impl Handler<Validator> for Validator {
                     ValidationRes::Reboot
                 } else {
                     match self
-                        .validation(ctx, validation_req.content.clone(), validation_req.signature.signer)
+                        .validation(ctx, validation_req.content.clone())
                         .await
                     {
                         Ok(validation) => ValidationRes::Signature(validation),

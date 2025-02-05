@@ -22,7 +22,7 @@ use crate::{
         event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
-        HashId, SignTypesNode,
+        HashId, SignTypesNode, ValueWrapper,
     },
     request::manager::{RequestManager, RequestManagerMessage},
     subject::Metadata,
@@ -58,8 +58,11 @@ pub struct Evaluation {
     evaluators_quantity: u32,
 
     evaluators_signatures: Vec<ProtocolsSignatures>,
+
     request_id: String,
+
     version: u64,
+    
     errors: String,
 
     eval_req: Option<EvaluationReq>,
@@ -93,6 +96,7 @@ impl Evaluation {
         &self,
         event_request: Signed<EventRequest>,
         metadata: Metadata,
+        state: ValueWrapper,
         gov_version: u64,
     ) -> EvaluationReq {
         EvaluationReq {
@@ -102,9 +106,11 @@ impl Evaluation {
                 governance_id: metadata.governance_id,
                 schema_id: metadata.schema_id,
                 is_owner: self.node_key == event_request.signature.signer,
-                state: metadata.properties,
                 namespace: metadata.namespace.to_string(),
+                
             },
+            new_owner: metadata.new_owner,
+            state,
             sn: metadata.sn + 1,
             gov_version,
         }
@@ -182,7 +188,7 @@ impl Evaluation {
             } else {
                 req.context.governance_id
             };
-            (req.context.state, gov_id)
+            (req.state, gov_id)
         } else {
             return Err(ActorError::FunctionalFail(
                 "Can not get eval request".to_owned(),
@@ -295,19 +301,19 @@ impl Handler<Evaluation> for Evaluation {
                 version,
                 request,
             } => {
-                let subject_id = if let EventRequest::Fact(event) =
-                    request.content.clone()
-                {
-                    event.subject_id
-                } else {
-                    error!(
-                        TARGET_EVALUATION,
-                        "Create, only can evaluate Fact request"
-                    );
-                    let e = ActorError::FunctionalFail(
-                        "Only can eval Fact requests".to_owned(),
-                    );
-                    return Err(emit_fail(ctx, e).await);
+                let (subject_id, confirm) = match request.content.clone() {
+                    EventRequest::Fact(event) => (event.subject_id, false),
+                    EventRequest::Transfer(event) => (event.subject_id, false),
+                    EventRequest::Confirm(event) => (event.subject_id, true),
+                    _ => {
+                        let e = "Only can evaluate Fact, Transfer and Confirm request";
+                        error!(
+                            TARGET_EVALUATION,
+                            "Create, {}", e
+                        );
+                        
+                        return Err(emit_fail(ctx, ActorError::FunctionalFail(e.to_owned())).await);
+                    }
                 };
 
                 let metadata =
@@ -321,12 +327,41 @@ impl Handler<Evaluation> for Evaluation {
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
+                
+                if confirm && !metadata.governance_id.is_empty() {
+                    let e = "Confirm event in trazability subjects can not evaluate";
+                    error!(
+                        TARGET_EVALUATION,
+                        "Create, {}", e
+                    );
+                    
+                    return Err(emit_fail(ctx, ActorError::FunctionalFail(e.to_owned())).await);
+                }
 
                 let governance = if metadata.governance_id.is_empty() {
                     metadata.subject_id.clone()
                 } else {
                     metadata.governance_id.clone()
                 };
+
+                let state = if let EventRequest::Fact(_) = request.content.clone() {
+                    metadata.properties.clone()
+                } else if metadata.governance_id.is_empty() {
+                        metadata.properties.clone()
+                    } else {
+                        let metadata_gov = match get_metadata(ctx, &metadata.governance_id.to_string()).await {
+                            Ok(metadata) => metadata,
+                            Err(e) => {
+                                error!(
+                                    TARGET_EVALUATION,
+                                    "Create, can not get metadata: {}", e
+                                );
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        };
+    
+                        metadata_gov.properties
+                    };
 
                 let (signers, quorum, gov_version) =
                     match get_signers_quorum_gov_version(
@@ -340,7 +375,7 @@ impl Handler<Evaluation> for Evaluation {
                     {
                         Ok(data) => data,
                         Err(e) => {
-                            error!(TARGET_EVALUATION, "Create, can not get signersm quorum and gov version: {}", e);
+                            error!(TARGET_EVALUATION, "Create, can not get signers quorum and gov version: {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -348,6 +383,7 @@ impl Handler<Evaluation> for Evaluation {
                 let eval_req = self.create_evaluation_req(
                     request,
                     metadata.clone(),
+                    state,
                     gov_version,
                 );
 
@@ -532,15 +568,15 @@ mod tests {
     use std::{str::FromStr, time::Duration};
 
     use actor::{ActorPath, ActorRef, SystemRef};
-    use identity::identifier::{
+    use identity::{identifier::{
         derive::digest::DigestDerivator, DigestIdentifier,
-    };
+    }, keys::{Ed25519KeyPair, KeyGenerator, KeyPair}};
     use serde_json::json;
     use serial_test::serial;
 
     use crate::{
         approval::approver::ApprovalStateRes,
-        model::{event::LedgerValue, HashId, Namespace, SignTypesNode},
+        model::{event::LedgerValue, request::TransferRequest, HashId, Namespace, SignTypesNode},
         node::Node,
         query::{Query, QueryMessage, QueryResponse},
         request::{
@@ -711,6 +747,169 @@ mod tests {
         assert!(!gov.roles.is_empty());
         assert!(gov.schemas.is_empty());
         assert!(!gov.policies.is_empty());
+    }
+
+
+    #[tokio::test]
+    async fn test_transfer_req() {
+        let (
+            _system,
+            node_actor,
+            request_actor,
+            _query_actor,
+            subject_actor,
+            ledger_event_actor,
+            subject_id,
+        ) = create_subject_gov().await;
+
+        let new_owner = KeyPair::Ed25519(Ed25519KeyPair::new());
+
+        let fact_request = EventRequest::Fact(FactRequest {
+            subject_id: subject_id.clone(),
+            payload: ValueWrapper(json!({"Patch": {
+                    "data": [
+                        {
+                                "op": "add",
+                                "path": "/members/0",
+                                "value": {
+                                    "id": new_owner.key_identifier().to_string(),
+                                    "name": "TestMember"
+                                }   
+                        }
+            ]}})),
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                fact_request.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: fact_request,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(_request_id) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        tokio::time::sleep(Duration::from_secs(9)).await;
+
+        let RequestHandlerResponse::Response(res) = request_actor
+            .ask(RequestHandlerMessage::ChangeApprovalState {
+                subject_id: subject_id.to_string(),
+                state: ApprovalStateRes::RespondedAccepted,
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(res, format!("The approval request for subject {} has changed to RespondedAccepted", subject_id.to_string()));
+
+        let transfer_reques = EventRequest::Transfer(TransferRequest {
+            subject_id: subject_id.clone(),
+            new_owner: new_owner.key_identifier().clone(),
+        });
+
+        let response = node_actor
+            .ask(NodeMessage::SignRequest(SignTypesNode::EventRequest(
+                transfer_reques.clone(),
+            )))
+            .await
+            .unwrap();
+        let NodeResponse::SignRequest(signature) = response else {
+            panic!("Invalid Response")
+        };
+
+        let signed_event_req = Signed {
+            content: transfer_reques,
+            signature,
+        };
+
+        let RequestHandlerResponse::Ok(_response) = request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        let LedgerEventResponse::LastEvent(last_event) = ledger_event_actor
+            .ask(LedgerEventMessage::GetLastEvent)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        let SubjectResponse::Metadata(metadata) = subject_actor
+            .ask(SubjectMessage::GetMetadata)
+            .await
+            .unwrap()
+        else {
+            panic!("Invalid response")
+        };
+
+        assert_eq!(last_event.content.subject_id, subject_id);
+        assert_eq!(last_event.content.event_request, signed_event_req);
+        assert_eq!(last_event.content.sn, 2);
+        assert_eq!(last_event.content.gov_version, 1);
+        assert_eq!(
+            last_event.content.value,
+            LedgerValue::Patch(ValueWrapper(serde_json::Value::String(
+                "[]".to_owned(),
+            ),))
+        );
+        assert!(last_event.content.eval_success.unwrap());
+        assert!(!last_event.content.appr_required);
+        assert!(last_event.content.appr_success.is_none());
+        assert!(last_event.content.vali_success);
+        assert!(!last_event.content.evaluators.unwrap().is_empty());
+        assert!(last_event.content.approvers.is_none(),);
+        assert!(!last_event.content.validators.is_empty());
+
+        assert_eq!(metadata.subject_id, subject_id);
+        assert_eq!(metadata.governance_id.to_string(), "");
+        assert_eq!(metadata.genesis_gov_version, 0);
+        assert_eq!(metadata.schema_id, "governance");
+        assert_eq!(metadata.namespace, Namespace::new());
+        assert_eq!(metadata.sn, 2);
+        assert_eq!(metadata.new_owner.unwrap(), new_owner.key_identifier());
+        assert!(metadata.active);
+
+        let gov = Governance::try_from(metadata.properties).unwrap();
+        assert_eq!(gov.version, 2);
+        assert!(!gov.members.is_empty());
+        assert!(!gov.roles.is_empty());
+        assert!(gov.schemas.is_empty());
+        assert!(!gov.policies.is_empty());
+
+        if !request_actor
+            .ask(RequestHandlerMessage::NewRequest {
+                request: signed_event_req.clone(),
+            })
+            .await
+            .is_err()
+        {
+            panic!("Invalid response")
+        }
     }
 
     async fn init_gov_sub() -> (

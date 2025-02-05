@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    governance::{Member, Policy, Role, Schema},
-    ValueWrapper,
+    model::Namespace, ValueWrapper
 };
 
 #[derive(
@@ -24,25 +24,33 @@ pub struct ContractResult {
 pub struct RunnerResult {
     pub final_state: ValueWrapper,
     pub approval_required: bool,
-    pub success: bool,
 }
 
 #[derive(Debug, Clone)]
-pub enum Contract {
-    CompiledContract(Vec<u8>),
-    GovContract,
+pub enum EvaluateType {
+    NotGovFact{
+        contract: Vec<u8>,
+        payload: ValueWrapper
+    },
+    GovFact {
+        payload: ValueWrapper
+    },
+    GovTransfer {
+        new_owner: KeyIdentifier
+    },
+    NotGovTransfer {
+        new_owner: KeyIdentifier,
+        namespace: Namespace,
+        schema_id: String
+    },
+    GovConfirm {
+        new_owner: KeyIdentifier,
+        old_owner_name: Option<String>
+    }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct GovernanceData {
-    pub version: u64,
-    pub members: Vec<Member>,
-    pub roles: Vec<Role>,
-    pub schemas: Vec<Schema>,
-    pub policies: Vec<Policy>,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum GovernanceEvent {
+pub enum GovernancePatch {
     Patch { data: Value },
 }

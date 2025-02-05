@@ -392,7 +392,7 @@ pub enum Payload {
 pub fn create_seed(initial_seed: &[u8]) -> Result<[u8; 32], Error> {
     let mut seed = [0u8; 32];
     if initial_seed.is_empty() {
-        getrandom::getrandom(&mut seed).map_err(|_| {
+        getrandom::fill(&mut seed).map_err(|_| {
             Error::SeedError("couldn't generate random seed".to_owned())
         })?;
     } else if initial_seed.len() <= 32 {

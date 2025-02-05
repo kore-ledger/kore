@@ -220,6 +220,15 @@ impl Bridge {
         self.api.delete_auth_subject(subject_id).await
     }
 
+    pub async fn check_transfer(
+        &self,
+        subject_id: String,
+    ) -> Result<String, Error> {
+        let subject_id = DigestIdentifier::from_str(&subject_id)
+            .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
+        self.api.check_transfer(subject_id).await
+    }
+
     pub async fn update_subject(
         &self,
         subject_id: String,

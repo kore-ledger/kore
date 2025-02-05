@@ -27,6 +27,7 @@ pub struct TransferRequestInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConfirmRequestInfo {
     pub subject_id: String,
+    pub name_old_owner: Option<String>
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -40,6 +41,11 @@ pub struct FactRequestInfo {
     pub payload: Value,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RejectRequestInfo {
+    pub subject_id: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub enum EventRequestInfo {
     Create(CreateRequestInfo),
@@ -47,6 +53,7 @@ pub enum EventRequestInfo {
     Transfer(TransferRequestInfo),
     Confirm(ConfirmRequestInfo),
     EOL(EOLRequestInfo),
+    Reject(RejectRequestInfo)
 }
 
 impl<'de> Deserialize<'de> for EventRequestInfo {
@@ -128,8 +135,21 @@ impl<'de> Deserialize<'de> for EventRequestInfo {
                         serde::de::Error::missing_field("subject_id")
                     })?
                     .to_owned(),
+                name_old_owner: confirm
+                .get("name_old_owner")
+                .and_then(Value::as_str).map(|x| x.to_string())
             }));
         };
+
+        if let Some(reject) = value.get("Reject") {
+            return Ok(Self::Reject(RejectRequestInfo { subject_id: reject
+                .get("subject_id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    serde::de::Error::missing_field("subject_id")
+                })?
+                .to_owned()}));
+        }
 
         if let Some(eol) = value.get("EOL") {
             return Ok(Self::EOL(EOLRequestInfo {

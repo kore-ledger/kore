@@ -13,11 +13,21 @@ use relationship::RelationShip;
 use tracing::{error, warn};
 
 use crate::{
-    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, governance::init::init_state, helpers::{db::ExternalDB, sink::KoreSink}, manual_distribution::ManualDistribution, model::{
+    auth::{Auth, AuthMessage, AuthResponse},
+    config::Config,
+    db::Storable,
+    distribution::distributor::Distributor,
+    governance::init::init_state,
+    helpers::{db::ExternalDB, sink::KoreSink},
+    manual_distribution::ManualDistribution,
+    model::{
         event::{Ledger, LedgerValue},
         signature::{Signature, Signed},
         HashId, SignTypesNode,
-    }, subject::CreateSubjectData, Error, EventRequest, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
+    },
+    subject::CreateSubjectData,
+    Error, EventRequest, Subject, SubjectMessage, SubjectResponse,
+    DIGEST_DERIVATOR,
 };
 
 use identity::{
@@ -41,24 +51,11 @@ pub mod relationship;
 
 const TARGET_NODE: &str = "Kore-Node";
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct CompiledContract(Vec<u8>);
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum SubjectsTypes {
-    KnowSubject(String),
-    OwnerSubject(String),
-    ChangeTemp {
-        subject_id: String,
-        key_identifier: String,
-    },
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SubjectsVectors {
-    pub owned_subjects: Vec<String>,
-    /// The node's known subjects.
-    pub known_subjects: Vec<String>,
+pub struct TransferSubject {
+    pub subject: String,
+    pub new_owner: String,
+    pub actual_owner: String,
 }
 
 /// Node struct.
@@ -70,6 +67,8 @@ pub struct Node {
     owned_subjects: Vec<String>,
     /// The node's known subjects.
     known_subjects: Vec<String>,
+
+    transfer_subjects: Vec<TransferSubject>,
 }
 
 impl Node {
@@ -79,6 +78,7 @@ impl Node {
             owner: id.clone(),
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
+            transfer_subjects: Vec::new(),
         })
     }
 
@@ -102,6 +102,11 @@ impl Node {
         self.owned_subjects.push(subject_id);
     }
 
+    /// Adds a subject to the node's owned subjects.
+    pub fn transfer_subject(&mut self, data: TransferSubject) {
+        self.transfer_subjects.push(data);
+    }
+
     pub fn delete_subject(&mut self, subject_id: String, iam_owner: bool) {
         if iam_owner {
             self.owned_subjects.retain(|x| x.clone() != subject_id);
@@ -110,16 +115,22 @@ impl Node {
         }
     }
 
+    pub fn reject_transfer(&mut self, subject_id: String) {
+        self.transfer_subjects.retain(|x| *x.subject != subject_id);
+    }
+
     pub fn change_subject_owner(
         &mut self,
         subject_id: String,
         iam_owner: bool,
     ) {
+        self.transfer_subjects.retain(|x| *x.subject != subject_id);
+
         if iam_owner {
-            self.known_subjects.retain(|x| x.clone() != subject_id);
+            self.known_subjects.retain(|x| *x != subject_id);
             self.owned_subjects.push(subject_id);
         } else {
-            self.owned_subjects.retain(|x| x.clone() != subject_id);
+            self.owned_subjects.retain(|x| *x != subject_id);
             self.known_subjects.push(subject_id);
         }
     }
@@ -202,17 +213,17 @@ impl Node {
 /// Node message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeMessage {
+    RejectTransfer(String),
+    TransferSubject(TransferSubject),
     DeleteSubject {
         owner: String,
         subject_id: String,
     },
-    GetSubjects,
     CreateNewSubjectLedger(Signed<Ledger>),
     CreateNewSubjectReq(CreateSubjectData),
     SignRequest(SignTypesNode),
-    AmISubjectOwner(String),
+    OwnerPendingSubject(String),
     IsAuthorized(String),
-    KnowSubject(String),
     ChangeSubjectOwner {
         subject_id: String,
         old_owner: String,
@@ -225,12 +236,11 @@ impl Message for NodeMessage {}
 /// Node response.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeResponse {
-    Subjects(SubjectsVectors),
     RequestIdentifier(DigestIdentifier),
     SignRequest(Signature),
     SonWasCreated,
     OwnerIdentifier(KeyIdentifier),
-    AmIOwner(bool),
+    OwnerPending((bool, bool)),
     Contract(Vec<u8>),
     IsAuthorized(bool),
     KnowSubject(bool),
@@ -242,9 +252,11 @@ impl Response for NodeResponse {}
 /// Node event.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeEvent {
+    RejectTransfer(String),
     OwnedSubject(String),
     KnownSubject(String),
     ChangeSubjectOwner { iam_owner: bool, subject_id: String },
+    TransferSubjerct(TransferSubject),
     DeleteSubject { iam_owner: bool, subject_id: String },
 }
 
@@ -303,6 +315,12 @@ impl PersistentActor for Node {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
+            NodeEvent::RejectTransfer(subject_id) => {
+                self.reject_transfer(subject_id.clone());
+            }
+            NodeEvent::TransferSubjerct(transfer) => {
+                self.transfer_subject(transfer.clone());
+            }
             NodeEvent::OwnedSubject(subject_id) => {
                 self.add_owned_subject(subject_id.clone());
             }
@@ -336,6 +354,15 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
+            NodeMessage::RejectTransfer(subject_id) => {
+                self.on_event(NodeEvent::RejectTransfer(subject_id), ctx)
+                    .await;
+                Ok(NodeResponse::None)
+            }
+            NodeMessage::TransferSubject(data) => {
+                self.on_event(NodeEvent::TransferSubjerct(data), ctx).await;
+                Ok(NodeResponse::None)
+            }
             NodeMessage::DeleteSubject { owner, subject_id } => {
                 if owner == self.owner.key_identifier().to_string() {
                     self.on_event(
@@ -358,12 +385,6 @@ impl Handler<Node> for Node {
                 }
 
                 Ok(NodeResponse::None)
-            }
-            NodeMessage::GetSubjects => {
-                Ok(NodeResponse::Subjects(SubjectsVectors {
-                    owned_subjects: self.owned_subjects.clone(),
-                    known_subjects: self.known_subjects.clone(),
-                }))
             }
             NodeMessage::ChangeSubjectOwner {
                 subject_id,
@@ -453,7 +474,8 @@ impl Handler<Node> for Node {
                         &format!("{}", ledger.content.subject_id),
                         subject,
                     )
-                    .await?;
+                    .await
+                    .map_err(|e| ActorError::Functional(e.to_string()))?;
 
                 let sink =
                     Sink::new(subject_actor.subscribe(), ext_db.get_subject());
@@ -587,10 +609,15 @@ impl Handler<Node> for Node {
 
                 Ok(NodeResponse::SignRequest(sign))
             }
-            NodeMessage::AmISubjectOwner(subject_id) => {
-                Ok(NodeResponse::AmIOwner(
+            NodeMessage::OwnerPendingSubject(subject_id) => {
+                let our_key = self.owner.key_identifier().to_string();
+
+                Ok(NodeResponse::OwnerPending((
                     self.owned_subjects.iter().any(|x| **x == subject_id),
-                ))
+                    self.transfer_subjects.iter().any(|x| {
+                        x.subject == subject_id && x.new_owner == our_key
+                    }),
+                )))
             }
             NodeMessage::IsAuthorized(subject_id) => {
                 let auth: Option<actor::ActorRef<Auth>> =
@@ -630,15 +657,6 @@ impl Handler<Node> for Node {
                     self.owned_subjects.iter().any(|x| x.clone() == subject_id);
 
                 Ok(NodeResponse::IsAuthorized(auth_subj || owned_subj))
-            }
-            NodeMessage::KnowSubject(subject_id) => {
-                let know_subj =
-                    self.known_subjects.iter().any(|x| x.clone() == subject_id);
-
-                let owned_subj =
-                    self.owned_subjects.iter().any(|x| x.clone() == subject_id);
-
-                Ok(NodeResponse::KnowSubject(know_subj || owned_subj))
             }
         }
     }

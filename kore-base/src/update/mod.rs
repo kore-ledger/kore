@@ -16,11 +16,14 @@ use tracing::error;
 use updater::{Updater, UpdaterMessage};
 
 use crate::{
-    intermediary::Intermediary,
-    model::common::emit_fail,
-    request::manager::{RequestManager, RequestManagerMessage},
-    ActorMessage, NetworkMessage,
+   intermediary::Intermediary, model::common::emit_fail, request::manager::{RequestManager, RequestManagerMessage}, subject::{Subject, SubjectMessage}, ActorMessage, NetworkMessage
 };
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum TransferResponse {
+    Confirm,
+    Reject
+}
 
 const TARGET_UPDATE: &str = "Kore-Update";
 
@@ -30,36 +33,90 @@ pub mod updater;
 pub enum UpdateType {
     Auth,
     Request { id: String },
+    Transfer
 }
 
 pub struct UpdateNew {
     pub subject_id: DigestIdentifier,
     pub our_key: KeyIdentifier,
-    pub sn: u64,
+    pub response: Option<UpdateRes>,
     pub witnesses: HashSet<KeyIdentifier>,
     pub schema_id: String,
-    pub request: ActorMessage,
+    pub request: Option<ActorMessage>,
     pub update_type: UpdateType,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum UpdateRes {
+    Sn(u64),
+    Transfer(TransferResponse)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Update {
     subject_id: DigestIdentifier,
     our_key: KeyIdentifier,
-    sn: u64,
+    response: Option<UpdateRes>,
     witnesses: HashSet<KeyIdentifier>,
     better: Option<KeyIdentifier>,
     schema_id: String,
-    request: ActorMessage,
+    request: Option<ActorMessage>,
     update_type: UpdateType,
 }
 
 impl Update {
+    pub async fn update_subject(ctx: &mut ActorContext<Update>, subject_id: &str, res: TransferResponse) -> Result<(), ActorError>{
+        let subject_path = ActorPath::from(format!("/user/node/{}", subject_id));
+
+        // Subject actor.
+        let subject_actor: Option<ActorRef<Subject>> =
+            ctx.system().get_actor(&subject_path).await;
+    
+        // We obtain the actor governance
+        if let Some(subject_actor) = subject_actor {
+            subject_actor.tell(SubjectMessage::UpdateTransfer(res)).await
+        } else {
+            Err(ActorError::NotFound(subject_path))
+        }
+    }
+
+    pub fn update_response(&mut self, update: UpdateRes, sender: KeyIdentifier) -> Result<(), ActorError> {
+        match self.update_type {
+            UpdateType::Request { .. } | UpdateType::Auth => {
+                if let UpdateRes::Sn(update_sn) = update {
+                    match self.response.clone() {
+                        Some(UpdateRes::Sn(sn)) if update_sn > sn => {
+                            self.response = Some(update);
+                            self.better = Some(sender);
+                        }
+                        Some(UpdateRes::Sn(_)) => {} // No actualizar si update_sn <= sn
+                        Some(_) => {
+                            return Err(ActorError::Functional(
+                                "self response must be UpdateRes::Sn".to_owned(),
+                            ));
+                        }
+                        None => {
+                            self.response = Some(update);
+                            self.better = Some(sender);
+                        }
+                    }
+                } else {
+                    return Err(ActorError::Functional(
+                        "update must be UpdateRes::Sn".to_owned(),
+                    ));
+                }
+            },
+            _ => {}
+        }
+
+        Ok(())
+    }
+
     pub fn new(data: UpdateNew) -> Self {
         Self {
             subject_id: data.subject_id,
             our_key: data.our_key,
-            sn: data.sn,
+            response: data.response,
             witnesses: data.witnesses,
             better: None,
             schema_id: data.schema_id,
@@ -74,7 +131,12 @@ impl Update {
 
 #[derive(Debug, Clone)]
 pub enum UpdateMessage {
+    Transfer,
     Create,
+    TransferRes {
+        sender: KeyIdentifier,
+        res: TransferResponse
+    },
     Response { sender: KeyIdentifier, sn: u64 },
 }
 
@@ -110,6 +172,37 @@ impl Handler<Update> for Update {
         ctx: &mut ActorContext<Update>,
     ) -> Result<(), ActorError> {
         match msg {
+            UpdateMessage::Transfer => {
+                for witness in self.witnesses.clone() {
+                    let updater = Updater::new(witness.clone());
+                    let child = match ctx
+                        .create_child(&witness.to_string(), updater)
+                        .await
+                    {
+                        Ok(child) => child,
+                        Err(e) => {
+                            error!(
+                                TARGET_UPDATE,
+                                "Create, can not create Retry actor: {}", e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    };
+
+                    if let Err(e) = child
+                        .tell(UpdaterMessage::Transfer { subject_id: self.subject_id.clone(),
+                            node_key: witness,
+                            our_key: self.our_key.clone(), })
+                        .await
+                    {
+                        error!(
+                            TARGET_UPDATE,
+                            "Create, can not send retry to Retry actor: {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
+                }
+            },
             UpdateMessage::Create => {
                 for witness in self.witnesses.clone() {
                     let updater = Updater::new(witness.clone());
@@ -143,10 +236,27 @@ impl Handler<Update> for Update {
                     }
                 }
             }
+            UpdateMessage::TransferRes { sender, res } => {
+                if self.check_witness(sender.clone()) && self.response.is_none() {
+                    self.response = Some(UpdateRes::Transfer(res.clone()));
+
+                    if let Err(e) = Update::update_subject(ctx, &self.subject_id.to_string(), res).await {
+                        error!(
+                            TARGET_UPDATE,
+                            "TransferRes, can update subject: {}", e
+                        );
+                    };
+                    
+                    ctx.stop().await;
+                }
+            }
             UpdateMessage::Response { sender, sn } => {
                 if self.check_witness(sender.clone()) {
-                    if sn > self.sn {
-                        self.better = Some(sender);
+                    if let Err(e) = self.update_response(UpdateRes::Sn(sn), sender) {
+                        error!(
+                            TARGET_UPDATE,
+                            "TransferRes, can not update response: {}", e
+                        );
                     }
 
                     if self.witnesses.is_empty() {
@@ -176,12 +286,13 @@ impl Handler<Update> for Update {
                                 return Err(emit_fail(ctx, e).await);
                             };
 
-                            if let Err(e) = helper
+                            if let Some(request) = self.request.clone() {
+                                if let Err(e) = helper
                                 .send_command(
                                     network::CommandHelper::SendMessage {
                                         message: NetworkMessage {
                                             info,
-                                            message: self.request.clone(),
+                                            message: request,
                                         },
                                     },
                                 )
@@ -190,6 +301,10 @@ impl Handler<Update> for Update {
                                 error!(TARGET_UPDATE, "Response, can not send response to network: {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             };
+                            } else {
+                                error!(TARGET_UPDATE, "Response, request can not be None");
+                            }
+                            
                         }
 
                         if let UpdateType::Request { id } = &self.update_type {

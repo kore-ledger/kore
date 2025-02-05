@@ -7,13 +7,9 @@ use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    approval::{request::ApprovalReq, response::ApprovalRes},
-    evaluation::{request::EvaluationReq, response::EvaluationRes},
-    model::event::{Ledger, ProtocolsSignatures},
-    validation::{
+    approval::{request::ApprovalReq, response::ApprovalRes}, evaluation::{request::EvaluationReq, response::EvaluationRes}, model::event::{Ledger, ProtocolsSignatures}, update::TransferResponse, validation::{
         proof::ValidationProof, request::ValidationReq, response::ValidationRes,
-    },
-    Event as KoreEvent, Signed,
+    }, Event as KoreEvent, Signed
 };
 
 pub mod intermediary;
@@ -65,6 +61,12 @@ pub enum ActorMessage {
     AuthLastSn {
         sn: u64,
     },
+    Transfer {
+        subject_id: DigestIdentifier,
+    },
+    TransferRes {
+        res: TransferResponse
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

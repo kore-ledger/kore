@@ -25,9 +25,7 @@ use crate::{
     },
     request::manager::{RequestManager, RequestManagerMessage},
     subject::{
-        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
-        validata::{ValiData, ValiDataMessage, ValiDataResponse},
-        Metadata,
+        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, transfer::{TransferRegister, TransferRegisterMessage, TransferRegisterResponse}, validata::{ValiData, ValiDataMessage, ValiDataResponse}, Metadata
     },
     validation::proof::ValidationProof,
     ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
@@ -119,7 +117,7 @@ where
 pub async fn subject_owner<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
-) -> Result<bool, ActorError> 
+) -> Result<(bool, bool), ActorError> 
 where 
     A: Actor + Handler<A>,
 {
@@ -129,17 +127,46 @@ where
 
     let response = if let Some(node_actor) = node_actor {
         node_actor
-            .ask(NodeMessage::AmISubjectOwner(subject_id.to_owned()))
+            .ask(NodeMessage::OwnerPendingSubject(subject_id.to_owned()))
             .await?
     } else {
         return Err(ActorError::NotFound(node_path));
     };
 
     match response {
-        NodeResponse::AmIOwner(owner) => Ok(owner),
+        NodeResponse::OwnerPending(res) => Ok(res),
         _ => Err(ActorError::UnexpectedResponse(
             node_path,
-            "NodeResponse::AmIOwner".to_owned(),
+            "NodeResponse::OwnerPending".to_owned(),
+        )),
+    }
+}
+
+pub async fn subject_old_owner<A>(
+    ctx: &mut ActorContext<A>,
+    subject_id: &str,
+    owner: KeyIdentifier
+) -> Result<bool, ActorError> 
+where 
+    A: Actor + Handler<A>,
+{
+    let tranfer_register_path = ActorPath::from(&format!("/user/node/{}/transfer_register", subject_id));
+    let transfer_register_actor: Option<actor::ActorRef<TransferRegister>> =
+        ctx.system().get_actor(&tranfer_register_path).await;
+
+    let response = if let Some(transfer_register_actor) = transfer_register_actor {
+        transfer_register_actor
+            .ask(TransferRegisterMessage::IsOldOwner(owner))
+            .await?
+    } else {
+        return Err(ActorError::NotFound(tranfer_register_path));
+    };
+
+    match response {
+        TransferRegisterResponse::IsOwner(res) => Ok(res),
+        _ => Err(ActorError::UnexpectedResponse(
+            tranfer_register_path,
+            "TransferRegisterResponse::IsOwner".to_owned(),
         )),
     }
 }
@@ -355,32 +382,69 @@ pub fn verify_protocols_state(
     approve: Option<bool>,
     approval_require: bool,
     val: bool,
+    is_gov: bool
 ) -> Result<bool, Error> {
     match request {
-        EventRequestType::Create
-        | EventRequestType::Transfer
-        | EventRequestType::Confirm
-        | EventRequestType::EOL => {
+        EventRequestType::Create |
+        EventRequestType::EOL |
+        EventRequestType::Reject 
+        => {
             if approve.is_some() || eval.is_some() || approval_require {
-                return Err(Error::Protocols("In create, transferm, confirm and eol request, approve and eval must be None and approval require must be false".to_owned()));
+                return Err(Error::Protocols("In create, reject and eol request, approve and eval must be None and approval require must be false".to_owned()));
             }
             Ok(val)
+        }
+        EventRequestType::Transfer => {
+            let Some(eval) = eval else {
+                return Err(Error::Protocols(
+                    "In Transfer even eval must be Some".to_owned(),
+                ));
+            };
+
+            if approve.is_some() || approval_require {
+                return Err(Error::Protocols("In transfer request, approve must be None and approval require must be false".to_owned()));
+            }
+
+            Ok(val && eval)
         }
         EventRequestType::Fact => {
             let Some(eval) = eval else {
                 return Err(Error::Protocols(
-                    "In Fact even eval must be Some".to_owned(),
+                    "In fact request eval must be Some".to_owned(),
                 ));
             };
 
-            if approval_require {
+            if !is_gov {
+                if approve.is_some() || approval_require {
+                    return Err(Error::Protocols("In fact request (not governace subject), approve must be None and approval require must be false".to_owned()));
+                }
+
+                Ok(val && eval)
+            } else {
+                if !approval_require {
+                    return Err(Error::Protocols("In fact request (governace subject), approval require must be true".to_owned()));
+                }
                 let Some(approve) = approve else {
-                    return Err(Error::Protocols("In Fact even if approval was required, approve must be Some".to_owned()));
+                    return Err(Error::Protocols("In fact request if approval was required, approve must be Some".to_owned()));
                 };
                 Ok(eval && approve && val)
+            }
+        }
+        EventRequestType::Confirm => {
+            if !is_gov {
+                if approve.is_some() || eval.is_some() || approval_require {
+                    return Err(Error::Protocols("In confirm request (not governance subject), approve and eval must be None and approval require must be false".to_owned()));
+                }
+                Ok(val)
             } else {
-                if approve.is_some() {
-                    return Err(Error::Protocols("In Fact even if approval was not required, approve must be None".to_owned()));
+                let Some(eval) = eval else {
+                    return Err(Error::Protocols(
+                        "In confirm request (governace subject) eval must be Some".to_owned(),
+                    ));
+                };
+
+                if approve.is_some() || approval_require {
+                    return Err(Error::Protocols("In confirm request (governace subject), approve must be None and approval require must be false".to_owned()));
                 }
 
                 Ok(val && eval)

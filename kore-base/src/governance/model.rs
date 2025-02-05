@@ -400,8 +400,6 @@ pub struct Contract {
 pub struct Member {
     pub id: String,
     pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
 }
 
 /// Governance validation (from quorum).

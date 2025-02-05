@@ -26,6 +26,7 @@ pub enum EventProof {
     Fact,
     Transfer { new_owner: KeyIdentifier },
     Confirm,
+    Reject,
     EOL,
 }
 
@@ -46,6 +47,7 @@ impl PartialEq for EventProof {
 impl From<EventRequest> for EventProof {
     fn from(value: EventRequest) -> Self {
         match value {
+            EventRequest::Reject(_reject_request) => EventProof::Reject,
             EventRequest::Create(_create_request) => EventProof::Create,
             EventRequest::Fact(_fact_request) => EventProof::Fact,
             EventRequest::Transfer(transfer_request) => EventProof::Transfer {
@@ -88,7 +90,56 @@ pub struct ValidationProof {
     /// The version of the governance contract used to validate the subject.
     pub governance_version: u64,
     pub owner: KeyIdentifier,
+    pub new_owner: Option<KeyIdentifier>,
+    pub active: bool,
     pub event: EventProof,
+}
+
+impl ValidationProof {
+    pub fn error_create(&self) -> bool {
+        let first_check = self.subject_id.is_empty()
+            || self.schema_id.is_empty()
+            || self.sn != 0
+            || !self.prev_event_hash.is_empty()
+            || self.event_hash.is_empty()
+            || self.genesis_governance_version != self.governance_version
+            || self.owner.is_empty()
+            || self.new_owner.is_some()
+            || !self.active;
+
+        if let EventProof::Create = self.event {
+            first_check
+        } else {
+            true
+        }
+    }
+
+    pub fn error_not_create(&self, previous_proof: &Self) -> bool {
+        let first_check = self.subject_id.is_empty()
+            || previous_proof.subject_id != self.subject_id
+            || self.schema_id.is_empty()
+            || previous_proof.schema_id != self.schema_id
+            || previous_proof.namespace != self.namespace
+            || previous_proof.governance_id != self.governance_id
+            || previous_proof.sn + 1 != self.sn
+            || self.prev_event_hash.is_empty()
+            || previous_proof.event_hash != self.prev_event_hash
+            || self.event_hash.is_empty()
+            || !previous_proof.active
+            || !self.active;
+
+        if let EventProof::Create = self.event {
+            return true;
+        }
+
+        if self.new_owner.clone().zip(previous_proof.new_owner.clone()).is_some_and(|(new_proof_new_owner, previous_proof_new_owner)| {
+            new_proof_new_owner != previous_proof_new_owner
+        }) {
+            return true;
+        }
+
+        first_check
+    }
 }
 
 impl Default for ValidationProof {
@@ -104,7 +155,9 @@ impl Default for ValidationProof {
             event_hash: DigestIdentifier::default(),
             genesis_governance_version: 0,
             event: EventProof::Create,
-            owner: KeyIdentifier::default()
+            owner: KeyIdentifier::default(),
+            new_owner: None,
+            active: true,
         }
     }
 }
@@ -151,7 +204,9 @@ impl ValidationProof {
             event_hash,
             genesis_governance_version: info.metadata.genesis_gov_version,
             event: info.event_proof.content.event_proof.clone(),
-            owner: info.metadata.owner.clone()
+            owner: info.metadata.owner.clone(),
+            new_owner: info.metadata.new_owner,
+            active: info.metadata.active,
         };
 
         Ok(validation_proof)

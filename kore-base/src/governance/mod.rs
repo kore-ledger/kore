@@ -591,7 +591,7 @@ impl Governance {
     }
 
     /// Check if the key is a member.
-    fn is_member(&self, id: &str) -> bool {
+    pub fn is_member(&self, id: &str) -> bool {
         for member in &self.members {
             if member.id == id {
                 return true;
@@ -641,12 +641,10 @@ mod tests {
                 Member {
                     id: key1.to_string(),
                     name: "test".to_string(),
-                    description: Some("".to_string()),
                 },
                 Member {
                     id: key2.to_string(),
                     name: "test1".to_string(),
-                    description: Some("".to_string()),
                 },
             ],
             roles: vec![

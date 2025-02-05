@@ -7,15 +7,15 @@ use crate::{
     evaluation::{request::EvaluationReq, response::EvalLedgerResponse},
     model::{
         event::{Ledger, ProtocolsSignatures},
-        request::CreateRequest,
         signature::Signed,
     },
     validation::proof::ValidationProof,
-    ConfirmRequest, EOLRequest, Event as KoreEvent, TransferRequest,
+    Event as KoreEvent,
     ValidationInfo,
 };
 
 use serde::{Deserialize, Serialize};
+
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RequestManagerState {
@@ -40,17 +40,10 @@ pub enum RequestManagerState {
     },
 }
 
-#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ValidationProtocols {
-    /// A request to create a new subject.
-    Create(CreateRequest),
-    /// A request to transfer ownership of a subject.
-    Transfer(TransferRequest),
-
-    Confirm(ConfirmRequest),
-    /// A request to mark a subject as end-of-life.
-    EOL(EOLRequest),
+pub enum ReqManInitMessage {
+    Evaluate,
+    Validate
 }
 
 #[derive(Default)]

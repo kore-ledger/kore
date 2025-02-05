@@ -9,15 +9,15 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, vec};
 use store::store::PersistentActor;
 use tracing::error;
 
 use crate::{
     db::Storable,
     intermediary::Intermediary,
-    model::common::{emit_fail, get_gov, get_metadata},
-    update::{Update, UpdateMessage, UpdateNew},
+    model::common::{emit_fail, get_gov, get_metadata, subject_owner},
+    update::{Update, UpdateMessage, UpdateNew, UpdateRes},
     ActorMessage, NetworkMessage,
 };
 
@@ -79,6 +79,9 @@ impl Auth {
 
 #[derive(Debug, Clone)]
 pub enum AuthMessage {
+    CheckTransfer {
+        subject_id: DigestIdentifier,
+    },
     NewAuth {
         subject_id: DigestIdentifier,
         witness: AuthWitness,
@@ -149,6 +152,82 @@ impl Handler<Auth> for Auth {
         ctx: &mut actor::ActorContext<Auth>,
     ) -> Result<AuthResponse, ActorError> {
         match msg {
+            AuthMessage::CheckTransfer { subject_id } => {
+                let (is_owner, is_pending) = subject_owner(
+                    ctx,
+                    &subject_id.to_string(),
+                )
+                .await.map_err(|e| {
+                    error!(TARGET_AUTH, "CheckTransfer, Could not determine if the node is the owner of the subject: {}", e);
+                    ActorError::Functional(format!(
+                        "An error has occurred: {}",
+                        e
+                    ))
+                })?;
+
+                if !is_owner || !is_pending {
+                    let e =  "An event is being sent for a subject that does not belong to us or subject is not pending to confirm event";
+                    error!(
+                        TARGET_AUTH,
+                        "CheckTransfer, {}", e
+                    );
+                    return Err(ActorError::Functional(e.to_owned()));
+                }
+
+                let witness = self.auth.get(&subject_id.to_string());
+                if let Some(witness) = witness {
+                    let metadata = get_metadata(ctx, &subject_id.to_string()).await?;
+
+                    let witnesses = match witness {
+                        AuthWitness::One(key_identifier) => {
+                            vec![key_identifier.clone()]
+                        }
+                        AuthWitness::Many(vec) => {
+                            vec.clone()
+                        }
+                        AuthWitness::None => {
+                            let e = "The subject has no witnesses to try to ask for an update.";
+                            error!(TARGET_AUTH, "Update, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
+                        }
+                    }.iter().cloned().collect();
+
+                            let data = UpdateNew {
+                                subject_id: subject_id.clone(),
+                                our_key: self.our_node.clone(),
+                                response: None,
+                                witnesses,
+                                schema_id: metadata.schema_id,
+                                request: None,
+                                update_type: crate::update::UpdateType::Transfer,
+                            };
+
+                            let authorization = Update::new(data);
+                            let child = ctx
+                                .create_child(
+                                    &format!("transfer_{}", subject_id),
+                                    authorization,
+                                )
+                                .await;
+                            let Ok(child) = child else {
+                                let e = ActorError::Create(
+                                    ctx.path().clone(),
+                                    subject_id.to_string(),
+                                );
+                                return Err(e);
+                            };
+
+                            if let Err(e) =
+                                child.tell(UpdateMessage::Create).await
+                            {
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                } else {
+                    let e = "The subject has not been authorized";
+                    error!(TARGET_AUTH, "Update, {}", e);
+                    return Err(ActorError::Functional(e.to_owned()));
+                }
+            },
             AuthMessage::GetAuth { subject_id } => {
                 if let Some(witnesses) = self.auth.get(&subject_id.to_string())
                 {
@@ -247,18 +326,18 @@ impl Handler<Auth> for Auth {
                             let data = UpdateNew {
                                 subject_id: subject_id.clone(),
                                 our_key: self.our_node.clone(),
-                                sn,
+                                response: Some(UpdateRes::Sn(sn)),
                                 witnesses,
                                 schema_id,
-                                request,
+                                request: Some(request),
                                 update_type: crate::update::UpdateType::Auth,
                             };
 
-                            let authorization = Update::new(data);
+                            let updater = Update::new(data);
                             let child = ctx
                                 .create_child(
                                     &subject_id.to_string(),
-                                    authorization,
+                                    updater,
                                 )
                                 .await;
                             let Ok(child) = child else {
@@ -266,7 +345,7 @@ impl Handler<Auth> for Auth {
                                     ctx.path().clone(),
                                     subject_id.to_string(),
                                 );
-                                return Err(emit_fail(ctx, e).await);
+                                return Err(e);
                             };
 
                             if let Err(e) =

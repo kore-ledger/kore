@@ -16,20 +16,13 @@ use crate::{
     governance::{
         model::{CreatorQuantity, Roles},
         Governance,
-    },
-    intermediary::Intermediary,
-    model::{
+    }, intermediary::Intermediary, model::{
         common::{
-            emit_fail, get_gov, get_metadata, get_quantity,
-            try_to_update_subject, update_event, update_vali_data,
+            emit_fail, get_gov, get_metadata, get_quantity, subject_old_owner, try_to_update_subject, update_event, update_vali_data
         },
         event::{Ledger, ProtocolsSignatures},
         network::RetryNetwork,
-    },
-    validation::proof::ValidationProof,
-    ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,
-    NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
-    SubjectResponse,
+    }, update::TransferResponse, validation::proof::ValidationProof, ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
 };
 
 use tracing::{error, warn};
@@ -406,7 +399,7 @@ impl Distributor {
         ctx: &mut ActorContext<Distributor>,
         subject_id: &str,
         gov_version: Option<u64>,
-        info: ComunicateInfo,
+        info: &mut ComunicateInfo,
     ) -> Result<(), ActorError> {
         let gov = match get_gov(ctx, subject_id).await {
             Ok(gov) => gov,
@@ -434,6 +427,10 @@ impl Distributor {
             }
         };
 
+        if info.schema.is_empty() {
+            info.schema = metadata.schema_id.clone();
+        }
+
         let governance_id = if metadata.governance_id.is_empty() {
             metadata.subject_id
         } else {
@@ -458,10 +455,17 @@ impl Distributor {
             ));
         }
 
-        // Si el owner nos pide la copia.
-        if metadata.owner == info.sender {
-            return Ok(());
-        }
+        if let Some(new_owner) = metadata.new_owner {
+            if metadata.owner == info.sender || new_owner ==  info.sender {
+                return Ok(());
+            }    
+        } else {
+            // Si el owner nos pide la copia.
+            if metadata.owner == info.sender {
+                return Ok(());
+            }
+        };
+        
 
         if !gov.has_this_role(
             &info.sender.to_string(),
@@ -487,6 +491,10 @@ impl Actor for Distributor {
 
 #[derive(Debug, Clone)]
 pub enum DistributorMessage {
+    Transfer {
+        subject_id: String,
+        info: ComunicateInfo,
+    },
     GetLastSn {
         subject_id: String,
         info: ComunicateInfo,
@@ -540,6 +548,98 @@ impl Handler<Distributor> for Distributor {
         ctx: &mut ActorContext<Distributor>,
     ) -> Result<(), ActorError> {
         match msg {
+            DistributorMessage::Transfer { subject_id, info } => {
+                let metadata = match get_metadata(ctx, &subject_id).await {
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "Transfer, Can not get metadata: {}", e
+                        );
+                        if let ActorError::NotFound(_) = e {
+                            return Err(e);
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    }
+                };
+
+                if let Some(_new_owner) = metadata.new_owner {
+                    if metadata.owner == info.sender {
+                        // Todavía no se ha emitido evento de confirm ni de reject
+                        return Ok(());
+                    }
+                }
+
+                let is_old_owner = match subject_old_owner(ctx, &subject_id.to_string(), info.sender.clone()).await {
+                    Ok(is_old_owner) => is_old_owner,
+                    Err(e) => {
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "Transfer, Can not know if is old owner: {}", e
+                        );
+                        if let ActorError::NotFound(_) = e {
+                            return Err(e);
+                        } else {
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    }
+                };
+
+                let res = if is_old_owner {
+                    TransferResponse::Confirm
+                } else if !is_old_owner && metadata.owner == info.sender.clone() {
+                    TransferResponse::Reject
+                } else {
+                    let e = "Sender is not the owner and is not a old owner";
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "Transfer, {}", e
+                    );
+
+                    return Err(ActorError::Functional(e.to_owned()));
+                };
+
+                let new_info = ComunicateInfo {
+                    reciver: info.sender,
+                    sender: info.reciver.clone(),
+                    request_id: info.request_id,
+                    version: info.version,
+                    reciver_actor: format!(
+                        "/user/node/auth/transfer_{}/{}",
+                        subject_id, info.reciver
+                    ),
+                    schema: info.schema,
+                };
+
+                let helper: Option<Intermediary> =
+                    ctx.system().get_helper("network").await;
+
+                let Some(mut helper) = helper else {
+                    let e = ActorError::NotHelper("network".to_owned());
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "GetLastSn, Can not obtain network helper"
+                    );
+                    return Err(emit_fail(ctx, e).await);
+                };
+
+                if let Err(e) = helper
+                    .send_command(network::CommandHelper::SendMessage {
+                        message: NetworkMessage {
+                            info: new_info,
+                            message: ActorMessage::TransferRes { res }
+                        },
+                    })
+                    .await
+                {
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "GetLastSn, can not send response to network: {}", e
+                    );
+                    return Err(emit_fail(ctx, e).await);
+                };
+            },
             DistributorMessage::GetLastSn { subject_id, info } => {
                 let metadata = match get_metadata(ctx, &subject_id).await {
                     Ok(metadata) => metadata,
@@ -566,9 +666,13 @@ impl Handler<Distributor> for Distributor {
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
+                let is_owner = if let Some(new_owner) = metadata.new_owner {
+                    metadata.owner == info.sender || new_owner ==  info.sender
+                } else {
+                    metadata.owner == info.sender 
+                };
 
-                if metadata.owner != info.sender
-                    && !gov.has_this_role(
+                if !is_owner && !gov.has_this_role(
                         &info.sender.to_string(),
                         Roles::WITNESS,
                         &metadata.schema_id.clone(),
@@ -628,52 +732,12 @@ impl Handler<Distributor> for Distributor {
                 gov_version,
                 subject_id,
             } => {
-                if info.schema.is_empty() {
-                    let metadata = match get_metadata(ctx, &subject_id).await {
-                        Ok(metadata) => metadata,
-                        Err(e) => {
-                            error!(
-                                TARGET_DISTRIBUTOR,
-                                "SendDistribution, can not obtain metadata: {}",
-                                e
-                            );
-                            if let ActorError::NotFound(_) = e {
-                                return Err(e);
-                            } else {
-                                return Err(emit_fail(ctx, e).await);
-                            }
-                        }
-                    };
-
-                    // Si tiene el sujeto tiene que tener la gov.
-                    let gov = match get_gov(ctx, &subject_id).await {
-                        Ok(gov) => gov,
-                        Err(e) => {
-                            error!(TARGET_DISTRIBUTOR, "SendDistribution, can not obtain governance: {}", e);
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    };
-
-                    if metadata.owner != info.sender
-                        && !gov.has_this_role(
-                            &info.sender.to_string(),
-                            Roles::WITNESS,
-                            &metadata.schema_id.clone(),
-                            metadata.namespace.clone(),
-                        )
-                    {
-                        let e = "Sender neither the owned nor a witness";
-                        error!(TARGET_DISTRIBUTOR, "SendDistribution, {}", e);
-                        return Err(ActorError::Functional(e.to_owned()));
-                    }
-
-                    info.schema = metadata.schema_id;
-                } else if let Err(e) = self
+                if let Err(e) = self
                     .check_gov_version(
                         ctx,
                         &subject_id,
                         gov_version,
-                        info.clone(),
+                        &mut info,
                     )
                     .await
                 {
@@ -1092,6 +1156,7 @@ impl Handler<Distributor> for Distributor {
                         "Events is empty".to_owned(),
                     ));
                 }
+
                 if let Err(e) = self
                     .check_auth(
                         ctx,
