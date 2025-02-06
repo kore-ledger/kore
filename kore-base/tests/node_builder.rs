@@ -1,14 +1,24 @@
 use identity::{
-    identifier::derive::{digest::DigestDerivator, KeyDerivator},
+    identifier::{
+        derive::{digest::DigestDerivator, KeyDerivator},
+        DigestIdentifier, KeyIdentifier,
+    },
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
 use kore_base::{
     config::{Config, ExternalDbConfig, KoreDbConfig},
+    model::{
+        request::{
+            ConfirmRequest, CreateRequest, EventRequest, FactRequest,
+            TransferRequest,
+        },
+        Namespace, ValueWrapper,
+    },
     Api,
 };
 use network::{Config as NetworkConfig, RoutingNode};
 use prometheus_client::registry::Registry;
-use std::{fs, time::Duration};
+use std::{fs, str::FromStr, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 pub fn create_temp_dir() -> String {
@@ -203,7 +213,7 @@ pub async fn create_nodes_massive(
         bootstrap_nodes.push((node, listen_address));
     }
 
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(8)).await;
 
     // Create Addressable nodes and connect them to all Bootstrap nodes
     for i in 0..size_addressable {
@@ -254,4 +264,194 @@ pub async fn create_nodes_massive(
     }
 
     [bootstrap_nodes, addressable_nodes, ephemeral_nodes]
+}
+
+/// Crea una governance en `owner_node` y lo autoriza en `other_nodes`.
+/// Retorna el `governance_id` generado.
+pub async fn create_and_authorize_governance(
+    owner_node: &Api,
+    other_nodes: &[&Api],
+    namespace: &str,
+) -> DigestIdentifier {
+    let request = EventRequest::Create(CreateRequest {
+        governance_id: DigestIdentifier::default(),
+        schema_id: "governance".to_owned(),
+        namespace: Namespace::from(namespace),
+    });
+    let data = owner_node.own_request(request).await.unwrap();
+    let governance_id = DigestIdentifier::from_str(&data.subject_id).unwrap();
+
+    for node in other_nodes {
+        let response = node
+            .auth_subject(
+                governance_id.clone(),
+                kore_base::auth::AuthWitness::One(
+                    KeyIdentifier::from_str(&owner_node.controller_id())
+                        .unwrap(),
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response,
+            "Ok",
+            "Authorization failed in node {:?}",
+            node.peer_id()
+        );
+    }
+
+    governance_id
+}
+
+/// Verifica que un governance exista (o tenga al menos un elemento) en varios nodos.
+/// Si no está sincronizado, puede hacer reintentos y/o llamar a `update_subject`.
+pub async fn wait_for_governance_sync(
+    governance_id: DigestIdentifier,
+    nodes: &[&Api],
+    max_retries: usize,
+    sn: u64,
+    sleep_sec: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for attempt in 0..max_retries {
+        let mut all_synced = true;
+        for node in nodes {
+            let govs = node.all_govs(None).await?;
+            if govs.is_empty() {
+                node.update_subject(governance_id.clone()).await?;
+                all_synced = false;
+            } else {
+                let govs =
+                    node.get_subject(governance_id.clone()).await.unwrap();
+                if govs.sn != sn {
+                    println!("Governance SN mismatch: {} != {}", govs.sn, sn);
+                    node.update_subject(governance_id.clone()).await?;
+                    all_synced = false;
+                } else {
+                    println!("Have equal SN: {}", sn);
+                }
+            }
+        }
+
+        if all_synced {
+            println!(
+                "Governance is synced across all nodes on attempt {}",
+                attempt
+            );
+            return Ok(());
+        }
+
+        tokio::time::sleep(Duration::from_secs(sleep_sec)).await;
+    }
+
+    Err("Governance is not synced across all nodes".into())
+}
+
+pub async fn create_subject(
+    node: &Api,
+    governance_id: DigestIdentifier,
+    schema_id: &str,
+    namespace: &str,
+) -> Result<DigestIdentifier, Box<dyn std::error::Error>> {
+    let request = EventRequest::Create(CreateRequest {
+        governance_id,
+        schema_id: schema_id.to_owned(),
+        namespace: Namespace::from(namespace),
+    });
+    let data = node.own_request(request).await?;
+    Ok(DigestIdentifier::from_str(&data.subject_id)?)
+}
+
+pub async fn emit_fact(
+    node: &Api,
+    subject_id: DigestIdentifier,
+    payload_json: serde_json::Value,
+    by_pass: Option<bool>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let request = EventRequest::Fact(FactRequest {
+        subject_id,
+        payload: ValueWrapper(payload_json),
+    });
+    let response = node.own_request(request).await?;
+    println!("emit_fact - response: {:?}", response);
+    // state of request
+    if by_pass.is_some() {
+        return Ok(());
+    }
+    loop {
+        let state = node
+            .request_state(
+                DigestIdentifier::from_str(&response.request_id).unwrap(),
+            )
+            .await?;
+        println!("emit_fact - status: {:?}", state.status);
+        println!("emit_fact - error: {:?}", state.error);
+        if state.status == "Finish"
+            || state.status == "In Approval"
+            || state.status == "Invalid"
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    Ok(())
+}
+
+pub async fn emit_transfer(
+    node: &Api,
+    subject_id: DigestIdentifier,
+    new_owner: KeyIdentifier,
+    by_pass: Option<bool>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let request = EventRequest::Transfer(TransferRequest {
+        subject_id,
+        new_owner,
+    });
+    let response = node.own_request(request).await?;
+    println!("emit_transfer - response: {:?}", response);
+    // state of request
+    if by_pass.is_some() {
+        return Ok(());
+    }
+    loop {
+        let state = node
+            .request_state(
+                DigestIdentifier::from_str(&response.request_id).unwrap(),
+            )
+            .await?;
+        println!("emit_transfer - status: {:?}", state.status);
+        println!("emit_transfer - error: {:?}", state.error);
+        if state.status == "Finish" || state.status == "In Approval" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    Ok(())
+}
+
+pub async fn emit_confirm(
+    node: &Api,
+    subject_id: DigestIdentifier,
+    by_pass: Option<bool>,
+) {
+    let request = EventRequest::Confirm(ConfirmRequest { subject_id, name_old_owner: None });
+    let response = node.own_request(request).await.unwrap();
+    println!("emit_confirm - response: {:?}", response);
+    // state of request
+    if by_pass.is_some() {
+        return;
+    }
+    loop {
+        let state = node
+            .request_state(
+                DigestIdentifier::from_str(&response.request_id).unwrap(),
+            )
+            .await
+            .unwrap();
+        println!("emit_confirm - status: {:?}", state.status);
+        println!("emit_confirm - error: {:?}", state.error);
+        if state.status == "Finish" || state.status == "In Approval" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
 }
