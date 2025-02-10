@@ -77,7 +77,6 @@ impl EventRequest {
     pub fn check_ledger_signature(&self, signer: &KeyIdentifier, owner: &KeyIdentifier, new_owner: &Option<KeyIdentifier>) -> Result<bool, Error> {
         match self {
             EventRequest::Create(..) |
-            EventRequest::Fact(..) |
             EventRequest::Transfer(..) | 
             EventRequest::EOL(..) => {
                 Ok(signer == owner)
@@ -89,6 +88,7 @@ impl EventRequest {
                 };
                 Ok(new_owner == signer)
             },
+            EventRequest::Fact(..) => Ok(true)
         }
     }
 

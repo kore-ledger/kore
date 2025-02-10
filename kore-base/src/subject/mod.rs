@@ -246,14 +246,14 @@ impl Subject {
         let owner = our_key == self.owner;
 
         if owner {
-            Self::up_owner_not_gov(ctx, our_key).await?;
+            Self::up_owner_not_gov(ctx, &our_key).await?;
         }
         Ok(())
     }
 
     async fn up_owner_not_gov(
         ctx: &mut ActorContext<Subject>,
-        our_key: KeyIdentifier,
+        our_key: &KeyIdentifier,
     ) -> Result<(), ActorError> {
         let validation = Validation::new(our_key.clone());
         ctx.create_child("validation", validation).await?;
@@ -262,7 +262,7 @@ impl Subject {
         ctx.create_child("evaluation", evaluation).await?;
 
         let distribution =
-            Distribution::new(our_key, DistributionType::Subject);
+            Distribution::new(our_key.clone(), DistributionType::Subject);
         ctx.create_child("distribution", distribution).await?;
 
         Ok(())
@@ -1432,6 +1432,8 @@ impl Subject {
     ) -> Result<(), ActorError> {
         let our_key = self.get_node_key(ctx).await?;
         let current_sn = self.sn;
+        let current_new_owner_some = self.new_owner.is_some();
+        let i_current_new_owner = self.new_owner.clone().map_or(false, |x| x == our_key);
 
         if self.governance_id.is_empty() {
             let current_owner = self.owner.clone();
@@ -1511,45 +1513,80 @@ impl Subject {
                             ActorError::FunctionalFail(e.to_string())
                         })?;
 
-                    // Si cambió el dueño
-                    if current_owner != self.owner {
-                        let Some(ext_db): Option<ExternalDB> =
-                            ctx.system().get_helper("ext_db").await
-                        else {
-                            return Err(ActorError::NotHelper(
-                                "config".to_owned(),
-                            ));
-                        };
+                    let Some(ext_db): Option<ExternalDB> =
+                        ctx.system().get_helper("ext_db").await
+                    else {
+                        return Err(ActorError::NotHelper(
+                            "config".to_owned(),
+                        ));
+                    };
 
-                        if self.owner == our_key {
-                            // Ahora somos el dueño
-                            Self::down_not_owner(
-                                ctx,
-                                old_gov.clone(),
-                                our_key.clone(),
-                                self.namespace.clone(),
-                            )
-                            .await?;
-                            Self::up_owner(
-                                ctx,
-                                our_key.clone(),
-                                self.subject_id.clone(),
-                                ext_db,
-                            )
-                            .await?;
-                        } else if current_owner == our_key {
-                            // Antes era el dueño y ahora no.
-                            Self::down_owner(ctx).await?;
-                            Self::up_not_owner(
-                                ctx,
-                                new_gov.clone(),
-                                our_key.clone(),
-                                self.namespace.clone(),
-                                ext_db,
-                                self.subject_id.clone(),
-                            )
-                            .await?;
+                    let new_owner_some = self.new_owner.is_some();
+                    let i_new_owner = self.new_owner.clone().map_or(false, |x| x == our_key);
+                    let mut up_not_owner: bool = false;
+                    let mut up_owner: bool = false;
+
+                    if current_owner == our_key {
+                        // Eramos dueños
+                        if current_owner != self.owner {
+                            // Ya no somos dueño
+                            if !current_new_owner_some && !i_new_owner {
+                                // Si antes new owner false
+                                up_not_owner = true;
+                            } else if current_new_owner_some && i_new_owner {
+                                up_owner = true;
+                            }
+                        } else {
+                            // Seguimos siendo dueños
+                            if current_new_owner_some && !new_owner_some {
+                                up_owner = true;
+                            } else if !current_new_owner_some && new_owner_some {
+                                up_not_owner = true;
+                            }
                         }
+                    } else {
+                        // No eramos dueño
+                        if current_owner != self.owner && self.owner == our_key {
+                            // Ahora Somos dueños
+                            if !new_owner_some && !i_current_new_owner {
+                                // new owner false
+                                up_owner = true;
+                            } else if new_owner_some && i_current_new_owner {
+                                up_not_owner = true;
+                            }
+                        } else if i_current_new_owner && !i_new_owner {
+                            up_not_owner = true;
+                        } else if !i_current_new_owner && i_new_owner {
+                            up_owner = true;
+                        }
+                    }
+                    
+                    if up_not_owner {
+                        Self::down_owner(ctx).await?;
+                        Self::up_not_owner(
+                            ctx,
+                            new_gov.clone(),
+                            our_key.clone(),
+                            self.namespace.clone(),
+                            ext_db.clone(),
+                            self.subject_id.clone(),
+                        )
+                        .await?;
+                    } else if up_owner {
+                        Self::down_not_owner(
+                            ctx,
+                            old_gov.clone(),
+                            our_key.clone(),
+                            self.namespace.clone(),
+                        )
+                        .await?;
+                        Self::up_owner(
+                            ctx,
+                            our_key.clone(),
+                            self.subject_id.clone(),
+                            ext_db.clone(),
+                        )
+                        .await?;
                     }
 
                     let old_schemas =
@@ -1720,8 +1757,6 @@ impl Subject {
                 }
             }
         } else {
-            let current_owner = self.owner.clone();
-
             if let Err(e) =
                 self.verify_new_ledger_events_not_gov(ctx, events).await
             {
@@ -1733,16 +1768,30 @@ impl Subject {
             };
 
             if current_sn < self.sn {
+                let current_owner = self.owner.clone();
+
                 if !self.active && current_owner == our_key {
                     Self::down_owner_not_gov(ctx).await?;
                 }
 
+                let i_new_owner = self.new_owner.clone().map_or(false, |x| x == our_key);
+
+                // Si antes no eramos el new owner y ahora somos el new owner.
+                if !i_current_new_owner && i_new_owner && current_owner != our_key {
+                    Self::up_owner_not_gov(ctx, &our_key).await?;
+                }
+
+                // Si cambió el dueño
                 if current_owner != self.owner {
-                    if self.owner == our_key {
-                        Self::up_owner_not_gov(ctx, our_key).await?;
-                    } else if current_owner == our_key {
+                    // Si ahora somos el dueño pero no eramos new owner.
+                    if self.owner == our_key && !i_current_new_owner {
+                        Self::up_owner_not_gov(ctx, &our_key).await?;
+                    } else if current_owner == our_key && !i_new_owner{
+                        // Antes era el dueño y ahora no.
                         Self::down_owner_not_gov(ctx).await?;
                     }
+                } else if i_current_new_owner && !i_new_owner {
+                    Self::down_owner_not_gov(ctx).await?;
                 }
             }
         }
@@ -2288,7 +2337,7 @@ impl PersistentActor for Subject {
                 ) {
                     Ok(gov) => gov,
                     Err(e) => {
-                        let error = format!("Apply, can not governance_id is empty but can not convert propierties in governance data: {}", e);
+                        let error = format!("Apply, Governance_id is empty but can not convert propierties in governance data: {}", e);
                         error!(TARGET_SUBJECT, error);
                         return Err(ActorError::Functional(error));
                     }

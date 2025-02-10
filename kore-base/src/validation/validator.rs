@@ -11,7 +11,7 @@ use crate::{
     },
     model::{
         common::{
-            check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
+            emit_fail, get_gov, get_metadata, get_sign,
             update_ledger_network, UpdateData,
         },
         event::ProtocolsSignatures,
@@ -461,32 +461,23 @@ impl Handler<Validator> for Validator {
             } => {
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
-                if info_subject_path
-                    != validation_req.content.proof.governance_id.to_string()
+                    let governance_id = if validation_req.content.proof.governance_id.is_empty() {
+                        validation_req.content.proof.subject_id.clone()
+                    } else {
+                        validation_req.content.proof.governance_id.clone()
+                    };
+    
+                if info_subject_path != governance_id.to_string()
                 {
                     let e = "We received an evaluation where the request indicates one subject but the info indicates another.";
-                    warn!(TARGET_VALIDATOR, "NetworkRequest, {}", e);
+                    error!(TARGET_VALIDATOR, "NetworkRequest, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
 
-                // TODO UNA vez verificada al gobernanza, comprobar que el firmante sea issuer.
-                if info.schema == "governance" {
-                    if let Err(e) = check_request_owner(
-                        ctx,
-                        &validation_req.content.proof.subject_id.to_string(),
-                        &validation_req.signature.signer.to_string(),
-                        *validation_req.clone(),
-                    )
-                    .await
-                    {
-                        if let ActorError::Functional(_) = e {
-                            warn!(TARGET_VALIDATOR, "NetworkRequest, checking if signer is subject owner: {}", e);
-                            return Err(e);
-                        } else {
-                            error!(TARGET_VALIDATOR, "NetworkRequest, checking if signer is subject owner: {}", e);
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    };
+                if let Err(e) = validation_req.verify() {
+                    let e = format!("Can not verify signature of request: {}", e);
+                    error!(TARGET_VALIDATOR, "NetworkRequest, {}", e);
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
 
                 let helper: Option<Intermediary> =
@@ -504,7 +495,7 @@ impl Handler<Validator> for Validator {
                 let reboot = match self
                     .check_governance(
                         ctx,
-                        validation_req.content.proof.governance_id.clone(),
+                        governance_id,
                         validation_req.content.proof.governance_version,
                         info.reciver.clone(),
                     )

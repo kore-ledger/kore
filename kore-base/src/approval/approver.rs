@@ -8,7 +8,7 @@ use crate::{
     intermediary::Intermediary,
     model::{
         common::{
-            check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
+            emit_fail, get_gov, get_metadata, get_sign,
             update_ledger_network, UpdateData,
         },
         network::{RetryNetwork, TimeOutResponse},
@@ -653,24 +653,11 @@ impl Handler<Approver> for Approver {
                 if info.request_id != self.request_id
                     || info.version != self.version
                 {
-                    if let Err(e) = check_request_owner(
-                        ctx,
-                        &approval_req.content.subject_id.to_string(),
-                        &approval_req.signature.signer.to_string(),
-                        approval_req.clone(),
-                    )
-                    .await
-                    {
-                        error!(
-                            TARGET_APPROVER,
-                            "NetworkRequest, can not check request owner {}", e
-                        );
-                        if let ActorError::Functional(_) = e {
-                            return Err(e);
-                        } else {
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    };
+                    if let Err(e) = approval_req.verify() {
+                        let e = format!("Can not verify signature of request: {}", e);
+                        error!(TARGET_APPROVER, "NetworkRequest, {}", e);
+                        return Err(ActorError::Functional(e.to_owned()));
+                    }
 
                     if !approval_req
                         .content

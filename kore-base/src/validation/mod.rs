@@ -433,7 +433,9 @@ impl Handler<Validation> for Validation {
 pub mod tests {
     use core::panic;
     use identity::identifier::derive::digest::DigestDerivator;
+    use serial_test::serial;
     use std::time::Duration;
+    use test_log::test;
 
     use actor::{ActorPath, ActorRef, Sink, SystemRef};
     use identity::{
@@ -607,13 +609,14 @@ pub mod tests {
         )
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
+    #[serial]
     async fn test_create_req() {
         let _ = create_subject_gov().await;
     }
 
-    #[tokio::test]
-    #[tracing_test::traced_test]
+    #[test(tokio::test)]
+    #[serial]
     async fn test_eol_req() {
         let (
             _system,

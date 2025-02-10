@@ -66,6 +66,7 @@ pub mod tests {
     use crate::config::{ExternalDbConfig, KoreDbConfig};
     use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
     use network::Config as NetworkConfig;
+    use serial_test::serial;
     use std::{fs, time::Duration};
 
     use async_std::sync::RwLock;
@@ -81,7 +82,7 @@ pub mod tests {
     pub struct Dummy;
 
     #[tokio::test]
-    #[tracing_test::traced_test]
+    #[serial]
     async fn test_system() {
         let system = create_system().await;
         let db: Option<Database> = system.get_helper("store").await;

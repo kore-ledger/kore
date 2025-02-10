@@ -635,54 +635,6 @@ where
     }
 }
 
-pub async fn check_request_owner<A, T>(
-    ctx: &mut ActorContext<A>,
-    subject_id: &str,
-    owner: &str,
-    req: Signed<T>,
-) -> Result<(), ActorError>
-where
-    A: Actor + Handler<A>,
-    T: BorshSerialize + BorshDeserialize + Clone + HashId,
-{
-    // Aquí hay que comprobar que el owner del subject es el que envía la req.
-    let subject_path = ActorPath::from(format!("/user/node/{}", subject_id));
-    let subject_actor: Option<ActorRef<Subject>> =
-        ctx.system().get_actor(&subject_path).await;
-
-    // We obtain the evaluator
-    let response = if let Some(subject_actor) = subject_actor {
-        subject_actor.ask(SubjectMessage::GetOwner).await?
-    } else {
-        return Err(ActorError::NotFound(subject_path));
-    };
-
-    let subject_owner = match response {
-        SubjectResponse::Owner(owner) => owner,
-        _ => {
-            return Err(ActorError::UnexpectedResponse(
-                subject_path,
-                "SubjectResponse::Owner".to_owned(),
-            ))
-        }
-    };
-
-    if subject_owner.to_string() != owner {
-        // TODO ver si tengo la última version de la gov.
-        return Err(ActorError::Functional(
-            "Evaluation req signer and owner are not the same".to_owned(),
-        ));
-    }
-
-    if let Err(e) = req.verify() {
-        return Err(ActorError::Functional(format!(
-            "Can not verify signature: {}",
-            e
-        )));
-    }
-
-    Ok(())
-}
 
 pub struct UpdateData {
     pub sn: u64,

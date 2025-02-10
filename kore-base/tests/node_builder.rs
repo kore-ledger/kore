@@ -87,9 +87,9 @@ pub async fn create_nodes_and_connections(
     let mut nodes: Vec<Api> = Vec::new();
     let mut node_addresses = Vec::new();
 
-    // Helper closure to get a node address
+
     let get_node_address = |index: usize| -> String {
-        format!("/ip4/127.0.0.1/tcp/{}", initial_port + index as u32)
+        format!("/memory/{}", initial_port + index as u32)
     };
 
     // Create Bootstrap nodes

@@ -9,7 +9,7 @@ use crate::Error;
 use libp2p::{
     core::{
         muxing::StreamMuxerBox,
-        transport::{upgrade::Version, Boxed},
+        transport::{memory, upgrade::Version, Boxed},
     },
     dns,
     identity::Keypair,
@@ -49,7 +49,10 @@ pub fn build_transport(
 
     // Allow TCP transport.
     // port_reuse(true) for use the same port to send / receive communication.
+    #[cfg(not(feature = "test"))]
     let transport = tcp::tokio::Transport::new(Config::default());
+    #[cfg(feature = "test")]
+    let transport =  memory::MemoryTransport::default();
 
     // Upgrade the transport with the noise authentication and yamux multiplexing.
     let transport = transport
