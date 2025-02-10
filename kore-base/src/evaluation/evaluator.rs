@@ -10,7 +10,7 @@ use crate::{
     helpers::network::{intermediary::Intermediary, NetworkMessage},
     model::{
         common::{
-            check_request_owner, emit_fail, get_gov, get_metadata, get_sign,
+            emit_fail, get_gov, get_metadata, get_sign,
             update_ledger_network, UpdateData,
         }, network::{RetryNetwork, TimeOutResponse}, HashId, Namespace, SignTypesNode, TimeStamp
     },
@@ -650,33 +650,23 @@ impl Handler<Evaluator> for Evaluator {
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
                 // Nos llegó una eval donde en la request se indica un sujeto pero en el info otro
                 // Posible ataque.
-                if info_subject_path
-                    != evaluation_req.content.context.governance_id.to_string()
+                let governance_id = if evaluation_req.content.context.governance_id.is_empty() {
+                    evaluation_req.content.context.subject_id.clone()
+                } else {
+                    evaluation_req.content.context.governance_id.clone()
+                };
+
+                if info_subject_path != governance_id.to_string()
                 {
                     let e = "We received an evaluation where the request indicates one subject but the info indicates another.";
                     error!(TARGET_EVALUATOR, "NetworkRequest, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
 
-                if info.schema == "governance" {
-                    if let Err(e) = check_request_owner(
-                        ctx,
-                        &evaluation_req.content.context.subject_id.to_string(),
-                        &evaluation_req.signature.signer.to_string(),
-                        evaluation_req.clone(),
-                    )
-                    .await
-                    {
-                        error!(
-                            TARGET_EVALUATOR,
-                            "NetworkRequest, Node is not subject owner: {}", e
-                        );
-                        if let ActorError::Functional(_) = e {
-                            return Err(e);
-                        } else {
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    };
+                if let Err(e) = evaluation_req.verify() {
+                    let e = format!("Can not verify signature of request: {}", e);
+                    error!(TARGET_EVALUATOR, "NetworkRequest, {}", e);
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
 
                 let helper: Option<Intermediary> =
@@ -693,13 +683,6 @@ impl Handler<Evaluator> for Evaluator {
 
                 let is_governance =
                     evaluation_req.content.context.schema_id == "governance";
-
-                // Get governance id
-                let governance_id = if is_governance {
-                    evaluation_req.content.context.subject_id.clone()
-                } else {
-                    evaluation_req.content.context.governance_id.clone()
-                };
 
                 let reboot = match self
                     .check_governance(

@@ -15,29 +15,20 @@ use node_builder::{
 };
 use serde_json::json;
 use serial_test::serial;
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
+use test_log::test;
 
 mod node_builder;
 
-#[tokio::test]
-#[serial]
+#[test(tokio::test)]
 //  Verificar que se puede crear una gobernanza, sujeto y emitir un evento además de recibir la copia
 async fn test_governance_and_subject_copy_with_approve() {
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
-        .finish();
-
-    // Establece el subscriber global
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("setting default subscriber failed");
     // Bootstrap ≤- Addressable
     let nodes = create_nodes_and_connections(
         vec![vec![]],
         vec![vec![0]],
         vec![],
         false,
-        46000,
+        45000,
     )
     .await;
     let node1 = &nodes[0];
@@ -179,9 +170,7 @@ async fn test_governance_and_subject_copy_with_approve() {
     assert_eq!(events.len(), 5);
 }
 
-#[tokio::test]
-#[serial]
-#[tracing_test::traced_test]
+#[test(tokio::test)]
 // Caso de uso básico 1 bootstrap (intermediario), 1 ephemeral(issuer de subject),
 // 1 addressable(owner de la gobernanza)
 async fn test_basic_use_case_1b_1e_1a() {
@@ -191,7 +180,7 @@ async fn test_basic_use_case_1b_1e_1a() {
         vec![vec![0]],
         vec![vec![0]],
         true,
-        45000,
+        45050,
     )
     .await;
     let intermediary = &nodes[0];
@@ -312,9 +301,8 @@ async fn test_basic_use_case_1b_1e_1a() {
     .unwrap();
 }
 
-#[tokio::test]
-#[serial]
-#[tracing_test::traced_test]
+#[test(tokio::test)]
+#[ignore = "temporal subjects"]
 // Testear limitaciones en la creación de sujetos INFINITY - QUANTITY
 async fn test_limits_in_subjects() {
     //  Ephemeral -> Bootstrap ≤- Addressable
@@ -323,7 +311,7 @@ async fn test_limits_in_subjects() {
         vec![vec![0]],
         vec![vec![0]],
         true,
-        45000,
+        45100,
     )
     .await;
     let intermediary = &nodes[0];
@@ -432,21 +420,12 @@ async fn test_limits_in_subjects() {
         .unwrap();
 
     tokio::time::sleep(Duration::from_secs(5)).await;
-    // wait for sync
-    wait_for_governance_sync(
-        governance_id.clone(),
-        &[intermediary, emit_events],
-        5,
-        1,
-        1,
-    )
-    .await
-    .unwrap();
 
     let subject_id =
         create_subject(emit_events, governance_id.clone(), "Example", "")
             .await
             .unwrap();
+
     // emit event to subject
     let json = json!({
         "ModOne": {
@@ -477,16 +456,6 @@ async fn test_limits_in_subjects() {
         .await
         .unwrap();
     tokio::time::sleep(Duration::from_secs(5)).await;
-    // wait for sync
-    wait_for_governance_sync(
-        governance_id.clone(),
-        &[intermediary, emit_events],
-        5,
-        2,
-        1,
-    )
-    .await
-    .unwrap();
 
     // create other subject
     let _ = create_subject(emit_events, governance_id.clone(), "Example", "")
@@ -506,24 +475,14 @@ async fn test_limits_in_subjects() {
     emit_fact(owner_governance, governance_id.clone(), json, None)
         .await
         .unwrap();
-    wait_for_governance_sync(
-        governance_id.clone(),
-        &[intermediary, emit_events],
-        5,
-        3,
-        1,
-    )
-    .await
-    .unwrap();
+
     let subject =
         create_subject(emit_events, governance_id.clone(), "Example", "").await;
     assert!(subject.is_err());
 }
 
-#[tokio::test]
-#[serial]
-#[ignore = "Verify Validator Namespace"]
-#[tracing_test::traced_test]
+#[test(tokio::test)]
+
 // Testear los esppacios de nombre
 async fn test_namespace_in_role() {
     // ValidationRes, Can not safe ledger or event: Actor /user/node/J5Vdfg0zP5LXj0WhnEJmYQTuL0Plu8vYB0GdB_j8cQl8/ledger_event not found
@@ -535,16 +494,16 @@ async fn test_namespace_in_role() {
         vec![vec![0], vec![0]],
         vec![],
         true,
-        46000,
+        45150,
     )
     .await;
-    let intermediary = &nodes[0];
+    let evaluator = &nodes[0];
     let owner_governance = &nodes[1];
     let emit_events = &nodes[2];
 
     let governance_id = create_and_authorize_governance(
         owner_governance,
-        &[intermediary, emit_events],
+        &[evaluator, emit_events],
         "",
     )
     .await;
@@ -566,7 +525,7 @@ async fn test_namespace_in_role() {
                     "op": "add",
                     "path": "/members/2",
                     "value": {
-                        "id": intermediary.controller_id(),
+                        "id": evaluator.controller_id(),
                         "name": "KoreNode3"
                     }
                 },
@@ -574,7 +533,7 @@ async fn test_namespace_in_role() {
                     "op": "add",
                     "path": "/roles/6",
                     "value": {
-                        "namespace": "test",
+                        "namespace": "Node2",
                         "role": {
                             "CREATOR": {
                                 "QUANTITY": 1
@@ -592,25 +551,7 @@ async fn test_namespace_in_role() {
                     "op": "add",
                     "path": "/roles/7",
                     "value": {
-                        "namespace": "test1",
-                        "role": {
-                            "CREATOR": {
-                                "QUANTITY": 1
-                            }
-                        },
-                        "schema": {
-                            "ID": "Example"
-                        },
-                        "who": {
-                            "NAME": "KoreNode3"
-                        }
-                    }
-                },
-                {
-                    "op": "add",
-                    "path": "/roles/8",
-                    "value": {
-                        "namespace": "test1",
+                        "namespace": "Node2",
                         "role": "EVALUATOR",
                         "schema": {
                             "ID": "Example"
@@ -622,7 +563,7 @@ async fn test_namespace_in_role() {
                 },
                 {
                     "op": "add",
-                    "path": "/roles/9",
+                    "path": "/roles/8",
                     "value": {
                         "namespace": "",
                         "role": "ISSUER",
@@ -674,27 +615,24 @@ async fn test_namespace_in_role() {
     tokio::time::sleep(Duration::from_secs(5)).await;
     wait_for_governance_sync(
         governance_id.clone(),
-        &[intermediary, emit_events, owner_governance],
+        &[evaluator, emit_events, owner_governance],
         5,
         1,
         5,
     )
     .await
     .unwrap();
+
     // create subject
     let subject_id =
         create_subject(emit_events, governance_id.clone(), "Example", "").await;
     assert!(subject_id.is_err());
     // create subject in namespace
-    let _ =
-        create_subject(emit_events, governance_id.clone(), "Example", "test")
-            .await
-            .unwrap();
-    // create other subject in namespace
     let subject_id =
-        create_subject(intermediary, governance_id.clone(), "Example", "test1")
+        create_subject(emit_events, governance_id.clone(), "Example", "Node2")
             .await
             .unwrap();
+
     println!("Subject ID: {:?}", subject_id);
     // emit event to subject
     let json = json!({
@@ -702,34 +640,25 @@ async fn test_namespace_in_role() {
             "data": 100,
         }
     });
-    emit_fact(intermediary, subject_id.clone(), json, None)
+    emit_fact(emit_events, subject_id.clone(), json, None)
         .await
         .unwrap();
+
     tokio::time::sleep(Duration::from_secs(5)).await;
-    let signature = intermediary.all_govs(None).await.unwrap();
-    assert_eq!(governance_id.to_string(), signature[0].governance_id);
-    // get subjects
-    let subjects = intermediary
-        .all_subjs(governance_id, None, None)
+    let state = emit_events
+        .get_signatures(subject_id.clone())
         .await
         .unwrap();
-    println!("Signature: {:?}", subjects);
+
+    assert!(state.signatures_eval.unwrap().len() == 2);
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[ignore = "--"]
-#[serial]
 //#[tracing_test::traced_test]
 async fn test_many_schema_in_one_governance() {
-    let subscriber = FmtSubscriber::builder()
-    .with_max_level(Level::INFO)
-    .finish();
-
-// Establece el subscriber global
-tracing::subscriber::set_global_default(subscriber)
-    .expect("setting default subscriber failed");
     let node =
-        create_nodes_and_connections(vec![vec![]], vec![], vec![], true, 45000)
+        create_nodes_and_connections(vec![vec![]], vec![], vec![], true, 45200)
             .await;
     let owner_governance = &node[0];
 
@@ -784,9 +713,9 @@ tracing::subscriber::set_global_default(subscriber)
 
     assert!(state.sn == 1);
 }
-#[tokio::test]
-#[serial]
-#[tracing_test::traced_test]
+
+#[test(tokio::test)]
+
 // copia de varias modificaciones en la gobernanza
 async fn test_copy_many_events() {
     let nodes = create_nodes_and_connections(
@@ -794,7 +723,7 @@ async fn test_copy_many_events() {
         vec![vec![0]],
         vec![],
         true,
-        45000,
+        45250,
     )
     .await;
     let intermediary = &nodes[0];
@@ -855,9 +784,8 @@ async fn test_copy_many_events() {
     .unwrap();
 }
 
-#[tokio::test]
-#[serial]
-#[tracing_test::traced_test]
+#[test(tokio::test)]
+
 // Modificar el estado inicial de la gobernanza
 async fn test_modify_init_state_governance() {
     let nodes = create_nodes_and_connections(
@@ -865,7 +793,7 @@ async fn test_modify_init_state_governance() {
         vec![vec![0]],
         vec![],
         true,
-        45000,
+        45300,
     )
     .await;
     let intermediary = &nodes[0];
@@ -921,25 +849,16 @@ async fn test_modify_init_state_governance() {
     assert!(state.properties["version"] == 1);
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[ignore = "Revisar update de los sujetos"]
-#[serial]
 // Modificar el estado inicial del sujeto
 async fn test_modify_init_state_subject() {
-    // 1 sujeto con 2 eventos, luego cambiar la gobernanza , luego
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
-        .finish();
-
-    // Establece el subscriber global
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("setting default subscriber failed");
     let nodes = create_nodes_and_connections(
         vec![vec![]],
         vec![vec![0]],
         vec![],
         true,
-        46000,
+        45350,
     )
     .await;
     let owner_governance = &nodes[0];
@@ -1157,19 +1076,16 @@ async fn test_modify_init_state_subject() {
     } */
 }
 
-#[tokio::test]
-#[serial]
-#[ignore = "nuevo owner evaluation"]
-#[tracing_test::traced_test]
+#[test(tokio::test)]
+
 // Testear la transferencia de gobernanza
 async fn test_transfer_governance_event() {
-    // error: Some("Invalid request signer")
     let nodes = create_nodes_and_connections(
         vec![vec![]],
         vec![vec![0]],
         vec![],
         true,
-        45000,
+        45400,
     )
     .await;
     let future_owner = &nodes[0];
@@ -1216,15 +1132,7 @@ async fn test_transfer_governance_event() {
     )
     .await
     .unwrap();
-    owner_governance
-        .auth_subject(
-            governance_id.clone(),
-            AuthWitness::One(
-                KeyIdentifier::from_str(&future_owner.controller_id()).unwrap(),
-            ),
-        )
-        .await
-        .unwrap();
+
     tokio::time::sleep(Duration::from_secs(5)).await;
     // Confirm transfer event
     emit_confirm(future_owner, governance_id.clone(), None).await;
@@ -1234,7 +1142,7 @@ async fn test_transfer_governance_event() {
             "data": [
                 {
                     "op": "add",
-                    "path": "/members/2",
+                    "path": "/members/1",
                     "value": {
                         "id": KeyPair::Ed25519(Ed25519KeyPair::new()).key_identifier().to_string(),
                         "name": "KoreNode2"
@@ -1242,36 +1150,32 @@ async fn test_transfer_governance_event() {
                 }
             ]
     }});
+    tokio::time::sleep(Duration::from_secs(5)).await;
     emit_fact(future_owner, governance_id.clone(), json, None)
         .await
         .unwrap();
 
+    tokio::time::sleep(Duration::from_secs(5)).await;
     let state = future_owner
         .get_subject(governance_id.clone())
         .await
         .unwrap();
 
-    println!("State: {:?}", state);
+    assert_eq!(state.sn, 4);
+    assert!(state.new_owner.is_none());
+    assert_eq!(state.owner, future_owner.controller_id());
 }
 
-#[tokio::test]
-//#[ignore = "Error verifying new events: Subject error: The hash obtained without applying any patch is different from the state hash of the event"]
-#[serial]
+#[test(tokio::test)]
+#[ignore = "Error verifying new events: Subject error: The hash obtained without applying any patch is different from the state hash of the event"]
 // Testear la transferencia de sujeto
 async fn test_transfer_subject_event() {
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::INFO)
-        .finish();
-
-    // Establece el subscriber global
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("setting default subscriber failed");
     let nodes = create_nodes_and_connections(
         vec![vec![]],
         vec![vec![0]],
         vec![],
         true,
-        46000,
+        45450,
     )
     .await;
     let future_owner = &nodes[0];

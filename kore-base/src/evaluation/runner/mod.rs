@@ -85,7 +85,7 @@ impl Runner {
 
     fn execute_confirm_gov(state: &ValueWrapper, old_owner_name: Option<String>, new_owner: &str) -> Result<(RunnerResult, Vec<String>), Error> {
         let mut governance = serde_json::from_value::<Governance>(state.0.clone())
-        .map_err(|e| Error::Runner(format!("Can deserialice governance patch {}", e)))?;
+            .map_err(|e| Error::Runner(format!("Can deserialice governance patch {}", e)))?;
         
         let old_owner = governance
         .members
@@ -93,6 +93,13 @@ impl Runner {
         .find(|x| x.name == "Owner")
         .cloned()
         .ok_or_else(|| Error::Runner("Cannot find 'Owner' member in governance".to_owned()))?;
+
+        let new_owner_member = governance
+        .members
+        .iter()
+        .find(|x| x.id == new_owner)
+        .cloned()
+        .ok_or_else(|| Error::Runner("Cannot find new_owner member in governance".to_owned()))?;
 
         for member in &mut governance.members {
             if member.name == "Owner" {
@@ -104,6 +111,11 @@ impl Runner {
             if let Who::ID { ID } = &mut role.who {
                 if *ID == old_owner.id {
                     *ID = new_owner.to_owned();
+                }
+            }
+            if let Who::NAME { NAME } = &mut role.who {
+                if *NAME == new_owner_member.name {
+                    *NAME = "Owner".to_owned();
                 }
             }
         }
@@ -122,11 +134,18 @@ impl Runner {
             });
         }
 
+        governance.members.retain(|x| x.name != new_owner_member.name);
+
         let mod_state = to_value(governance).map_err(|e| Error::Runner(format!("Can not convert governance in JSON {}", e)))?;
         let patch = diff(&state.0, &mod_state);
+        let json_patch = to_value(patch).map_err(|e| Error::Runner(format!("Can not conver patch to JSON patch: {}", e)))?;
+        let patched_state: Governance = apply_patch(json_patch.clone(), state.0.clone())
+                    .map_err(|e| {
+                        Error::Runner(format!("Can not apply patch {}", e))
+                    })?;
 
         Ok((RunnerResult {
-            final_state: ValueWrapper(to_value(patch).map_err(|e| Error::Runner(format!("Can not conver patch to JSON patch: {}", e)))?),
+            final_state: ValueWrapper(to_value(patched_state).map_err(|e| Error::Runner(format!("Can not conver patch to JSON patch: {}", e)))?),
             approval_required: false,
         }, vec![] ))
     }

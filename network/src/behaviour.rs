@@ -124,6 +124,7 @@ impl Behaviour {
     pub fn add_identified_peer(&mut self, peer_id: PeerId, info: IdentifyInfo) {
         info!("Adding identified peer to routing table: {:?}", peer_id);
         for addr in info.listen_addrs {
+            #[cfg(not(feature = "test"))]
             if is_memory(&addr) {
                 debug!("Ignoring memory address: {:?}", addr);
                 continue;

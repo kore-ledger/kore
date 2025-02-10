@@ -62,7 +62,7 @@ pub struct Evaluation {
     request_id: String,
 
     version: u64,
-    
+
     errors: String,
 
     eval_req: Option<EvaluationReq>,
@@ -107,7 +107,6 @@ impl Evaluation {
                 schema_id: metadata.schema_id,
                 is_owner: self.node_key == event_request.signature.signer,
                 namespace: metadata.namespace.to_string(),
-                
             },
             new_owner: metadata.new_owner,
             state,
@@ -307,12 +306,13 @@ impl Handler<Evaluation> for Evaluation {
                     EventRequest::Confirm(event) => (event.subject_id, true),
                     _ => {
                         let e = "Only can evaluate Fact, Transfer and Confirm request";
-                        error!(
-                            TARGET_EVALUATION,
-                            "Create, {}", e
-                        );
-                        
-                        return Err(emit_fail(ctx, ActorError::FunctionalFail(e.to_owned())).await);
+                        error!(TARGET_EVALUATION, "Create, {}", e);
+
+                        return Err(emit_fail(
+                            ctx,
+                            ActorError::FunctionalFail(e.to_owned()),
+                        )
+                        .await);
                     }
                 };
 
@@ -327,15 +327,16 @@ impl Handler<Evaluation> for Evaluation {
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
-                
+
                 if confirm && !metadata.governance_id.is_empty() {
                     let e = "Confirm event in trazability subjects can not evaluate";
-                    error!(
-                        TARGET_EVALUATION,
-                        "Create, {}", e
-                    );
-                    
-                    return Err(emit_fail(ctx, ActorError::FunctionalFail(e.to_owned())).await);
+                    error!(TARGET_EVALUATION, "Create, {}", e);
+
+                    return Err(emit_fail(
+                        ctx,
+                        ActorError::FunctionalFail(e.to_owned()),
+                    )
+                    .await);
                 }
 
                 let governance = if metadata.governance_id.is_empty() {
@@ -344,12 +345,18 @@ impl Handler<Evaluation> for Evaluation {
                     metadata.governance_id.clone()
                 };
 
-                let state = if let EventRequest::Fact(_) = request.content.clone() {
-                    metadata.properties.clone()
-                } else if metadata.governance_id.is_empty() {
+                let state =
+                    if let EventRequest::Fact(_) = request.content.clone() {
+                        metadata.properties.clone()
+                    } else if metadata.governance_id.is_empty() {
                         metadata.properties.clone()
                     } else {
-                        let metadata_gov = match get_metadata(ctx, &metadata.governance_id.to_string()).await {
+                        let metadata_gov = match get_metadata(
+                            ctx,
+                            &metadata.governance_id.to_string(),
+                        )
+                        .await
+                        {
                             Ok(metadata) => metadata,
                             Err(e) => {
                                 error!(
@@ -359,7 +366,7 @@ impl Handler<Evaluation> for Evaluation {
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
-    
+
                         metadata_gov.properties
                     };
 
@@ -568,15 +575,20 @@ mod tests {
     use std::{str::FromStr, time::Duration};
 
     use actor::{ActorPath, ActorRef, SystemRef};
-    use identity::{identifier::{
-        derive::digest::DigestDerivator, DigestIdentifier,
-    }, keys::{Ed25519KeyPair, KeyGenerator, KeyPair}};
+    use identity::{
+        identifier::{derive::digest::DigestDerivator, DigestIdentifier},
+        keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
+    };
     use serde_json::json;
     use serial_test::serial;
+    use test_log::test;
 
     use crate::{
         approval::approver::ApprovalStateRes,
-        model::{event::LedgerValue, request::TransferRequest, HashId, Namespace, SignTypesNode},
+        model::{
+            event::LedgerValue, request::TransferRequest, HashId, Namespace,
+            SignTypesNode,
+        },
         node::Node,
         query::{Query, QueryMessage, QueryResponse},
         request::{
@@ -591,7 +603,7 @@ mod tests {
         Signed, SubjectMessage, SubjectResponse, ValueWrapper,
     };
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_fact_gov() {
         let (
             _system,
@@ -749,8 +761,7 @@ mod tests {
         assert!(!gov.policies.is_empty());
     }
 
-
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_transfer_req() {
         let (
             _system,
@@ -774,7 +785,7 @@ mod tests {
                                 "value": {
                                     "id": new_owner.key_identifier().to_string(),
                                     "name": "TestMember"
-                                }   
+                                }
                         }
             ]}})),
         });
@@ -1203,7 +1214,7 @@ mod tests {
         )
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn test_fact_sub() {
         init_gov_sub().await;
@@ -1356,13 +1367,13 @@ mod tests {
         )
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn test_subject() {
         let _ = create_subject().await;
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn test_subject_events() {
         let (

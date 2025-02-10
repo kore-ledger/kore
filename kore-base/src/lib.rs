@@ -113,7 +113,7 @@ impl Api {
 
         if let Err(_e) = GOVERNANCE.set(RwLock::new(schema)) {
             error!(TARGET_API, "Can not set governance schema");
-            #[cfg(test)]
+            #[cfg(not(feature = "test"))]
             return Err(Error::System("An error occurred with the governance schema, it could not be initialized globally".to_owned()));
         };
 
