@@ -68,6 +68,7 @@ pub mod tests {
     use network::Config as NetworkConfig;
     use serial_test::serial;
     use std::{fs, time::Duration};
+    use test_log::test;
 
     use async_std::sync::RwLock;
 
@@ -81,7 +82,7 @@ pub mod tests {
     #[derive(Debug, Clone)]
     pub struct Dummy;
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn test_system() {
         let system = create_system().await;

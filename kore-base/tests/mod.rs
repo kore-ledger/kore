@@ -113,6 +113,7 @@ async fn test_governance_and_subject_copy_with_approve() {
                     }
                 }
     ]}});
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     emit_fact(node1, governance_id.clone(), json, None)
         .await
@@ -655,7 +656,6 @@ async fn test_namespace_in_role() {
 
 #[test(tokio::test)]
 #[ignore = "--"]
-//#[tracing_test::traced_test]
 async fn test_many_schema_in_one_governance() {
     let node =
         create_nodes_and_connections(vec![vec![]], vec![], vec![], true, 45200)
@@ -1110,6 +1110,7 @@ async fn test_transfer_governance_event() {
                 }
             ]
     }});
+    tokio::time::sleep(Duration::from_secs(5)).await;
     emit_fact(owner_governance, governance_id.clone(), json, None)
         .await
         .unwrap();

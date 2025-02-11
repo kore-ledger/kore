@@ -1204,6 +1204,7 @@ pub enum DhtValue {
 mod tests {
 
     use super::*;
+    use test_log::test;
 
     use libp2p::{
         identity::Keypair,
@@ -1215,7 +1216,7 @@ mod tests {
     use futures::prelude::*;
     use serial_test::serial;
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn test_routing() {
         let mut boot_nodes = vec![];
@@ -1324,7 +1325,7 @@ mod tests {
         futures::executor::block_on(fut);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn test_ignores_peers_with_unknown_protocols() {
         let supported_protocol = "/kore/routing/1.0.0";

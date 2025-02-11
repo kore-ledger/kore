@@ -1068,6 +1068,7 @@ mod tests {
     use crate::routing::RoutingNode;
 
     use super::*;
+    use test_log::test;
 
     use identity::keys::KeyPair;
 
@@ -1075,14 +1076,14 @@ mod tests {
 
     //use tracing_test::traced_test;
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn test_no_boot_nodes() {
         let boot_nodes = vec![];
         let token = CancellationToken::new();
 
         // Build a node.
-        let node_addr = "/ip4/127.0.0.1/tcp/54422";
+        let node_addr = "/memory/1001";
         let mut node = build_worker(
             boot_nodes.clone(),
             false,
@@ -1100,7 +1101,7 @@ mod tests {
         assert_eq!(node.state, NetworkState::Disconnected);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn test_fake_boot_node() {
         let mut boot_nodes = vec![];
@@ -1108,7 +1109,7 @@ mod tests {
 
         // Build a fake bootstrap node.
         let fake_boot_peer = PeerId::random();
-        let fake_boot_addr = "/ip4/127.0.0.1/tcp/55999";
+        let fake_boot_addr = "/memory/1005";
         let fake_node = RoutingNode {
             peer_id: fake_boot_peer.to_string(),
             address: vec![fake_boot_addr.to_owned()],
@@ -1116,7 +1117,7 @@ mod tests {
         boot_nodes.push(fake_node);
 
         // Build a node.
-        let node_addr = "/ip4/127.0.0.1/tcp/55422";
+        let node_addr = "/memory/1004";
         let mut node = build_worker(
             boot_nodes.clone(),
             false,
@@ -1135,8 +1136,7 @@ mod tests {
         assert_eq!(node.state, NetworkState::Disconnected);
     }
 
-    #[tokio::test]
-    #[tracing_test::traced_test]
+    #[test(tokio::test)]
     #[serial]
     async fn test_connect() {
         let mut boot_nodes = vec![];
@@ -1144,7 +1144,7 @@ mod tests {
         let token = CancellationToken::new();
 
         // Build a bootstrap node.
-        let boot_addr = "/ip4/127.0.0.1/tcp/56421";
+        let boot_addr = "/memory/1000";
         let mut boot = build_worker(
             boot_nodes.clone(),
             false,
@@ -1161,7 +1161,7 @@ mod tests {
         println!("Boot peer id: {}", boot_peer_id);
 
         // Build a node.
-        let node_addr = "/ip4/127.0.0.1/tcp/56422";
+        let node_addr = "/memory/1002";
         let mut node = build_worker(
             boot_nodes,
             false,
@@ -1182,7 +1182,7 @@ mod tests {
     }
 
     /*
-        #[tokio::test]
+        #[test(tokio::test)]
         #[ignore]
         async fn test_network_worker() {
             let mut boot_nodes = vec![];
@@ -1190,7 +1190,7 @@ mod tests {
             let token = CancellationToken::new();
 
             // Build a bootstrap node.
-            let boot_addr = "/ip4/127.0.0.1/tcp/54421";
+            let boot_addr = "/memory/54421";
             let (mut boot, mut boot_receiver) = build_worker(
                 boot_nodes.clone(),
                 false,
@@ -1205,7 +1205,7 @@ mod tests {
             boot_nodes.push(boot_node);
 
             // Build a ephemeral node.
-            let ephemeral_addr = "/ip4/127.0.0.1/tcp/54422";
+            let ephemeral_addr = "/memory/54422";
             let (mut ephemeral, mut ephemeral_receiver) = build_worker(
                 boot_nodes.clone(),
                 false,
@@ -1217,7 +1217,7 @@ mod tests {
             let ephemeral_peer_id = ephemeral.local_peer_id();
 
             // Build a addressable node.
-            let addressable_addr = "/ip4/127.0.0.1/tcp/54423";
+            let addressable_addr = "/memory/54423";
             let (mut addressable, mut addresable_receiver) = build_worker(
                 boot_nodes.clone(),
                 false,

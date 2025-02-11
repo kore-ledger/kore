@@ -2607,6 +2607,7 @@ mod tests {
     }
 
     use actor::SystemRef;
+    use test_log::test;
     use event::LedgerEventMessage;
     use identity::{
         identifier::derive::{digest::DigestDerivator, KeyDerivator},
@@ -2614,7 +2615,7 @@ mod tests {
     };
     use serde_json::{json, Value};
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_subject() {
         let system = create_system().await;
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
@@ -2721,7 +2722,7 @@ mod tests {
         assert_eq!(subject_a.subject_id, subject_b.subject_id);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_get_events() {
         let system = create_system().await;
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
@@ -2755,7 +2756,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_1000_events() {
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let system = create_system().await;

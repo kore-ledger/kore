@@ -524,6 +524,7 @@ impl NetworkBehaviour for Behaviour {
 
 #[cfg(test)]
 mod tests {
+    use test_log::test;
     use futures::StreamExt;
     use libp2p::{
         swarm::{
@@ -570,7 +571,7 @@ mod tests {
         )
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn cannot_dial_blocked_peer() {
         let mut dialer =
@@ -589,7 +590,7 @@ mod tests {
         assert!(cause.downcast::<Blocked>().is_ok());
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn cannot_dial_not_allowed_peer() {
         let mut dialer =
@@ -606,7 +607,7 @@ mod tests {
         assert!(cause.downcast::<NotAllowed>().is_ok());
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn can_dial_allowed_not_blocked_peer() {
         let mut dialer =
@@ -621,7 +622,7 @@ mod tests {
         dial(&mut dialer, &listener).unwrap();
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn cannot_dial_allowed_blocked_peer() {
         let mut dialer =
@@ -641,7 +642,7 @@ mod tests {
         assert!(cause.downcast::<Blocked>().is_ok());
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn blocked_peer_cannot_dial_us() {
         let mut dialer =
@@ -668,7 +669,7 @@ mod tests {
         assert!(cause.downcast::<Blocked>().is_ok());
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn not_allowed_peer_cannot_dial_us() {
         let mut dialer =
@@ -725,7 +726,7 @@ mod tests {
         listener_loop.await;
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
     async fn connections_get_closed_upon_disallow() {
         let mut dialer =

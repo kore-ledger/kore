@@ -414,13 +414,14 @@ pub struct ReqResMessage(pub Vec<u8>);
 
 #[cfg(test)]
 mod tests {
+    use test_log::test;
     use super::*;
 
     use crate::{Config, NodeType, RoutingNode};
 
     use futures::prelude::*;
     use libp2p::{
-        core::transport::{upgrade::Version, Transport},
+        core::transport::{memory, upgrade::Version, Transport},
         identity, plaintext,
         swarm::{self, SwarmEvent},
         tcp, yamux, Swarm,
@@ -431,9 +432,8 @@ mod tests {
 
     use std::vec;
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
-    #[tracing_test::traced_test]
     async fn test_reqres() {
         let boot_nodes = vec![];
 
@@ -443,7 +443,7 @@ mod tests {
         let mut node_a = build_node(config);
         node_a.behaviour_mut().finish_prerouting_state();
         let node_a_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/53001".parse().unwrap();
+            "/memory/53001".parse().unwrap();
         let _ = node_a.listen_on(node_a_addr.clone());
         //node_a.add_external_address(node_a_addr.clone());
 
@@ -453,7 +453,7 @@ mod tests {
         let mut node_b = build_node(config);
         node_b.behaviour_mut().finish_prerouting_state();
         let node_b_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/53002".parse().unwrap();
+            "/memory/53002".parse().unwrap();
         let _ = node_b.listen_on(node_b_addr.clone());
         node_b.add_external_address(node_b_addr.clone());
         let node_b_peer_id = *node_b.local_peer_id();
@@ -551,9 +551,8 @@ mod tests {
         peer_a.await;
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
-    #[tracing_test::traced_test]
     async fn test_tell() {
         let boot_nodes = vec![];
 
@@ -562,7 +561,7 @@ mod tests {
             create_config(boot_nodes.clone(), false, NodeType::Addressable);
         let mut node_a = build_node(config);
         let node_a_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/52001".parse().unwrap();
+            "/memory/52001".parse().unwrap();
         let _ = node_a.listen_on(node_a_addr.clone());
         node_a.add_external_address(node_a_addr.clone());
         node_a.behaviour_mut().finish_prerouting_state();
@@ -572,13 +571,14 @@ mod tests {
             create_config(boot_nodes.clone(), true, NodeType::Addressable);
         let mut node_b = build_node(config);
         let node_b_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/52002".parse().unwrap();
+            "/memory/52002".parse().unwrap();
         let _ = node_b.listen_on(node_b_addr.clone());
         node_b.add_external_address(node_b_addr.clone());
         node_b.behaviour_mut().finish_prerouting_state();
         let node_b_peer_id = *node_b.local_peer_id();
 
         let _ = node_a.dial(node_b_addr.clone());
+        println!("Dialing node b");
         //node_a.connect(&mut node_b).await;
 
         let peer_b = async move {
@@ -604,10 +604,12 @@ mod tests {
                             .behaviour_mut()
                             .send_tell(&peer_id, b"Hello Node A".to_vec());
                     }
-                    _ => {}
+                    _ => {
+                    }
                 }
             }
         };
+        println!("Starting peer b");
 
         let peer_a = async move {
             let mut counter = 0;
@@ -647,13 +649,13 @@ mod tests {
             }
         };
 
+
         tokio::task::spawn(Box::pin(peer_b));
         peer_a.await;
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     #[serial]
-    #[tracing_test::traced_test]
     async fn test_behaviour() {
         let boot_nodes = vec![];
 
@@ -663,7 +665,7 @@ mod tests {
         let mut boot_node = build_node(config);
         boot_node.behaviour_mut().finish_prerouting_state();
         let boot_node_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/51001".parse().unwrap();
+            "/memory/51001".parse().unwrap();
         let _ = boot_node.listen_on(boot_node_addr.clone());
         boot_node.add_external_address(boot_node_addr.clone());
 
@@ -673,7 +675,7 @@ mod tests {
         let mut node_a = build_node(config);
         node_a.behaviour_mut().finish_prerouting_state();
         let node_a_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/51002".parse().unwrap();
+            "/memory/51002".parse().unwrap();
         let _ = node_a.listen_on(node_a_addr.clone());
         node_a.add_external_address(node_a_addr.clone());
 
@@ -683,7 +685,7 @@ mod tests {
         let mut node_b = build_node(config);
         node_b.behaviour_mut().finish_prerouting_state();
         let node_b_addr: Multiaddr =
-            "/ip4/127.0.0.1/tcp/51003".parse().unwrap();
+            "/memory/51003".parse().unwrap();
         let _ = node_b.listen_on(node_b_addr.clone());
         node_b.add_external_address(node_b_addr.clone());
         let node_b_peer_id = *node_b.local_peer_id();
@@ -810,7 +812,9 @@ mod tests {
         let local_key = identity::Keypair::generate_ed25519();
         let local_peer_id = local_key.public().to_peer_id();
 
-        let transport = tcp::tokio::Transport::default()
+        let transport =  memory::MemoryTransport::default();
+
+       let transport = transport
             .upgrade(Version::V1)
             .authenticate(plaintext::Config::new(&local_key))
             .multiplex(yamux::Config::default())

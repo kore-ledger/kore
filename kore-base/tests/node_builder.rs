@@ -186,7 +186,7 @@ pub async fn create_nodes_massive(
 
     // Helper closure to generate node address
     let get_node_address = |index: u32| -> String {
-        format!("/ip4/127.0.0.1/tcp/{}", initial_port + index)
+        format!("/memory/{}", initial_port + index)
     };
 
     // Create Bootstrap nodes and interconnect them

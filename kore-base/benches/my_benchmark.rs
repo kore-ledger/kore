@@ -75,7 +75,7 @@ pub async fn create_node(
 async fn governance_copy_benchmark() {
     let node1 = create_node(
         network::NodeType::Bootstrap,
-        "/ip4/127.0.0.1/tcp/4500",
+        "/memory/4500",
         vec![],
         true,
     )

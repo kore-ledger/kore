@@ -619,6 +619,7 @@ impl TryFrom<ValueWrapper> for Governance {
 #[cfg(test)]
 mod tests {
     use crate::model::{Namespace, ValueWrapper};
+    use test_log::test;
 
     use super::{
         init::init_state,
@@ -702,7 +703,7 @@ mod tests {
         let governance_value = init_state(&keys.key_identifier().to_string());
         Governance::try_from(governance_value).unwrap()
     }
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_try_from_value_wrapper() {
         let original_gov = create_governance_init_state();
         let wrapper =
@@ -715,7 +716,7 @@ mod tests {
         assert!(invalid_gov.is_err());
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_init_state() {
         let gov = create_governance_init_state();
         assert_eq!(gov.version, 0);
@@ -725,7 +726,7 @@ mod tests {
         assert!(!gov.policies.is_empty());
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_get_schema() {
         let gov = create_governance_init_state();
         if gov.schemas.is_empty() {
@@ -738,7 +739,7 @@ mod tests {
         assert!(fail.is_err());
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_members_to_key_identifier() {
         let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
         let key2 = KeyPair::Ed25519(Ed25519KeyPair::new());
@@ -752,7 +753,7 @@ mod tests {
         assert!(set_ids.contains(&key2.key_identifier()));
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_max_creation() {
         let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
         let key2 = KeyPair::Ed25519(Ed25519KeyPair::new());
@@ -776,7 +777,7 @@ mod tests {
         assert_eq!(response, CreatorQuantity::INFINITY)
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_get_signers() {
         let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
         let key2 = KeyPair::Ed25519(Ed25519KeyPair::new());
@@ -804,7 +805,7 @@ mod tests {
         );
         assert!(response3.is_none());
     }
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_has_this_role() {
         let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
         let governance =
@@ -829,7 +830,7 @@ mod tests {
         assert!(!has_role_approver);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_get_quorum_and_signers() {
         let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
         let gov =
@@ -862,7 +863,7 @@ mod tests {
         assert!(error_res.is_err(), "No existe la policy para esa schema");
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_schemas_method() {
         let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
         let governance =
@@ -886,7 +887,7 @@ mod tests {
         assert_eq!(schemas_empty.len(), 0);
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_subjects_schemas_rol_namespace() {
         let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
         let key2 = KeyPair::Ed25519(Ed25519KeyPair::new());
