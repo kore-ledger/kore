@@ -30,6 +30,7 @@ const TARGET_COMPILER: &str = "Kore-Evaluation-Compiler";
 )]
 pub struct ContractResult {
     pub success: bool,
+    pub error: String
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -46,10 +47,7 @@ impl Compiler {
     edition = "2021"
     
     [dependencies]
-    serde = { version = "1.0.208", features = ["derive"] }
-    serde_json = "1.0.125"
-    json-patch = "3.0.1"
-    thiserror = "2.0.3"
+    serde = { version = "1.0.217", features = ["derive"] }
     kore-contract-sdk = { git = "https://github.com/kore-ledger/kore-contract-sdk.git", branch = "main"}
     
     [profile.release]
@@ -264,10 +262,7 @@ impl Compiler {
         if contract_result.success {
             Ok(())
         } else {
-            Err(Error::Compiler(
-                "Contract execution in compilation was not successful"
-                    .to_owned(),
-            ))
+            Err(Error::Compiler(format!("Contract execution in compilation was not successful: {}", contract_result.error)))
         }
     }
 

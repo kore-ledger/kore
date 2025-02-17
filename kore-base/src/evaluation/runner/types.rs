@@ -16,6 +16,7 @@ use crate::{
 pub struct ContractResult {
     pub final_state: ValueWrapper,
     pub success: bool,
+    pub error: String
 }
 
 #[derive(

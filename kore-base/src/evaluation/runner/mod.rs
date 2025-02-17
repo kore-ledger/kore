@@ -575,7 +575,7 @@ impl Runner {
             Ok(contract_result)
         } else {
             Err(Error::Runner(
-                "Contract execution in running was not successful".to_owned(),
+                format!("Contract execution in running was not successful: {}", contract_result.error)
             ))
         }
     }
