@@ -31,6 +31,15 @@ pub struct Config {
     pub sink: String,
 }
 
+impl Config {
+    pub fn add_path(&mut self, path: &str) {
+        self.kore_db.add_path(path);
+        self.external_db.add_path(path);
+
+        self.contracts_dir = format!("{}/{}", path, self.contracts_dir);
+    }
+}
+
 /// Database configuration.
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub enum KoreDbConfig {
@@ -62,6 +71,16 @@ impl Default for KoreDbConfig {
 }
 
 impl KoreDbConfig {
+        pub fn add_path(&mut self, new_path: &str) {
+            match self {
+                #[cfg(feature = "rocksdb")]
+                KoreDbConfig::Rocksdb { path } => format!("{}/{}", new_path, path),
+                #[cfg(feature = "sqlite")]
+                KoreDbConfig::Sqlite { path } => path = format!("{}/{}", new_path, path),
+            };
+        }
+    
+
     pub fn build(path: &str) -> Self {
         #[cfg(feature = "rocksdb")]
         return KoreDbConfig::Rocksdb {
@@ -108,6 +127,13 @@ impl Default for ExternalDbConfig {
 }
 
 impl ExternalDbConfig {
+    pub fn add_path(&mut self, new_path: &str) {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDbConfig::Sqlite { path } => format!("{}/{}", new_path, path),
+        };
+    }
+
     pub fn build(path: &str) -> Self {
         #[cfg(feature = "ext-sqlite")]
         return ExternalDbConfig::Sqlite {

@@ -420,15 +420,25 @@ pub fn verify_protocols_state(
                 }
 
                 Ok(val && eval)
+            } else if eval {
+                    if !approval_require {
+                        return Err(Error::Protocols("In fact request (governace subject), if eval is success approval require must be true".to_owned()));
+                    }
+                    let Some(approve) = approve else {
+                        return Err(Error::Protocols("In fact request if approval was required, approve must be Some".to_owned()));
+                    };
+                    Ok(eval && approve && val)
             } else {
-                if !approval_require {
-                    return Err(Error::Protocols("In fact request (governace subject), approval require must be true".to_owned()));
+                    if approval_require {
+                        return Err(Error::Protocols("In fact request (governace subject), if eval is not success approval require must be false".to_owned()));
+                    }
+
+                    if approve.is_some() {
+                        return Err(Error::Protocols("In fact request if approval was not required, approve must be None".to_owned()));
+                    }
+                    
+                    Ok(eval && val)
                 }
-                let Some(approve) = approve else {
-                    return Err(Error::Protocols("In fact request if approval was required, approve must be Some".to_owned()));
-                };
-                Ok(eval && approve && val)
-            }
         }
         EventRequestType::Confirm => {
             if !is_gov {

@@ -9,8 +9,14 @@ pub struct Config {
     /// Settings from Kore Base.
     pub kore_config: KoreConfig,
     /// Path for encryptep keys.
-    #[serde(rename = "keysPath")]
     pub keys_path: String,
     /// TcpListener from prometheus axum server.
     pub prometheus: String,
+}
+
+impl Config {
+    pub fn add_path(&mut self, path: &str) {
+        self.keys_path = format!("{}/{}", path, self.keys_path);
+        self.kore_config.add_path(path);
+    }
 }
