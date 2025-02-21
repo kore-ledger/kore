@@ -28,17 +28,17 @@ pub enum Database {
 }
 
 impl Database {
-    pub fn open(config: &KoreDbConfig) -> Self {
+    pub fn open(config: &KoreDbConfig) -> Result<Self, StoreError> {
         match config {
             #[cfg(feature = "rocksdb")]
             KoreDbConfig::Rocksdb { path } => {
-                let manager = RocksDbManager::new(path);
-                Database::RocksDb(manager)
+                let manager = RocksDbManager::new(path)?;
+                Ok(Database::RocksDb(manager))
             }
             #[cfg(feature = "sqlite")]
             KoreDbConfig::Sqlite { path } => {
-                let manager = SqliteManager::new(&path);
-                Database::SQLite(manager)
+                let manager = SqliteManager::new(&path)?;
+                Ok(Database::SQLite(manager))
             }
         }
     }

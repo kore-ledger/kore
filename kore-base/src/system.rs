@@ -30,7 +30,7 @@ pub async fn system(
     system.add_helper("config", config.clone()).await;
 
     // Build database manager.
-    let db = Database::open(&config.kore_db);
+    let db = Database::open(&config.kore_db).map_err(|e| Error::System(format!("Can not open DB: {}", e)))?;
     system.add_helper("store", db).await;
 
     // Build sink manager.

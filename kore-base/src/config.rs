@@ -74,9 +74,13 @@ impl KoreDbConfig {
         pub fn add_path(&mut self, new_path: &str) {
             match self {
                 #[cfg(feature = "rocksdb")]
-                KoreDbConfig::Rocksdb { path } => format!("{}/{}", new_path, path),
+                KoreDbConfig::Rocksdb { path } => {
+                    *path = format!("{}/{}", new_path, path);
+                },
                 #[cfg(feature = "sqlite")]
-                KoreDbConfig::Sqlite { path } => path = format!("{}/{}", new_path, path),
+                KoreDbConfig::Sqlite { path } => {
+                    *path = format!("{}/{}", new_path, path);
+                },
             };
         }
     
@@ -130,7 +134,9 @@ impl ExternalDbConfig {
     pub fn add_path(&mut self, new_path: &str) {
         match self {
             #[cfg(feature = "ext-sqlite")]
-            ExternalDbConfig::Sqlite { path } => format!("{}/{}", new_path, path),
+            ExternalDbConfig::Sqlite { path } => {
+                *path = format!("{}/{}", new_path, path);
+            },
         };
     }
 

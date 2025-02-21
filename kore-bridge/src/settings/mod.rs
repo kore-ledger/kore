@@ -4,6 +4,7 @@
 use std::env;
 
 use config::Config;
+use kore_base::error::Error;
 use params::Params;
 use tracing::error;
 
@@ -13,7 +14,7 @@ pub mod params;
 
 const TARGET_SETTING: &str = "Kore-Bridge-Settings";
 
-pub fn build_config(env: bool, file: &str) -> BridgeConfig {
+pub fn build_config(env: bool, file: &str) -> Result<BridgeConfig, Error> {
     // Env configuration
     let mut params_env = Params::default();
     if env {
@@ -30,24 +31,26 @@ pub fn build_config(env: bool, file: &str) -> BridgeConfig {
         let config = config
             .build()
             .map_err(|e| {
-                error!(TARGET_SETTING, "Error building config: {}", e);
-            })
-            .unwrap();
+                let e = format!("Error building config: {}", e);
+                error!(TARGET_SETTING, e);
+                Error::Bridge(e)
+            })?;
 
         params_file = config
             .try_deserialize()
             .map_err(|e| {
-                error!(TARGET_SETTING, "Error try deserialize config: {}", e);
-            })
-            .unwrap();
+                let e = format!("Error try deserialize config: {}", e);
+                error!(TARGET_SETTING, e);
+                Error::Bridge(e)
+            })?;
     }
 
     // Mix configurations.
-    BridgeConfig::from(params_env.mix_config(params_file))
+    Ok(BridgeConfig::from(params_env.mix_config(params_file)))
 }
 
 pub fn build_password() -> String {
-    env::var("KORE_PASSWORD").unwrap()
+    env::var("KORE_PASSWORD").unwrap_or("kore".to_owned())
 }
 
 pub fn build_file_path() -> String {
@@ -133,7 +136,7 @@ mod tests {
         );
         std::env::set_var("KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST", "58");
 
-        let config = build_config(true, "");
+        let config = build_config(true, "").unwrap();
 
         let boot_nodes = vec![
             RoutingNode {
