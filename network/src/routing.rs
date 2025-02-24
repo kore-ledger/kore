@@ -1080,9 +1080,19 @@ impl Config {
         }
     }
 
+    /// Get boot nodes.
+    pub fn get_boot_nodes(&self) -> Vec<RoutingNode> {
+        self.boot_nodes.clone()
+    }
+
     /// Get DHT random walk.
     pub fn get_dht_random_walk(&self) -> bool {
         self.dht_random_walk
+    }
+
+    /// Get pre-routing.
+    pub fn get_pre_routing(&self) -> bool {
+        self.pre_routing
     }
 
     /// Enables or disables random walks in the Kademlia DHT.

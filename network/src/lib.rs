@@ -98,6 +98,16 @@ pub enum NodeType {
     Ephemeral,
 }
 
+impl ToString for NodeType {
+    fn to_string(&self) -> String {
+        match self {
+            NodeType::Bootstrap   => "Bootstrap".to_owned(),
+            NodeType::Addressable => "Addressable".to_owned(),
+            NodeType::Ephemeral   => "Ephemeral".to_owned(),
+        }
+    }
+}
+
 /// Command enumeration for the network service.
 #[derive(Debug)]
 pub enum Command {
