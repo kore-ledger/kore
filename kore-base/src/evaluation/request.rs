@@ -33,6 +33,8 @@ pub struct EvaluationReq {
     /// The version of the governance contract.
     pub gov_version: u64,
 
+    pub gov: ValueWrapper,
+
     pub state: ValueWrapper,
 
     pub new_owner: Option<KeyIdentifier>

@@ -39,6 +39,7 @@ use identity::identifier::{derive::digest::DigestDerivator, KeyIdentifier};
 use request::{EvaluationReq, SubjectContext};
 use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tracing::{error, warn};
 
 const TARGET_EVALUATION: &str = "Kore-Evaluation";
@@ -97,6 +98,7 @@ impl Evaluation {
         event_request: Signed<EventRequest>,
         metadata: Metadata,
         state: ValueWrapper,
+        gov: ValueWrapper,
         gov_version: u64,
     ) -> EvaluationReq {
         EvaluationReq {
@@ -110,6 +112,7 @@ impl Evaluation {
             },
             new_owner: metadata.new_owner,
             state,
+            gov,
             sn: metadata.sn + 1,
             gov_version,
         }
@@ -345,31 +348,33 @@ impl Handler<Evaluation> for Evaluation {
                     metadata.governance_id.clone()
                 };
 
-                let state =
-                    if let EventRequest::Fact(_) = request.content.clone() {
-                        metadata.properties.clone()
-                    } else if metadata.governance_id.is_empty() {
-                        metadata.properties.clone()
+                let (state, gov_state) =
+                    if let EventRequest::Transfer(_) = request.content.clone() {
+                        if metadata.governance_id.is_empty() {
+                            (metadata.properties.clone(), ValueWrapper(json!({})))
+                        } else {
+                            let metadata_gov = match get_metadata(
+                                ctx,
+                                &metadata.governance_id.to_string(),
+                            )
+                            .await
+                            {
+                                Ok(metadata) => metadata,
+                                Err(e) => {
+                                    error!(
+                                        TARGET_EVALUATION,
+                                        "Create, can not get metadata: {}", e
+                                    );
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                            };
+    
+                            (metadata.properties.clone(), metadata_gov.properties)
+                        }
                     } else {
-                        let metadata_gov = match get_metadata(
-                            ctx,
-                            &metadata.governance_id.to_string(),
-                        )
-                        .await
-                        {
-                            Ok(metadata) => metadata,
-                            Err(e) => {
-                                error!(
-                                    TARGET_EVALUATION,
-                                    "Create, can not get metadata: {}", e
-                                );
-                                return Err(emit_fail(ctx, e).await);
-                            }
-                        };
-
-                        metadata_gov.properties
+                        (metadata.properties.clone(), ValueWrapper(json!({})))
                     };
-
+                    
                 let (signers, quorum, gov_version) =
                     match get_signers_quorum_gov_version(
                         ctx,
@@ -391,6 +396,7 @@ impl Handler<Evaluation> for Evaluation {
                     request,
                     metadata.clone(),
                     state,
+                    gov_state,
                     gov_version,
                 );
 

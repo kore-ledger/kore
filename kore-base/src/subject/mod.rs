@@ -18,8 +18,7 @@ use crate::{
         Schema,
     }, helpers::db::ExternalDB, model::{
         common::{
-            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
-            register_relation, verify_protocols_state,
+            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data, register_relation, try_to_update_subject, verify_protocols_state
         },
         event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
         request::EventRequest,
@@ -28,7 +27,7 @@ use crate::{
     }, node::{
         nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
         register::{Register, RegisterData, RegisterMessage},
-        NodeMessage, NodeResponse, TransferSubject,
+        NodeMessage, TransferSubject,
     }, update::TransferResponse, validation::{
         proof::ValidationProof,
         schema::{ValidationSchema, ValidationSchemaMessage},
@@ -1142,12 +1141,13 @@ impl Subject {
                 self.verify_first_ledger_event(events[0].clone()).await
             {
                 self.delete_subject(ctx, false).await?;
-
                 return Err(ActorError::Functional(e.to_string()));
             }
 
             self.on_event(events[0].clone(), ctx).await;
             self.register(ctx, true).await?;
+            self.change_node_subject_state(ctx).await?;
+
             events.remove(0)
         };
         
@@ -1242,7 +1242,6 @@ impl Subject {
 
     pub async fn delet_node_subject(
         ctx: &mut ActorContext<Subject>,
-        owner: &str,
         subject_id: &str,
     ) -> Result<(), ActorError> {
         let node_path = ActorPath::from("/user/node");
@@ -1250,24 +1249,29 @@ impl Subject {
             ctx.system().get_actor(&node_path).await;
 
         // We obtain the validator
-        let node_response = if let Some(node_actor) = node_actor {
-            node_actor
-                .ask(NodeMessage::DeleteSubject {
-                    owner: owner.to_owned(),
-                    subject_id: subject_id.to_owned(),
-                })
-                .await?
-        } else {
+        let Some(node_actor) = node_actor else {
             return Err(ActorError::NotFound(node_path));
         };
+        node_actor.tell(NodeMessage::DeleteSubject(subject_id.to_owned())).await
+    }
 
-        match node_response {
-            NodeResponse::None => Ok(()),
-            _ => Err(ActorError::UnexpectedResponse(
-                node_path,
-                "NodeResponse::None".to_owned(),
-            )),
-        }
+    pub async fn change_node_subject_state(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+    ) -> Result<(), ActorError> {
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+
+        // We obtain the validator
+        let Some(node_actor) = node_actor else {
+            return Err(ActorError::NotFound(node_path));
+            
+        };
+
+        node_actor
+            .tell(NodeMessage::RegisterSubject{owner: self.owner.to_string(), subject_id: self.subject_id.to_string()})
+            .await
     }
 
     async fn delete_subject(
@@ -1289,8 +1293,7 @@ impl Subject {
 
         Self::delet_node_subject(
             ctx,
-            &self.subject_id.to_string(),
-            &self.owner.to_string(),
+            &self.subject_id.to_string()
         )
         .await?;
 
@@ -1341,6 +1344,8 @@ impl Subject {
 
             self.on_event(events[0].clone(), ctx).await;
             self.register(ctx, true).await?;
+            self.change_node_subject_state(ctx).await?;
+
             events.remove(0)
         };
 
@@ -1434,9 +1439,9 @@ impl Subject {
         let current_sn = self.sn;
         let current_new_owner_some = self.new_owner.is_some();
         let i_current_new_owner = self.new_owner.clone().map_or(false, |x| x == our_key);
+        let current_owner = self.owner.clone();
 
         if self.governance_id.is_empty() {
-            let current_owner = self.owner.clone();
             let current_properties = self.properties.clone();
 
             if let Err(e) = self.verify_new_ledger_events_gov(ctx, events).await
@@ -1768,8 +1773,6 @@ impl Subject {
             };
 
             if current_sn < self.sn {
-                let current_owner = self.owner.clone();
-
                 if !self.active && current_owner == our_key {
                     Self::down_owner_not_gov(ctx).await?;
                 }
@@ -1787,7 +1790,6 @@ impl Subject {
                     if self.owner == our_key && !i_current_new_owner {
                         Self::up_owner_not_gov(ctx, &our_key).await?;
                     } else if current_owner == our_key && !i_new_owner{
-                        // Antes era el dueño y ahora no.
                         Self::down_owner_not_gov(ctx).await?;
                     }
                 } else if i_current_new_owner && !i_new_owner {
@@ -2150,6 +2152,7 @@ impl Handler<Subject> for Subject {
                     },
                     TransferResponse::Reject => {
                         Subject::reject_transfer_subject(ctx, &self.subject_id.to_string()).await?;
+                        try_to_update_subject(ctx, self.subject_id.clone()).await?;
                     },
                 }
 

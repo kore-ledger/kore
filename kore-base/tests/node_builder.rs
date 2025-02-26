@@ -9,8 +9,7 @@ use kore_base::{
     config::{Config, ExternalDbConfig, KoreDbConfig},
     model::{
         request::{
-            ConfirmRequest, CreateRequest, EventRequest, FactRequest,
-            TransferRequest,
+            ConfirmRequest, CreateRequest, EventRequest, FactRequest, RejectRequest, TransferRequest
         },
         Namespace, ValueWrapper,
     },
@@ -268,6 +267,7 @@ pub async fn create_nodes_massive(
 
 /// Crea una governance en `owner_node` y lo autoriza en `other_nodes`.
 /// Retorna el `governance_id` generado.
+/// Correcto
 pub async fn create_and_authorize_governance(
     owner_node: &Api,
     other_nodes: &[&Api],
@@ -303,49 +303,6 @@ pub async fn create_and_authorize_governance(
     governance_id
 }
 
-/// Verifica que un governance exista (o tenga al menos un elemento) en varios nodos.
-/// Si no está sincronizado, puede hacer reintentos y/o llamar a `update_subject`.
-pub async fn wait_for_governance_sync(
-    governance_id: DigestIdentifier,
-    nodes: &[&Api],
-    max_retries: usize,
-    sn: u64,
-    sleep_sec: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    for attempt in 0..max_retries {
-        let mut all_synced = true;
-        for node in nodes {
-            let govs = node.all_govs(None).await?;
-            if govs.is_empty() {
-                node.update_subject(governance_id.clone()).await?;
-                all_synced = false;
-            } else {
-                let govs =
-                    node.get_subject(governance_id.clone()).await.unwrap();
-                if govs.sn != sn {
-                    println!("Governance SN mismatch: {} != {}", govs.sn, sn);
-                    node.update_subject(governance_id.clone()).await?;
-                    all_synced = false;
-                } else {
-                    println!("Have equal SN: {}", sn);
-                }
-            }
-        }
-
-        if all_synced {
-            println!(
-                "Governance is synced across all nodes on attempt {}",
-                attempt
-            );
-            return Ok(());
-        }
-
-        tokio::time::sleep(Duration::from_secs(sleep_sec)).await;
-    }
-
-    Err("Governance is not synced across all nodes".into())
-}
-
 pub async fn create_subject(
     node: &Api,
     governance_id: DigestIdentifier,
@@ -361,22 +318,25 @@ pub async fn create_subject(
     Ok(DigestIdentifier::from_str(&data.subject_id)?)
 }
 
+// CORRECTO
 pub async fn emit_fact(
     node: &Api,
     subject_id: DigestIdentifier,
     payload_json: serde_json::Value,
-    by_pass: Option<bool>,
+    wait_request_state: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let request = EventRequest::Fact(FactRequest {
         subject_id,
         payload: ValueWrapper(payload_json),
     });
+
     let response = node.own_request(request).await?;
     println!("emit_fact - response: {:?}", response);
     // state of request
-    if by_pass.is_some() {
+    if !wait_request_state {
         return Ok(());
     }
+
     loop {
         let state = node
             .request_state(
@@ -391,7 +351,7 @@ pub async fn emit_fact(
         {
             break;
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
     Ok(())
 }
@@ -400,7 +360,7 @@ pub async fn emit_transfer(
     node: &Api,
     subject_id: DigestIdentifier,
     new_owner: KeyIdentifier,
-    by_pass: Option<bool>,
+    wait_request_state: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let request = EventRequest::Transfer(TransferRequest {
         subject_id,
@@ -409,7 +369,7 @@ pub async fn emit_transfer(
     let response = node.own_request(request).await?;
     println!("emit_transfer - response: {:?}", response);
     // state of request
-    if by_pass.is_some() {
+    if !wait_request_state {
         return Ok(());
     }
     loop {
@@ -431,15 +391,46 @@ pub async fn emit_transfer(
 pub async fn emit_confirm(
     node: &Api,
     subject_id: DigestIdentifier,
-    by_pass: Option<bool>,
+    new_name: Option<String>,
+    wait_request_state: bool,
 ) {
-    let request = EventRequest::Confirm(ConfirmRequest { subject_id, name_old_owner: None });
+    let request = EventRequest::Confirm(ConfirmRequest { subject_id, name_old_owner: new_name });
     let response = node.own_request(request).await.unwrap();
     println!("emit_confirm - response: {:?}", response);
     // state of request
-    if by_pass.is_some() {
+    if !wait_request_state {
         return;
     }
+
+    loop {
+        let state = node
+            .request_state(
+                DigestIdentifier::from_str(&response.request_id).unwrap(),
+            )
+            .await
+            .unwrap();
+        println!("emit_confirm - status: {:?}", state.status);
+        println!("emit_confirm - error: {:?}", state.error);
+        if state.status == "Finish" || state.status == "In Approval" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+pub async fn emit_reject(
+    node: &Api,
+    subject_id: DigestIdentifier,
+    wait_request_state: bool,
+) {
+    let request = EventRequest::Reject(RejectRequest { subject_id });
+    let response = node.own_request(request).await.unwrap();
+    println!("emit_reject - response: {:?}", response);
+    // state of request
+    if !wait_request_state {
+        return;
+    }
+
     loop {
         let state = node
             .request_state(

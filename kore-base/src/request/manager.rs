@@ -713,9 +713,14 @@ impl RequestManager {
     async fn abort_request_manager(
         &self,
         ctx: &mut ActorContext<RequestManager>,
-        error: &str,
+        error: &str
     ) -> Result<(), ActorError> {
-        Self::delete_subject(ctx, &self.subject_id).await?;
+        error!(TARGET_MANAGER, "Aborting request {}", self.id);
+
+        if self.request.content.is_create_event() {
+            error!(TARGET_MANAGER, "Deleting Subject {}", self.subject_id);
+            Self::delete_subject(ctx, &self.subject_id).await?;
+        }
 
         self.abort_request(ctx, error).await?;
 

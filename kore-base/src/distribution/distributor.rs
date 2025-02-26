@@ -446,25 +446,15 @@ impl Distributor {
                 info.clone(),
             )
             .await?;
-        } else if info.schema != "governance" {
-            // TODO Revisar esto
-            // Error me estás pidiendo el ledger para un sujeto que no es una governanza
-            // Y no me pasas la versión de la gov
-            return Err(ActorError::Functional(
-                "Governance version was not provided".to_owned(),
-            ));
         }
 
         if let Some(new_owner) = metadata.new_owner {
             if metadata.owner == info.sender || new_owner ==  info.sender {
                 return Ok(());
-            }    
-        } else {
-            // Si el owner nos pide la copia.
-            if metadata.owner == info.sender {
-                return Ok(());
             }
-        };
+        } else if metadata.owner == info.sender {
+            return Ok(());
+        }
         
 
         if !gov.has_this_role(
@@ -474,7 +464,7 @@ impl Distributor {
             metadata.namespace.clone(),
         ) {
             return Err(ActorError::Functional(
-                "Sender is not a witness".to_owned(),
+                "Sender is neither a witness nor an owner nor a new owner ".to_owned(),
             ));
         };
 
