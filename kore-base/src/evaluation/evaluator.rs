@@ -181,10 +181,10 @@ impl Evaluator {
         is_governance: bool,
     ) -> Result<RunnerResult, ActorError> {
 
-        let evaluate_type = match evaluation_req.event_request.content.clone() {
+        let (evaluate_type, state) = match evaluation_req.event_request.content.clone() {
             EventRequest::Fact(fact_event) => {
                 if is_governance {
-                    EvaluateType::GovFact { payload: fact_event.payload }
+                    (EvaluateType::GovFact { payload: fact_event.payload }, evaluation_req.state.clone())
                 } else {
                     let contracts = { CONTRACTS.read().await };
 
@@ -192,7 +192,7 @@ impl Evaluator {
                         "{}_{}",
                         governance_id, evaluation_req.context.schema_id
                     )) {
-                        EvaluateType::NotGovFact { contract: contract.to_vec(), payload: fact_event.payload }
+                        (EvaluateType::NotGovFact { contract: contract.to_vec(), payload: fact_event.payload }, evaluation_req.state.clone())
                     } else {
                         return Err(ActorError::Functional(
                             "Contract not found".to_owned(),
@@ -202,9 +202,9 @@ impl Evaluator {
             },
             EventRequest::Transfer(transfer_event) => {
                 if !is_governance {
-                    EvaluateType::NotGovTransfer { new_owner: transfer_event.new_owner, namespace: Namespace::from(evaluation_req.context.namespace.clone()), schema_id: evaluation_req.context.schema_id.clone() }
+                    (EvaluateType::NotGovTransfer { new_owner: transfer_event.new_owner, namespace: Namespace::from(evaluation_req.context.namespace.clone()), schema_id: evaluation_req.context.schema_id.clone() }, evaluation_req.gov.clone())
                 } else {
-                    EvaluateType::GovTransfer { new_owner: transfer_event.new_owner }
+                    (EvaluateType::GovTransfer { new_owner: transfer_event.new_owner }, evaluation_req.state.clone())
                 }
                 
             },
@@ -214,7 +214,7 @@ impl Evaluator {
                     return  Err(ActorError::Functional(e.to_owned()));
                 }
                 if let Some(new_owner) =  evaluation_req.new_owner.clone() {
-                    EvaluateType::GovConfirm { old_owner_name: confirm_request.name_old_owner, new_owner }
+                    (EvaluateType::GovConfirm { old_owner_name: confirm_request.name_old_owner, new_owner }, evaluation_req.state.clone())
                 } else {
                     let e = "New Owner is empty in Confirm event";
                     return  Err(ActorError::Functional(e.to_owned()));
@@ -231,7 +231,7 @@ impl Evaluator {
         let response = self
             .execute_contract(
                 ctx,
-                &evaluation_req.state,
+                &state,
                 evaluate_type,
                 evaluation_req.context.is_owner,
             )

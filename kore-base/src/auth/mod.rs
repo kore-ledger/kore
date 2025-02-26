@@ -16,7 +16,7 @@ use tracing::error;
 use crate::{
     db::Storable,
     intermediary::Intermediary,
-    model::common::{emit_fail, get_gov, get_metadata, subject_owner},
+    model::common::{emit_fail, get_gov, get_metadata, subject_old},
     update::{Update, UpdateMessage, UpdateNew, UpdateRes},
     ActorMessage, NetworkMessage,
 };
@@ -153,7 +153,7 @@ impl Handler<Auth> for Auth {
     ) -> Result<AuthResponse, ActorError> {
         match msg {
             AuthMessage::CheckTransfer { subject_id } => {
-                let (is_owner, is_pending) = subject_owner(
+                let is_pending = subject_old(
                     ctx,
                     &subject_id.to_string(),
                 )
@@ -165,8 +165,8 @@ impl Handler<Auth> for Auth {
                     ))
                 })?;
 
-                if !is_owner || !is_pending {
-                    let e =  "An event is being sent for a subject that does not belong to us or subject is not pending to confirm event";
+                if !is_pending {
+                    let e =  "A Check transfer is being sent for a subject that is not pending to confirm or reject event";
                     error!(
                         TARGET_AUTH,
                         "CheckTransfer, {}", e
@@ -191,7 +191,6 @@ impl Handler<Auth> for Auth {
                             return Err(ActorError::Functional(e.to_owned()));
                         }
                     }.iter().cloned().collect();
-
                             let data = UpdateNew {
                                 subject_id: subject_id.clone(),
                                 our_key: self.our_node.clone(),
@@ -218,13 +217,13 @@ impl Handler<Auth> for Auth {
                             };
 
                             if let Err(e) =
-                                child.tell(UpdateMessage::Create).await
+                                child.tell(UpdateMessage::Transfer).await
                             {
                                 return Err(emit_fail(ctx, e).await);
                             }
                 } else {
                     let e = "The subject has not been authorized";
-                    error!(TARGET_AUTH, "Update, {}", e);
+                    error!(TARGET_AUTH, "CheckTransfer, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
             },

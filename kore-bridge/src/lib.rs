@@ -22,8 +22,7 @@ pub use kore_base::{
         signature::{Signature, Signed},
         Namespace,
     },
-    node::register::GovsData,
-    node::register::RegisterData,
+    node::{register::{GovsData, RegisterData}, TransferSubject},
     request::RequestData,
     Api as KoreApi,
 };
@@ -121,6 +120,12 @@ impl Bridge {
         } else {
             self.api.own_request(event).await
         }
+    }
+
+    pub async fn get_pending_transfers(
+        &self,
+    ) -> Result<Vec<TransferSubject>, Error> {
+        self.api.get_pending_transfers().await
     }
 
     pub async fn get_request_state(

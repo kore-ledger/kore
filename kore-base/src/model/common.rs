@@ -7,7 +7,7 @@ use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
     SystemEvent,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use wasmtime::{Caller, Engine, Linker};
@@ -34,7 +34,7 @@ use crate::{
 };
 use tracing::error;
 
-use super::{event::ProtocolsSignatures, HashId, Namespace};
+use super::{event::ProtocolsSignatures, Namespace};
 
 const TARGET_COMMON: &str = "Kore-Model-Common";
 
@@ -134,7 +134,35 @@ where
     };
 
     match response {
-        NodeResponse::OwnerPending(res) => Ok(res),
+        NodeResponse::IOwnerPending(res) => Ok(res),
+        _ => Err(ActorError::UnexpectedResponse(
+            node_path,
+            "NodeResponse::OwnerPending".to_owned(),
+        )),
+    }
+}
+
+pub async fn subject_old<A>(
+    ctx: &mut ActorContext<A>,
+    subject_id: &str,
+) -> Result<bool, ActorError> 
+where 
+    A: Actor + Handler<A>,
+{
+    let node_path = ActorPath::from("/user/node");
+    let node_actor: Option<actor::ActorRef<Node>> =
+        ctx.system().get_actor(&node_path).await;
+
+    let response = if let Some(node_actor) = node_actor {
+        node_actor
+            .ask(NodeMessage::OldSubject(subject_id.to_owned()))
+            .await?
+    } else {
+        return Err(ActorError::NotFound(node_path));
+    };
+
+    match response {
+        NodeResponse::IOld(res) => Ok(res),
         _ => Err(ActorError::UnexpectedResponse(
             node_path,
             "NodeResponse::OwnerPending".to_owned(),

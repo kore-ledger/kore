@@ -52,7 +52,7 @@ use network::{Monitor, NetworkWorker};
 use node::register::{
     GovsData, Register, RegisterData, RegisterMessage, RegisterResponse,
 };
-use node::{Node, NodeMessage, NodeResponse};
+use node::{Node, NodeMessage, NodeResponse, TransferSubject};
 use once_cell::sync::OnceCell;
 use prometheus_client::registry::Registry;
 use query::{Query, QueryMessage, QueryResponse};
@@ -345,6 +345,36 @@ impl Api {
                 ))
             }
         }
+    }
+
+    pub async fn get_pending_transfers(
+        &self
+    ) -> Result<Vec<TransferSubject>, Error> {
+        let response = self
+            .node
+            .ask(NodeMessage::PendingTransfers)
+            .await
+            .map_err(|e| {
+                let e = format!("The node was unable to get pending transfers: {}", e);
+                error!(TARGET_API, e);
+                Error::Node(
+                    e
+                )
+            })?;
+
+        let NodeResponse::PendingTransfers(pending) = response else {
+            let e = "A response was received that was not the expected one";
+            error!(
+                TARGET_API,
+                e
+            );
+            return Err(Error::Api(
+                e
+                    .to_owned(),
+            ))
+        };
+
+        Ok(pending)
     }
 
     pub async fn request_state(

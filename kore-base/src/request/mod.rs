@@ -381,6 +381,8 @@ impl Handler<RequestHandler> for RequestHandler {
                 subject_id,
                 state,
             } => {
+                info!(TARGET_REQUEST, "New approval response");
+
                 match state.to_string().as_str() {
                     "RespondedAccepted" | "RespondedRejected" => {}
                     _ => {
@@ -676,7 +678,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 })?;
 
                 if !is_owner && !is_pending {
-                    let e =  "An event is being sent for a subject that does not belong to us and subject is not pending to confirm event";
+                    let e =  "An event is being sent to a subject that does not belong to us or its creation is pending completion, and the subject is not pending event confirmation.";
                     error!(
                         TARGET_REQUEST,
                         "NewRequest, {}", e
