@@ -4,6 +4,7 @@
 use std::{future::Future, str::FromStr};
 
 use config::Config;
+pub use network::{Config as NetworkConfig, TellConfig, ControlListConfig, RoutingConfig, RoutingNode};
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 pub use kore_base::{
     approval::approver::ApprovalStateRes,
@@ -26,6 +27,7 @@ pub use kore_base::{
     node::register::RegisterData,
     request::RequestData,
     Api as KoreApi,
+    config::Config as KoreConfig,
 };
 use model::BridgeSignedEventRequest;
 use prometheus::run_prometheus;
@@ -43,6 +45,7 @@ pub mod prometheus;
 #[derive(Clone)]
 pub struct Bridge {
     api: KoreApi,
+    config: Config,
     cancellation: CancellationToken,
 }
 
@@ -63,7 +66,7 @@ impl Bridge {
 
         let api = KoreApi::new(
             keys,
-            settings.kore_config,
+            settings.kore_config.clone(),
             &mut registry,
             password,
             &token,
@@ -77,6 +80,7 @@ impl Bridge {
 
         Ok(Self {
             api,
+            config: settings,
             cancellation: token,
         })
     }
@@ -102,6 +106,14 @@ impl Bridge {
 
     pub fn controller_id(&self) -> String {
         self.api.controller_id()
+    }
+
+    pub fn config(&self) -> Config {
+        self.config.clone()
+    }
+
+    pub fn keys_path(&self) -> String {
+        self.config.keys_path.clone()
     }
 
     pub async fn send_event_request(

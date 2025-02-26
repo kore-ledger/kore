@@ -44,6 +44,14 @@ impl KeyDerivator {
             KeyDerivator::Secp256k1 => SignatureDerivator::ECDSAsecp256k1,
         }
     }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            KeyDerivator::Ed25519 => "Ed25519",
+            KeyDerivator::Secp256k1 => "Secp256k1",
+        }
+        .into()
+    }
 }
 
 impl Derivator for KeyDerivator {

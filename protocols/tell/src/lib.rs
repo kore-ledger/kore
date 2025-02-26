@@ -201,8 +201,8 @@ impl std::error::Error for InboundFailure {}
 /// The configuration for a `Behaviour` protocol.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    message_timeout: Duration,
-    max_concurrent_streams: usize,
+    pub message_timeout: Duration,
+    pub max_concurrent_streams: usize,
 }
 
 impl Config {

@@ -83,6 +83,16 @@ impl KoreDbConfig {
                 },
             };
         }
+
+        pub fn to_string(&self) -> String {
+            match self {
+                #[cfg(feature = "rocksdb")]
+                KoreDbConfig::Rocksdb { .. } => "Rocksdb",
+                #[cfg(feature = "sqlite")]
+                KoreDbConfig::Sqlite { .. } => "Sqlite",
+            }
+            .into()
+        }
     
 
     pub fn build(path: &str) -> Self {
@@ -138,6 +148,14 @@ impl ExternalDbConfig {
                 *path = format!("{}/{}", new_path, path);
             },
         };
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            #[cfg(feature = "ext-sqlite")]
+            ExternalDbConfig::Sqlite { .. } => "Sqlite",
+        }
+        .into()
     }
 
     pub fn build(path: &str) -> Self {

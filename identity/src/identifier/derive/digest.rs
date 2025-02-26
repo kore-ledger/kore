@@ -52,6 +52,17 @@ impl DigestDerivator {
             Self::SHA3_512 => sha3_512_digest(data),
         }
     }
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Blake3_256 => "Blake3_256",
+            Self::Blake3_512 => "Blake3_512",
+            Self::SHA2_256 => "SHA2_256",
+            Self::SHA2_512 => "SHA2_512",
+            Self::SHA3_256 => "SHA3_256",
+            Self::SHA3_512 => "SHA3_512",
+        }
+        .to_string()
+    }
 }
 
 impl Derivator for DigestDerivator {
