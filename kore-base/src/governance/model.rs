@@ -4,7 +4,7 @@
 //! # Governance model.
 //!
 
-use serde::{de::Visitor, ser::SerializeMap, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Visitor, ser::SerializeMap};
 
 use std::{
     fmt::{self},
@@ -117,7 +117,7 @@ impl<'de> Deserialize<'de> for Who {
                         return Err(serde::de::Error::unknown_field(
                             &key,
                             &["ID", "NAME"],
-                        ))
+                        ));
                     }
                 };
                 let None = map.next_key::<String>()? else {
@@ -230,7 +230,7 @@ impl<'de> Deserialize<'de> for SchemaEnum {
                         return Err(serde::de::Error::unknown_field(
                             &key,
                             &["ID"],
-                        ))
+                        ));
                     }
                 };
                 let None = map.next_key::<String>()? else {

@@ -7,10 +7,10 @@ use crate::Error;
 
 use identity::{
     identifier::{
-        derive::digest::DigestDerivator, Derivable, DigestIdentifier,
-        KeyIdentifier, SignatureIdentifier,
+        Derivable, DigestIdentifier, KeyIdentifier, SignatureIdentifier,
+        derive::digest::DigestDerivator,
     },
-    keys::{KeyMaterial, KeyPair, Payload, DSA},
+    keys::{DSA, KeyMaterial, KeyPair, Payload},
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};

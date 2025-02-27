@@ -16,13 +16,13 @@ use identifier::error::Error;
 
 use memsecurity::EncryptedMem;
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 pub use ed25519::Ed25519KeyPair;
 #[cfg(feature = "secp256k1")]
 pub use secp256k1::Secp256k1KeyPair;
 use serde::{Deserialize, Serialize};
 
-use crate::identifier::{self, derive::KeyDerivator, KeyIdentifier};
+use crate::identifier::{self, KeyIdentifier, derive::KeyDerivator};
 
 /// Asymmetric key pair
 #[derive(Serialize, Deserialize, Debug)]
@@ -406,7 +406,7 @@ pub fn create_seed(initial_seed: &[u8]) -> Result<[u8; 32], Error> {
 #[cfg(test)]
 mod tests {
 
-    use super::{create_seed, ed25519::Ed25519KeyPair, generate, Payload, DSA};
+    use super::{DSA, Payload, create_seed, ed25519::Ed25519KeyPair, generate};
 
     #[cfg(feature = "secp256k1")]
     use super::secp256k1::Secp256k1KeyPair;

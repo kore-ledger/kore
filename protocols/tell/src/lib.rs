@@ -27,20 +27,20 @@ use cache::PeerAddresses;
 use crate::handler::OutboundMessage;
 
 use libp2p::{
+    Multiaddr, PeerId,
     core::ConnectedPoint,
     swarm::{
-        dial_opts::DialOpts, AddressChange, ConnectionClosed,
-        ConnectionHandler, ConnectionId, DialFailure, FromSwarm,
-        NetworkBehaviour, NotifyHandler, ToSwarm,
+        AddressChange, ConnectionClosed, ConnectionHandler, ConnectionId,
+        DialFailure, FromSwarm, NetworkBehaviour, NotifyHandler, ToSwarm,
+        dial_opts::DialOpts,
     },
-    Multiaddr, PeerId,
 };
 use serde::Deserialize;
 use smallvec::SmallVec;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt, io,
-    sync::{atomic::AtomicU64, Arc},
+    sync::{Arc, atomic::AtomicU64},
     task::Poll,
     time::Duration,
 };
@@ -185,13 +185,18 @@ impl fmt::Display for InboundFailure {
                 write!(f, "Timeout while receiving request or sending response")
             }
             InboundFailure::ConnectionClosed => {
-                write!(f, "Connection was closed before a response could be sent")
+                write!(
+                    f,
+                    "Connection was closed before a response could be sent"
+                )
             }
             InboundFailure::UnsupportedProtocols => write!(
                 f,
                 "The local peer supports none of the protocols requested by the remote"
             ),
-            InboundFailure::Io(e) => write!(f, "IO error on inbound stream: {e}"),
+            InboundFailure::Io(e) => {
+                write!(f, "IO error on inbound stream: {e}")
+            }
         }
     }
 }
@@ -674,7 +679,9 @@ where
                     None => {
                         // The connection was closed before the message was received.
                         // The message is dropped.
-                        tracing::debug!("Connection ({connection_id}) closed after `Event::Request` ({tell_id}) has been emitted.");
+                        tracing::debug!(
+                            "Connection ({connection_id}) closed after `Event::Request` ({tell_id}) has been emitted."
+                        );
                     }
                 }
             }
@@ -935,11 +942,15 @@ mod tests {
         let request_id2 =
             swarm1.behaviour_mut().send_message(&offline_peer, ping.0);
         assert_eq!(request_id2.0, request_id1.0 + 1);
-        assert!(!swarm1
-            .behaviour()
-            .is_pending_outbound(&offline_peer, &request_id1));
-        assert!(swarm1
-            .behaviour()
-            .is_pending_outbound(&offline_peer, &request_id2));
+        assert!(
+            !swarm1
+                .behaviour()
+                .is_pending_outbound(&offline_peer, &request_id1)
+        );
+        assert!(
+            swarm1
+                .behaviour()
+                .is_pending_outbound(&offline_peer, &request_id2)
+        );
     }
 }

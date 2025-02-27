@@ -1,19 +1,20 @@
 use identity::{
     identifier::{
-        derive::{digest::DigestDerivator, KeyDerivator},
         DigestIdentifier, KeyIdentifier,
+        derive::{KeyDerivator, digest::DigestDerivator},
     },
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
 use kore_base::{
+    Api,
     config::{Config, ExternalDbConfig, KoreDbConfig},
     model::{
-        request::{
-            ConfirmRequest, CreateRequest, EventRequest, FactRequest, RejectRequest, TransferRequest
-        },
         Namespace, ValueWrapper,
+        request::{
+            ConfirmRequest, CreateRequest, EventRequest, FactRequest,
+            RejectRequest, TransferRequest,
+        },
     },
-    Api,
 };
 use network::{Config as NetworkConfig, RoutingNode};
 use prometheus_client::registry::Registry;
@@ -85,7 +86,6 @@ pub async fn create_nodes_and_connections(
 ) -> Vec<Api> {
     let mut nodes: Vec<Api> = Vec::new();
     let mut node_addresses = Vec::new();
-
 
     let get_node_address = |index: usize| -> String {
         format!("/memory/{}", initial_port + index as u32)
@@ -184,9 +184,8 @@ pub async fn create_nodes_massive(
     let mut ephemeral_nodes = Vec::new();
 
     // Helper closure to generate node address
-    let get_node_address = |index: u32| -> String {
-        format!("/memory/{}", initial_port + index)
-    };
+    let get_node_address =
+        |index: u32| -> String { format!("/memory/{}", initial_port + index) };
 
     // Create Bootstrap nodes and interconnect them
     for i in 0..size_bootstrap {
@@ -394,7 +393,10 @@ pub async fn emit_confirm(
     new_name: Option<String>,
     wait_request_state: bool,
 ) {
-    let request = EventRequest::Confirm(ConfirmRequest { subject_id, name_old_owner: new_name });
+    let request = EventRequest::Confirm(ConfirmRequest {
+        subject_id,
+        name_old_owner: new_name,
+    });
     let response = node.own_request(request).await.unwrap();
     println!("emit_confirm - response: {:?}", response);
     // state of request

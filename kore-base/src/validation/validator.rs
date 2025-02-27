@@ -4,29 +4,27 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
+    Signed,
     governance::model::Roles,
     helpers::{
         db::{ExternalDB, Querys},
-        network::{intermediary::Intermediary, NetworkMessage},
+        network::{NetworkMessage, intermediary::Intermediary},
     },
     model::{
+        SignTypesNode, TimeStamp,
         common::{
-            emit_fail, get_gov, get_metadata, get_sign,
-            update_ledger_network, UpdateData,
+            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
+            update_ledger_network,
         },
         event::ProtocolsSignatures,
         network::{RetryNetwork, TimeOutResponse},
         signature::Signature,
-        SignTypesNode, TimeStamp,
     },
-    Signed,
 };
 
 use super::{
-    proof::ValidationProof,
-    request::ValidationReq,
-    response::ValidationRes,
-    Validation, ValidationMessage,
+    Validation, ValidationMessage, proof::ValidationProof,
+    request::ValidationReq, response::ValidationRes,
 };
 
 use crate::helpers::network::ActorMessage;
@@ -132,8 +130,7 @@ impl Validator {
     ) -> Result<(), ActorError> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
-            if new_proof.error_not_create(&previous_proof)
-            {
+            if new_proof.error_not_create(&previous_proof) {
                 return Err(ActorError::Functional("There are fields that do not match in the comparison of the previous validation proof and the new proof.".to_owned()));
             }
 
@@ -209,8 +206,11 @@ impl Validator {
         // Genesis event, it is first proof
         } else {
             if new_proof.error_create() {
-                return Err(ActorError::Functional("There are incorrect fields in the validation test".to_owned()));
-            }   
+                return Err(ActorError::Functional(
+                    "There are incorrect fields in the validation test"
+                        .to_owned(),
+                ));
+            }
 
             Ok(())
         }
@@ -298,7 +298,11 @@ impl Handler<Validator> for Validator {
                 // Send response of validation to parent
                 if let Some(validation_actor) = validation_actor {
                     if let Err(e) = validation_actor.tell(validation).await {
-                        error!(TARGET_VALIDATOR, "LocalValidation, can not send local validation to Validation actor: {}", e);
+                        error!(
+                            TARGET_VALIDATOR,
+                            "LocalValidation, can not send local validation to Validation actor: {}",
+                            e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     };
                 } else {
@@ -372,7 +376,11 @@ impl Handler<Validator> for Validator {
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
-                    error!(TARGET_VALIDATOR, "NetworkValidation, can not send retry to Retry actor: {}", e);
+                    error!(
+                        TARGET_VALIDATOR,
+                        "NetworkValidation, can not send retry to Retry actor: {}",
+                        e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -418,12 +426,20 @@ impl Handler<Validator> for Validator {
                             })
                             .await
                         {
-                            error!(TARGET_VALIDATOR, "NetworkResponse, can not send response to Validation actor {}", e);
+                            error!(
+                                TARGET_VALIDATOR,
+                                "NetworkResponse, can not send response to Validation actor {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     } else {
                         let e = ActorError::NotFound(validation_path);
-                        error!(TARGET_VALIDATOR, "NetworkResponse, can not obtain Validation actor {}", e);
+                        error!(
+                            TARGET_VALIDATOR,
+                            "NetworkResponse, can not obtain Validation actor {}",
+                            e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
 
@@ -461,21 +477,22 @@ impl Handler<Validator> for Validator {
             } => {
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
-                    let governance_id = if validation_req.content.proof.governance_id.is_empty() {
+                let governance_id =
+                    if validation_req.content.proof.governance_id.is_empty() {
                         validation_req.content.proof.subject_id.clone()
                     } else {
                         validation_req.content.proof.governance_id.clone()
                     };
-    
-                if info_subject_path != governance_id.to_string()
-                {
+
+                if info_subject_path != governance_id.to_string() {
                     let e = "We received an evaluation where the request indicates one subject but the info indicates another.";
                     error!(TARGET_VALIDATOR, "NetworkRequest, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
 
                 if let Err(e) = validation_req.verify() {
-                    let e = format!("Can not verify signature of request: {}", e);
+                    let e =
+                        format!("Can not verify signature of request: {}", e);
                     error!(TARGET_VALIDATOR, "NetworkRequest, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
@@ -633,7 +650,11 @@ impl Handler<Validator> for Validator {
                         })
                         .await
                     {
-                        error!(TARGET_VALIDATOR, "OnChildError, can not send response to Validation actor: {}", e);
+                        error!(
+                            TARGET_VALIDATOR,
+                            "OnChildError, can not send response to Validation actor: {}",
+                            e
+                        );
                         emit_fail(ctx, e).await;
                     }
                 } else {

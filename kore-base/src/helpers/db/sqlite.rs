@@ -7,22 +7,22 @@ use std::str::FromStr;
 use actor::{ActorRef, Subscriber};
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
-use serde_json::{json, Value};
-use tokio_rusqlite::{params, Connection, OpenFlags};
+use serde_json::{Value, json};
+use tokio_rusqlite::{Connection, OpenFlags, params};
 use tracing::error;
 
+use crate::Signed;
 use crate::approval::approver::ApproverEvent;
 use crate::error::Error;
 use crate::external_db::{DBManager, DBManagerMessage, DeleteTypes};
 use crate::helpers::db::common::{ApproveInfo, EventDB};
 use crate::model::event::{Ledger, LedgerValue, ProtocolsSignatures};
+use crate::request::RequestHandlerEvent;
 use crate::request::manager::RequestManagerEvent;
 use crate::request::types::RequestManagerState;
-use crate::request::RequestHandlerEvent;
 use crate::subject::event::LedgerEventEvent;
 use crate::subject::sinkdata::SinkDataEvent;
 use crate::subject::validata::ValiDataEvent;
-use crate::Signed;
 
 use super::common::{
     EventInfo, Paginator, PaginatorEvents, SignaturesDB, SignaturesInfo,
@@ -114,9 +114,9 @@ impl Querys for SqliteLocal {
                         owner: row.get(5)?,
                         creator: row.get(6)?,
                         active: row.get(7)?,
-                        sn: row.get(8)?,                        
+                        sn: row.get(8)?,
                         properties: row.get(9)?,
-                        new_owner: row.get(10)?
+                        new_owner: row.get(10)?,
                     })
                 }) {
                     Ok(result) => Ok(result),
@@ -147,7 +147,7 @@ impl Querys for SqliteLocal {
                     e
                 ))
             })?,
-            new_owner: subject.new_owner
+            new_owner: subject.new_owner,
         })
     }
 
@@ -739,7 +739,11 @@ impl Subscriber<ApproverEvent> for SqliteLocal {
                     let e = Error::ExtDB(
                         "Can not Serialize request as String".to_owned(),
                     );
-                    error!(TARGET_SQLITE, "Subscriber<ApproverEvent> ApproverEvent::SafeState: {}", e);
+                    error!(
+                        TARGET_SQLITE,
+                        "Subscriber<ApproverEvent> ApproverEvent::SafeState: {}",
+                        e
+                    );
                     if let Err(e) =
                         self.manager.tell(DBManagerMessage::Error(e)).await
                     {
@@ -1007,7 +1011,10 @@ impl Subscriber<SinkDataEvent> for SqliteLocal {
         let active = event.metadata.active.to_string();
         let sn = event.metadata.sn;
         let properties = event.metadata.properties.0.to_string();
-        let new_owner = event.metadata.new_owner.map(|new_owner| new_owner.to_string());
+        let new_owner = event
+            .metadata
+            .new_owner
+            .map(|new_owner| new_owner.to_string());
 
         if let Err(e) = self
         .conn

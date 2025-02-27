@@ -28,21 +28,17 @@ pub fn build_config(env: bool, file: &str) -> Result<BridgeConfig, Error> {
 
         config = config.add_source(config::File::with_name(file));
 
-        let config = config
-            .build()
-            .map_err(|e| {
-                let e = format!("Error building config: {}", e);
-                error!(TARGET_SETTING, e);
-                Error::Bridge(e)
-            })?;
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_SETTING, e);
+            Error::Bridge(e)
+        })?;
 
-        params_file = config
-            .try_deserialize()
-            .map_err(|e| {
-                let e = format!("Error try deserialize config: {}", e);
-                error!(TARGET_SETTING, e);
-                Error::Bridge(e)
-            })?;
+        params_file = config.try_deserialize().map_err(|e| {
+            let e = format!("Error try deserialize config: {}", e);
+            error!(TARGET_SETTING, e);
+            Error::Bridge(e)
+        })?;
     }
 
     // Mix configurations.
@@ -61,7 +57,7 @@ pub fn build_file_path() -> String {
 mod tests {
     use std::{num::NonZeroUsize, time::Duration};
 
-    use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
+    use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
     use network::{NodeType, RoutingNode};
     use serial_test::serial;
 
@@ -72,8 +68,14 @@ mod tests {
     fn test_env_full() {
         unsafe {
             std::env::set_var("KORE_NETWORK_TELL_MESSAGE_TIMEOUT_SECS", "58");
-            std::env::set_var("KORE_NETWORK_TELL_MAX_CONCURRENT_STREAMS", "166");
-            std::env::set_var("KORE_NETWORK_ROUTING_BOOT_NODES", "/ip4/172.17.0.1/tcp/50000_/ip4/127.0.0.1/tcp/60001/p2p/12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B,/ip4/11.11.0.11/tcp/10000_/ip4/12.22.33.44/tcp/55511/p2p/12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze");
+            std::env::set_var(
+                "KORE_NETWORK_TELL_MAX_CONCURRENT_STREAMS",
+                "166",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_ROUTING_BOOT_NODES",
+                "/ip4/172.17.0.1/tcp/50000_/ip4/127.0.0.1/tcp/60001/p2p/12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B,/ip4/11.11.0.11/tcp/10000_/ip4/12.22.33.44/tcp/55511/p2p/12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze",
+            );
             std::env::set_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK", "false");
             std::env::set_var(
                 "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
@@ -93,7 +95,7 @@ mod tests {
                 "KORE_NETWORK_ROUTING_KADEMLIA_REPLICATION_FACTOR",
                 "30",
             );
-    
+
             std::env::set_var("KORE_BASE_KEY_DERIVATOR", "Secp256k1");
             std::env::set_var("KORE_BASE_DIGEST_DERIVATOR", "Blake3_512");
             std::env::set_var("KORE_BASE_ALWAYS_ACCEPT", "true");
@@ -102,7 +104,7 @@ mod tests {
             std::env::set_var("KORE_BASE_EXTERNAL_DB", "./fake/db/path");
             std::env::set_var("KORE_BASE_GARBAGE_COLLECTOR", "1000");
             std::env::set_var("KORE_BASE_SINK", "http");
-    
+
             std::env::set_var("KORE_NETWORK_PORT_REUSE", "true");
             std::env::set_var("KORE_NETWORK_USER_AGENT", "Kore2.0");
             std::env::set_var("KORE_NETWORK_NODE_TYPE", "Addressable");
@@ -114,10 +116,10 @@ mod tests {
                 "KORE_NETWORK_EXTERNAL_ADDRESSES",
                 "/ip4/90.1.0.60/tcp/50000,/ip4/90.1.0.61/tcp/50000",
             );
-    
+
             std::env::set_var("KORE_KEYS_PATH", "./fake/keys/path");
             std::env::set_var("KORE_PROMETHEUS", "10.0.0.0:3030");
-    
+
             std::env::set_var("KORE_NETWORK_CONTROL_LIST_ENABLE", "true");
             std::env::set_var(
                 "KORE_NETWORK_CONTROL_LIST_ALLOW_LIST",
@@ -135,9 +137,11 @@ mod tests {
                 "KORE_NETWORK_CONTROL_LIST_SERVICE_BLOCK_LIST",
                 "http://90.0.0.1:3000/block_list,http://90.0.0.2:4000/block_list",
             );
-            std::env::set_var("KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST", "58");
+            std::env::set_var(
+                "KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST",
+                "58",
+            );
         }
-
 
         let config = build_config(true, "").unwrap();
 
@@ -307,7 +311,9 @@ mod tests {
             std::env::remove_var(
                 "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
             );
-            std::env::remove_var("KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_IN_DHT");
+            std::env::remove_var(
+                "KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_IN_DHT",
+            );
             std::env::remove_var("KORE_NETWORK_ROUTING_ALLOW_PRIVATE_IP");
             std::env::remove_var("KORE_NETWORK_ROUTING_ENABLE_MDNS");
             std::env::remove_var(
@@ -334,8 +340,12 @@ mod tests {
             std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ENABLE");
             std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ALLOW_LIST");
             std::env::remove_var("KORE_NETWORK_CONTROL_LIST_BLOCK_LIST");
-            std::env::remove_var("KORE_NETWORK_CONTROL_LIST_SERVICE_ALLOW_LIST");
-            std::env::remove_var("KORE_NETWORK_CONTROL_LIST_SERVICE_BLOCK_LIST");
+            std::env::remove_var(
+                "KORE_NETWORK_CONTROL_LIST_SERVICE_ALLOW_LIST",
+            );
+            std::env::remove_var(
+                "KORE_NETWORK_CONTROL_LIST_SERVICE_BLOCK_LIST",
+            );
             std::env::remove_var("KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST");
         }
     }

@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
@@ -10,9 +10,9 @@ use std::{
 };
 
 use super::{
-    derive::{signature::SignatureDerivator, Derivator},
-    error::Error,
     Derivable,
+    derive::{Derivator, signature::SignatureDerivator},
+    error::Error,
 };
 
 /// Signature based identifier
@@ -129,8 +129,7 @@ mod tests {
         // ECDSAsecp256k1
         #[cfg(feature = "secp256k1")]
         {
-            let sig_str =
-                "SSdKRafkDIPL3IM8zc5RfGcNo502fQxK-3pzOkNCO8tg4tEyOZUwx\
+            let sig_str = "SSdKRafkDIPL3IM8zc5RfGcNo502fQxK-3pzOkNCO8tg4tEyOZUwx\
             qntzDmAwaHINVAN7hwHYfVq5HabqEodrxxQ";
             let si = SignatureIdentifier::from_str(&sig_str).unwrap();
             let key_str = "SAsH8KCN4qfIKmas-2HZeI4IRhTbmMlsjC0EunOP66dqy";
@@ -153,8 +152,7 @@ mod tests {
         // ECDSAsecp256k1
         #[cfg(feature = "secp256k1")]
         {
-            let sig_str =
-                "SSRFbutVG3-KHv_Fuexdx24aukwvj_RqN9jiPt9EQyDYRWsMJ-kpcLfX7\
+            let sig_str = "SSRFbutVG3-KHv_Fuexdx24aukwvj_RqN9jiPt9EQyDYRWsMJ-kpcLfX7\
             CHmERmULScNSiG2l4_DDQF1qui8rEjQ";
             let si = SignatureIdentifier::from_str(sig_str).unwrap();
             let ser_si = serde_json::to_string_pretty(&si).unwrap();

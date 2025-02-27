@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use libp2p::{
-    swarm::{
-        dummy, CloseConnection, ConnectionDenied, NetworkBehaviour, ToSwarm,
-    },
     Multiaddr, PeerId,
+    swarm::{
+        CloseConnection, ConnectionDenied, NetworkBehaviour, ToSwarm, dummy,
+    },
 };
 use serde::Deserialize;
 use std::{
@@ -524,17 +524,17 @@ impl NetworkBehaviour for Behaviour {
 
 #[cfg(test)]
 mod tests {
-    use test_log::test;
     use futures::StreamExt;
     use libp2p::{
-        swarm::{
-            dial_opts::DialOpts, ConnectionError, DialError, ListenError,
-            SwarmEvent,
-        },
         Swarm,
+        swarm::{
+            ConnectionError, DialError, ListenError, SwarmEvent,
+            dial_opts::DialOpts,
+        },
     };
     use libp2p_swarm_test::SwarmExt;
     use serial_test::serial;
+    use test_log::test;
 
     use super::*;
 

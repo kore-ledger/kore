@@ -8,25 +8,25 @@ use actor::{
     Message, Response,
 };
 use async_trait::async_trait;
-use borsh::{to_vec, BorshDeserialize};
+use borsh::{BorshDeserialize, to_vec};
 use json_patch::diff;
 use serde::{Deserialize, Serialize};
-use serde_json::{to_value, Value};
+use serde_json::{Value, to_value};
 use tracing::error;
-use types::{
-    ContractResult, EvaluateType, GovernancePatch, RunnerResult
-};
+use types::{ContractResult, EvaluateType, GovernancePatch, RunnerResult};
 use wasmtime::{Config, Engine, Module, Store};
 
 use crate::{
+    Error, GOVERNANCE, ValueWrapper,
     governance::{
-        model::{CreatorQuantity, Roles, SchemaEnum}, Governance, Member, Policy, Role, Schema, Who
+        Governance, Member, Policy, Role, Schema, Who,
+        model::{CreatorQuantity, Roles, SchemaEnum},
     },
     model::{
-        common::{generate_linker, MemoryManager},
-        patch::apply_patch, Namespace,
+        Namespace,
+        common::{MemoryManager, generate_linker},
+        patch::apply_patch,
     },
-    Error, ValueWrapper, GOVERNANCE,
 };
 
 const TARGET_RUNNER: &str = "Kore-Evaluation-Runner";
@@ -43,63 +43,139 @@ impl Runner {
         is_owner: bool,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
         match evaluate_type {
-            EvaluateType::NotGovFact { contract, payload } => Self::execute_fact_not_gov(state, &payload, &contract, is_owner).await,
-            EvaluateType::GovFact { payload } => Self::execute_fact_gov(state, &payload).await,
-            EvaluateType::GovTransfer { new_owner } => Self::execute_transfer_gov(state.clone(), &new_owner.to_string()),
-            EvaluateType::NotGovTransfer { new_owner, namespace, schema_id } => Self::execute_transfer_not_gov(state.clone(), &new_owner.to_string(), namespace, &schema_id),
-            EvaluateType::GovConfirm { old_owner_name, new_owner } => Self::execute_confirm_gov(state, old_owner_name, &new_owner.to_string()),
+            EvaluateType::NotGovFact { contract, payload } => {
+                Self::execute_fact_not_gov(state, &payload, &contract, is_owner)
+                    .await
+            }
+            EvaluateType::GovFact { payload } => {
+                Self::execute_fact_gov(state, &payload).await
+            }
+            EvaluateType::GovTransfer { new_owner } => {
+                Self::execute_transfer_gov(
+                    state.clone(),
+                    &new_owner.to_string(),
+                )
+            }
+            EvaluateType::NotGovTransfer {
+                new_owner,
+                namespace,
+                schema_id,
+            } => Self::execute_transfer_not_gov(
+                state.clone(),
+                &new_owner.to_string(),
+                namespace,
+                &schema_id,
+            ),
+            EvaluateType::GovConfirm {
+                old_owner_name,
+                new_owner,
+            } => Self::execute_confirm_gov(
+                state,
+                old_owner_name,
+                &new_owner.to_string(),
+            ),
         }
     }
 
-    fn execute_transfer_not_gov(state: ValueWrapper, new_owner: &str, namespace: Namespace, schema_id: &str) -> Result<(RunnerResult, Vec<String>), Error> {
+    fn execute_transfer_not_gov(
+        state: ValueWrapper,
+        new_owner: &str,
+        namespace: Namespace,
+        schema_id: &str,
+    ) -> Result<(RunnerResult, Vec<String>), Error> {
         let governance = serde_json::from_value::<Governance>(state.0)
-            .map_err(|e| Error::Runner(format!("Can deserialice governance patch {}", e)))?;
+            .map_err(|e| {
+                Error::Runner(format!("Can deserialice governance patch {}", e))
+            })?;
 
         if !governance.is_member(new_owner) {
-            return Err(Error::Runner("New owner is not a member of governance".to_owned()))
+            return Err(Error::Runner(
+                "New owner is not a member of governance".to_owned(),
+            ));
         }
 
-        if !governance.has_this_role(new_owner, Roles::CREATOR(CreatorQuantity::QUANTITY(0)), schema_id, namespace.clone()) {
-            return Err(Error::Runner(format!("New owner is not a Creator from {} schema_id, with {} namespace", schema_id, namespace)))
+        if !governance.has_this_role(
+            new_owner,
+            Roles::CREATOR(CreatorQuantity::QUANTITY(0)),
+            schema_id,
+            namespace.clone(),
+        ) {
+            return Err(Error::Runner(format!(
+                "New owner is not a Creator from {} schema_id, with {} namespace",
+                schema_id, namespace
+            )));
         }
-        
-        Ok((RunnerResult {
-            approval_required: false,
-            final_state: ValueWrapper(serde_json::Value::String("[]".to_owned(),)),
-        }, vec![]))
+
+        Ok((
+            RunnerResult {
+                approval_required: false,
+                final_state: ValueWrapper(serde_json::Value::String(
+                    "[]".to_owned(),
+                )),
+            },
+            vec![],
+        ))
     }
 
-    fn execute_transfer_gov(state: ValueWrapper, new_owner: &str) -> Result<(RunnerResult, Vec<String>), Error> {
+    fn execute_transfer_gov(
+        state: ValueWrapper,
+        new_owner: &str,
+    ) -> Result<(RunnerResult, Vec<String>), Error> {
         let governance = serde_json::from_value::<Governance>(state.0)
-        .map_err(|e| Error::Runner(format!("Can deserialice governance patch {}", e)))?;
+            .map_err(|e| {
+                Error::Runner(format!("Can deserialice governance patch {}", e))
+            })?;
 
-    if !governance.is_member(new_owner) {
-        return Err(Error::Runner("New owner is not a member of governance".to_owned()))
-    }
-    
-    Ok((RunnerResult {
-        approval_required: false,
-        final_state: ValueWrapper(serde_json::Value::String("[]".to_owned())),
-    }, vec![]))
+        if !governance.is_member(new_owner) {
+            return Err(Error::Runner(
+                "New owner is not a member of governance".to_owned(),
+            ));
+        }
+
+        Ok((
+            RunnerResult {
+                approval_required: false,
+                final_state: ValueWrapper(serde_json::Value::String(
+                    "[]".to_owned(),
+                )),
+            },
+            vec![],
+        ))
     }
 
-    fn execute_confirm_gov(state: &ValueWrapper, old_owner_name: Option<String>, new_owner: &str) -> Result<(RunnerResult, Vec<String>), Error> {
-        let mut governance = serde_json::from_value::<Governance>(state.0.clone())
-            .map_err(|e| Error::Runner(format!("Can deserialice governance patch {}", e)))?;
-        
+    fn execute_confirm_gov(
+        state: &ValueWrapper,
+        old_owner_name: Option<String>,
+        new_owner: &str,
+    ) -> Result<(RunnerResult, Vec<String>), Error> {
+        let mut governance = serde_json::from_value::<Governance>(
+            state.0.clone(),
+        )
+        .map_err(|e| {
+            Error::Runner(format!("Can deserialice governance patch {}", e))
+        })?;
+
         let old_owner = governance
-        .members
-        .iter()
-        .find(|x| x.name == "Owner")
-        .cloned()
-        .ok_or_else(|| Error::Runner("Cannot find 'Owner' member in governance".to_owned()))?;
+            .members
+            .iter()
+            .find(|x| x.name == "Owner")
+            .cloned()
+            .ok_or_else(|| {
+                Error::Runner(
+                    "Cannot find 'Owner' member in governance".to_owned(),
+                )
+            })?;
 
         let new_owner_member = governance
-        .members
-        .iter()
-        .find(|x| x.id == new_owner)
-        .cloned()
-        .ok_or_else(|| Error::Runner("Cannot find new_owner member in governance".to_owned()))?;
+            .members
+            .iter()
+            .find(|x| x.id == new_owner)
+            .cloned()
+            .ok_or_else(|| {
+                Error::Runner(
+                    "Cannot find new_owner member in governance".to_owned(),
+                )
+            })?;
 
         for member in &mut governance.members {
             if member.name == "Owner" {
@@ -127,98 +203,114 @@ impl Runner {
                     old_owner_name
                 )));
             }
-    
+
             governance.members.push(Member {
                 id: old_owner.id,
                 name: old_owner_name,
             });
         }
 
-        governance.members.retain(|x| x.name != new_owner_member.name);
+        governance
+            .members
+            .retain(|x| x.name != new_owner_member.name);
 
-        let mod_state = to_value(governance).map_err(|e| Error::Runner(format!("Can not convert governance in JSON {}", e)))?;
+        let mod_state = to_value(governance).map_err(|e| {
+            Error::Runner(format!("Can not convert governance in JSON {}", e))
+        })?;
         let patch = diff(&state.0, &mod_state);
-        let json_patch = to_value(patch).map_err(|e| Error::Runner(format!("Can not conver patch to JSON patch: {}", e)))?;
-        let patched_state: Governance = apply_patch(json_patch.clone(), state.0.clone())
-                    .map_err(|e| {
-                        Error::Runner(format!("Can not apply patch {}", e))
-                    })?;
+        let json_patch = to_value(patch).map_err(|e| {
+            Error::Runner(format!("Can not conver patch to JSON patch: {}", e))
+        })?;
+        let patched_state: Governance =
+            apply_patch(json_patch.clone(), state.0.clone()).map_err(|e| {
+                Error::Runner(format!("Can not apply patch {}", e))
+            })?;
 
-        Ok((RunnerResult {
-            final_state: ValueWrapper(to_value(patched_state).map_err(|e| Error::Runner(format!("Can not conver patch to JSON patch: {}", e)))?),
-            approval_required: false,
-        }, vec![] ))
+        Ok((
+            RunnerResult {
+                final_state: ValueWrapper(to_value(patched_state).map_err(
+                    |e| {
+                        Error::Runner(format!(
+                            "Can not conver patch to JSON patch: {}",
+                            e
+                        ))
+                    },
+                )?),
+                approval_required: false,
+            },
+            vec![],
+        ))
     }
 
     async fn execute_fact_not_gov(
         state: &ValueWrapper,
         payload: &ValueWrapper,
         contract: &[u8],
-        is_owner: bool,) -> Result<(RunnerResult, Vec<String>), Error> {
+        is_owner: bool,
+    ) -> Result<(RunnerResult, Vec<String>), Error> {
+        let engine = Engine::new(&Config::default()).map_err(|e| {
+            Error::Runner(format!("Error creating the engine: {}", e))
+        })?;
 
-            let engine = Engine::new(&Config::default()).map_err(|e| {
-                Error::Runner(format!("Error creating the engine: {}", e))
+        // Module represents a precompiled WebAssembly program that is ready to be instantiated and executed.
+        // This function receives the previous input from Engine::precompile_module, that is why this function can be considered safe.
+        let module = unsafe {
+            Module::deserialize(&engine, contract).map_err(|e| {
+                Error::Runner(format!(
+                    "Error deserializing the contract in wastime: {}",
+                    e
+                ))
+            })?
+        };
+
+        // We create a context from the state and the event.
+        let (context, state_ptr, event_ptr) =
+            Self::generate_context(state, payload)?;
+
+        // Container to store and manage the global state of a WebAssembly instance during its execution.
+        let mut store = Store::new(&engine, context);
+
+        // Responsible for combining several object files into a single WebAssembly executable file (.wasm).
+        let linker = generate_linker(&engine)?;
+
+        // Contract instance.
+        let instance =
+            linker.instantiate(&mut store, &module).map_err(|e| {
+                Error::Runner(format!(
+                    "Error when creating a contract instance: {}",
+                    e
+                ))
             })?;
-    
-            // Module represents a precompiled WebAssembly program that is ready to be instantiated and executed.
-            // This function receives the previous input from Engine::precompile_module, that is why this function can be considered safe.
-            let module = unsafe {
-                Module::deserialize(&engine, contract).map_err(|e| {
-                    Error::Runner(format!(
-                        "Error deserializing the contract in wastime: {}",
-                        e
-                    ))
-                })?
-            };
-    
-            // We create a context from the state and the event.
-            let (context, state_ptr, event_ptr) =
-                Self::generate_context(state, payload)?;
-    
-            // Container to store and manage the global state of a WebAssembly instance during its execution.
-            let mut store = Store::new(&engine, context);
-    
-            // Responsible for combining several object files into a single WebAssembly executable file (.wasm).
-            let linker = generate_linker(&engine)?;
-    
-            // Contract instance.
-            let instance =
-                linker.instantiate(&mut store, &module).map_err(|e| {
-                    Error::Runner(format!(
-                        "Error when creating a contract instance: {}",
-                        e
-                    ))
-                })?;
-    
-            // Get access to contract
-            let contract_entrypoint = instance
-                .get_typed_func::<(u32, u32, u32), u32>(&mut store, "main_function")
-                .map_err(|e| {
-                    Error::Runner(format!("Contract entry point not found: {}", e))
-                })?;
-    
-            // Contract execution
-            let result_ptr = contract_entrypoint
-                .call(
-                    &mut store,
-                    (state_ptr, event_ptr, if is_owner { 1 } else { 0 }),
-                )
-                .map_err(|e| {
-                    Error::Runner(format!("Contract execution failed: {}", e))
-                })?;
-    
-            let result = Self::get_result(&store, result_ptr)?;
-            if !result.success {
-                return Err(Error::Runner("Contract was not succes".to_owned()));
-            }
 
-            Ok((
-                RunnerResult {
-                    approval_required: false,
-                    final_state: result.final_state,
-                },
-                vec![],
-            ))
+        // Get access to contract
+        let contract_entrypoint = instance
+            .get_typed_func::<(u32, u32, u32), u32>(&mut store, "main_function")
+            .map_err(|e| {
+                Error::Runner(format!("Contract entry point not found: {}", e))
+            })?;
+
+        // Contract execution
+        let result_ptr = contract_entrypoint
+            .call(
+                &mut store,
+                (state_ptr, event_ptr, if is_owner { 1 } else { 0 }),
+            )
+            .map_err(|e| {
+                Error::Runner(format!("Contract execution failed: {}", e))
+            })?;
+
+        let result = Self::get_result(&store, result_ptr)?;
+        if !result.success {
+            return Err(Error::Runner("Contract was not succes".to_owned()));
+        }
+
+        Ok((
+            RunnerResult {
+                approval_required: false,
+                final_state: result.final_state,
+            },
+            vec![],
+        ))
     }
 
     async fn execute_fact_gov(
@@ -300,19 +392,29 @@ impl Runner {
 
             // Check if op is add or replace, or remove for roles and members
             match op {
-                "add" | "replace" => {},
+                "add" | "replace" => {}
                 "remove" => {
                     // Obtain path
                     let path = if let Some(path) = val["path"].as_str() {
                         path
                     } else {
-                        return Err(Error::Runner("The path field is not a str".to_owned()))
+                        return Err(Error::Runner(
+                            "The path field is not a str".to_owned(),
+                        ));
                     };
                     if !path.contains("roles") && !path.contains("members") {
-                        return Err(Error::Runner(format!("Remove operation in JSON parch is only allowed for members and roles, invalid operation {} for {}", op, path)))   
+                        return Err(Error::Runner(format!(
+                            "Remove operation in JSON parch is only allowed for members and roles, invalid operation {} for {}",
+                            op, path
+                        )));
                     }
-                },
-                _ => return Err(Error::Runner(format!("The only json patch operations that are allowed are add, replace and remove (only for members and roles), invalid operation: {}", op)))
+                }
+                _ => {
+                    return Err(Error::Runner(format!(
+                        "The only json patch operations that are allowed are add, replace and remove (only for members and roles), invalid operation: {}",
+                        op
+                    )));
+                }
             }
 
             if !val["value"]["contract"].is_null() {
@@ -331,9 +433,7 @@ impl Runner {
         Ok(compilations)
     }
 
-    fn check_governance_state(
-        governance: &Governance,
-    ) -> Result<(), Error> {
+    fn check_governance_state(governance: &Governance) -> Result<(), Error> {
         // Nombre e ID unicos
         let (id_set, name_set) = Self::check_members(&governance.members)?;
         // Políticas únicas
@@ -467,7 +567,10 @@ impl Runner {
 
             if let SchemaEnum::ID { ID } = &role.schema {
                 if !policies.contains(ID) {
-                    return Err(Error::Runner(format!("The role {} of member {} belongs to an invalid schema.", role.role, role.who)));
+                    return Err(Error::Runner(format!(
+                        "The role {} of member {} belongs to an invalid schema.",
+                        role.role, role.who
+                    )));
                 }
                 if ID == "governance" {
                     if let Who::MEMBERS = role.who {
@@ -574,9 +677,10 @@ impl Runner {
         if contract_result.success {
             Ok(contract_result)
         } else {
-            Err(Error::Runner(
-                format!("Contract execution in running was not successful: {}", contract_result.error)
-            ))
+            Err(Error::Runner(format!(
+                "Contract execution in running was not successful: {}",
+                contract_result.error
+            )))
         }
     }
 }
@@ -618,16 +722,13 @@ impl Handler<Runner> for Runner {
         msg: RunnerMessage,
         _ctx: &mut ActorContext<Runner>,
     ) -> Result<RunnerResponse, ActorError> {
-        let (result, compilations) = Self::execute_contract(
-            &msg.state,
-            msg.evaluate_type,
-            msg.is_owner,
-        )
-        .await
-        .map_err(|e| {
-            error!(TARGET_RUNNER, "A problem running contract: {}", e);
-            ActorError::Functional(e.to_string())
-        })?;
+        let (result, compilations) =
+            Self::execute_contract(&msg.state, msg.evaluate_type, msg.is_owner)
+                .await
+                .map_err(|e| {
+                    error!(TARGET_RUNNER, "A problem running contract: {}", e);
+                    ActorError::Functional(e.to_string())
+                })?;
 
         Ok(RunnerResponse {
             result,

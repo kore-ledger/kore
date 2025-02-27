@@ -4,7 +4,7 @@
 //! # Definte protocol for tell
 //!
 
-use futures::future::{ready, Ready};
+use futures::future::{Ready, ready};
 use libp2p::core::upgrade::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
 use libp2p::swarm::Stream;
 use smallvec::SmallVec;

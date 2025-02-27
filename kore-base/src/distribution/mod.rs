@@ -13,6 +13,7 @@ use identity::identifier::KeyIdentifier;
 use tracing::error;
 
 use crate::{
+    Event as KoreEvent, Signed,
     governance::model::Roles,
     model::{
         common::{emit_fail, get_gov},
@@ -20,7 +21,6 @@ use crate::{
     },
     request::manager::{RequestManager, RequestManagerMessage},
     validation::proof::ValidationProof,
-    Event as KoreEvent, Signed,
 };
 
 pub mod distributor;
@@ -32,7 +32,7 @@ pub enum DistributionType {
     Manual,
     #[default]
     Subject,
-    Request
+    Request,
 }
 
 #[derive(Default)]
@@ -80,10 +80,14 @@ impl Distribution {
 
         let our_key = self.node_key.clone();
 
-        let request_id = match self.dis_type  {
-            DistributionType::Manual => format!("node/manual_distribution/{}", self.request_id.clone()),
+        let request_id = match self.dis_type {
+            DistributionType::Manual => {
+                format!("node/manual_distribution/{}", self.request_id.clone())
+            }
             DistributionType::Subject => String::default(),
-            DistributionType::Request => format!("request/{}/distribution", self.request_id.clone()),
+            DistributionType::Request => {
+                format!("request/{}/distribution", self.request_id.clone())
+            }
         };
 
         distributor_actor
@@ -103,11 +107,10 @@ impl Distribution {
         &self,
         ctx: &mut ActorContext<Distribution>,
     ) -> Result<(), ActorError> {
-
         if let DistributionType::Manual = self.dis_type {
         } else {
             let req_path =
-            ActorPath::from(format!("/user/request/{}", self.request_id));
+                ActorPath::from(format!("/user/request/{}", self.request_id));
             let req_actor: Option<ActorRef<RequestManager>> =
                 ctx.system().get_actor(&req_path).await;
 
@@ -117,7 +120,7 @@ impl Distribution {
                 return Err(ActorError::NotFound(req_path));
             };
         }
-    
+
         Ok(())
     }
 }
@@ -225,7 +228,8 @@ impl Handler<Distribution> for Distribution {
                         return Err(emit_fail(ctx, e).await);
                     };
 
-                    if let DistributionType::Subject = self.dis_type {} else {
+                    if let DistributionType::Subject = self.dis_type {
+                    } else {
                         ctx.stop().await;
                     };
                 }

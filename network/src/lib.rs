@@ -22,11 +22,11 @@ pub use control_list::Config as ControlListConfig;
 pub use error::Error;
 use identity::identifier::KeyIdentifier;
 pub use libp2p::{
-    identity::{
-        ed25519::PublicKey as PublicKeyEd25519,
-        secp256k1::PublicKey as PublicKeysecp256k1, PublicKey,
-    },
     PeerId,
+    identity::{
+        PublicKey, ed25519::PublicKey as PublicKeyEd25519,
+        secp256k1::PublicKey as PublicKeysecp256k1,
+    },
 };
 pub use monitor::*;
 pub use routing::{Config as RoutingConfig, RoutingNode};
@@ -101,9 +101,9 @@ pub enum NodeType {
 impl fmt::Display for NodeType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NodeType::Bootstrap   => write!(f, "Bootstrap"),
+            NodeType::Bootstrap => write!(f, "Bootstrap"),
             NodeType::Addressable => write!(f, "Addressable"),
-            NodeType::Ephemeral   => write!(f, "Ephemeral"),
+            NodeType::Ephemeral => write!(f, "Ephemeral"),
         }
     }
 }

@@ -3,7 +3,7 @@ use std::{collections::HashSet, str::FromStr};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::model::{event::ProtocolsError, Namespace};
+use crate::model::{Namespace, event::ProtocolsError};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PaginatorEvents {
@@ -27,7 +27,7 @@ pub struct TransferRequestInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConfirmRequestInfo {
     pub subject_id: String,
-    pub name_old_owner: Option<String>
+    pub name_old_owner: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,7 +53,7 @@ pub enum EventRequestInfo {
     Transfer(TransferRequestInfo),
     Confirm(ConfirmRequestInfo),
     EOL(EOLRequestInfo),
-    Reject(RejectRequestInfo)
+    Reject(RejectRequestInfo),
 }
 
 impl<'de> Deserialize<'de> for EventRequestInfo {
@@ -136,19 +136,22 @@ impl<'de> Deserialize<'de> for EventRequestInfo {
                     })?
                     .to_owned(),
                 name_old_owner: confirm
-                .get("name_old_owner")
-                .and_then(Value::as_str).map(|x| x.to_string())
+                    .get("name_old_owner")
+                    .and_then(Value::as_str)
+                    .map(|x| x.to_string()),
             }));
         };
 
         if let Some(reject) = value.get("Reject") {
-            return Ok(Self::Reject(RejectRequestInfo { subject_id: reject
-                .get("subject_id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    serde::de::Error::missing_field("subject_id")
-                })?
-                .to_owned()}));
+            return Ok(Self::Reject(RejectRequestInfo {
+                subject_id: reject
+                    .get("subject_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        serde::de::Error::missing_field("subject_id")
+                    })?
+                    .to_owned(),
+            }));
         }
 
         if let Some(eol) = value.get("EOL") {
@@ -220,7 +223,7 @@ pub struct SubjectDB {
     pub active: String,
     pub sn: u64,
     pub properties: String,
-    pub new_owner: Option<String>
+    pub new_owner: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -235,7 +238,7 @@ pub struct SubjectInfo {
     pub creator: String,
     pub active: bool,
     pub sn: u64,
-    pub properties: Value
+    pub properties: Value,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

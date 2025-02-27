@@ -5,35 +5,47 @@
 //!
 
 use crate::{
+    CreateRequest, Error, EventRequestType, Governance, Node,
     approval::{
-        approver::{Approver, VotationType},
         Approval,
-    }, config::Config, db::Storable, distribution::{distributor::Distributor, Distribution, DistributionType}, evaluation::{
+        approver::{Approver, VotationType},
+    },
+    config::Config,
+    db::Storable,
+    distribution::{Distribution, DistributionType, distributor::Distributor},
+    evaluation::{
+        Evaluation,
         compiler::{Compiler, CompilerMessage},
         evaluator::Evaluator,
         schema::{EvaluationSchema, EvaluationSchemaMessage},
-        Evaluation,
-    }, governance::{
-        model::{CreatorQuantity, Roles},
+    },
+    governance::{
         Schema,
-    }, helpers::db::ExternalDB, model::{
+        model::{CreatorQuantity, Roles},
+    },
+    helpers::db::ExternalDB,
+    model::{
+        HashId, Namespace, ValueWrapper,
         common::{
-            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data, register_relation, try_to_update_subject, verify_protocols_state
+            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
+            register_relation, try_to_update_subject, verify_protocols_state,
         },
         event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
         request::EventRequest,
         signature::Signed,
-        HashId, Namespace, ValueWrapper,
-    }, node::{
+    },
+    node::{
+        NodeMessage, TransferSubject,
         nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
         register::{Register, RegisterData, RegisterMessage},
-        NodeMessage, TransferSubject,
-    }, update::TransferResponse, validation::{
+    },
+    update::TransferResponse,
+    validation::{
+        Validation,
         proof::ValidationProof,
         schema::{ValidationSchema, ValidationSchemaMessage},
         validator::Validator,
-        Validation,
-    }, CreateRequest, Error, EventRequestType, Governance, Node
+    },
 };
 
 use actor::{
@@ -42,12 +54,12 @@ use actor::{
 };
 use event::LedgerEvent;
 use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+    DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
 };
 
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
-use json_patch::{patch, Patch};
+use json_patch::{Patch, patch};
 use serde::{Deserialize, Serialize};
 use serde_json::to_value;
 use sinkdata::{SinkData, SinkDataMessage};
@@ -60,8 +72,8 @@ use std::{collections::HashSet, str::FromStr};
 
 pub mod event;
 pub mod sinkdata;
-pub mod validata;
 pub mod transfer;
+pub mod validata;
 
 const TARGET_SUBJECT: &str = "Kore-Subject";
 
@@ -1004,8 +1016,7 @@ impl Subject {
                     }
                 }
             };
-        }
-        else {
+        } else {
             if let LedgerValue::Patch(_) = new_ledger.content.value {
                 return Err(Error::Subject("The event failed in some protocol but a patch arrived to apply".to_owned()));
             }
@@ -1150,12 +1161,14 @@ impl Subject {
 
             events.remove(0)
         };
-        
+
         for event in events {
-            let last_event_is_ok = match self.verify_new_ledger_event(&last_ledger, &event).await {
-                Ok(last_event_is_ok) => {
-                    last_event_is_ok
-                }, Err(e) => {
+            let last_event_is_ok = match self
+                .verify_new_ledger_event(&last_ledger, &event)
+                .await
+            {
+                Ok(last_event_is_ok) => last_event_is_ok,
+                Err(e) => {
                     if let Error::Sn = e {
                         // El evento que estamos aplicando no es el siguiente.
                         continue;
@@ -1167,10 +1180,20 @@ impl Subject {
             if last_event_is_ok {
                 match event.content.event_request.content.clone() {
                     EventRequest::Transfer(transfer_request) => {
-                        Subject::new_transfer_subject(ctx, &transfer_request.subject_id.to_string(), &transfer_request.new_owner.to_string(), &self.owner.to_string()).await?
+                        Subject::new_transfer_subject(
+                            ctx,
+                            &transfer_request.subject_id.to_string(),
+                            &transfer_request.new_owner.to_string(),
+                            &self.owner.to_string(),
+                        )
+                        .await?
                     }
                     EventRequest::Reject(reject_request) => {
-                        Subject::reject_transfer_subject(ctx, &reject_request.subject_id.to_string()).await?;
+                        Subject::reject_transfer_subject(
+                            ctx,
+                            &reject_request.subject_id.to_string(),
+                        )
+                        .await?;
                     }
                     EventRequest::Confirm(confirm_request) => {
                         Subject::change_node_subject(
@@ -1252,7 +1275,9 @@ impl Subject {
         let Some(node_actor) = node_actor else {
             return Err(ActorError::NotFound(node_path));
         };
-        node_actor.tell(NodeMessage::DeleteSubject(subject_id.to_owned())).await
+        node_actor
+            .tell(NodeMessage::DeleteSubject(subject_id.to_owned()))
+            .await
     }
 
     pub async fn change_node_subject_state(
@@ -1266,11 +1291,13 @@ impl Subject {
         // We obtain the validator
         let Some(node_actor) = node_actor else {
             return Err(ActorError::NotFound(node_path));
-            
         };
 
         node_actor
-            .tell(NodeMessage::RegisterSubject{owner: self.owner.to_string(), subject_id: self.subject_id.to_string()})
+            .tell(NodeMessage::RegisterSubject {
+                owner: self.owner.to_string(),
+                subject_id: self.subject_id.to_string(),
+            })
             .await
     }
 
@@ -1291,11 +1318,7 @@ impl Subject {
             .await?;
         }
 
-        Self::delet_node_subject(
-            ctx,
-            &self.subject_id.to_string()
-        )
-        .await?;
+        Self::delet_node_subject(ctx, &self.subject_id.to_string()).await?;
 
         Self::purge_storage(ctx).await?;
 
@@ -1350,10 +1373,12 @@ impl Subject {
         };
 
         for event in events {
-            let last_event_is_ok = match self.verify_new_ledger_event(&last_ledger, &event).await {
-                Ok(last_event_is_ok) => {
-                    last_event_is_ok
-                }, Err(e) => {
+            let last_event_is_ok = match self
+                .verify_new_ledger_event(&last_ledger, &event)
+                .await
+            {
+                Ok(last_event_is_ok) => last_event_is_ok,
+                Err(e) => {
                     if let Error::Sn = e {
                         // El evento que estamos aplicando no es el siguiente.
                         continue;
@@ -1366,10 +1391,20 @@ impl Subject {
             if last_event_is_ok {
                 match event.content.event_request.content.clone() {
                     EventRequest::Transfer(transfer_request) => {
-                        Subject::new_transfer_subject(ctx, &transfer_request.subject_id.to_string(), &transfer_request.new_owner.to_string(), &self.owner.to_string()).await?;
+                        Subject::new_transfer_subject(
+                            ctx,
+                            &transfer_request.subject_id.to_string(),
+                            &transfer_request.new_owner.to_string(),
+                            &self.owner.to_string(),
+                        )
+                        .await?;
                     }
                     EventRequest::Reject(reject_request) => {
-                        Subject::reject_transfer_subject(ctx, &reject_request.subject_id.to_string()).await?;
+                        Subject::reject_transfer_subject(
+                            ctx,
+                            &reject_request.subject_id.to_string(),
+                        )
+                        .await?;
                     }
                     EventRequest::Confirm(confirm_request) => {
                         self.register_relation(
@@ -1397,7 +1432,12 @@ impl Subject {
                         )
                         .await?;
 
-                        Subject::transfer_register(ctx, event.signature.signer.clone(), self.owner.clone()).await?;
+                        Subject::transfer_register(
+                            ctx,
+                            event.signature.signer.clone(),
+                            self.owner.clone(),
+                        )
+                        .await?;
                     }
                     EventRequest::EOL(_eolrequest) => {
                         self.register(ctx, false).await?
@@ -1416,16 +1456,23 @@ impl Subject {
         Ok(())
     }
 
-    async fn transfer_register(ctx: &mut ActorContext<Subject>, new: KeyIdentifier, old: KeyIdentifier) -> Result<(), ActorError>{
-        let actor: Option<ActorRef<TransferRegister>> = ctx.get_child("transfer_register").await;
+    async fn transfer_register(
+        ctx: &mut ActorContext<Subject>,
+        new: KeyIdentifier,
+        old: KeyIdentifier,
+    ) -> Result<(), ActorError> {
+        let actor: Option<ActorRef<TransferRegister>> =
+            ctx.get_child("transfer_register").await;
         let Some(actor) = actor else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/transfer_register",
                 ctx.path()
-            ))))
+            ))));
         };
 
-        actor.tell(TransferRegisterMessage::RegisterNewOldOwner { old, new }).await?;
+        actor
+            .tell(TransferRegisterMessage::RegisterNewOldOwner { old, new })
+            .await?;
 
         Ok(())
     }
@@ -1438,7 +1485,8 @@ impl Subject {
         let our_key = self.get_node_key(ctx).await?;
         let current_sn = self.sn;
         let current_new_owner_some = self.new_owner.is_some();
-        let i_current_new_owner = self.new_owner.clone() == Some(our_key.clone());
+        let i_current_new_owner =
+            self.new_owner.clone() == Some(our_key.clone());
         let current_owner = self.owner.clone();
 
         if self.governance_id.is_empty() {
@@ -1521,13 +1569,12 @@ impl Subject {
                     let Some(ext_db): Option<ExternalDB> =
                         ctx.system().get_helper("ext_db").await
                     else {
-                        return Err(ActorError::NotHelper(
-                            "config".to_owned(),
-                        ));
+                        return Err(ActorError::NotHelper("config".to_owned()));
                     };
 
                     let new_owner_some = self.new_owner.is_some();
-                    let i_new_owner = self.new_owner.clone() == Some(our_key.clone());
+                    let i_new_owner =
+                        self.new_owner.clone() == Some(our_key.clone());
                     let mut up_not_owner: bool = false;
                     let mut up_owner: bool = false;
 
@@ -1545,13 +1592,15 @@ impl Subject {
                             // Seguimos siendo dueños
                             if current_new_owner_some && !new_owner_some {
                                 up_owner = true;
-                            } else if !current_new_owner_some && new_owner_some {
+                            } else if !current_new_owner_some && new_owner_some
+                            {
                                 up_not_owner = true;
                             }
                         }
                     } else {
                         // No eramos dueño
-                        if current_owner != self.owner && self.owner == our_key {
+                        if current_owner != self.owner && self.owner == our_key
+                        {
                             // Ahora Somos dueños
                             if !new_owner_some && !i_current_new_owner {
                                 // new owner false
@@ -1565,7 +1614,7 @@ impl Subject {
                             up_owner = true;
                         }
                     }
-                    
+
                     if up_not_owner {
                         Self::down_owner(ctx).await?;
                         Self::up_not_owner(
@@ -1777,10 +1826,14 @@ impl Subject {
                     Self::down_owner_not_gov(ctx).await?;
                 }
 
-                let i_new_owner = self.new_owner.clone() == Some(our_key.clone());
+                let i_new_owner =
+                    self.new_owner.clone() == Some(our_key.clone());
 
                 // Si antes no eramos el new owner y ahora somos el new owner.
-                if !i_current_new_owner && i_new_owner && current_owner != our_key {
+                if !i_current_new_owner
+                    && i_new_owner
+                    && current_owner != our_key
+                {
                     Self::up_owner_not_gov(ctx, &our_key).await?;
                 }
 
@@ -1789,7 +1842,7 @@ impl Subject {
                     // Si ahora somos el dueño pero no eramos new owner.
                     if self.owner == our_key && !i_current_new_owner {
                         Self::up_owner_not_gov(ctx, &our_key).await?;
-                    } else if current_owner == our_key && !i_new_owner{
+                    } else if current_owner == our_key && !i_new_owner {
                         Self::down_owner_not_gov(ctx).await?;
                     }
                 } else if i_current_new_owner && !i_new_owner {
@@ -1950,7 +2003,10 @@ impl Subject {
         let json_patch = match value {
             LedgerValue::Patch(value_wrapper) => value_wrapper,
             LedgerValue::Error(e) => {
-                let error = format!("Apply, event value can not be an error if protocols was successful: {:?}", e);
+                let error = format!(
+                    "Apply, event value can not be an error if protocols was successful: {:?}",
+                    e
+                );
                 error!(TARGET_SUBJECT, error);
                 return Err(ActorError::Functional(error));
             }
@@ -2077,9 +2133,10 @@ impl Actor for Subject {
 
         if !self.governance_id.is_empty() {
             let transfer_register = TransferRegister::default();
-            let _transfer_register_actor = ctx.create_child("transfer_register", transfer_register).await?;
+            let _transfer_register_actor = ctx
+                .create_child("transfer_register", transfer_register)
+                .await?;
         }
-        
 
         if self.active {
             if self.governance_id.is_empty() {
@@ -2149,11 +2206,16 @@ impl Handler<Subject> for Subject {
                             self.namespace.to_string(),
                         )
                         .await?;
-                    },
+                    }
                     TransferResponse::Reject => {
-                        Subject::reject_transfer_subject(ctx, &self.subject_id.to_string()).await?;
-                        try_to_update_subject(ctx, self.subject_id.clone()).await?;
-                    },
+                        Subject::reject_transfer_subject(
+                            ctx,
+                            &self.subject_id.to_string(),
+                        )
+                        .await?;
+                        try_to_update_subject(ctx, self.subject_id.clone())
+                            .await?;
+                    }
                 }
 
                 Ok(SubjectResponse::Ok)
@@ -2207,7 +2269,11 @@ impl Handler<Subject> for Subject {
                     match Governance::try_from(self.properties.clone()) {
                         Ok(gov) => return Ok(SubjectResponse::Governance(gov)),
                         Err(e) => {
-                            error!(TARGET_SUBJECT, "GetGovernance, can not convert governance from properties: {}", e);
+                            error!(
+                                TARGET_SUBJECT,
+                                "GetGovernance, can not convert governance from properties: {}",
+                                e
+                            );
                             return Err(ActorError::FunctionalFail(
                                 e.to_string(),
                             ));
@@ -2296,7 +2362,10 @@ impl PersistentActor for Subject {
                         let propierties = match event.content.value.clone() {
                             LedgerValue::Patch(value_wrapper) => value_wrapper,
                             LedgerValue::Error(e) => {
-                                let error = format!("Apply, event value can not be an error if protocols was successful: {:?}", e);
+                                let error = format!(
+                                    "Apply, event value can not be an error if protocols was successful: {:?}",
+                                    e
+                                );
                                 error!(TARGET_SUBJECT, error);
                                 return Err(ActorError::Functional(error));
                             }
@@ -2340,7 +2409,10 @@ impl PersistentActor for Subject {
                 ) {
                     Ok(gov) => gov,
                     Err(e) => {
-                        let error = format!("Apply, Governance_id is empty but can not convert propierties in governance data: {}", e);
+                        let error = format!(
+                            "Apply, Governance_id is empty but can not convert propierties in governance data: {}",
+                            e
+                        );
                         error!(TARGET_SUBJECT, error);
                         return Err(ActorError::Functional(error));
                     }
@@ -2350,7 +2422,10 @@ impl PersistentActor for Subject {
                 let gov_value = match to_value(gov) {
                     Ok(value) => value,
                     Err(e) => {
-                        let error = format!("Apply, can not convert governance data into Value: {}", e);
+                        let error = format!(
+                            "Apply, can not convert governance data into Value: {}",
+                            e
+                        );
                         error!(TARGET_SUBJECT, error);
                         return Err(ActorError::Functional(error));
                     }
@@ -2389,13 +2464,13 @@ mod tests {
     use super::*;
 
     use crate::{
+        FactRequest,
         governance::init::init_state,
         model::{
             event::Event as KoreEvent,
             request::tests::create_start_request_mock, signature::Signature,
         },
         system::tests::create_system,
-        FactRequest,
     };
 
     async fn create_subject_and_ledger_event(
@@ -2610,13 +2685,13 @@ mod tests {
     }
 
     use actor::SystemRef;
-    use test_log::test;
     use event::LedgerEventMessage;
     use identity::{
-        identifier::derive::{digest::DigestDerivator, KeyDerivator},
+        identifier::derive::{KeyDerivator, digest::DigestDerivator},
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
+    use test_log::test;
 
     #[test(tokio::test)]
     async fn test_subject() {

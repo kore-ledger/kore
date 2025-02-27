@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use futures::prelude::*;
 use futures::{AsyncRead, AsyncWrite};
 use libp2p::StreamProtocol;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{io, marker::PhantomData};
 
 /// Behaviour for encoding and decoding messages using [`serde_json`].

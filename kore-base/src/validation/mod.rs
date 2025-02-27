@@ -11,15 +11,15 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    governance::{model::Roles, Quorum},
+    governance::{Quorum, model::Roles},
     model::{
+        SignTypesNode,
         common::{
             emit_fail, get_sign, get_signers_quorum_gov_version,
             send_reboot_to_req, try_to_update,
         },
         event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
-        SignTypesNode
     },
     request::manager::{RequestManager, RequestManagerMessage},
     subject::Metadata,
@@ -112,14 +112,12 @@ impl Validation {
         let proof = ValidationProof::from_info(validation_info, prev_evet_hash)
             .map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
 
-        Ok(
-            ValidationReq {
-                proof: proof.clone(),
-                previous_proof: previous_proof.clone(),
-                prev_event_validation_response: prev_event_validation_response
-                    .clone(),
-            }
-        )
+        Ok(ValidationReq {
+            proof: proof.clone(),
+            previous_proof: previous_proof.clone(),
+            prev_event_validation_response: prev_event_validation_response
+                .clone(),
+        })
     }
 
     async fn create_validators(
@@ -296,7 +294,11 @@ impl Handler<Validation> for Validation {
                 {
                     Ok(signers_quorum) => signers_quorum,
                     Err(e) => {
-                        error!(TARGET_VALIDATION, "Create, can not create obtain signers and quorum: {}", e);
+                        error!(
+                            TARGET_VALIDATION,
+                            "Create, can not create obtain signers and quorum: {}",
+                            e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
@@ -378,7 +380,11 @@ impl Handler<Validation> for Validation {
                                 )
                                 .await
                                 {
-                                    error!(TARGET_VALIDATION, "Response, can not send reboot to Request actor: {}", e);
+                                    error!(
+                                        TARGET_VALIDATION,
+                                        "Response, can not send reboot to Request actor: {}",
+                                        e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 }
                                 self.reboot = true;
@@ -396,7 +402,11 @@ impl Handler<Validation> for Validation {
                             if let Err(e) =
                                 self.send_validation_to_req(ctx, true).await
                             {
-                                error!(TARGET_VALIDATION, "Response, can not send validation response to Request actor: {}", e);
+                                error!(
+                                    TARGET_VALIDATION,
+                                    "Response, can not send validation response to Request actor: {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             };
                         } else if self.validators.is_empty() {
@@ -405,12 +415,19 @@ impl Handler<Validation> for Validation {
                             if let Err(e) =
                                 self.send_validation_to_req(ctx, false).await
                             {
-                                error!(TARGET_VALIDATION, "Response, can not send validation response to Request actor: {}", e);
+                                error!(
+                                    TARGET_VALIDATION,
+                                    "Response, can not send validation response to Request actor: {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             };
                         }
                     } else {
-                        warn!(TARGET_VALIDATION, "Response, A response has been received from someone we were not expecting.");
+                        warn!(
+                            TARGET_VALIDATION,
+                            "Response, A response has been received from someone we were not expecting."
+                        );
                     }
                 }
             }
@@ -444,8 +461,11 @@ pub mod tests {
     };
 
     use crate::{
+        CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node,
+        NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
+        SubjectResponse, ValueWrapper,
         helpers::db::ExternalDB,
-        model::{event::LedgerValue, Namespace, SignTypesNode},
+        model::{Namespace, SignTypesNode, event::LedgerValue},
         query::Query,
         request::{
             RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
@@ -454,9 +474,6 @@ pub mod tests {
             LedgerEvent, LedgerEventMessage, LedgerEventResponse,
         },
         system::tests::create_system,
-        CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node,
-        NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
-        SubjectResponse, ValueWrapper,
     };
 
     pub async fn create_subject_gov() -> (

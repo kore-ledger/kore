@@ -7,11 +7,11 @@
 //!
 
 use libp2p::{
+    Multiaddr, PeerId,
     swarm::{
         DialError, DialFailure, FromSwarm, NewExternalAddrCandidate,
         NewListenAddr,
     },
-    Multiaddr, PeerId,
 };
 use lru::LruCache;
 
@@ -133,9 +133,9 @@ mod tests {
     use super::*;
 
     use libp2p::{
+        PeerId,
         core::multiaddr::Protocol,
         swarm::{FromSwarm, NewExternalAddrCandidate},
-        PeerId,
     };
 
     use once_cell::sync::Lazy;

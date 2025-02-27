@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::{
-    create_seed, BaseKeyPair, KeyGenerator, KeyMaterial, KeyPair, Payload,
-    DHKE, DSA,
+    BaseKeyPair, DHKE, DSA, KeyGenerator, KeyMaterial, KeyPair, Payload,
+    create_seed,
 };
 
 use crate::identifier;
@@ -12,12 +12,12 @@ use ed25519_dalek::pkcs8::EncodePrivateKey;
 use identifier::error::Error;
 
 use ed25519_dalek::{
-    Signature, Signer, SigningKey, Verifier, VerifyingKey, KEYPAIR_LENGTH,
-    SECRET_KEY_LENGTH,
+    KEYPAIR_LENGTH, SECRET_KEY_LENGTH, Signature, Signer, SigningKey, Verifier,
+    VerifyingKey,
 };
 
-use base64::{engine::general_purpose, Engine as _};
-use serde::{de::Deserializer, Deserialize, Serialize, Serializer};
+use base64::{Engine as _, engine::general_purpose};
+use serde::{Deserialize, Serialize, Serializer, de::Deserializer};
 use std::convert::TryFrom;
 
 /// Ed25519 cryptographic key pair
@@ -184,7 +184,7 @@ impl<'de> Deserialize<'de> for Ed25519KeyPair {
 #[cfg(test)]
 mod tests {
 
-    use super::{super::Payload, Ed25519KeyPair, KeyGenerator, DSA};
+    use super::{super::Payload, DSA, Ed25519KeyPair, KeyGenerator};
 
     #[test]
     fn test_ed25519() {

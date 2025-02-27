@@ -8,7 +8,7 @@ use super::HashId;
 
 use crate::Error;
 
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
+use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};

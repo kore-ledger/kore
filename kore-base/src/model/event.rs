@@ -5,16 +5,16 @@
 //!
 
 use super::{
+    HashId,
     network::TimeOutResponse,
     request::EventRequest,
     signature::{Signature, Signed},
     wrapper::ValueWrapper,
-    HashId,
 };
 
-use crate::{subject::Metadata, validation::proof::EventProof, Error};
+use crate::{Error, subject::Metadata, validation::proof::EventProof};
 
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
+use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};

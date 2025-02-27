@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
+use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
 use kore_base::config::{ExternalDbConfig, KoreDbConfig};
 use network::{NodeType, RoutingNode};
 use serde::{Deserialize, Deserializer};

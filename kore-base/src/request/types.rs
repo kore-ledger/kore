@@ -4,18 +4,16 @@
 use std::collections::HashSet;
 
 use crate::{
+    Event as KoreEvent, ValidationInfo,
     evaluation::{request::EvaluationReq, response::EvalLedgerResponse},
     model::{
         event::{Ledger, ProtocolsSignatures},
         signature::Signed,
     },
     validation::proof::ValidationProof,
-    Event as KoreEvent,
-    ValidationInfo,
 };
 
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RequestManagerState {
@@ -43,7 +41,7 @@ pub enum RequestManagerState {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ReqManInitMessage {
     Evaluate,
-    Validate
+    Validate,
 }
 
 #[derive(Default)]

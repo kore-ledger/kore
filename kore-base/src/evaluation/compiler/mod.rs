@@ -9,18 +9,18 @@ use actor::{
 };
 use async_std::fs;
 use async_trait::async_trait;
-use base64::{prelude::BASE64_STANDARD, Engine as Base64Engine};
-use borsh::{to_vec, BorshDeserialize, BorshSerialize};
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
+use base64::{Engine as Base64Engine, prelude::BASE64_STANDARD};
+use borsh::{BorshDeserialize, BorshSerialize, to_vec};
+use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use tracing::error;
 use wasmtime::{Config, Engine, ExternType, Module, Store};
 
 use crate::{
-    model::common::{generate_linker, MemoryManager},
-    Error, HashId, ValueWrapper, CONTRACTS, DIGEST_DERIVATOR,
+    CONTRACTS, DIGEST_DERIVATOR, Error, HashId, ValueWrapper,
+    model::common::{MemoryManager, generate_linker},
 };
 
 const TARGET_COMPILER: &str = "Kore-Evaluation-Compiler";
@@ -30,7 +30,7 @@ const TARGET_COMPILER: &str = "Kore-Evaluation-Compiler";
 )]
 pub struct ContractResult {
     pub success: bool,
-    pub error: String
+    pub error: String,
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -179,14 +179,17 @@ impl Compiler {
             match import.ty() {
                 ExternType::Func(_) => {
                     if !pending_sdk.remove(import.name()) {
-                        return Err(Error::Compiler(format!("Module {} has a function that is not contemplated in the sdk", contract_path)));
+                        return Err(Error::Compiler(format!(
+                            "Module {} has a function that is not contemplated in the sdk",
+                            contract_path
+                        )));
                     }
                 }
                 _ => {
                     return Err(Error::Compiler(format!(
                         "Module {} has a import that is not function",
                         contract_path
-                    )))
+                    )));
                 }
             }
         }
@@ -263,7 +266,10 @@ impl Compiler {
         if contract_result.success {
             Ok(())
         } else {
-            Err(Error::Compiler(format!("Contract execution in compilation was not successful: {}", contract_result.error)))
+            Err(Error::Compiler(format!(
+                "Contract execution in compilation was not successful: {}",
+                contract_result.error
+            )))
         }
     }
 

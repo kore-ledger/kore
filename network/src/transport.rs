@@ -7,15 +7,15 @@
 use crate::Error;
 
 use libp2p::{
+    PeerId, Transport,
     core::{
         muxing::StreamMuxerBox,
-        transport::{upgrade::Version, Boxed},
+        transport::{Boxed, upgrade::Version},
     },
     dns,
     identity::Keypair,
     metrics::{BandwidthTransport, Registry},
-    noise,
-    yamux, PeerId, Transport,
+    noise, yamux,
 };
 
 #[cfg(feature = "test")]
@@ -57,7 +57,7 @@ pub fn build_transport(
     #[cfg(not(feature = "test"))]
     let transport = tcp::tokio::Transport::new(Config::default());
     #[cfg(feature = "test")]
-    let transport =  memory::MemoryTransport::default();
+    let transport = memory::MemoryTransport::default();
 
     // Upgrade the transport with the noise authentication and yamux multiplexing.
     let transport = transport

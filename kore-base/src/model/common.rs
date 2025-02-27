@@ -13,10 +13,13 @@ use network::ComunicateInfo;
 use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
+    ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
+    NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
+    Subject, SubjectMessage, SubjectResponse,
     auth::{Auth, AuthMessage},
     governance::{
-        model::{CreatorQuantity, Roles},
         Quorum,
+        model::{CreatorQuantity, Roles},
     },
     intermediary::Intermediary,
     model::SignTypesNode,
@@ -25,16 +28,18 @@ use crate::{
     },
     request::manager::{RequestManager, RequestManagerMessage},
     subject::{
-        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, transfer::{TransferRegister, TransferRegisterMessage, TransferRegisterResponse}, validata::{ValiData, ValiDataMessage, ValiDataResponse}, Metadata
+        Metadata,
+        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
+        transfer::{
+            TransferRegister, TransferRegisterMessage, TransferRegisterResponse,
+        },
+        validata::{ValiData, ValiDataMessage, ValiDataResponse},
     },
     validation::proof::ValidationProof,
-    ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
-    NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
-    Subject, SubjectMessage, SubjectResponse,
 };
 use tracing::error;
 
-use super::{event::ProtocolsSignatures, Namespace};
+use super::{Namespace, event::ProtocolsSignatures};
 
 const TARGET_COMMON: &str = "Kore-Model-Common";
 
@@ -117,8 +122,8 @@ where
 pub async fn subject_owner<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
-) -> Result<(bool, bool), ActorError> 
-where 
+) -> Result<(bool, bool), ActorError>
+where
     A: Actor + Handler<A>,
 {
     let node_path = ActorPath::from("/user/node");
@@ -145,8 +150,8 @@ where
 pub async fn subject_old<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
-) -> Result<bool, ActorError> 
-where 
+) -> Result<bool, ActorError>
+where
     A: Actor + Handler<A>,
 {
     let node_path = ActorPath::from("/user/node");
@@ -173,22 +178,26 @@ where
 pub async fn subject_old_owner<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
-    owner: KeyIdentifier
-) -> Result<bool, ActorError> 
-where 
+    owner: KeyIdentifier,
+) -> Result<bool, ActorError>
+where
     A: Actor + Handler<A>,
 {
-    let tranfer_register_path = ActorPath::from(&format!("/user/node/{}/transfer_register", subject_id));
+    let tranfer_register_path = ActorPath::from(&format!(
+        "/user/node/{}/transfer_register",
+        subject_id
+    ));
     let transfer_register_actor: Option<actor::ActorRef<TransferRegister>> =
         ctx.system().get_actor(&tranfer_register_path).await;
 
-    let response = if let Some(transfer_register_actor) = transfer_register_actor {
-        transfer_register_actor
-            .ask(TransferRegisterMessage::IsOldOwner(owner))
-            .await?
-    } else {
-        return Err(ActorError::NotFound(tranfer_register_path));
-    };
+    let response =
+        if let Some(transfer_register_actor) = transfer_register_actor {
+            transfer_register_actor
+                .ask(TransferRegisterMessage::IsOldOwner(owner))
+                .await?
+        } else {
+            return Err(ActorError::NotFound(tranfer_register_path));
+        };
 
     match response {
         TransferRegisterResponse::IsOwner(res) => Ok(res),
@@ -410,13 +419,12 @@ pub fn verify_protocols_state(
     approve: Option<bool>,
     approval_require: bool,
     val: bool,
-    is_gov: bool
+    is_gov: bool,
 ) -> Result<bool, Error> {
     match request {
-        EventRequestType::Create |
-        EventRequestType::EOL |
-        EventRequestType::Reject 
-        => {
+        EventRequestType::Create
+        | EventRequestType::EOL
+        | EventRequestType::Reject => {
             if approve.is_some() || eval.is_some() || approval_require {
                 return Err(Error::Protocols("In create, reject and eol request, approve and eval must be None and approval require must be false".to_owned()));
             }
@@ -449,24 +457,24 @@ pub fn verify_protocols_state(
 
                 Ok(val && eval)
             } else if eval {
-                    if !approval_require {
-                        return Err(Error::Protocols("In fact request (governace subject), if eval is success approval require must be true".to_owned()));
-                    }
-                    let Some(approve) = approve else {
-                        return Err(Error::Protocols("In fact request if approval was required, approve must be Some".to_owned()));
-                    };
-                    Ok(eval && approve && val)
-            } else {
-                    if approval_require {
-                        return Err(Error::Protocols("In fact request (governace subject), if eval is not success approval require must be false".to_owned()));
-                    }
-
-                    if approve.is_some() {
-                        return Err(Error::Protocols("In fact request if approval was not required, approve must be None".to_owned()));
-                    }
-                    
-                    Ok(eval && val)
+                if !approval_require {
+                    return Err(Error::Protocols("In fact request (governace subject), if eval is success approval require must be true".to_owned()));
                 }
+                let Some(approve) = approve else {
+                    return Err(Error::Protocols("In fact request if approval was required, approve must be Some".to_owned()));
+                };
+                Ok(eval && approve && val)
+            } else {
+                if approval_require {
+                    return Err(Error::Protocols("In fact request (governace subject), if eval is not success approval require must be false".to_owned()));
+                }
+
+                if approve.is_some() {
+                    return Err(Error::Protocols("In fact request if approval was not required, approve must be None".to_owned()));
+                }
+
+                Ok(eval && val)
+            }
         }
         EventRequestType::Confirm => {
             if !is_gov {
@@ -672,7 +680,6 @@ where
         )),
     }
 }
-
 
 pub struct UpdateData {
     pub sn: u64,

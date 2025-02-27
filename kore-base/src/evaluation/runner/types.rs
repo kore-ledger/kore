@@ -6,9 +6,7 @@ use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{
-    model::Namespace, ValueWrapper
-};
+use crate::{ValueWrapper, model::Namespace};
 
 #[derive(
     Serialize, Deserialize, BorshSerialize, BorshDeserialize, Debug, Clone,
@@ -16,7 +14,7 @@ use crate::{
 pub struct ContractResult {
     pub final_state: ValueWrapper,
     pub success: bool,
-    pub error: String
+    pub error: String,
 }
 
 #[derive(
@@ -29,27 +27,26 @@ pub struct RunnerResult {
 
 #[derive(Debug, Clone)]
 pub enum EvaluateType {
-    NotGovFact{
+    NotGovFact {
         contract: Vec<u8>,
-        payload: ValueWrapper
+        payload: ValueWrapper,
     },
     GovFact {
-        payload: ValueWrapper
+        payload: ValueWrapper,
     },
     GovTransfer {
-        new_owner: KeyIdentifier
+        new_owner: KeyIdentifier,
     },
     NotGovTransfer {
         new_owner: KeyIdentifier,
         namespace: Namespace,
-        schema_id: String
+        schema_id: String,
     },
     GovConfirm {
         new_owner: KeyIdentifier,
-        old_owner_name: Option<String>
-    }
+        old_owner_name: Option<String>,
+    },
 }
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum GovernancePatch {

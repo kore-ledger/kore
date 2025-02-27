@@ -1,14 +1,14 @@
 use criterion::Criterion;
 use criterion::{criterion_group, criterion_main};
 use identity::{
-    identifier::derive::{digest::DigestDerivator, KeyDerivator},
+    identifier::derive::{KeyDerivator, digest::DigestDerivator},
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
 use kore_base::model::request::CreateRequest;
 use kore_base::model::request::EventRequest;
 use kore_base::{
-    config::{Config, ExternalDbConfig, KoreDbConfig},
     Api,
+    config::{Config, ExternalDbConfig, KoreDbConfig},
 };
 use network::{Config as NetworkConfig, RoutingNode};
 use prometheus_client::registry::Registry;
@@ -73,13 +73,9 @@ pub async fn create_node(
 }
 
 async fn governance_copy_benchmark() {
-    let node1 = create_node(
-        network::NodeType::Bootstrap,
-        "/memory/4500",
-        vec![],
-        true,
-    )
-    .await;
+    let node1 =
+        create_node(network::NodeType::Bootstrap, "/memory/4500", vec![], true)
+            .await;
 
     let request = EventRequest::Create(CreateRequest {
         governance_id: Default::default(),
@@ -89,17 +85,15 @@ async fn governance_copy_benchmark() {
 
     let data = node1.own_request(request).await.unwrap();
     loop {
-        let response = node1
-            .request_state(data.request_id.parse().unwrap())
-            .await;
+        let response =
+            node1.request_state(data.request_id.parse().unwrap()).await;
         match response {
             Ok(response) => {
                 if response.status == "Finish" {
                     break;
                 }
-            },
+            }
             Err(_) => continue,
-            
         }
     }
 }

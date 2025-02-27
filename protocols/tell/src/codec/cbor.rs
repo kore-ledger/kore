@@ -9,7 +9,7 @@ use cbor4ii::core::error::DecodeError;
 use futures::prelude::*;
 use futures::{AsyncRead, AsyncWrite};
 use libp2p::StreamProtocol;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{
     collections::TryReserveError, convert::Infallible, io, marker::PhantomData,
 };

@@ -13,6 +13,8 @@ use relationship::RelationShip;
 use tracing::{error, warn};
 
 use crate::{
+    DIGEST_DERIVATOR, Error, EventRequest, Subject, SubjectMessage,
+    SubjectResponse,
     auth::{Auth, AuthMessage, AuthResponse},
     config::Config,
     db::Storable,
@@ -21,18 +23,16 @@ use crate::{
     helpers::{db::ExternalDB, sink::KoreSink},
     manual_distribution::ManualDistribution,
     model::{
+        HashId, SignTypesNode,
         event::{Ledger, LedgerValue},
         signature::{Signature, Signed},
-        HashId, SignTypesNode,
     },
     subject::CreateSubjectData,
-    Error, EventRequest, Subject, SubjectMessage, SubjectResponse,
-    DIGEST_DERIVATOR,
 };
 
 use identity::{
     identifier::{
-        derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+        DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
     },
     keys::KeyPair,
 };
@@ -81,7 +81,7 @@ impl Node {
             owned_subjects: Vec::new(),
             known_subjects: Vec::new(),
             transfer_subjects: Vec::new(),
-            temporal_subjects: Vec::new()
+            temporal_subjects: Vec::new(),
         })
     }
 
@@ -109,7 +109,6 @@ impl Node {
         self.temporal_subjects.push(subject_id);
     }
 
-
     /// Adds a subject to the node's owned subjects.
     pub fn transfer_subject(&mut self, data: TransferSubject) {
         self.transfer_subjects.push(data);
@@ -120,7 +119,8 @@ impl Node {
     }
 
     pub fn delete_transfer(&mut self, subject_id: String) {
-        self.transfer_subjects.retain(|x| *x.subject_id != subject_id);
+        self.transfer_subjects
+            .retain(|x| *x.subject_id != subject_id);
     }
 
     pub fn change_subject_owner(
@@ -128,7 +128,8 @@ impl Node {
         subject_id: String,
         iam_owner: bool,
     ) {
-        self.transfer_subjects.retain(|x| *x.subject_id != subject_id);
+        self.transfer_subjects
+            .retain(|x| *x.subject_id != subject_id);
 
         if iam_owner {
             self.known_subjects.retain(|x| *x != subject_id);
@@ -139,11 +140,7 @@ impl Node {
         }
     }
 
-    pub fn register_subject(
-        &mut self,
-        subject_id: String,
-        iam_owner: bool,
-    ) {
+    pub fn register_subject(&mut self, subject_id: String, iam_owner: bool) {
         self.temporal_subjects.retain(|x| *x != subject_id);
 
         if iam_owner {
@@ -151,7 +148,6 @@ impl Node {
         } else {
             self.known_subjects.push(subject_id);
         }
-
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
@@ -282,11 +278,11 @@ pub enum NodeEvent {
     OwnedSubject(String),
     TemporalSubject(String),
     KnownSubject(String),
-    RegisterSubject  { iam_owner: bool, subject_id: String },
+    RegisterSubject { iam_owner: bool, subject_id: String },
     ChangeSubjectOwner { iam_owner: bool, subject_id: String },
     ConfirmTransfer(String),
     TransferSubjerct(TransferSubject),
-    DeleteSubject (String),
+    DeleteSubject(String),
 }
 
 impl Event for NodeEvent {}
@@ -347,7 +343,10 @@ impl PersistentActor for Node {
             NodeEvent::ConfirmTransfer(subject_id) => {
                 self.delete_transfer(subject_id.clone());
             }
-            NodeEvent::RegisterSubject { iam_owner, subject_id } => {
+            NodeEvent::RegisterSubject {
+                iam_owner,
+                subject_id,
+            } => {
                 self.register_subject(subject_id.clone(), *iam_owner);
             }
             NodeEvent::TemporalSubject(subject_id) => {
@@ -371,7 +370,7 @@ impl PersistentActor for Node {
             } => {
                 self.change_subject_owner(subject_id.clone(), *iam_owner);
             }
-            NodeEvent::DeleteSubject (subject_id) => {
+            NodeEvent::DeleteSubject(subject_id) => {
                 self.delete_subject(subject_id.clone());
             }
         };
@@ -389,11 +388,12 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
-            NodeMessage::PendingTransfers => {
-                Ok(NodeResponse::PendingTransfers(self.transfer_subjects.clone()))
-            },
+            NodeMessage::PendingTransfers => Ok(
+                NodeResponse::PendingTransfers(self.transfer_subjects.clone()),
+            ),
             NodeMessage::RegisterSubject { owner, subject_id } => {
-                let iam_owner = owner == self.owner.key_identifier().to_string();
+                let iam_owner =
+                    owner == self.owner.key_identifier().to_string();
                 self.on_event(
                     NodeEvent::RegisterSubject {
                         iam_owner,
@@ -414,12 +414,9 @@ impl Handler<Node> for Node {
                 self.on_event(NodeEvent::TransferSubjerct(data), ctx).await;
                 Ok(NodeResponse::None)
             }
-            NodeMessage::DeleteSubject ( subject_id ) => {
-                self.on_event(
-                    NodeEvent::DeleteSubject(subject_id),
-                    ctx
-                )
-                .await;
+            NodeMessage::DeleteSubject(subject_id) => {
+                self.on_event(NodeEvent::DeleteSubject(subject_id), ctx)
+                    .await;
 
                 Ok(NodeResponse::None)
             }
@@ -447,7 +444,8 @@ impl Handler<Node> for Node {
                     )
                     .await;
                 } else {
-                    self.on_event(NodeEvent::ConfirmTransfer(subject_id), ctx).await;
+                    self.on_event(NodeEvent::ConfirmTransfer(subject_id), ctx)
+                        .await;
                 }
 
                 Ok(NodeResponse::None)

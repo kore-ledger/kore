@@ -2,38 +2,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    utils::{convert_boot_nodes, is_reachable, LruHashSet},
     Error,
+    utils::{LruHashSet, convert_boot_nodes, is_reachable},
 };
 
 use futures_timer::Delay;
 use ip_network::IpNetwork;
 use libp2p::{
+    Multiaddr, PeerId, StreamProtocol,
     core::Endpoint,
     futures::FutureExt,
     kad::{
-        store::MemoryStore, Behaviour as Kademlia, Config as KademliaConfig,
-        Event as KademliaEvent, GetClosestPeersError, GetRecordOk, QueryId,
-        QueryResult, Quorum, Record, RecordKey, K_VALUE,
+        Behaviour as Kademlia, Config as KademliaConfig,
+        Event as KademliaEvent, GetClosestPeersError, GetRecordOk, K_VALUE,
+        QueryId, QueryResult, Quorum, Record, RecordKey, store::MemoryStore,
     },
-    mdns::{self, tokio::Behaviour as MdnsTokio, Config as MdnsConfig},
+    mdns::{self, Config as MdnsConfig, tokio::Behaviour as MdnsTokio},
     multiaddr::Protocol,
     swarm::{
-        behaviour::{
-            toggle::{Toggle, ToggleConnectionHandler},
-            ExternalAddrConfirmed,
-        },
         ConnectionDenied, ConnectionId, DialError, DialFailure, FromSwarm,
         NetworkBehaviour, THandler, ToSwarm,
+        behaviour::{
+            ExternalAddrConfirmed,
+            toggle::{Toggle, ToggleConnectionHandler},
+        },
     },
-    Multiaddr, PeerId, StreamProtocol,
 };
 use serde::Deserialize;
 use tracing::{debug, error, info, trace, warn};
 
 use std::{
     cmp,
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque, hash_map::Entry},
     num::NonZeroUsize,
     task::Poll,
     time::Duration,
@@ -853,7 +853,7 @@ impl NetworkBehaviour for Behaviour {
                     }
                 }
                 ToSwarm::Dial { opts } => {
-                    return Poll::Ready(ToSwarm::Dial { opts })
+                    return Poll::Ready(ToSwarm::Dial { opts });
                 }
                 ToSwarm::NotifyHandler {
                     peer_id,
@@ -864,7 +864,7 @@ impl NetworkBehaviour for Behaviour {
                         peer_id,
                         handler,
                         event,
-                    })
+                    });
                 }
                 ToSwarm::CloseConnection {
                     peer_id,
@@ -873,22 +873,22 @@ impl NetworkBehaviour for Behaviour {
                     return Poll::Ready(ToSwarm::CloseConnection {
                         peer_id,
                         connection,
-                    })
+                    });
                 }
                 ToSwarm::ExternalAddrConfirmed(e) => {
-                    return Poll::Ready(ToSwarm::ExternalAddrConfirmed(e))
+                    return Poll::Ready(ToSwarm::ExternalAddrConfirmed(e));
                 }
                 ToSwarm::ExternalAddrExpired(e) => {
-                    return Poll::Ready(ToSwarm::ExternalAddrExpired(e))
+                    return Poll::Ready(ToSwarm::ExternalAddrExpired(e));
                 }
                 ToSwarm::ListenOn { opts } => {
-                    return Poll::Ready(ToSwarm::ListenOn { opts })
+                    return Poll::Ready(ToSwarm::ListenOn { opts });
                 }
                 ToSwarm::NewExternalAddrCandidate(e) => {
-                    return Poll::Ready(ToSwarm::NewExternalAddrCandidate(e))
+                    return Poll::Ready(ToSwarm::NewExternalAddrCandidate(e));
                 }
                 ToSwarm::RemoveListener { id } => {
-                    return Poll::Ready(ToSwarm::RemoveListener { id })
+                    return Poll::Ready(ToSwarm::RemoveListener { id });
                 }
                 _ => {}
             }
@@ -929,22 +929,22 @@ impl NetworkBehaviour for Behaviour {
                     return Poll::Ready(ToSwarm::CloseConnection {
                         peer_id,
                         connection,
-                    })
+                    });
                 }
                 ToSwarm::ExternalAddrConfirmed(e) => {
-                    return Poll::Ready(ToSwarm::ExternalAddrConfirmed(e))
+                    return Poll::Ready(ToSwarm::ExternalAddrConfirmed(e));
                 }
                 ToSwarm::ExternalAddrExpired(e) => {
-                    return Poll::Ready(ToSwarm::ExternalAddrExpired(e))
+                    return Poll::Ready(ToSwarm::ExternalAddrExpired(e));
                 }
                 ToSwarm::ListenOn { opts } => {
-                    return Poll::Ready(ToSwarm::ListenOn { opts })
+                    return Poll::Ready(ToSwarm::ListenOn { opts });
                 }
                 ToSwarm::NewExternalAddrCandidate(e) => {
-                    return Poll::Ready(ToSwarm::NewExternalAddrCandidate(e))
+                    return Poll::Ready(ToSwarm::NewExternalAddrCandidate(e));
                 }
                 ToSwarm::RemoveListener { id } => {
-                    return Poll::Ready(ToSwarm::RemoveListener { id })
+                    return Poll::Ready(ToSwarm::RemoveListener { id });
                 }
                 _ => {}
             }
@@ -1217,9 +1217,9 @@ mod tests {
     use test_log::test;
 
     use libp2p::{
+        Multiaddr,
         identity::Keypair,
         swarm::{Swarm, SwarmEvent},
-        Multiaddr,
     };
     use libp2p_swarm_test::SwarmExt;
 

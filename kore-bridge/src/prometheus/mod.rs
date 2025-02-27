@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use axum::{response::IntoResponse, routing::get, Extension, Router};
+use axum::{Extension, Router, response::IntoResponse, routing::get};
 use prometheus_client::{encoding::text::encode, registry::Registry};
 
 pub async fn handler_prometheus_data(

@@ -7,7 +7,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+    DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
 };
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
@@ -16,16 +16,20 @@ use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, info, warn};
 
 use crate::{
+    ActorMessage, DIGEST_DERIVATOR, Event as KoreEvent, EventRequest, HashId,
+    NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse,
+    Validation, ValidationInfo, ValidationMessage, ValueWrapper,
     approval::{Approval, ApprovalMessage},
     auth::{Auth, AuthMessage, AuthResponse, AuthWitness},
     db::Storable,
     distribution::{Distribution, DistributionMessage, DistributionType},
     evaluation::{
-        request::EvaluationReq, response::EvalLedgerResponse, Evaluation,
-        EvaluationMessage,
+        Evaluation, EvaluationMessage, request::EvaluationReq,
+        response::EvalLedgerResponse,
     },
     intermediary::Intermediary,
     model::{
+        SignTypesNode,
         common::{
             emit_fail, get_gov, get_metadata, get_sign, get_vali_data,
             update_event, update_vali_data,
@@ -34,21 +38,17 @@ use crate::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
             ProtocolsSignatures,
         },
-        SignTypesNode,
     },
     update::{Update, UpdateMessage, UpdateNew, UpdateRes, UpdateType},
     validation::proof::{EventProof, ValidationProof},
-    ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage,
-    Signed, Subject, SubjectMessage, SubjectResponse, Validation,
-    ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR,
 };
 
 const TARGET_MANAGER: &str = "Kore-Request-Manager";
 
 use super::{
+    RequestHandler, RequestHandlerMessage,
     reboot::{Reboot, RebootMessage},
     types::{ProtocolsResult, ReqManInitMessage, RequestManagerState},
-    RequestHandler, RequestHandlerMessage,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -59,7 +59,7 @@ pub struct RequestManager {
     subject_id: String,
     request: Signed<EventRequest>,
     version: u64,
-    command: ReqManInitMessage
+    command: ReqManInitMessage,
 }
 
 impl RequestManager {
@@ -68,7 +68,7 @@ impl RequestManager {
         id: String,
         subject_id: String,
         request: Signed<EventRequest>,
-        command: ReqManInitMessage
+        command: ReqManInitMessage,
     ) -> Self {
         RequestManager {
             our_key,
@@ -77,7 +77,7 @@ impl RequestManager {
             subject_id,
             request,
             version: 0,
-            command
+            command,
         }
     }
     async fn send_validation(
@@ -368,7 +368,7 @@ impl RequestManager {
             if let ActorError::Functional(_) = e {
                 self.abort_request_manager(ctx, &e.to_string()).await?;
             }
-            return Err(e)
+            return Err(e);
         };
 
         if let Err(e) = update_vali_data(
@@ -381,7 +381,7 @@ impl RequestManager {
             if let ActorError::Functional(_) = e {
                 self.abort_request_manager(ctx, &e.to_string()).await?;
             }
-            return Err(e)
+            return Err(e);
         };
 
         self.on_event(
@@ -430,17 +430,21 @@ impl RequestManager {
                 .await
         } else {
             // Crear distribution
-            let distribution = Distribution::new(self.our_key.clone(), DistributionType::Request);
-            let distribution_actor = ctx.create_child("distribution", distribution).await?;
+            let distribution = Distribution::new(
+                self.our_key.clone(),
+                DistributionType::Request,
+            );
+            let distribution_actor =
+                ctx.create_child("distribution", distribution).await?;
             distribution_actor
-            .tell(DistributionMessage::Create {
-                request_id: self.id.clone(),
-                event,
-                ledger,
-                last_proof: Box::new(last_proof),
-                prev_event_validation_response,
-            })
-            .await
+                .tell(DistributionMessage::Create {
+                    request_id: self.id.clone(),
+                    event,
+                    ledger,
+                    last_proof: Box::new(last_proof),
+                    prev_event_validation_response,
+                })
+                .await
         }
     }
 
@@ -713,7 +717,7 @@ impl RequestManager {
     async fn abort_request_manager(
         &self,
         ctx: &mut ActorContext<RequestManager>,
-        error: &str
+        error: &str,
     ) -> Result<(), ActorError> {
         error!(TARGET_MANAGER, "Aborting request {}", self.id);
 
@@ -847,7 +851,11 @@ impl Handler<RequestManager> for RequestManager {
 
                     if let Err(e) = reboot_actor.tell(RebootMessage::Init).await
                     {
-                        error!(TARGET_MANAGER, "Reboot, can not send Init message to Reboot actor: {}",e);
+                        error!(
+                            TARGET_MANAGER,
+                            "Reboot, can not send Init message to Reboot actor: {}",
+                            e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 } else {
@@ -916,7 +924,7 @@ impl Handler<RequestManager> for RequestManager {
                             );
                             return Err(emit_fail(ctx, e).await);
                         };
-                    },
+                    }
                     ReqManInitMessage::Validate => {
                         let value = match self.patch_not_fact_event(ctx).await {
                             Ok(ledger_value) => ledger_value,
@@ -958,7 +966,11 @@ impl Handler<RequestManager> for RequestManager {
                         {
                             Ok(data) => data,
                             Err(e) => {
-                                error!(TARGET_MANAGER, "FinishReboot, can not build event proof: {}",e);
+                                error!(
+                                    TARGET_MANAGER,
+                                    "FinishReboot, can not build event proof: {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
@@ -987,66 +999,70 @@ impl Handler<RequestManager> for RequestManager {
                                     );
                                     return Err(emit_fail(ctx, e).await);
                                 };
-                            },
+                            }
                             ReqManInitMessage::Validate => {
                                 let value = match self
-                                .patch_not_fact_event(ctx)
-                                .await
-                            {
-                                Ok(ledger_value) => ledger_value,
-                                Err(e) => {
-                                    if let ActorError::Functional(_) = e {
-                                        if let Err(e) = self
-                                            .abort_request_manager(
-                                                ctx,
-                                                &e.to_string(),
-                                            )
-                                            .await
-                                        {
+                                    .patch_not_fact_event(ctx)
+                                    .await
+                                {
+                                    Ok(ledger_value) => ledger_value,
+                                    Err(e) => {
+                                        if let ActorError::Functional(_) = e {
+                                            if let Err(e) = self
+                                                .abort_request_manager(
+                                                    ctx,
+                                                    &e.to_string(),
+                                                )
+                                                .await
+                                            {
+                                                error!(
+                                                    TARGET_MANAGER,
+                                                    "Run, {}", e
+                                                );
+                                                return Err(
+                                                    emit_fail(ctx, e).await
+                                                );
+                                            }
+                                            return Ok(());
+                                        } else {
                                             error!(
                                                 TARGET_MANAGER,
                                                 "Run, {}", e
                                             );
-                                            return Err(
-                                                emit_fail(ctx, e).await
-                                            );
+                                            return Err(emit_fail(ctx, e).await);
                                         }
-                                        return Ok(());
-                                    } else {
+                                    }
+                                };
+
+                                let data = match self
+                                    .build_data_event_proof(
+                                        ctx,
+                                        None,
+                                        value,
+                                        None,
+                                        ProtocolsResult::default(),
+                                    )
+                                    .await
+                                {
+                                    Ok(data) => data,
+                                    Err(e) => {
                                         error!(
                                             TARGET_MANAGER,
-                                            "Run, {}", e
+                                            "Run, can not build event proof: {}",
+                                            e
                                         );
                                         return Err(emit_fail(ctx, e).await);
                                     }
-                                }
-                            };
+                                };
 
-                            let data = match self
-                                .build_data_event_proof(
-                                    ctx,
-                                    None,
-                                    value,
-                                    None,
-                                    ProtocolsResult::default(),
-                                )
-                                .await
-                            {
-                                Ok(data) => data,
-                                Err(e) => {
-                                    error!(TARGET_MANAGER, "Run, can not build event proof: {}",e);
+                                if let Err(e) = self.validation(ctx, data).await
+                                {
+                                    error!(
+                                        TARGET_MANAGER,
+                                        "Run, can not init validation: {}", e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
-                                }
-                            };
-
-                            if let Err(e) = self.validation(ctx, data).await
-                            {
-                                error!(
-                                    TARGET_MANAGER,
-                                    "Run, can not init validation: {}", e
-                                );
-                                return Err(emit_fail(ctx, e).await);
-                            }; 
+                                };
                             }
                         };
                     }
@@ -1305,36 +1321,40 @@ impl Handler<RequestManager> for RequestManager {
                 );
 
                 let (signed_ledger, signed_event) = match self
-                .safe_ledger_event(
-                    ctx,
-                    event,
-                    ledger.clone(),
-                    *last_proof.clone(),
-                    signatures.clone(),
-                )
-                .await {
+                    .safe_ledger_event(
+                        ctx,
+                        event,
+                        ledger.clone(),
+                        *last_proof.clone(),
+                        signatures.clone(),
+                    )
+                    .await
+                {
                     Ok(signed_data) => signed_data,
                     Err(e) => {
                         error!(
                             TARGET_MANAGER,
-                            "ValidationRes, Can not safe ledger or event: {}", e
+                            "ValidationRes, Can not safe ledger or event: {}",
+                            e
                         );
                         if let ActorError::Functional(_) = e {
                             return Err(e);
                         } else {
-                            return Err(emit_fail(ctx, e).await)
+                            return Err(emit_fail(ctx, e).await);
                         }
                     }
                 };
-                
-                if let Err(e) = self.init_distribution(
-                    ctx,
-                    signed_event,
-                    signed_ledger,
-                    *last_proof,
-                    signatures,
-                )
-                .await {
+
+                if let Err(e) = self
+                    .init_distribution(
+                        ctx,
+                        signed_event,
+                        signed_ledger,
+                        *last_proof,
+                        signatures,
+                    )
+                    .await
+                {
                     error!(
                         TARGET_MANAGER,
                         "ValidationRes, Can not init distribution: {}", e

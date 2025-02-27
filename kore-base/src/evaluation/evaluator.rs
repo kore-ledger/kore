@@ -4,26 +4,28 @@
 use std::time::Duration;
 
 use crate::{
+    CONTRACTS, DIGEST_DERIVATOR, Error, EventRequest, Signed, Subject,
+    ValueWrapper,
     config::Config,
     evaluation::response::Response as EvalRes,
     governance::{Governance, Schema},
-    helpers::network::{intermediary::Intermediary, NetworkMessage},
+    helpers::network::{NetworkMessage, intermediary::Intermediary},
     model::{
+        HashId, Namespace, SignTypesNode, TimeStamp,
         common::{
-            emit_fail, get_gov, get_metadata, get_sign,
-            update_ledger_network, UpdateData,
-        }, network::{RetryNetwork, TimeOutResponse}, HashId, Namespace, SignTypesNode, TimeStamp
+            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
+            update_ledger_network,
+        },
+        network::{RetryNetwork, TimeOutResponse},
     },
     subject::{SubjectMessage, SubjectResponse},
-    Error, EventRequest, Signed, Subject, ValueWrapper, CONTRACTS,
-    DIGEST_DERIVATOR,
 };
 
 use crate::helpers::network::ActorMessage;
 
 use async_trait::async_trait;
 use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+    DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
 };
 
 use json_patch::diff;
@@ -39,14 +41,14 @@ use serde_json::Value;
 use tracing::{error, warn};
 
 use super::{
+    Evaluation, EvaluationMessage,
     compiler::{Compiler, CompilerMessage},
     request::EvaluationReq,
     response::EvaluationRes,
     runner::{
-        types::{EvaluateType, RunnerResult},
         Runner, RunnerMessage, RunnerResponse,
+        types::{EvaluateType, RunnerResult},
     },
-    Evaluation, EvaluationMessage,
 };
 
 const TARGET_EVALUATOR: &str = "Kore-Evaluation-Evaluator";
@@ -180,11 +182,19 @@ impl Evaluator {
         governance_id: DigestIdentifier,
         is_governance: bool,
     ) -> Result<RunnerResult, ActorError> {
-
-        let (evaluate_type, state) = match evaluation_req.event_request.content.clone() {
+        let (evaluate_type, state) = match evaluation_req
+            .event_request
+            .content
+            .clone()
+        {
             EventRequest::Fact(fact_event) => {
                 if is_governance {
-                    (EvaluateType::GovFact { payload: fact_event.payload }, evaluation_req.state.clone())
+                    (
+                        EvaluateType::GovFact {
+                            payload: fact_event.payload,
+                        },
+                        evaluation_req.state.clone(),
+                    )
                 } else {
                     let contracts = { CONTRACTS.read().await };
 
@@ -192,34 +202,59 @@ impl Evaluator {
                         "{}_{}",
                         governance_id, evaluation_req.context.schema_id
                     )) {
-                        (EvaluateType::NotGovFact { contract: contract.to_vec(), payload: fact_event.payload }, evaluation_req.state.clone())
+                        (
+                            EvaluateType::NotGovFact {
+                                contract: contract.to_vec(),
+                                payload: fact_event.payload,
+                            },
+                            evaluation_req.state.clone(),
+                        )
                     } else {
                         return Err(ActorError::Functional(
                             "Contract not found".to_owned(),
                         ));
                     }
                 }
-            },
+            }
             EventRequest::Transfer(transfer_event) => {
                 if !is_governance {
-                    (EvaluateType::NotGovTransfer { new_owner: transfer_event.new_owner, namespace: Namespace::from(evaluation_req.context.namespace.clone()), schema_id: evaluation_req.context.schema_id.clone() }, evaluation_req.gov.clone())
+                    (
+                        EvaluateType::NotGovTransfer {
+                            new_owner: transfer_event.new_owner,
+                            namespace: Namespace::from(
+                                evaluation_req.context.namespace.clone(),
+                            ),
+                            schema_id: evaluation_req.context.schema_id.clone(),
+                        },
+                        evaluation_req.gov.clone(),
+                    )
                 } else {
-                    (EvaluateType::GovTransfer { new_owner: transfer_event.new_owner }, evaluation_req.state.clone())
+                    (
+                        EvaluateType::GovTransfer {
+                            new_owner: transfer_event.new_owner,
+                        },
+                        evaluation_req.state.clone(),
+                    )
                 }
-                
-            },
+            }
             EventRequest::Confirm(confirm_request) => {
                 if !is_governance {
                     let e = "Confirm event in trazability subjects do not need be evaluate";
-                    return  Err(ActorError::Functional(e.to_owned()));
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
-                if let Some(new_owner) =  evaluation_req.new_owner.clone() {
-                    (EvaluateType::GovConfirm { old_owner_name: confirm_request.name_old_owner, new_owner }, evaluation_req.state.clone())
+                if let Some(new_owner) = evaluation_req.new_owner.clone() {
+                    (
+                        EvaluateType::GovConfirm {
+                            old_owner_name: confirm_request.name_old_owner,
+                            new_owner,
+                        },
+                        evaluation_req.state.clone(),
+                    )
                 } else {
                     let e = "New Owner is empty in Confirm event";
-                    return  Err(ActorError::Functional(e.to_owned()));
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
-            },
+            }
             _ => {
                 let e = "The only event that can be evaluated is the Fact, Transfer and Confirm event";
                 error!(TARGET_EVALUATOR, "LocalEvaluation, {}", e);
@@ -237,9 +272,7 @@ impl Evaluator {
             )
             .await?;
 
-        if is_governance
-            && !response.compilations.is_empty()
-        {
+        if is_governance && !response.compilations.is_empty() {
             let governance_data = serde_json::from_value::<Governance>(
                 response.result.final_state.0.clone(),
             )
@@ -313,7 +346,7 @@ impl Evaluator {
     async fn build_response(
         evaluation: RunnerResult,
         evaluation_req: EvaluationReq,
-        is_governance: bool
+        is_governance: bool,
     ) -> EvaluationRes {
         let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
             *derivator
@@ -322,9 +355,52 @@ impl Evaluator {
             DigestDerivator::Blake3_256
         };
 
-            let (patch, state_hash) = match evaluation_req.event_request.content.clone() {
-                EventRequest::Fact(..) => {
-                    let state_hash = match evaluation.final_state.hash_id(derivator) {
+        let (patch, state_hash) = match evaluation_req
+            .event_request
+            .content
+            .clone()
+        {
+            EventRequest::Fact(..) => {
+                let state_hash = match evaluation.final_state.hash_id(derivator)
+                {
+                    Ok(state_hash) => state_hash,
+                    Err(e) => return EvaluationRes::Error(e.to_string()),
+                };
+
+                let patch = match Self::generate_json_patch(
+                    &evaluation_req.state.0,
+                    &evaluation.final_state.0,
+                ) {
+                    Ok(patch) => patch,
+                    Err(e) => return EvaluationRes::Error(e.to_string()),
+                };
+
+                (ValueWrapper(patch), state_hash)
+            }
+            EventRequest::Transfer(..) => {
+                let state_hash = match evaluation_req.state.hash_id(derivator) {
+                    Ok(state_hash) => state_hash,
+                    Err(e) => return EvaluationRes::Error(e.to_string()),
+                };
+
+                (evaluation.final_state, state_hash)
+            }
+            EventRequest::Confirm(..) => {
+                if !is_governance {
+                    let state_hash = match evaluation_req
+                        .state
+                        .hash_id(derivator)
+                    {
+                        Ok(state_hash) => state_hash,
+                        Err(e) => return EvaluationRes::Error(e.to_string()),
+                    };
+
+                    (evaluation.final_state, state_hash)
+                } else {
+                    let state_hash = match evaluation
+                        .final_state
+                        .hash_id(derivator)
+                    {
                         Ok(state_hash) => state_hash,
                         Err(e) => return EvaluationRes::Error(e.to_string()),
                     };
@@ -334,54 +410,22 @@ impl Evaluator {
                         &evaluation.final_state.0,
                     ) {
                         Ok(patch) => patch,
-                        Err(e) => return EvaluationRes::Error(e.to_string())
-                    };
-
-                    (ValueWrapper(patch), state_hash)
-                },
-                EventRequest::Transfer(..) => {
-                    let state_hash = match evaluation_req.state.hash_id(derivator) {
-                        Ok(state_hash) => state_hash,
                         Err(e) => return EvaluationRes::Error(e.to_string()),
                     };
 
-                    (evaluation.final_state, state_hash)
-                },
-                EventRequest::Confirm(..) => {
-                    if !is_governance {
-                        let state_hash = match evaluation_req.state.hash_id(derivator) {
-                            Ok(state_hash) => state_hash,
-                            Err(e) => return EvaluationRes::Error(e.to_string()),
-                        };
-    
-                        (evaluation.final_state, state_hash)
-                    } else {
-                        let state_hash = match evaluation.final_state.hash_id(derivator) {
-                            Ok(state_hash) => state_hash,
-                            Err(e) => return EvaluationRes::Error(e.to_string()),
-                        };
-
-                        let patch = match Self::generate_json_patch(
-                            &evaluation_req.state.0,
-                            &evaluation.final_state.0,
-                        ) {
-                            Ok(patch) => patch,
-                            Err(e) => return EvaluationRes::Error(e.to_string())
-                        };
-
-                        (ValueWrapper(patch), state_hash)
-                    }
-                },
-                _ => {
-                    unreachable!()
+                    (ValueWrapper(patch), state_hash)
                 }
-            };
+            }
+            _ => {
+                unreachable!()
+            }
+        };
 
-            EvaluationRes::Response(EvalRes {
-                patch,
-                state_hash,
-                appr_required: evaluation.approval_required,
-            })
+        EvaluationRes::Response(EvalRes {
+            patch,
+            state_hash,
+            appr_required: evaluation.approval_required,
+        })
     }
 }
 
@@ -450,10 +494,19 @@ impl Handler<Evaluator> for Evaluator {
                     .await
                 {
                     Ok(evaluation) => {
-                        Self::build_response(evaluation, evaluation_req, is_governance).await
+                        Self::build_response(
+                            evaluation,
+                            evaluation_req,
+                            is_governance,
+                        )
+                        .await
                     }
                     Err(e) => {
-                        error!(TARGET_EVALUATOR, "LocalEvaluation, can not build evaluator response: {}", e);
+                        error!(
+                            TARGET_EVALUATOR,
+                            "LocalEvaluation, can not build evaluator response: {}",
+                            e
+                        );
                         if let ActorError::Functional(_) = e {
                             EvaluationRes::Error(e.to_string())
                         } else {
@@ -470,7 +523,11 @@ impl Handler<Evaluator> for Evaluator {
                 {
                     Ok(signature) => signature,
                     Err(e) => {
-                        error!(TARGET_EVALUATOR, "LocalEvaluation, can not sign evaluator response: {}", e);
+                        error!(
+                            TARGET_EVALUATOR,
+                            "LocalEvaluation, can not sign evaluator response: {}",
+                            e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
@@ -560,7 +617,10 @@ impl Handler<Evaluator> for Evaluator {
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
-                    error!(TARGET_EVALUATOR, "NetworkEvaluation, can not send retry message to Retry actor");
+                    error!(
+                        TARGET_EVALUATOR,
+                        "NetworkEvaluation, can not send retry message to Retry actor"
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -603,7 +663,11 @@ impl Handler<Evaluator> for Evaluator {
                             })
                             .await
                         {
-                            error!(TARGET_EVALUATOR, "NetworkResponse, Can not send response to Evaluation actor: {}", e);
+                            error!(
+                                TARGET_EVALUATOR,
+                                "NetworkResponse, Can not send response to Evaluation actor: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     } else {
@@ -650,21 +714,26 @@ impl Handler<Evaluator> for Evaluator {
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
                 // Nos llegó una eval donde en la request se indica un sujeto pero en el info otro
                 // Posible ataque.
-                let governance_id = if evaluation_req.content.context.governance_id.is_empty() {
+                let governance_id = if evaluation_req
+                    .content
+                    .context
+                    .governance_id
+                    .is_empty()
+                {
                     evaluation_req.content.context.subject_id.clone()
                 } else {
                     evaluation_req.content.context.governance_id.clone()
                 };
 
-                if info_subject_path != governance_id.to_string()
-                {
+                if info_subject_path != governance_id.to_string() {
                     let e = "We received an evaluation where the request indicates one subject but the info indicates another.";
                     error!(TARGET_EVALUATOR, "NetworkRequest, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
 
                 if let Err(e) = evaluation_req.verify() {
-                    let e = format!("Can not verify signature of request: {}", e);
+                    let e =
+                        format!("Can not verify signature of request: {}", e);
                     error!(TARGET_EVALUATOR, "NetworkRequest, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
@@ -723,7 +792,7 @@ impl Handler<Evaluator> for Evaluator {
                             Self::build_response(
                                 evaluation,
                                 evaluation_req.content.clone(),
-                                is_governance
+                                is_governance,
                             )
                             .await
                         }
@@ -830,7 +899,11 @@ impl Handler<Evaluator> for Evaluator {
                         })
                         .await
                     {
-                        error!(TARGET_EVALUATOR, "OnChildError, can not send response to Evaluation actor: {}", e);
+                        error!(
+                            TARGET_EVALUATOR,
+                            "OnChildError, can not send response to Evaluation actor: {}",
+                            e
+                        );
                         emit_fail(ctx, e).await;
                     }
                 } else {

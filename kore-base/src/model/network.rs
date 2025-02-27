@@ -8,9 +8,9 @@ use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use crate::{intermediary::Intermediary, NetworkMessage};
+use crate::{NetworkMessage, intermediary::Intermediary};
 
-use super::{common::emit_fail, TimeStamp};
+use super::{TimeStamp, common::emit_fail};
 
 const TARGET_NETWORK: &str = "Kore-Model-Network";
 

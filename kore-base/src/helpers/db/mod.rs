@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
+    Signed,
     approval::approver::ApproverEvent,
     error::Error,
     external_db::DBManager,
     model::event::Ledger,
-    request::{manager::RequestManagerEvent, RequestHandlerEvent},
+    request::{RequestHandlerEvent, manager::RequestManagerEvent},
     subject::{
         event::LedgerEventEvent, sinkdata::SinkDataEvent,
         validata::ValiDataEvent,
     },
-    Signed,
 };
 
 use crate::config::ExternalDbConfig;

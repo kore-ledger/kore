@@ -4,12 +4,12 @@
 use super::proof::ValidationProof;
 
 use crate::{
-    model::{event::ProtocolsSignatures, HashId},
     Error,
+    model::{HashId, event::ProtocolsSignatures},
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
+use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 

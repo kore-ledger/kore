@@ -1,9 +1,9 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use crate::{routing::RoutingNode, Error};
+use crate::{Error, routing::RoutingNode};
 use ip_network::IpNetwork;
-use libp2p::{multiaddr::Protocol, Multiaddr, PeerId};
+use libp2p::{Multiaddr, PeerId, multiaddr::Protocol};
 use linked_hash_set::LinkedHashSet;
 
 use std::{collections::HashSet, hash::Hash, num::NonZeroUsize, str::FromStr};
@@ -143,11 +143,7 @@ where
 {
     let a: HashSet<_> = a.iter().collect();
     let b: HashSet<_> = b.iter().collect();
-    if b_subset {
-        b.is_subset(&a)
-    } else {
-        a == b
-    }
+    if b_subset { b.is_subset(&a) } else { a == b }
 }
 
 #[cfg(test)]

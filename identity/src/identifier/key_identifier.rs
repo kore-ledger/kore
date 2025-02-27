@@ -3,7 +3,7 @@
 
 //! KeyIdentifier module
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -13,13 +13,13 @@ use std::{
 };
 
 use super::{
-    derive::{key::KeyDerivator, signature::SignatureDerivator, Derivator},
-    error::Error,
     Derivable, SignatureIdentifier,
+    derive::{Derivator, key::KeyDerivator, signature::SignatureDerivator},
+    error::Error,
 };
 #[cfg(feature = "secp256k1")]
 use crate::keys::secp256k1::Secp256k1KeyPair;
-use crate::keys::{ed25519::Ed25519KeyPair, KeyGenerator, Payload, DSA};
+use crate::keys::{DSA, KeyGenerator, Payload, ed25519::Ed25519KeyPair};
 
 /// Key based identifier
 #[derive(
@@ -174,7 +174,7 @@ pub mod tests {
     use crate::keys::secp256k1::Secp256k1KeyPair;
 
     use crate::keys::{
-        ed25519::Ed25519KeyPair, KeyGenerator, KeyMaterial, Payload, DSA,
+        DSA, KeyGenerator, KeyMaterial, Payload, ed25519::Ed25519KeyPair,
     };
 
     use crate::identifier::derive::{

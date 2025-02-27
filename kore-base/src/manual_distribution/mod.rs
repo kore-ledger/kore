@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 
 use crate::{
+    Signed,
     distribution::{Distribution, DistributionMessage, DistributionType},
     model::{
         common::{emit_fail, subject_owner},
@@ -18,7 +19,6 @@ use crate::{
     },
     subject::{Subject, SubjectMessage, SubjectResponse},
     validation::proof::ValidationProof,
-    Signed,
 };
 
 const TARGET_MANUAL_DISTRIBUTION: &str = "Kore-Node-ManualDistribution";

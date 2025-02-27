@@ -12,9 +12,9 @@ use rocksdb_db::{RocksDbManager, RocksDbStore};
 #[cfg(feature = "sqlite")]
 use sqlite_db::SqliteManager;
 use store::{
+    Error as StoreError,
     database::{Collection, DbManager},
     store::PersistentActor,
-    Error as StoreError,
 };
 
 use async_trait::async_trait;

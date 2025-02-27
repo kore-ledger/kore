@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    model::common::{emit_fail, verify_protocols_state},
     EventRequestType,
+    model::common::{emit_fail, verify_protocols_state},
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
@@ -15,9 +15,9 @@ use store::store::PersistentActor;
 use tracing::{error, warn};
 
 use crate::{
+    Event as KoreEvent, EventRequest, Signed,
     approval::approver::{Approver, ApproverMessage},
     db::Storable,
-    Event as KoreEvent, EventRequest, Signed,
 };
 
 const TARGET_EVENT: &str = "Kore-Subject-Event";
@@ -108,7 +108,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     event.content.appr_success,
                     event.content.appr_required,
                     event.content.vali_success,
-                    self.is_gov
+                    self.is_gov,
                 ) {
                     warn!(TARGET_EVENT, "UpdateLastEvent, {}", e);
                     return Err(ActorError::Functional(e.to_string()));
@@ -140,12 +140,20 @@ impl Handler<LedgerEvent> for LedgerEvent {
                                 .tell(ApproverMessage::MakeObsolete)
                                 .await
                             {
-                                error!(TARGET_EVENT, "UpdateLastEvent, can not send message to Approver actor {}", e);
+                                error!(
+                                    TARGET_EVENT,
+                                    "UpdateLastEvent, can not send message to Approver actor {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             }
                         } else {
                             let e = ActorError::NotFound(approver_path);
-                            warn!(TARGET_EVENT, "UpdateLastEvent, can not obtain Approver actor {}", e);
+                            warn!(
+                                TARGET_EVENT,
+                                "UpdateLastEvent, can not obtain Approver actor {}",
+                                e
+                            );
                             return Err(ActorError::Functional(e.to_string()));
                         }
                     };

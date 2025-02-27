@@ -11,8 +11,8 @@ use identity::identifier::{
 use kore_base::{
     error::Error,
     model::{
-        signature::{Signature, Signed},
         HashId, TimeStamp,
+        signature::{Signature, Signed},
     },
 };
 use serde::{Deserialize, Serialize};

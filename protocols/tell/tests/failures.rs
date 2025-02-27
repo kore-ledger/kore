@@ -6,9 +6,9 @@ use tell::{
     ProtocolSupport,
 };
 
-use libp2p::{swarm::Swarm, PeerId, StreamProtocol};
+use libp2p::{PeerId, StreamProtocol, swarm::Swarm};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use futures::prelude::*;
 use libp2p_swarm_test::SwarmExt;
 

@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use tracing::{error, info};
 
 use crate::{
-    model::event::{Ledger, LedgerValue},
     EventRequest, Signed,
+    model::event::{Ledger, LedgerValue},
 };
 
 const TARGET_SINK: &str = "Kore-Helper-Sink";

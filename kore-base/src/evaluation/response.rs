@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    model::{
-        event::LedgerValue, network::TimeOutResponse, HashId, ValueWrapper,
-    },
     Error,
+    model::{
+        HashId, ValueWrapper, event::LedgerValue, network::TimeOutResponse,
+    },
 };
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
+use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};

@@ -6,10 +6,10 @@
 
 use blake3;
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 use sha3::{Sha3_256, Sha3_512};
-use core::fmt;
 use std::str::FromStr;
 
 use crate::identifier::error::Error;

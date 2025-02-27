@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 
 use crate::{
-    model::common::{emit_fail, try_to_update_subject},
     Signed,
+    model::common::{emit_fail, try_to_update_subject},
 };
 
 use super::{

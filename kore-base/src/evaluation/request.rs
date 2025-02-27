@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    model::{request::EventRequest, signature::Signed, HashId, ValueWrapper},
     Error,
+    model::{HashId, ValueWrapper, request::EventRequest, signature::Signed},
 };
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier};
+use identity::identifier::{
+    DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
+};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -37,7 +39,7 @@ pub struct EvaluationReq {
 
     pub state: ValueWrapper,
 
-    pub new_owner: Option<KeyIdentifier>
+    pub new_owner: Option<KeyIdentifier>,
 }
 
 /// A struct representing the context in which the evaluation is being performed.
@@ -56,7 +58,7 @@ pub struct SubjectContext {
     pub governance_id: DigestIdentifier,
     pub schema_id: String,
     pub is_owner: bool,
-    pub namespace: String
+    pub namespace: String,
 }
 
 impl HashId for EvaluationReq {

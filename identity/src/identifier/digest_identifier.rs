@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use super::error::Error;
-use crate::identifier::derive::{digest::DigestDerivator, Derivator};
-use base64::{engine::general_purpose, Engine as _};
-use borsh::{to_vec, BorshDeserialize, BorshSerialize};
+use crate::identifier::derive::{Derivator, digest::DigestDerivator};
+use base64::{Engine as _, engine::general_purpose};
+use borsh::{BorshDeserialize, BorshSerialize, to_vec};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;

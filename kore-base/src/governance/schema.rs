@@ -4,7 +4,7 @@
 //! # Governance schema.
 //!
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub fn schema() -> Value {
     json!({

@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use crate::model::common::emit_fail;
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
-    Message, Response};
+    Message, Response,
+};
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
@@ -16,14 +17,14 @@ const TARGET_VALIDATA: &str = "Kore-Subject-TransferRegister";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TransferRegister {
-    old_owners: HashSet<KeyIdentifier>
+    old_owners: HashSet<KeyIdentifier>,
 }
 
 #[derive(Debug, Clone)]
 pub enum TransferRegisterMessage {
-    RegisterNewOldOwner { 
+    RegisterNewOldOwner {
         old: KeyIdentifier,
-        new: KeyIdentifier
+        new: KeyIdentifier,
     },
     IsOldOwner(KeyIdentifier),
 }
@@ -32,17 +33,17 @@ impl Message for TransferRegisterMessage {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransferRegisterEvent {
-    RegisterNewOldOwner{ 
+    RegisterNewOldOwner {
         old: KeyIdentifier,
-        new: KeyIdentifier
-    }
+        new: KeyIdentifier,
+    },
 }
 
 impl Event for TransferRegisterEvent {}
 
 pub enum TransferRegisterResponse {
     IsOwner(bool),
-    Ok
+    Ok,
 }
 
 impl Response for TransferRegisterResponse {}
@@ -58,7 +59,8 @@ impl Actor for TransferRegister {
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
         let prefix = ctx.path().parent().key();
-        self.init_store("transfer_register", Some(prefix), true, ctx).await
+        self.init_store("transfer_register", Some(prefix), true, ctx)
+            .await
     }
 
     async fn pre_stop(
@@ -78,10 +80,17 @@ impl Handler<TransferRegister> for TransferRegister {
         ctx: &mut ActorContext<TransferRegister>,
     ) -> Result<TransferRegisterResponse, ActorError> {
         match msg {
-            TransferRegisterMessage::RegisterNewOldOwner { old, new } =>
-                self.on_event(TransferRegisterEvent::RegisterNewOldOwner { old, new }, ctx).await,
+            TransferRegisterMessage::RegisterNewOldOwner { old, new } => {
+                self.on_event(
+                    TransferRegisterEvent::RegisterNewOldOwner { old, new },
+                    ctx,
+                )
+                .await
+            }
             TransferRegisterMessage::IsOldOwner(old) => {
-                return Ok(TransferRegisterResponse::IsOwner(self.old_owners.contains(&old)))
+                return Ok(TransferRegisterResponse::IsOwner(
+                    self.old_owners.contains(&old),
+                ));
             }
         };
 
@@ -110,7 +119,7 @@ impl PersistentActor for TransferRegister {
             TransferRegisterEvent::RegisterNewOldOwner { old, new } => {
                 self.old_owners.remove(new);
                 self.old_owners.insert(old.clone());
-            },
+            }
         };
 
         Ok(())

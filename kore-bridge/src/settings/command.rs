@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use clap::{command, Parser};
+use clap::{Parser, command};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

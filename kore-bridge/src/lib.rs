@@ -4,31 +4,37 @@
 use std::{future::Future, str::FromStr};
 
 use config::Config;
-pub use network::{Config as NetworkConfig, TellConfig, ControlListConfig, RoutingConfig, RoutingNode};
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 pub use kore_base::{
+    Api as KoreApi,
     approval::approver::ApprovalStateRes,
     auth::AuthWitness,
+    config::Config as KoreConfig,
     error::Error,
     helpers::db::common::{
         ApprovalReqInfo, ApproveInfo, ConfirmRequestInfo, CreateRequestInfo,
         EOLRequestInfo, EventInfo, EventRequestInfo, FactInfo, FactRequestInfo,
-        Paginator, PaginatorEvents, ProtocolsSignaturesInfo, RequestInfo,
-        SignatureInfo, SignaturesInfo, SignedInfo, SubjectInfo,
-        TimeOutResponseInfo, TransferRequestInfo, RejectRequestInfo
+        Paginator, PaginatorEvents, ProtocolsSignaturesInfo, RejectRequestInfo,
+        RequestInfo, SignatureInfo, SignaturesInfo, SignedInfo, SubjectInfo,
+        TimeOutResponseInfo, TransferRequestInfo,
     },
     model::{
+        Namespace,
         event::ProtocolsError,
         request::EventRequest,
         signature::{Signature, Signed},
-        Namespace,
     },
-    node::{register::{GovsData, RegisterData}, TransferSubject},
+    node::{
+        TransferSubject,
+        register::{GovsData, RegisterData},
+    },
     request::RequestData,
-    Api as KoreApi,
-    config::Config as KoreConfig,
 };
 use model::BridgeSignedEventRequest;
+pub use network::{
+    Config as NetworkConfig, ControlListConfig, RoutingConfig, RoutingNode,
+    TellConfig,
+};
 use prometheus::run_prometheus;
 use prometheus_client::registry::Registry;
 use tokio_util::sync::CancellationToken;
@@ -169,7 +175,7 @@ impl Bridge {
             _ => {
                 return Err(Error::Bridge(
                     "Invalid approve response".to_owned(),
-                ))
+                ));
             }
         };
 

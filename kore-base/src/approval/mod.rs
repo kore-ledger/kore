@@ -24,11 +24,11 @@ use crate::model::common::{
 use crate::model::event::{LedgerValue, ProtocolsSignatures};
 use crate::model::{Namespace, SignTypesNode};
 use crate::request::manager::{RequestManager, RequestManagerMessage};
-use crate::{
-    db::Storable, evaluation::request::EvaluationReq, governance::Quorum,
-    Signed, Subject,
-};
 use crate::{EventRequest, SubjectMessage, SubjectResponse};
+use crate::{
+    Signed, Subject, db::Storable, evaluation::request::EvaluationReq,
+    governance::Quorum,
+};
 
 pub mod approver;
 pub mod request;
@@ -93,7 +93,7 @@ impl Approval {
                 return Err(ActorError::UnexpectedResponse(
                     subject_path,
                     "SubjectResponse::Metadata".to_owned(),
-                ))
+                ));
             }
         };
 
@@ -329,7 +329,11 @@ impl Handler<Approval> for Approval {
                         {
                             Ok(signers_quorum) => signers_quorum,
                             Err(e) => {
-                                error!(TARGET_APPROVAL, "Create, Can not obtain signers quorum and gov version, {}", e);
+                                error!(
+                                    TARGET_APPROVAL,
+                                    "Create, Can not obtain signers quorum and gov version, {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
@@ -341,7 +345,11 @@ impl Handler<Approval> for Approval {
                     {
                         Ok(signature) => signature,
                         Err(e) => {
-                            error!(TARGET_APPROVAL, "Create, Can not obtain sign approval request, {}", e);
+                            error!(
+                                TARGET_APPROVAL,
+                                "Create, Can not obtain sign approval request, {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -425,19 +433,30 @@ impl Handler<Approval> for Approval {
                         if let Err(e) =
                             self.send_approval_to_req(ctx, true).await
                         {
-                            error!(TARGET_APPROVAL, "Response, Can not send approval response to request actor, {}", e);
+                            error!(
+                                TARGET_APPROVAL,
+                                "Response, Can not send approval response to request actor, {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         };
                     } else if self.approvers.is_empty() {
                         if let Err(e) =
                             self.send_approval_to_req(ctx, false).await
                         {
-                            error!(TARGET_APPROVAL, "Response, Can not send approval response to request actor, {}", e);
+                            error!(
+                                TARGET_APPROVAL,
+                                "Response, Can not send approval response to request actor, {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         };
                     }
                 } else {
-                    warn!(TARGET_APPROVAL, "Response, A response has been received from someone we were not expecting.");
+                    warn!(
+                        TARGET_APPROVAL,
+                        "Response, A response has been received from someone we were not expecting."
+                    );
                 }
             }
         }

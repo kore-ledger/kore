@@ -5,15 +5,15 @@
 //!
 
 use crate::{
-    control_list,
+    Config, Error, NodeType, control_list,
     routing::{self, DhtValue},
-    Config, Error, NodeType,
 };
 
 #[cfg(not(feature = "test"))]
 use crate::utils::is_memory;
 
 use libp2p::{
+    Multiaddr, PeerId, StreamProtocol,
     identify::{self, Info as IdentifyInfo},
     identity::PublicKey,
     request_response::{
@@ -21,11 +21,10 @@ use libp2p::{
         ProtocolSupport, ResponseChannel,
     },
     swarm::NetworkBehaviour,
-    Multiaddr, PeerId, StreamProtocol,
 };
 use tell::{
-    binary, Event as TellEvent, InboundTellId, OutboundTellId,
-    ProtocolSupport as TellProtocol, TellMessage,
+    Event as TellEvent, InboundTellId, OutboundTellId,
+    ProtocolSupport as TellProtocol, TellMessage, binary,
 };
 
 use serde::{Deserialize, Serialize};
@@ -380,12 +379,12 @@ impl From<request_response::Event<ReqResMessage, ReqResMessage>> for Event {
                     message,
                 }
             }
-            request_response::Event::ResponseSent { peer, request_id, .. } => {
-                Event::ReqresMessageSent {
-                    peer_id: peer,
-                    inbound_id: request_id,
-                }
-            }
+            request_response::Event::ResponseSent {
+                peer, request_id, ..
+            } => Event::ReqresMessageSent {
+                peer_id: peer,
+                inbound_id: request_id,
+            },
             request_response::Event::InboundFailure {
                 peer,
                 request_id,
@@ -416,17 +415,18 @@ pub struct ReqResMessage(pub Vec<u8>);
 
 #[cfg(test)]
 mod tests {
-    use test_log::test;
     use super::*;
+    use test_log::test;
 
     use crate::{Config, NodeType, RoutingNode};
 
     use futures::prelude::*;
     use libp2p::{
-        core::transport::{memory, upgrade::Version, Transport},
+        Swarm,
+        core::transport::{Transport, memory, upgrade::Version},
         identity, plaintext,
         swarm::{self, SwarmEvent},
-        tcp, yamux, Swarm,
+        tcp, yamux,
     };
 
     use request_response::Message;
@@ -444,8 +444,7 @@ mod tests {
             create_config(boot_nodes.clone(), false, NodeType::Ephemeral);
         let mut node_a = build_node(config);
         node_a.behaviour_mut().finish_prerouting_state();
-        let node_a_addr: Multiaddr =
-            "/memory/53001".parse().unwrap();
+        let node_a_addr: Multiaddr = "/memory/53001".parse().unwrap();
         let _ = node_a.listen_on(node_a_addr.clone());
         //node_a.add_external_address(node_a_addr.clone());
 
@@ -454,8 +453,7 @@ mod tests {
             create_config(boot_nodes.clone(), true, NodeType::Addressable);
         let mut node_b = build_node(config);
         node_b.behaviour_mut().finish_prerouting_state();
-        let node_b_addr: Multiaddr =
-            "/memory/53002".parse().unwrap();
+        let node_b_addr: Multiaddr = "/memory/53002".parse().unwrap();
         let _ = node_b.listen_on(node_b_addr.clone());
         node_b.add_external_address(node_b_addr.clone());
         let node_b_peer_id = *node_b.local_peer_id();
@@ -562,8 +560,7 @@ mod tests {
         let config =
             create_config(boot_nodes.clone(), false, NodeType::Addressable);
         let mut node_a = build_node(config);
-        let node_a_addr: Multiaddr =
-            "/memory/52001".parse().unwrap();
+        let node_a_addr: Multiaddr = "/memory/52001".parse().unwrap();
         let _ = node_a.listen_on(node_a_addr.clone());
         node_a.add_external_address(node_a_addr.clone());
         node_a.behaviour_mut().finish_prerouting_state();
@@ -572,8 +569,7 @@ mod tests {
         let config =
             create_config(boot_nodes.clone(), true, NodeType::Addressable);
         let mut node_b = build_node(config);
-        let node_b_addr: Multiaddr =
-            "/memory/52002".parse().unwrap();
+        let node_b_addr: Multiaddr = "/memory/52002".parse().unwrap();
         let _ = node_b.listen_on(node_b_addr.clone());
         node_b.add_external_address(node_b_addr.clone());
         node_b.behaviour_mut().finish_prerouting_state();
@@ -606,8 +602,7 @@ mod tests {
                             .behaviour_mut()
                             .send_tell(&peer_id, b"Hello Node A".to_vec());
                     }
-                    _ => {
-                    }
+                    _ => {}
                 }
             }
         };
@@ -651,7 +646,6 @@ mod tests {
             }
         };
 
-
         tokio::task::spawn(Box::pin(peer_b));
         peer_a.await;
     }
@@ -666,8 +660,7 @@ mod tests {
             create_config(boot_nodes.clone(), true, NodeType::Bootstrap);
         let mut boot_node = build_node(config);
         boot_node.behaviour_mut().finish_prerouting_state();
-        let boot_node_addr: Multiaddr =
-            "/memory/51001".parse().unwrap();
+        let boot_node_addr: Multiaddr = "/memory/51001".parse().unwrap();
         let _ = boot_node.listen_on(boot_node_addr.clone());
         boot_node.add_external_address(boot_node_addr.clone());
 
@@ -676,8 +669,7 @@ mod tests {
             create_config(boot_nodes.clone(), false, NodeType::Ephemeral);
         let mut node_a = build_node(config);
         node_a.behaviour_mut().finish_prerouting_state();
-        let node_a_addr: Multiaddr =
-            "/memory/51002".parse().unwrap();
+        let node_a_addr: Multiaddr = "/memory/51002".parse().unwrap();
         let _ = node_a.listen_on(node_a_addr.clone());
         node_a.add_external_address(node_a_addr.clone());
 
@@ -686,8 +678,7 @@ mod tests {
             create_config(boot_nodes.clone(), true, NodeType::Addressable);
         let mut node_b = build_node(config);
         node_b.behaviour_mut().finish_prerouting_state();
-        let node_b_addr: Multiaddr =
-            "/memory/51003".parse().unwrap();
+        let node_b_addr: Multiaddr = "/memory/51003".parse().unwrap();
         let _ = node_b.listen_on(node_b_addr.clone());
         node_b.add_external_address(node_b_addr.clone());
         let node_b_peer_id = *node_b.local_peer_id();
@@ -814,9 +805,9 @@ mod tests {
         let local_key = identity::Keypair::generate_ed25519();
         let local_peer_id = local_key.public().to_peer_id();
 
-        let transport =  memory::MemoryTransport::default();
+        let transport = memory::MemoryTransport::default();
 
-       let transport = transport
+        let transport = transport
             .upgrade(Version::V1)
             .authenticate(plaintext::Config::new(&local_key))
             .multiplex(yamux::Config::default())

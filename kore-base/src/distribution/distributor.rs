@@ -13,16 +13,24 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
+    ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,
+    NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
+    SubjectResponse,
     governance::{
-        model::{CreatorQuantity, Roles},
         Governance,
-    }, intermediary::Intermediary, model::{
+        model::{CreatorQuantity, Roles},
+    },
+    intermediary::Intermediary,
+    model::{
         common::{
-            emit_fail, get_gov, get_metadata, get_quantity, subject_old_owner, try_to_update_subject, update_event, update_vali_data
+            emit_fail, get_gov, get_metadata, get_quantity, subject_old_owner,
+            try_to_update_subject, update_event, update_vali_data,
         },
         event::{Ledger, ProtocolsSignatures},
         network::RetryNetwork,
-    }, update::TransferResponse, validation::proof::ValidationProof, ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
+    },
+    update::TransferResponse,
+    validation::proof::ValidationProof,
 };
 
 use tracing::{error, warn};
@@ -449,13 +457,12 @@ impl Distributor {
         }
 
         if let Some(new_owner) = metadata.new_owner {
-            if metadata.owner == info.sender || new_owner ==  info.sender {
+            if metadata.owner == info.sender || new_owner == info.sender {
                 return Ok(());
             }
         } else if metadata.owner == info.sender {
             return Ok(());
         }
-        
 
         if !gov.has_this_role(
             &info.sender.to_string(),
@@ -464,7 +471,8 @@ impl Distributor {
             metadata.namespace.clone(),
         ) {
             return Err(ActorError::Functional(
-                "Sender is neither a witness nor an owner nor a new owner ".to_owned(),
+                "Sender is neither a witness nor an owner nor a new owner "
+                    .to_owned(),
             ));
         };
 
@@ -561,7 +569,13 @@ impl Handler<Distributor> for Distributor {
                     }
                 }
 
-                let is_old_owner = match subject_old_owner(ctx, &subject_id.to_string(), info.sender.clone()).await {
+                let is_old_owner = match subject_old_owner(
+                    ctx,
+                    &subject_id.to_string(),
+                    info.sender.clone(),
+                )
+                .await
+                {
                     Ok(is_old_owner) => is_old_owner,
                     Err(e) => {
                         error!(
@@ -578,14 +592,12 @@ impl Handler<Distributor> for Distributor {
 
                 let res = if is_old_owner {
                     TransferResponse::Confirm
-                } else if !is_old_owner && metadata.owner == info.sender.clone() {
+                } else if !is_old_owner && metadata.owner == info.sender.clone()
+                {
                     TransferResponse::Reject
                 } else {
                     let e = "Sender is not the owner and is not a old owner";
-                    error!(
-                        TARGET_DISTRIBUTOR,
-                        "Transfer, {}", e
-                    );
+                    error!(TARGET_DISTRIBUTOR, "Transfer, {}", e);
 
                     return Err(ActorError::Functional(e.to_owned()));
                 };
@@ -618,7 +630,7 @@ impl Handler<Distributor> for Distributor {
                     .send_command(network::CommandHelper::SendMessage {
                         message: NetworkMessage {
                             info: new_info,
-                            message: ActorMessage::TransferRes { res }
+                            message: ActorMessage::TransferRes { res },
                         },
                     })
                     .await
@@ -629,7 +641,7 @@ impl Handler<Distributor> for Distributor {
                     );
                     return Err(emit_fail(ctx, e).await);
                 };
-            },
+            }
             DistributorMessage::GetLastSn { subject_id, info } => {
                 let metadata = match get_metadata(ctx, &subject_id).await {
                     Ok(metadata) => metadata,
@@ -657,12 +669,13 @@ impl Handler<Distributor> for Distributor {
                     }
                 };
                 let is_owner = if let Some(new_owner) = metadata.new_owner {
-                    metadata.owner == info.sender || new_owner ==  info.sender
+                    metadata.owner == info.sender || new_owner == info.sender
                 } else {
-                    metadata.owner == info.sender 
+                    metadata.owner == info.sender
                 };
 
-                if !is_owner && !gov.has_this_role(
+                if !is_owner
+                    && !gov.has_this_role(
                         &info.sender.to_string(),
                         Roles::WITNESS,
                         &metadata.schema_id.clone(),
@@ -723,12 +736,7 @@ impl Handler<Distributor> for Distributor {
                 subject_id,
             } => {
                 if let Err(e) = self
-                    .check_gov_version(
-                        ctx,
-                        &subject_id,
-                        gov_version,
-                        &mut info,
-                    )
+                    .check_gov_version(ctx, &subject_id, gov_version, &mut info)
                     .await
                 {
                     error!(
@@ -800,7 +808,11 @@ impl Handler<Distributor> for Distributor {
                     })
                     .await
                 {
-                    error!(TARGET_DISTRIBUTOR, "SendDistribution, can not send response to network: {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "SendDistribution, can not send response to network: {}",
+                        e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -852,13 +864,21 @@ impl Handler<Distributor> for Distributor {
                 {
                     Ok(retry) => retry,
                     Err(e) => {
-                        error!(TARGET_DISTRIBUTOR, "NetworkDistribution, can not create retry actor: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "NetworkDistribution, can not create retry actor: {}",
+                            e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
-                    error!(TARGET_DISTRIBUTOR, "NetworkDistribution, can not send retry message to retry actor: {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "NetworkDistribution, can not send retry message to retry actor: {}",
+                        e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -876,11 +896,18 @@ impl Handler<Distributor> for Distributor {
                             })
                             .await
                         {
-                            error!(TARGET_DISTRIBUTOR, "NetworkResponse, can not send response to distribution actor: {}", e);
+                            error!(
+                                TARGET_DISTRIBUTOR,
+                                "NetworkResponse, can not send response to distribution actor: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     } else {
-                        error!(TARGET_DISTRIBUTOR, "NetworkResponse, can not obtain distribution actor");
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "NetworkResponse, can not obtain distribution actor"
+                        );
                         let e = ActorError::NotFound(distribution_path);
                         return Err(emit_fail(ctx, e).await);
                     }
@@ -945,7 +972,11 @@ impl Handler<Distributor> for Distributor {
                 if ledger.content.event_request.content.is_create_event() {
                     // Creamos el sujeto.
                     if let Err(e) = self.create_subject(ctx, ledger).await {
-                        error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not crate new subject: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "LastEventDistribution, can not crate new subject: {}",
+                            e
+                        );
                         if let ActorError::Functional(_) = e {
                             return Err(e);
                         } else {
@@ -959,7 +990,11 @@ impl Handler<Distributor> for Distributor {
                     {
                         Ok(subject) => subject,
                         Err(e) => {
-                            error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not get SubjectRef: {}", e);
+                            error!(
+                                TARGET_DISTRIBUTOR,
+                                "LastEventDistribution, can not get SubjectRef: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -972,7 +1007,11 @@ impl Handler<Distributor> for Distributor {
                     {
                         Ok(res) => res,
                         Err(e) => {
-                            error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not update ledger: {}", e);
+                            error!(
+                                TARGET_DISTRIBUTOR,
+                                "LastEventDistribution, can not update ledger: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -990,7 +1029,11 @@ impl Handler<Distributor> for Distributor {
                                 {
                                     Ok(gov) => gov,
                                     Err(e) => {
-                                        error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not obtain governance: {}", e);
+                                        error!(
+                                            TARGET_DISTRIBUTOR,
+                                            "LastEventDistribution, can not obtain governance: {}",
+                                            e
+                                        );
                                         return Err(emit_fail(ctx, e).await);
                                     }
                                 };
@@ -1013,7 +1056,10 @@ impl Handler<Distributor> for Distributor {
                                     ctx.system().get_helper("network").await;
 
                                 let Some(mut helper) = helper else {
-                                    error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not obtain network helper");
+                                    error!(
+                                        TARGET_DISTRIBUTOR,
+                                        "LastEventDistribution, can not obtain network helper"
+                                    );
                                     let e = ActorError::NotHelper(
                                         "network".to_owned(),
                                     );
@@ -1075,10 +1121,18 @@ impl Handler<Distributor> for Distributor {
                 .await
                 {
                     if let ActorError::Functional(_) = e {
-                        warn!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not update validation data: {}", e);
+                        warn!(
+                            TARGET_DISTRIBUTOR,
+                            "LastEventDistribution, can not update validation data: {}",
+                            e
+                        );
                         return Err(e);
                     } else {
-                        error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not update validation data: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "LastEventDistribution, can not update validation data: {}",
+                            e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
@@ -1125,7 +1179,11 @@ impl Handler<Distributor> for Distributor {
                     })
                     .await
                 {
-                    error!(TARGET_DISTRIBUTOR, "LastEventDistribution, can not send response to network: {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "LastEventDistribution, can not send response to network: {}",
+                        e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -1175,7 +1233,11 @@ impl Handler<Distributor> for Distributor {
                     if let Err(e) =
                         self.create_subject(ctx, events[0].clone()).await
                     {
-                        error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not create new subject: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "LedgerDistribution, can not create new subject: {}",
+                            e
+                        );
                         if let ActorError::Functional(_) = e {
                             return Err(e);
                         } else {
@@ -1271,16 +1333,27 @@ impl Handler<Distributor> for Distributor {
                             // Quiere decir que apliqué todos los eventos y todo fue bien.
                             if let Err(e) = update_event(ctx, event).await {
                                 if let ActorError::Functional(_) = e {
-                                    warn!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update event: {}", e);
+                                    warn!(
+                                        TARGET_DISTRIBUTOR,
+                                        "LedgerDistribution, can not update event: {}",
+                                        e
+                                    );
                                     return Err(e);
                                 } else {
-                                    error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update event: {}", e);
+                                    error!(
+                                        TARGET_DISTRIBUTOR,
+                                        "LedgerDistribution, can not update event: {}",
+                                        e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             };
 
                             let Some(last_proof) = last_proof else {
-                                let e = format!("last proof is empty, can not update for {}", subject_id);
+                                let e = format!(
+                                    "last proof is empty, can not update for {}",
+                                    subject_id
+                                );
                                 error!(
                                     TARGET_DISTRIBUTOR,
                                     "LedgerDistribution, {}", e
@@ -1291,7 +1364,10 @@ impl Handler<Distributor> for Distributor {
                             let Some(prev_event_validation_response) =
                                 prev_event_validation_response
                             else {
-                                let e = format!("prev event validation response is empty, can not update for {}", subject_id);
+                                let e = format!(
+                                    "prev event validation response is empty, can not update for {}",
+                                    subject_id
+                                );
                                 error!(
                                     TARGET_DISTRIBUTOR,
                                     "LedgerDistribution, {}", e
@@ -1307,10 +1383,18 @@ impl Handler<Distributor> for Distributor {
                             .await
                             {
                                 if let ActorError::Functional(_) = e {
-                                    warn!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update validation data: {}", e);
+                                    warn!(
+                                        TARGET_DISTRIBUTOR,
+                                        "LedgerDistribution, can not update validation data: {}",
+                                        e
+                                    );
                                     return Err(e);
                                 } else {
-                                    error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not update validation data: {}", e);
+                                    error!(
+                                        TARGET_DISTRIBUTOR,
+                                        "LedgerDistribution, can not update validation data: {}",
+                                        e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             };
@@ -1404,7 +1488,11 @@ impl Handler<Distributor> for Distributor {
                     })
                     .await
                 {
-                    error!(TARGET_DISTRIBUTOR, "LedgerDistribution, can not send response to network: {}", e);
+                    error!(
+                        TARGET_DISTRIBUTOR,
+                        "LedgerDistribution, can not send response to network: {}",
+                        e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -1433,7 +1521,11 @@ impl Handler<Distributor> for Distributor {
                         })
                         .await
                     {
-                        error!(TARGET_DISTRIBUTOR, "OnChildError, can not send response to Distribution actor: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "OnChildError, can not send response to Distribution actor: {}",
+                            e
+                        );
                         emit_fail(ctx, e).await;
                     }
                 } else {

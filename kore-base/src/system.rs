@@ -5,10 +5,10 @@ use actor::{ActorSystem, SystemRef};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    DIGEST_DERIVATOR, Error, KEY_DERIVATOR, KoreBaseConfig,
     db::Database,
     external_db::DBManager,
     helpers::{db::ExternalDB, encrypted_pass::EncryptedPass, sink::KoreSink},
-    Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR,
 };
 
 pub async fn system(
@@ -30,7 +30,8 @@ pub async fn system(
     system.add_helper("config", config.clone()).await;
 
     // Build database manager.
-    let db = Database::open(&config.kore_db).map_err(|e| Error::System(format!("Can not open DB: {}", e)))?;
+    let db = Database::open(&config.kore_db)
+        .map_err(|e| Error::System(format!("Can not open DB: {}", e)))?;
     system.add_helper("store", db).await;
 
     // Build sink manager.
@@ -64,7 +65,7 @@ pub async fn system(
 pub mod tests {
 
     use crate::config::{ExternalDbConfig, KoreDbConfig};
-    use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
+    use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
     use network::Config as NetworkConfig;
     use serial_test::serial;
     use std::{fs, time::Duration};
@@ -73,8 +74,8 @@ pub mod tests {
     use async_std::sync::RwLock;
 
     use crate::{
-        governance::{json_schema::JsonSchema, schema},
         GOVERNANCE,
+        governance::{json_schema::JsonSchema, schema},
     };
 
     use super::*;

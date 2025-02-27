@@ -6,12 +6,12 @@
 
 // TODO: revisar eventos de la network. Ya no se los lanza a message receiver ahora debería manejarlos ella misma
 use crate::{
+    Command, CommandHelper, Config, Error, Event as NetworkEvent, Monitor,
+    NodeType,
     behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage},
     service::NetworkService,
     transport::build_transport,
     utils::convert_addresses,
-    Command, CommandHelper, Config, Error, Event as NetworkEvent, Monitor,
-    NodeType,
 };
 
 use std::{fmt::Debug, time::Duration};
@@ -23,11 +23,11 @@ use identity::{
 };
 
 use libp2p::{
-    core::ConnectedPoint,
-    identity::{ed25519, secp256k1, Keypair},
-    request_response::{self, OutboundRequestId, ResponseChannel},
-    swarm::{self, dial_opts::DialOpts, DialError, SwarmEvent},
     Multiaddr, PeerId, Swarm,
+    core::ConnectedPoint,
+    identity::{Keypair, ed25519, secp256k1},
+    request_response::{self, OutboundRequestId, ResponseChannel},
+    swarm::{self, DialError, SwarmEvent, dial_opts::DialOpts},
 };
 
 use futures::StreamExt;
@@ -356,8 +356,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             } else {
                 trace!(
                     TARGET_WORKER,
-                    "Pending messages queue is empty for peer {}.",
-                    peer
+                    "Pending messages queue is empty for peer {}.", peer
                 );
             }
         } else {
@@ -570,8 +569,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
                 trace!(
                     TARGET_WORKER,
-                    "Connected to bootstrap node {}",
-                    peer_id
+                    "Connected to bootstrap node {}", peer_id
                 );
                 self.send_event(NetworkEvent::ConnectedToBootstrap {
                     peer: peer_id.to_string(),
@@ -664,23 +662,23 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
-            } => {
-                match endpoint {
-                    ConnectedPoint::Dialer { address, .. } => {
-                        info!(
+            } => match endpoint {
+                ConnectedPoint::Dialer { address, .. } => {
+                    info!(
                         TARGET_WORKER,
-                        "Connection established to peer {} with address {}.", peer_id, address
+                        "Connection established to peer {} with address {}.",
+                        peer_id,
+                        address
                     );
-                    }
-                    ConnectedPoint::Listener { send_back_addr, .. } => {
-                        info!(
-                            TARGET_WORKER,
-                            "Connection established from address {}.",
-                            send_back_addr,
-                        );
-                    }
                 }
-            }
+                ConnectedPoint::Listener { send_back_addr, .. } => {
+                    info!(
+                        TARGET_WORKER,
+                        "Connection established from address {}.",
+                        send_back_addr,
+                    );
+                }
+            },
             SwarmEvent::Behaviour(BehaviourEvent::PeersFounded(key, peers)) => {
                 if peers.contains(&key) {
                     info!(TARGET_WORKER, "Peer {} found in the network", key);
@@ -714,8 +712,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 if self.pending_outbound_messages.contains_key(&peer_id) {
                     trace!(
                         TARGET_WORKER,
-                        "Sending pending messages to peer {}.",
-                        peer_id
+                        "Sending pending messages to peer {}.", peer_id
                     );
                     self.send_pending_outbound_messages(peer_id);
                 }
@@ -746,8 +743,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 } else {
                     trace!(
                         TARGET_WORKER,
-                        "Message received from peer {}.",
-                        peer_id
+                        "Message received from peer {}.", peer_id
                     );
                     self.messages_metric
                         .get_or_create(&MetricLabels {
@@ -780,8 +776,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
                         trace!(
                             TARGET_WORKER,
-                            "Request received from peer {}.",
-                            peer_id
+                            "Request received from peer {}.", peer_id
                         );
 
                         let result = if let Some(helper_sender) =
@@ -914,8 +909,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             }) => {
                 trace!(
                     TARGET_WORKER,
-                    "Message processed from peer {}",
-                    peer_id
+                    "Message processed from peer {}", peer_id
                 );
             }
             SwarmEvent::Behaviour(BehaviourEvent::TellOutboundFailure {

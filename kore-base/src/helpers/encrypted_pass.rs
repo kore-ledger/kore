@@ -1,15 +1,15 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use generic_array::{typenum::U32, GenericArray};
+use generic_array::{GenericArray, typenum::U32};
 use identity::identifier::derive::digest::DigestDerivator;
 use memsecurity::EncryptedMem;
 use serde_json::Value;
 use tracing::error;
 
 use crate::{
+    DIGEST_DERIVATOR, Error,
     model::{HashId, ValueWrapper},
-    Error, DIGEST_DERIVATOR,
 };
 
 const TARGET_ENCPASS: &str = "Kore-Helper-EncryptedPass";

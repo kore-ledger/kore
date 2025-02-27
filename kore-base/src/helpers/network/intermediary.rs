@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
+    Error,
     approval::approver::{Approver, ApproverMessage},
     distribution::distributor::{Distributor, DistributorMessage},
     evaluation::{
@@ -13,11 +14,10 @@ use crate::{
         schema::{ValidationSchema, ValidationSchemaMessage},
         validator::{Validator, ValidatorMessage},
     },
-    Error,
 };
 
 use super::ActorMessage;
-use super::{service::HelperService, NetworkMessage};
+use super::{NetworkMessage, service::HelperService};
 use actor::{ActorPath, ActorRef, Error as ActorError, SystemRef};
 use identity::identifier::derive::KeyDerivator;
 use network::Command as NetworkCommand;
@@ -145,26 +145,26 @@ impl Intermediary {
                 match message.message {
                     ActorMessage::TransferRes { res } => {
                         let authorizer_path =
-                        ActorPath::from(message.info.reciver_actor.clone());
-                    let authorizer_actor: Option<ActorRef<Updater>> =
-                        self.system.get_actor(&authorizer_path).await;
+                            ActorPath::from(message.info.reciver_actor.clone());
+                        let authorizer_actor: Option<ActorRef<Updater>> =
+                            self.system.get_actor(&authorizer_path).await;
 
-                    if let Some(authorizer_actor) = authorizer_actor {
-                        if let Err(e) = authorizer_actor
-                            .tell(UpdaterMessage::TransferResponse { res })
-                            .await
-                        {
+                        if let Some(authorizer_actor) = authorizer_actor {
+                            if let Err(e) = authorizer_actor
+                                .tell(UpdaterMessage::TransferResponse { res })
+                                .await
+                            {
+                                return Err(Error::NetworkHelper(format!(
+                                    "Can not send a message to {}: {}",
+                                    authorizer_path, e
+                                )));
+                            };
+                        } else {
                             return Err(Error::NetworkHelper(format!(
-                                "Can not send a message to {}: {}",
-                                authorizer_path, e
+                                "Can not get Actor: {}",
+                                authorizer_path
                             )));
                         };
-                    } else {
-                        return Err(Error::NetworkHelper(format!(
-                            "Can not get Actor: {}",
-                            authorizer_path
-                        )));
-                    };
                     }
                     ActorMessage::Transfer { subject_id } => {
                         let distributor_path =

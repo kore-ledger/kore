@@ -16,7 +16,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 
 use crate::{
-    model::{common::emit_fail, network::RetryNetwork}, ActorMessage, NetworkMessage
+    ActorMessage, NetworkMessage,
+    model::{common::emit_fail, network::RetryNetwork},
 };
 
 use super::{TransferResponse, Update, UpdateMessage};
@@ -42,7 +43,7 @@ pub enum UpdaterMessage {
         our_key: KeyIdentifier,
     },
     TransferResponse {
-        res: TransferResponse
+        res: TransferResponse,
     },
     NetworkLastSn {
         subject_id: DigestIdentifier,
@@ -99,7 +100,11 @@ impl Handler<Updater> for Updater {
                         })
                         .await
                     {
-                        error!(TARGET_UPDATER, "NetworkResponse, can not send response to Update actor: {}", e);
+                        error!(
+                            TARGET_UPDATER,
+                            "NetworkResponse, can not send response to Update actor: {}",
+                            e
+                        );
                         return Err(e);
                     }
                 } else {
@@ -132,7 +137,11 @@ impl Handler<Updater> for Updater {
 
                 ctx.stop().await;
             }
-            UpdaterMessage::Transfer {subject_id, node_key, our_key } => {
+            UpdaterMessage::Transfer {
+                subject_id,
+                node_key,
+                our_key,
+            } => {
                 let message = NetworkMessage {
                     info: ComunicateInfo {
                         request_id: String::default(),
@@ -176,8 +185,7 @@ impl Handler<Updater> for Updater {
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
                     error!(
                         TARGET_UPDATER,
-                        "Transfer, can not send retry to Retry actor: {}",
-                        e
+                        "Transfer, can not send retry to Retry actor: {}", e
                     );
                     return Err(emit_fail(ctx, e).await);
                 };
@@ -249,7 +257,11 @@ impl Handler<Updater> for Updater {
                         })
                         .await
                     {
-                        error!(TARGET_UPDATER, "NetworkResponse, can not send response to Update actor: {}", e);
+                        error!(
+                            TARGET_UPDATER,
+                            "NetworkResponse, can not send response to Update actor: {}",
+                            e
+                        );
                         return Err(emit_fail(ctx, e).await);
                     }
                 } else {
@@ -308,7 +320,11 @@ impl Handler<Updater> for Updater {
                         })
                         .await
                     {
-                        error!(TARGET_UPDATER, "OnChildError, can not send response to Update actor: {}", e);
+                        error!(
+                            TARGET_UPDATER,
+                            "OnChildError, can not send response to Update actor: {}",
+                            e
+                        );
                         emit_fail(ctx, e).await;
                     }
                 } else {

@@ -8,17 +8,17 @@
 
 use crate::codec::Codec;
 use crate::protocol::TellProtocol;
-use crate::{InboundTellId, OutboundTellId, EMPTY_QUEUE_SHRINK_THRESHOLD};
+use crate::{EMPTY_QUEUE_SHRINK_THRESHOLD, InboundTellId, OutboundTellId};
 
 use libp2p::swarm::{
-    handler::{
-        ConnectionEvent, DialUpgradeError, FullyNegotiatedInbound,
-        FullyNegotiatedOutbound,
-    },
     ConnectionHandler,
     ConnectionHandlerEvent, //ConnectionHandlerUpgrErr, KeepAlive,
     StreamUpgradeError,
     SubstreamProtocol,
+    handler::{
+        ConnectionEvent, DialUpgradeError, FullyNegotiatedInbound,
+        FullyNegotiatedOutbound,
+    },
 };
 
 use futures::channel::mpsc;
@@ -29,8 +29,8 @@ use std::{
     collections::VecDeque,
     fmt, io,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
     task::Poll,
     time::Duration,
@@ -112,7 +112,7 @@ where
             protocol: (mut stream, protocol),
             info: (),
         }: FullyNegotiatedInbound<
-            <Self as ConnectionHandler>::InboundProtocol
+            <Self as ConnectionHandler>::InboundProtocol,
         >,
     ) {
         let mut codec = self.codec.clone();
@@ -146,7 +146,8 @@ where
             protocol: (mut stream, protocol),
             info: (),
         }: FullyNegotiatedOutbound<
-            <Self as ConnectionHandler>::OutboundProtocol>,
+            <Self as ConnectionHandler>::OutboundProtocol,
+        >,
     ) {
         let message = self
             .requested_outbound
@@ -303,9 +304,7 @@ where
     type OutboundOpenInfo = ();
     type InboundOpenInfo = ();
 
-    fn listen_protocol(
-        &self,
-    ) -> SubstreamProtocol<Self::InboundProtocol> {
+    fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol> {
         SubstreamProtocol::new(
             TellProtocol {
                 protocols: self.inbound_protocols.clone(),
@@ -421,10 +420,7 @@ where
 
     fn on_connection_event(
         &mut self,
-        event: ConnectionEvent<
-            Self::InboundProtocol,
-            Self::OutboundProtocol,
-        >,
+        event: ConnectionEvent<Self::InboundProtocol, Self::OutboundProtocol>,
     ) {
         match event {
             ConnectionEvent::FullyNegotiatedInbound(

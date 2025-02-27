@@ -5,7 +5,7 @@
 /// messages.
 ///
 use async_trait::async_trait;
-use borsh::{from_slice, to_vec, BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize, from_slice, to_vec};
 use futures::prelude::*;
 use futures::{AsyncRead, AsyncWrite};
 use libp2p::StreamProtocol;

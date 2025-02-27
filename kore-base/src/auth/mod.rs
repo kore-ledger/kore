@@ -14,11 +14,11 @@ use store::store::PersistentActor;
 use tracing::error;
 
 use crate::{
+    ActorMessage, NetworkMessage,
     db::Storable,
     intermediary::Intermediary,
     model::common::{emit_fail, get_gov, get_metadata, subject_old},
     update::{Update, UpdateMessage, UpdateNew, UpdateRes},
-    ActorMessage, NetworkMessage,
 };
 
 const TARGET_AUTH: &str = "Kore-Auth";
@@ -166,17 +166,15 @@ impl Handler<Auth> for Auth {
                 })?;
 
                 if !is_pending {
-                    let e =  "A Check transfer is being sent for a subject that is not pending to confirm or reject event";
-                    error!(
-                        TARGET_AUTH,
-                        "CheckTransfer, {}", e
-                    );
+                    let e = "A Check transfer is being sent for a subject that is not pending to confirm or reject event";
+                    error!(TARGET_AUTH, "CheckTransfer, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
 
                 let witness = self.auth.get(&subject_id.to_string());
                 if let Some(witness) = witness {
-                    let metadata = get_metadata(ctx, &subject_id.to_string()).await?;
+                    let metadata =
+                        get_metadata(ctx, &subject_id.to_string()).await?;
 
                     let witnesses = match witness {
                         AuthWitness::One(key_identifier) => {
@@ -191,42 +189,40 @@ impl Handler<Auth> for Auth {
                             return Err(ActorError::Functional(e.to_owned()));
                         }
                     }.iter().cloned().collect();
-                            let data = UpdateNew {
-                                subject_id: subject_id.clone(),
-                                our_key: self.our_node.clone(),
-                                response: None,
-                                witnesses,
-                                schema_id: metadata.schema_id,
-                                request: None,
-                                update_type: crate::update::UpdateType::Transfer,
-                            };
+                    let data = UpdateNew {
+                        subject_id: subject_id.clone(),
+                        our_key: self.our_node.clone(),
+                        response: None,
+                        witnesses,
+                        schema_id: metadata.schema_id,
+                        request: None,
+                        update_type: crate::update::UpdateType::Transfer,
+                    };
 
-                            let authorization = Update::new(data);
-                            let child = ctx
-                                .create_child(
-                                    &format!("transfer_{}", subject_id),
-                                    authorization,
-                                )
-                                .await;
-                            let Ok(child) = child else {
-                                let e = ActorError::Create(
-                                    ctx.path().clone(),
-                                    subject_id.to_string(),
-                                );
-                                return Err(e);
-                            };
+                    let authorization = Update::new(data);
+                    let child = ctx
+                        .create_child(
+                            &format!("transfer_{}", subject_id),
+                            authorization,
+                        )
+                        .await;
+                    let Ok(child) = child else {
+                        let e = ActorError::Create(
+                            ctx.path().clone(),
+                            subject_id.to_string(),
+                        );
+                        return Err(e);
+                    };
 
-                            if let Err(e) =
-                                child.tell(UpdateMessage::Transfer).await
-                            {
-                                return Err(emit_fail(ctx, e).await);
-                            }
+                    if let Err(e) = child.tell(UpdateMessage::Transfer).await {
+                        return Err(emit_fail(ctx, e).await);
+                    }
                 } else {
                     let e = "The subject has not been authorized";
                     error!(TARGET_AUTH, "CheckTransfer, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
-            },
+            }
             AuthMessage::GetAuth { subject_id } => {
                 if let Some(witnesses) = self.auth.get(&subject_id.to_string())
                 {
@@ -273,7 +269,11 @@ impl Handler<Auth> for Auth {
                         {
                             Ok(data) => data,
                             Err(e) => {
-                                error!(TARGET_AUTH, "Update, can not obtain request, sn, schema_id: {}", e);
+                                error!(
+                                    TARGET_AUTH,
+                                    "Update, can not obtain request, sn, schema_id: {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
@@ -316,7 +316,11 @@ impl Handler<Auth> for Auth {
                                 )
                                 .await
                             {
-                                error!(TARGET_AUTH, "Update, can not send response to network: {}", e);
+                                error!(
+                                    TARGET_AUTH,
+                                    "Update, can not send response to network: {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             };
                         }
@@ -334,10 +338,7 @@ impl Handler<Auth> for Auth {
 
                             let updater = Update::new(data);
                             let child = ctx
-                                .create_child(
-                                    &subject_id.to_string(),
-                                    updater,
-                                )
+                                .create_child(&subject_id.to_string(), updater)
                                 .await;
                             let Ok(child) = child else {
                                 let e = ActorError::Create(

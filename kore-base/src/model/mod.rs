@@ -20,6 +20,7 @@ pub use namespace::Namespace;
 pub use wrapper::ValueWrapper;
 
 use crate::{
+    Error, EventRequest,
     approval::{
         request::ApprovalReq,
         response::{ApprovalRes, ApprovalSignature},
@@ -28,11 +29,10 @@ use crate::{
     validation::{
         proof::ValidationProof, request::ValidationReq, response::ValidationRes,
     },
-    Error, EventRequest,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use identity::identifier::{derive::digest::DigestDerivator, DigestIdentifier};
+use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 

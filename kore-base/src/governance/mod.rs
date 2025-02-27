@@ -10,8 +10,8 @@ pub mod model;
 mod schema;
 
 use crate::{
-    model::{wrapper::ValueWrapper, Namespace},
     Error,
+    model::{Namespace, wrapper::ValueWrapper},
 };
 
 use actor::Error as ActorError;
@@ -622,9 +622,9 @@ mod tests {
     use test_log::test;
 
     use super::{
+        Governance, Member, Policy, Role, Schema, Who,
         init::init_state,
         model::{Contract, CreatorQuantity, Roles, SchemaEnum, Validation},
-        Governance, Member, Policy, Role, Schema, Who,
     };
     use identity::{
         identifier::{Derivable, KeyIdentifier},

@@ -6,12 +6,16 @@
 
 use std::collections::HashSet;
 
-use super::{signature::Signed, wrapper::ValueWrapper, HashId, Namespace};
+use super::{HashId, Namespace, signature::Signed, wrapper::ValueWrapper};
 
-use crate::{governance::{model::Roles, Governance}, subject::Metadata, Error};
+use crate::{
+    Error,
+    governance::{Governance, model::Roles},
+    subject::Metadata,
+};
 
 use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+    DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -31,7 +35,7 @@ pub enum EventRequestType {
 
 pub enum SignerTypes {
     One(KeyIdentifier),
-    List(HashSet<KeyIdentifier>, bool)
+    List(HashSet<KeyIdentifier>, bool),
 }
 
 impl From<EventRequest> for EventRequestType {
@@ -42,7 +46,7 @@ impl From<EventRequest> for EventRequestType {
             EventRequest::Transfer(_transfer_request) => Self::Transfer,
             EventRequest::Confirm(_confirm_request) => Self::Confirm,
             EventRequest::EOL(_eolrequest) => Self::EOL,
-            EventRequest::Reject(_reject_request) => Self::Reject
+            EventRequest::Reject(_reject_request) => Self::Reject,
         }
     }
 }
@@ -74,39 +78,49 @@ pub enum EventRequest {
 }
 
 impl EventRequest {
-    pub fn check_ledger_signature(&self, signer: &KeyIdentifier, owner: &KeyIdentifier, new_owner: &Option<KeyIdentifier>) -> Result<bool, Error> {
+    pub fn check_ledger_signature(
+        &self,
+        signer: &KeyIdentifier,
+        owner: &KeyIdentifier,
+        new_owner: &Option<KeyIdentifier>,
+    ) -> Result<bool, Error> {
         match self {
-            EventRequest::Create(..) |
-            EventRequest::Transfer(..) | 
-            EventRequest::EOL(..) => {
-                Ok(signer == owner)
-            },
-            EventRequest::Confirm(..) | 
-            EventRequest::Reject(..) => {
+            EventRequest::Create(..)
+            | EventRequest::Transfer(..)
+            | EventRequest::EOL(..) => Ok(signer == owner),
+            EventRequest::Confirm(..) | EventRequest::Reject(..) => {
                 let Some(new_owner) = new_owner else {
-                    return Err(Error::Subject("new_owner can not be None in Confirm or Reject event".to_owned()));
+                    return Err(Error::Subject(
+                        "new_owner can not be None in Confirm or Reject event"
+                            .to_owned(),
+                    ));
                 };
                 Ok(new_owner == signer)
-            },
-            EventRequest::Fact(..) => Ok(true)
+            }
+            EventRequest::Fact(..) => Ok(true),
         }
     }
 
-    pub fn check_event_signature(&self, signer: &KeyIdentifier, owner: &KeyIdentifier, new_owner: &Option<KeyIdentifier>) -> Result<bool, Error> {
+    pub fn check_event_signature(
+        &self,
+        signer: &KeyIdentifier,
+        owner: &KeyIdentifier,
+        new_owner: &Option<KeyIdentifier>,
+    ) -> Result<bool, Error> {
         match self {
-            EventRequest::Create(..) |
-            EventRequest::Transfer(..) | 
-            EventRequest::EOL(..) => {
-                Ok(signer == owner)
-            },
-            EventRequest::Confirm(..) | 
-            EventRequest::Reject(..) => {
+            EventRequest::Create(..)
+            | EventRequest::Transfer(..)
+            | EventRequest::EOL(..) => Ok(signer == owner),
+            EventRequest::Confirm(..) | EventRequest::Reject(..) => {
                 let Some(new_owner) = new_owner else {
-                    return Err(Error::Subject("new_owner can not be None in Confirm or Reject event".to_owned()));
+                    return Err(Error::Subject(
+                        "new_owner can not be None in Confirm or Reject event"
+                            .to_owned(),
+                    ));
                 };
                 Ok(new_owner == signer)
-            },
-            EventRequest::Fact(..) => Ok(true)
+            }
+            EventRequest::Fact(..) => Ok(true),
         }
     }
 
@@ -116,14 +130,18 @@ impl EventRequest {
     pub fn is_fact_event(&self) -> bool {
         matches!(self, EventRequest::Fact(_fact_request))
     }
-    pub fn check_signers(&self, signer: &KeyIdentifier, metadata: &Metadata, gov: &Governance) -> bool {
+    pub fn check_signers(
+        &self,
+        signer: &KeyIdentifier,
+        metadata: &Metadata,
+        gov: &Governance,
+    ) -> bool {
         match self {
-            EventRequest::Create(_) | 
-            EventRequest::EOL(_) | 
-            EventRequest::Transfer(_)
-            => {
+            EventRequest::Create(_)
+            | EventRequest::EOL(_)
+            | EventRequest::Transfer(_) => {
                 return metadata.owner == *signer;
-            },
+            }
             EventRequest::Fact(_) => {
                 let (set, any) = gov.get_signers(
                     Roles::ISSUER,
@@ -136,12 +154,12 @@ impl EventRequest {
                 }
 
                 return set.iter().any(|x| x == signer);
-            },
+            }
             EventRequest::Confirm(_) | EventRequest::Reject(_) => {
                 if let Some(new_owner) = metadata.new_owner.clone() {
                     return new_owner == *signer;
                 }
-            },
+            }
         }
         false
     }
@@ -217,7 +235,7 @@ pub struct TransferRequest {
 pub struct ConfirmRequest {
     pub subject_id: DigestIdentifier,
     /// The new name of old owner, only for governance confirm, if is None in governance confirm, old owner will not add to members
-    pub name_old_owner: Option<String>
+    pub name_old_owner: Option<String>,
 }
 
 /// A struct representing a request to mark a subject as end-of-life.
@@ -344,7 +362,7 @@ impl TryFrom<Signed<EventRequest>> for KoreRequest {
             }
             EventRequest::Confirm(confirm_request) => {
                 Some(confirm_request.subject_id.clone())
-            },
+            }
             EventRequest::Reject(reject_request) => {
                 Some(reject_request.subject_id.clone())
             }

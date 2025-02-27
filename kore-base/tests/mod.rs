@@ -7,9 +7,14 @@ use identity::{
     identifier::KeyIdentifier,
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
-use kore_base::{approval::approver::ApprovalStateRes, auth::AuthWitness, model::request::{ConfirmRequest, EventRequest}};
+use kore_base::{
+    approval::approver::ApprovalStateRes,
+    auth::AuthWitness,
+    model::request::{ConfirmRequest, EventRequest},
+};
 use node_builder::{
-    create_and_authorize_governance, create_nodes_and_connections, create_subject, emit_confirm, emit_fact, emit_reject, emit_transfer
+    create_and_authorize_governance, create_nodes_and_connections,
+    create_subject, emit_confirm, emit_fact, emit_reject, emit_transfer,
 };
 use serde_json::json;
 use serial_test::serial;
@@ -156,7 +161,7 @@ async fn test_governance_and_subject_copy_with_approve() {
     }
 
     tokio::time::sleep(Duration::from_secs(6)).await;
-    
+
     let events = node2
         .get_first_or_end_events(
             subject_id.clone(),
@@ -180,9 +185,12 @@ async fn test_governance_and_subject_copy_with_approve() {
     assert_eq!(state.creator, node2.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 11);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 10
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 10
+        })
+    );
 
     let state = node2.get_subject(subject_id.clone()).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -195,9 +203,12 @@ async fn test_governance_and_subject_copy_with_approve() {
     assert_eq!(state.creator, node2.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 11);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 10
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 10
+        })
+    );
 }
 
 #[test(tokio::test)]
@@ -318,21 +329,11 @@ async fn test_basic_use_case_1b_1e_1a() {
         .unwrap();
 
     tokio::time::sleep(Duration::from_secs(10)).await;
-    
-    let state = owner_governance.get_subject(governance_id.clone()).await.unwrap();
-    assert_eq!(state.subject_id, governance_id.to_string());
-    assert_eq!(state.governance_id, "");
-    assert_eq!(state.genesis_gov_version, 0);
-    assert_eq!(state.namespace, "");
-    assert_eq!(state.schema_id, "governance");
-    assert_eq!(state.owner, owner_governance.controller_id());
-    assert_eq!(state.new_owner, None);
-    assert_eq!(state.creator, owner_governance.controller_id());
-    assert_eq!(state.active, true);
-    assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id":emit_events.controller_id(),"name":"KoreNode2"},{"id":intermediary.controller_id(),"name":"KoreNode3"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":{"CREATOR":{"QUANTITY":2}},"schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}},{"namespace":"","role":"ISSUER","schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}}],"schemas":[{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0="},"id":"Example","initial_value":{"one":0,"three":0,"two":0}}],"version":1}));
 
-    let state = intermediary.get_subject(governance_id.clone()).await.unwrap();
+    let state = owner_governance
+        .get_subject(governance_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, "");
     assert_eq!(state.genesis_gov_version, 0);
@@ -343,9 +344,15 @@ async fn test_basic_use_case_1b_1e_1a() {
     assert_eq!(state.creator, owner_governance.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id":emit_events.controller_id(),"name":"KoreNode2"},{"id":intermediary.controller_id(),"name":"KoreNode3"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":{"CREATOR":{"QUANTITY":2}},"schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}},{"namespace":"","role":"ISSUER","schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}}],"schemas":[{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0="},"id":"Example","initial_value":{"one":0,"three":0,"two":0}}],"version":1}));
+    assert_eq!(
+        state.properties,
+        json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id":emit_events.controller_id(),"name":"KoreNode2"},{"id":intermediary.controller_id(),"name":"KoreNode3"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":{"CREATOR":{"QUANTITY":2}},"schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}},{"namespace":"","role":"ISSUER","schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}}],"schemas":[{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0="},"id":"Example","initial_value":{"one":0,"three":0,"two":0}}],"version":1})
+    );
 
-    let state = emit_events.get_subject(governance_id.clone()).await.unwrap();
+    let state = intermediary
+        .get_subject(governance_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, "");
     assert_eq!(state.genesis_gov_version, 0);
@@ -356,7 +363,29 @@ async fn test_basic_use_case_1b_1e_1a() {
     assert_eq!(state.creator, owner_governance.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id":emit_events.controller_id(),"name":"KoreNode2"},{"id":intermediary.controller_id(),"name":"KoreNode3"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":{"CREATOR":{"QUANTITY":2}},"schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}},{"namespace":"","role":"ISSUER","schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}}],"schemas":[{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0="},"id":"Example","initial_value":{"one":0,"three":0,"two":0}}],"version":1}));
+    assert_eq!(
+        state.properties,
+        json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id":emit_events.controller_id(),"name":"KoreNode2"},{"id":intermediary.controller_id(),"name":"KoreNode3"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":{"CREATOR":{"QUANTITY":2}},"schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}},{"namespace":"","role":"ISSUER","schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}}],"schemas":[{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0="},"id":"Example","initial_value":{"one":0,"three":0,"two":0}}],"version":1})
+    );
+
+    let state = emit_events
+        .get_subject(governance_id.clone())
+        .await
+        .unwrap();
+    assert_eq!(state.subject_id, governance_id.to_string());
+    assert_eq!(state.governance_id, "");
+    assert_eq!(state.genesis_gov_version, 0);
+    assert_eq!(state.namespace, "");
+    assert_eq!(state.schema_id, "governance");
+    assert_eq!(state.owner, owner_governance.controller_id());
+    assert_eq!(state.new_owner, None);
+    assert_eq!(state.creator, owner_governance.controller_id());
+    assert_eq!(state.active, true);
+    assert_eq!(state.sn, 1);
+    assert_eq!(
+        state.properties,
+        json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id":emit_events.controller_id(),"name":"KoreNode2"},{"id":intermediary.controller_id(),"name":"KoreNode3"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":{"CREATOR":{"QUANTITY":2}},"schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}},{"namespace":"","role":"ISSUER","schema":{"ID":"Example"},"who":{"NAME":"KoreNode2"}}],"schemas":[{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0="},"id":"Example","initial_value":{"one":0,"three":0,"two":0}}],"version":1})
+    );
 }
 
 #[test(tokio::test)]
@@ -376,12 +405,9 @@ async fn test_limits_in_subjects() {
     let owner_governance = &nodes[0];
     let emit_events = &nodes[1];
 
-    let governance_id = create_and_authorize_governance(
-        owner_governance,
-        &[emit_events],
-        "",
-    )
-    .await;
+    let governance_id =
+        create_and_authorize_governance(owner_governance, &[emit_events], "")
+            .await;
 
     tokio::time::sleep(Duration::from_secs(3)).await;
     // add node bootstrap and ephemeral to governance
@@ -506,9 +532,10 @@ async fn test_limits_in_subjects() {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     // create other subject
-    let subject_id_2 = create_subject(emit_events, governance_id.clone(), "Example", "")
-        .await
-        .unwrap();
+    let subject_id_2 =
+        create_subject(emit_events, governance_id.clone(), "Example", "")
+            .await
+            .unwrap();
 
     // now we have two subjects, modify the governance to allow only one
     let json = json!({"Patch": {
@@ -550,11 +577,17 @@ async fn test_limits_in_subjects() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
 
-    let state = owner_governance.get_subject(subject_id_1.clone()).await.unwrap();
+    let state = owner_governance
+        .get_subject(subject_id_1.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -565,9 +598,12 @@ async fn test_limits_in_subjects() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
 
     let state = emit_events.get_subject(subject_id_2.clone()).await.unwrap();
     assert_eq!(state.subject_id, subject_id_2.to_string());
@@ -580,11 +616,17 @@ async fn test_limits_in_subjects() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 200, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 200, "three": 0, "two": 0
+        })
+    );
 
-    let state = owner_governance.get_subject(subject_id_2.clone()).await.unwrap();
+    let state = owner_governance
+        .get_subject(subject_id_2.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id_2.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 2);
@@ -595,11 +637,13 @@ async fn test_limits_in_subjects() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 200, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 200, "three": 0, "two": 0
+        })
+    );
 }
-
 
 #[test(tokio::test)]
 #[serial]
@@ -782,7 +826,8 @@ async fn test_namespace_in_role_1() {
     assert!(subject_id.is_err());
 
     let subject_id =
-    create_subject(emit_events, governance_id.clone(), "Example", "Other").await;
+        create_subject(emit_events, governance_id.clone(), "Example", "Other")
+            .await;
     assert!(subject_id.is_err());
 
     // create subject in namespace
@@ -810,7 +855,10 @@ async fn test_namespace_in_role_1() {
 
     assert!(state.signatures_eval.unwrap().len() == 2);
 
-    let state = owner_governance.get_subject(subject_id.clone()).await.unwrap();
+    let state = owner_governance
+        .get_subject(subject_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -821,9 +869,12 @@ async fn test_namespace_in_role_1() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
 
     let state = emit_events.get_subject(subject_id.clone()).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -836,11 +887,17 @@ async fn test_namespace_in_role_1() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
 
-    let state = witness_schema.get_subject(subject_id.clone()).await.unwrap();
+    let state = witness_schema
+        .get_subject(subject_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -851,11 +908,19 @@ async fn test_namespace_in_role_1() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
 
-    assert!(witness_not_schema.get_subject(subject_id.clone()).await.is_err());
+    assert!(
+        witness_not_schema
+            .get_subject(subject_id.clone())
+            .await
+            .is_err()
+    );
 }
 
 #[test(tokio::test)]
@@ -1035,18 +1100,28 @@ async fn test_namespace_in_role_2() {
 
     // create subject
     let subject_id =
-        create_subject(emit_events, governance_id.clone(), "Example", "Spain").await;
+        create_subject(emit_events, governance_id.clone(), "Example", "Spain")
+            .await;
     assert!(subject_id.is_err());
 
-    let subject_id =
-    create_subject(emit_events, governance_id.clone(), "Example", "Spain.Canary").await;
+    let subject_id = create_subject(
+        emit_events,
+        governance_id.clone(),
+        "Example",
+        "Spain.Canary",
+    )
+    .await;
     assert!(subject_id.is_err());
 
     // create subject in namespace
-    let subject_id =
-        create_subject(emit_events, governance_id.clone(), "Example", "Spain.Canary.Tenerife")
-            .await
-            .unwrap();
+    let subject_id = create_subject(
+        emit_events,
+        governance_id.clone(),
+        "Example",
+        "Spain.Canary.Tenerife",
+    )
+    .await
+    .unwrap();
 
     tokio::time::sleep(Duration::from_secs(3)).await;
     // emit event to subject
@@ -1067,7 +1142,10 @@ async fn test_namespace_in_role_2() {
 
     assert!(state.signatures_eval.unwrap().len() == 2);
 
-    let state = owner_governance.get_subject(subject_id.clone()).await.unwrap();
+    let state = owner_governance
+        .get_subject(subject_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1078,9 +1156,12 @@ async fn test_namespace_in_role_2() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
 
     let state = emit_events.get_subject(subject_id.clone()).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -1093,11 +1174,17 @@ async fn test_namespace_in_role_2() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
 
-    let state = witness_schema.get_subject(subject_id.clone()).await.unwrap();
+    let state = witness_schema
+        .get_subject(subject_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1108,11 +1195,19 @@ async fn test_namespace_in_role_2() {
     assert_eq!(state.creator, emit_events.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
 
-    assert!(witness_not_schema.get_subject(subject_id.clone()).await.is_err());
+    assert!(
+        witness_not_schema
+            .get_subject(subject_id.clone())
+            .await
+            .is_err()
+    );
 }
 
 #[test(tokio::test)]
@@ -1169,7 +1264,10 @@ async fn test_many_schema_in_one_governance() {
 
     tokio::time::sleep(Duration::from_secs(35)).await;
 
-    let state = owner_governance.get_subject(governance_id.clone()).await.unwrap();
+    let state = owner_governance
+        .get_subject(governance_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, "");
     assert_eq!(state.genesis_gov_version, 0);
@@ -1180,9 +1278,11 @@ async fn test_many_schema_in_one_governance() {
     assert_eq!(state.creator, owner_governance.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"}],"policies":[{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example0","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example1","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example2","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBzdGF0ZS5vbmUgKyBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IHN0YXRlLnR3byArIGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS50aHJlZSA9IHN0YXRlLnRocmVlICsgZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0KCg=="},"id":"Example0","initial_value":{"one":1,"three":1,"two":1}},{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBzdGF0ZS5vbmUgKyBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IHN0YXRlLnR3byArIGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS50aHJlZSA9IHN0YXRlLnRocmVlICsgZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0KCg=="},"id":"Example1","initial_value":{"one":1,"three":1,"two":1}},{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBzdGF0ZS5vbmUgKyBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IHN0YXRlLnR3byArIGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS50aHJlZSA9IHN0YXRlLnRocmVlICsgZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0KCg=="},"id":"Example2","initial_value":{"one":1,"three":1,"two":1}}],"version":1}));
+    assert_eq!(
+        state.properties,
+        json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"}],"policies":[{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example0","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example1","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":{"FIXED":1}},"evaluate":{"quorum":"MAJORITY"},"id":"Example2","validate":{"quorum":"MAJORITY"}},{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBzdGF0ZS5vbmUgKyBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IHN0YXRlLnR3byArIGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS50aHJlZSA9IHN0YXRlLnRocmVlICsgZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0KCg=="},"id":"Example0","initial_value":{"one":1,"three":1,"two":1}},{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBzdGF0ZS5vbmUgKyBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IHN0YXRlLnR3byArIGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS50aHJlZSA9IHN0YXRlLnRocmVlICsgZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0KCg=="},"id":"Example1","initial_value":{"one":1,"three":1,"two":1}},{"contract":{"raw":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBzdGF0ZS5vbmUgKyBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IHN0YXRlLnR3byArIGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS50aHJlZSA9IHN0YXRlLnRocmVlICsgZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0KCg=="},"id":"Example2","initial_value":{"one":1,"three":1,"two":1}}],"version":1})
+    );
 }
-
 
 #[test(tokio::test)]
 #[serial]
@@ -1231,9 +1331,11 @@ async fn test_transfer_event_governance_1() {
 
     tokio::time::sleep(Duration::from_secs(5)).await;
     // Confirm transfer event
-    emit_confirm(future_owner, governance_id.clone(),None, false).await;
+    emit_confirm(future_owner, governance_id.clone(), None, false).await;
 
-    let fake_node =  KeyPair::Ed25519(Ed25519KeyPair::new()).key_identifier().to_string();
+    let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
+        .key_identifier()
+        .to_string();
     // add new fake member to governance
     let json = json!({"Patch": {
             "data": [
@@ -1253,7 +1355,10 @@ async fn test_transfer_event_governance_1() {
         .unwrap();
 
     tokio::time::sleep(Duration::from_secs(5)).await;
-    let state = future_owner.get_subject(governance_id.clone()).await.unwrap();
+    let state = future_owner
+        .get_subject(governance_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, "");
     assert_eq!(state.genesis_gov_version, 0);
@@ -1264,9 +1369,15 @@ async fn test_transfer_event_governance_1() {
     assert_eq!(state.creator, owner_governance.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 4);
-    assert_eq!(state.properties, json!({"members":[{"id":future_owner.controller_id(),"name":"Owner"},{"id":fake_node,"name":"KoreNode2"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":4}));
+    assert_eq!(
+        state.properties,
+        json!({"members":[{"id":future_owner.controller_id(),"name":"Owner"},{"id":fake_node,"name":"KoreNode2"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":4})
+    );
 
-    let state = owner_governance.get_subject(governance_id.clone()).await.unwrap();
+    let state = owner_governance
+        .get_subject(governance_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, "");
     assert_eq!(state.genesis_gov_version, 0);
@@ -1277,7 +1388,10 @@ async fn test_transfer_event_governance_1() {
     assert_eq!(state.creator, owner_governance.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 2);
-    assert_eq!(state.properties, json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id": future_owner.controller_id(),"name":"KoreNode1"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":2}));
+    assert_eq!(
+        state.properties,
+        json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id": future_owner.controller_id(),"name":"KoreNode1"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":2})
+    );
 }
 
 #[test(tokio::test)]
@@ -1300,7 +1414,10 @@ async fn test_transfer_event_governance_2() {
             .await;
 
     // Auth governance in old owner, in future he will be a normal member and need auth governance for receive a ledger copy.
-    owner_governance.auth_subject(governance_id.clone(), AuthWitness::None).await.unwrap();
+    owner_governance
+        .auth_subject(governance_id.clone(), AuthWitness::None)
+        .await
+        .unwrap();
     // add member to governance
     let json = json!({"Patch": {
             "data": [
@@ -1330,19 +1447,33 @@ async fn test_transfer_event_governance_2() {
 
     tokio::time::sleep(Duration::from_secs(5)).await;
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
-    assert_eq!(transfer_data[0].actual_owner, owner_governance.controller_id());
+    assert_eq!(
+        transfer_data[0].actual_owner,
+        owner_governance.controller_id()
+    );
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
     assert_eq!(transfer_data[0].subject_id, governance_id.to_string());
 
     let transfer_data = future_owner.get_pending_transfers().await.unwrap();
-    assert_eq!(transfer_data[0].actual_owner, owner_governance.controller_id());
+    assert_eq!(
+        transfer_data[0].actual_owner,
+        owner_governance.controller_id()
+    );
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
     assert_eq!(transfer_data[0].subject_id, governance_id.to_string());
-    
-    // Confirm transfer event
-    emit_confirm(future_owner, governance_id.clone(), Some("Korenode_22".to_owned()),false).await;
 
-    let fake_node =  KeyPair::Ed25519(Ed25519KeyPair::new()).key_identifier().to_string();
+    // Confirm transfer event
+    emit_confirm(
+        future_owner,
+        governance_id.clone(),
+        Some("Korenode_22".to_owned()),
+        false,
+    )
+    .await;
+
+    let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
+        .key_identifier()
+        .to_string();
     // add new fake member to governance
     let json = json!({"Patch": {
             "data": [
@@ -1368,7 +1499,10 @@ async fn test_transfer_event_governance_2() {
         .unwrap();
 
     tokio::time::sleep(Duration::from_secs(10)).await;
-    let state = future_owner.get_subject(governance_id.clone()).await.unwrap();
+    let state = future_owner
+        .get_subject(governance_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, "");
     assert_eq!(state.genesis_gov_version, 0);
@@ -1379,9 +1513,15 @@ async fn test_transfer_event_governance_2() {
     assert_eq!(state.creator, owner_governance.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 4);
-    assert_eq!(state.properties, json!({"members":[{"id":future_owner.controller_id(),"name":"Owner"},{"id":fake_node,"name":"KoreNode2"},{"id":owner_governance.controller_id(),"name":"Korenode_22"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":4}));
+    assert_eq!(
+        state.properties,
+        json!({"members":[{"id":future_owner.controller_id(),"name":"Owner"},{"id":fake_node,"name":"KoreNode2"},{"id":owner_governance.controller_id(),"name":"Korenode_22"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":4})
+    );
 
-    let state = owner_governance.get_subject(governance_id.clone()).await.unwrap();
+    let state = owner_governance
+        .get_subject(governance_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, "");
     assert_eq!(state.genesis_gov_version, 0);
@@ -1392,7 +1532,10 @@ async fn test_transfer_event_governance_2() {
     assert_eq!(state.creator, owner_governance.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 4);
-    assert_eq!(state.properties, json!({"members":[{"id":future_owner.controller_id(),"name":"Owner"},{"id":fake_node,"name":"KoreNode2"},{"id":owner_governance.controller_id(),"name":"Korenode_22"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":4}));
+    assert_eq!(
+        state.properties,
+        json!({"members":[{"id":future_owner.controller_id(),"name":"Owner"},{"id":fake_node,"name":"KoreNode2"},{"id":owner_governance.controller_id(),"name":"Korenode_22"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":4})
+    );
 }
 
 #[test(tokio::test)]
@@ -1569,13 +1712,19 @@ async fn test_subject_transfer_event_1() {
         .unwrap();
 
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
-    assert_eq!(transfer_data[0].actual_owner, owner_governance.controller_id());
+    assert_eq!(
+        transfer_data[0].actual_owner,
+        owner_governance.controller_id()
+    );
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
     assert_eq!(transfer_data[0].subject_id, subject_id.to_string());
 
     tokio::time::sleep(Duration::from_secs(5)).await;
     let transfer_data = future_owner.get_pending_transfers().await.unwrap();
-    assert_eq!(transfer_data[0].actual_owner, owner_governance.controller_id());
+    assert_eq!(
+        transfer_data[0].actual_owner,
+        owner_governance.controller_id()
+    );
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
     assert_eq!(transfer_data[0].subject_id, subject_id.to_string());
 
@@ -1588,15 +1737,21 @@ async fn test_subject_transfer_event_1() {
     let transfer_data = future_owner.get_pending_transfers().await.unwrap();
     assert!(transfer_data.is_empty());
 
-    assert!(emit_fact(owner_governance, subject_id.clone(), json.clone(), false).await.is_err());
+    assert!(
+        emit_fact(owner_governance, subject_id.clone(), json.clone(), false)
+            .await
+            .is_err()
+    );
 
     let json = json!({
         "ModOne": {
             "data": 150,
         }
     });
-    emit_fact(future_owner, subject_id.clone(), json.clone(), false).await.unwrap();
-    
+    emit_fact(future_owner, subject_id.clone(), json.clone(), false)
+        .await
+        .unwrap();
+
     tokio::time::sleep(Duration::from_secs(5)).await;
     let state = future_owner.get_subject(subject_id.clone()).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -1609,10 +1764,16 @@ async fn test_subject_transfer_event_1() {
     assert_eq!(state.creator, owner_governance.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 4);
-    assert_eq!(state.properties, json!({
-        "one": 150, "three": 0, "two": 0
-    }));
-    let state = owner_governance.get_subject(subject_id.clone()).await.unwrap();
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 150, "three": 0, "two": 0
+        })
+    );
+    let state = owner_governance
+        .get_subject(subject_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1623,9 +1784,12 @@ async fn test_subject_transfer_event_1() {
     assert_eq!(state.creator, owner_governance.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 4);
-    assert_eq!(state.properties, json!({
-        "one": 150, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 150, "three": 0, "two": 0
+        })
+    );
 }
 
 #[test(tokio::test)]
@@ -1645,9 +1809,12 @@ async fn test_subject_transfer_event_2() {
     let future_owner = &nodes[1];
     let old_owner = &nodes[2];
 
-    let governance_id =
-        create_and_authorize_governance(owner_governance, &[future_owner, old_owner], "")
-            .await;
+    let governance_id = create_and_authorize_governance(
+        owner_governance,
+        &[future_owner, old_owner],
+        "",
+    )
+    .await;
 
     tokio::time::sleep(Duration::from_secs(3)).await;
     // add member to governance
@@ -1835,7 +2002,11 @@ async fn test_subject_transfer_event_2() {
     emit_confirm(future_owner, subject_id.clone(), None, false).await;
     tokio::time::sleep(Duration::from_secs(5)).await;
     // El owner no sabe que la transferencia se ha acceptado.
-    assert!(create_subject(old_owner, governance_id.clone(), "Example", "").await.is_err());
+    assert!(
+        create_subject(old_owner, governance_id.clone(), "Example", "")
+            .await
+            .is_err()
+    );
 
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert!(transfer_data.is_empty());
@@ -1849,33 +2020,44 @@ async fn test_subject_transfer_event_2() {
     assert_eq!(transfer_data[0].subject_id, subject_id.to_string());
 
     old_owner
-    .auth_subject(
-        subject_id.clone(),
-        AuthWitness::One(
-            KeyIdentifier::from_str(&owner_governance.controller_id())
-                .unwrap(),
-        ),
-    )
-    .await
-    .unwrap();
+        .auth_subject(
+            subject_id.clone(),
+            AuthWitness::One(
+                KeyIdentifier::from_str(&owner_governance.controller_id())
+                    .unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
 
     old_owner.check_transfer(subject_id.clone()).await.unwrap();
     tokio::time::sleep(Duration::from_secs(5)).await;
     let transfer_data = old_owner.get_pending_transfers().await.unwrap();
     assert!(transfer_data.is_empty());
 
-    let subject_id_2 = create_subject(old_owner, governance_id.clone(), "Example", "").await.unwrap();
-    
-    assert!(emit_fact(old_owner, subject_id.clone(), json.clone(), false).await.is_err());
+    let subject_id_2 =
+        create_subject(old_owner, governance_id.clone(), "Example", "")
+            .await
+            .unwrap();
+
+    assert!(
+        emit_fact(old_owner, subject_id.clone(), json.clone(), false)
+            .await
+            .is_err()
+    );
 
     let json = json!({
         "ModOne": {
             "data": 150,
         }
     });
-    emit_fact(future_owner, subject_id.clone(), json.clone(), false).await.unwrap();
-    emit_fact(old_owner, subject_id_2.clone(), json.clone(), false).await.unwrap();
-    
+    emit_fact(future_owner, subject_id.clone(), json.clone(), false)
+        .await
+        .unwrap();
+    emit_fact(old_owner, subject_id_2.clone(), json.clone(), false)
+        .await
+        .unwrap();
+
     tokio::time::sleep(Duration::from_secs(5)).await;
     let state = future_owner.get_subject(subject_id.clone()).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -1888,10 +2070,16 @@ async fn test_subject_transfer_event_2() {
     assert_eq!(state.creator, old_owner.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 4);
-    assert_eq!(state.properties, json!({
-        "one": 150, "three": 0, "two": 0
-    }));
-    let state = owner_governance.get_subject(subject_id.clone()).await.unwrap();
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 150, "three": 0, "two": 0
+        })
+    );
+    let state = owner_governance
+        .get_subject(subject_id.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1902,9 +2090,12 @@ async fn test_subject_transfer_event_2() {
     assert_eq!(state.creator, old_owner.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 4);
-    assert_eq!(state.properties, json!({
-        "one": 150, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 150, "three": 0, "two": 0
+        })
+    );
 
     let state = old_owner.get_subject(subject_id_2.clone()).await.unwrap();
     assert_eq!(state.subject_id, subject_id_2.to_string());
@@ -1917,10 +2108,16 @@ async fn test_subject_transfer_event_2() {
     assert_eq!(state.creator, old_owner.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 150, "three": 0, "two": 0
-    }));
-    let state = owner_governance.get_subject(subject_id_2.clone()).await.unwrap();
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 150, "three": 0, "two": 0
+        })
+    );
+    let state = owner_governance
+        .get_subject(subject_id_2.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id_2.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1931,9 +2128,12 @@ async fn test_subject_transfer_event_2() {
     assert_eq!(state.creator, old_owner.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 1);
-    assert_eq!(state.properties, json!({
-        "one": 150, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 150, "three": 0, "two": 0
+        })
+    );
 }
 
 #[test(tokio::test)]
@@ -1954,9 +2154,12 @@ async fn test_subject_transfer_event_3() {
     let future_owner = &nodes[1];
     let old_owner = &nodes[2];
 
-    let governance_id =
-        create_and_authorize_governance(owner_governance, &[future_owner, old_owner], "")
-            .await;
+    let governance_id = create_and_authorize_governance(
+        owner_governance,
+        &[future_owner, old_owner],
+        "",
+    )
+    .await;
 
     tokio::time::sleep(Duration::from_secs(3)).await;
     // add member to governance
@@ -2146,12 +2349,19 @@ async fn test_subject_transfer_event_3() {
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
     assert_eq!(transfer_data[0].subject_id, subject_id_1.to_string());
 
-    let request = EventRequest::Confirm(ConfirmRequest { subject_id: subject_id_1.clone(), name_old_owner: None });
+    let request = EventRequest::Confirm(ConfirmRequest {
+        subject_id: subject_id_1.clone(),
+        name_old_owner: None,
+    });
     assert!(future_owner.own_request(request).await.is_err());
 
     tokio::time::sleep(Duration::from_secs(5)).await;
     // El owner no sabe que la transferencia se ha acceptado.
-    assert!(create_subject(old_owner, governance_id.clone(), "Example", "").await.is_err());
+    assert!(
+        create_subject(old_owner, governance_id.clone(), "Example", "")
+            .await
+            .is_err()
+    );
 
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
@@ -2172,18 +2382,21 @@ async fn test_subject_transfer_event_3() {
     emit_reject(future_owner, subject_id_1.clone(), false).await;
 
     old_owner
-    .auth_subject(
-        subject_id_1.clone(),
-        AuthWitness::One(
-            KeyIdentifier::from_str(&owner_governance.controller_id())
-                .unwrap(),
-        ),
-    )
-    .await
-    .unwrap();
+        .auth_subject(
+            subject_id_1.clone(),
+            AuthWitness::One(
+                KeyIdentifier::from_str(&owner_governance.controller_id())
+                    .unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_secs(5)).await;
-    old_owner.check_transfer(subject_id_1.clone()).await.unwrap();
+    old_owner
+        .check_transfer(subject_id_1.clone())
+        .await
+        .unwrap();
     tokio::time::sleep(Duration::from_secs(5)).await;
     let transfer_data = old_owner.get_pending_transfers().await.unwrap();
     assert!(transfer_data.is_empty());
@@ -2194,16 +2407,21 @@ async fn test_subject_transfer_event_3() {
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert!(transfer_data.is_empty());
 
-    
-    assert!(emit_fact(future_owner, subject_id_1.clone(), json.clone(), false).await.is_err());
+    assert!(
+        emit_fact(future_owner, subject_id_1.clone(), json.clone(), false)
+            .await
+            .is_err()
+    );
 
     let json = json!({
         "ModOne": {
             "data": 150,
         }
     });
-    emit_fact(old_owner, subject_id_1.clone(), json.clone(), false).await.unwrap();
-    
+    emit_fact(old_owner, subject_id_1.clone(), json.clone(), false)
+        .await
+        .unwrap();
+
     tokio::time::sleep(Duration::from_secs(5)).await;
     let state = old_owner.get_subject(subject_id_1.clone()).await.unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
@@ -2216,10 +2434,16 @@ async fn test_subject_transfer_event_3() {
     assert_eq!(state.creator, old_owner.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 4);
-    assert_eq!(state.properties, json!({
-        "one": 150, "three": 0, "two": 0
-    }));
-    let state = owner_governance.get_subject(subject_id_1.clone()).await.unwrap();
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 150, "three": 0, "two": 0
+        })
+    );
+    let state = owner_governance
+        .get_subject(subject_id_1.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -2230,10 +2454,16 @@ async fn test_subject_transfer_event_3() {
     assert_eq!(state.creator, old_owner.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 4);
-    assert_eq!(state.properties, json!({
-        "one": 150, "three": 0, "two": 0
-    }));
-    let state = future_owner.get_subject(subject_id_1.clone()).await.unwrap();
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 150, "three": 0, "two": 0
+        })
+    );
+    let state = future_owner
+        .get_subject(subject_id_1.clone())
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -2244,9 +2474,12 @@ async fn test_subject_transfer_event_3() {
     assert_eq!(state.creator, old_owner.controller_id());
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 3);
-    assert_eq!(state.properties, json!({
-        "one": 100, "three": 0, "two": 0
-    }));
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
 }
 
 // verificar copias de la gobernanza entre nodos independientemente del tipo ✅

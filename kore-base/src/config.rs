@@ -5,7 +5,7 @@
 
 use std::{fmt, time::Duration};
 
-use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
+use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
 use network::Config as NetworkConfig;
 use serde::{Deserialize, Deserializer};
 
@@ -71,18 +71,18 @@ impl Default for KoreDbConfig {
 }
 
 impl KoreDbConfig {
-        pub fn add_path(&mut self, new_path: &str) {
-            match self {
-                #[cfg(feature = "rocksdb")]
-                KoreDbConfig::Rocksdb { path } => {
-                    *path = format!("{}/{}", new_path, path);
-                },
-                #[cfg(feature = "sqlite")]
-                KoreDbConfig::Sqlite { path } => {
-                    *path = format!("{}/{}", new_path, path);
-                },
-            };
-        }
+    pub fn add_path(&mut self, new_path: &str) {
+        match self {
+            #[cfg(feature = "rocksdb")]
+            KoreDbConfig::Rocksdb { path } => {
+                *path = format!("{}/{}", new_path, path);
+            }
+            #[cfg(feature = "sqlite")]
+            KoreDbConfig::Sqlite { path } => {
+                *path = format!("{}/{}", new_path, path);
+            }
+        };
+    }
 
     pub fn build(path: &str) -> Self {
         #[cfg(feature = "rocksdb")]
@@ -146,7 +146,7 @@ impl ExternalDbConfig {
             #[cfg(feature = "ext-sqlite")]
             ExternalDbConfig::Sqlite { path } => {
                 *path = format!("{}/{}", new_path, path);
-            },
+            }
         };
     }
 

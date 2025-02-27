@@ -4,12 +4,11 @@
 use super::ValidationInfo;
 
 use crate::{
-    error,
-    model::{request::EventRequest, HashId, Namespace},
-    Error, DIGEST_DERIVATOR,
+    DIGEST_DERIVATOR, Error, error,
+    model::{HashId, Namespace, request::EventRequest},
 };
 use identity::identifier::{
-    derive::digest::DigestDerivator, DigestIdentifier, KeyIdentifier,
+    DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -132,9 +131,14 @@ impl ValidationProof {
             return true;
         }
 
-        if self.new_owner.clone().zip(previous_proof.new_owner.clone()).is_some_and(|(new_proof_new_owner, previous_proof_new_owner)| {
-            new_proof_new_owner != previous_proof_new_owner
-        }) {
+        if self
+            .new_owner
+            .clone()
+            .zip(previous_proof.new_owner.clone())
+            .is_some_and(|(new_proof_new_owner, previous_proof_new_owner)| {
+                new_proof_new_owner != previous_proof_new_owner
+            })
+        {
             return true;
         }
 

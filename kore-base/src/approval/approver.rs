@@ -4,18 +4,18 @@
 use std::fmt::Display;
 
 use crate::{
+    ActorMessage, EventRequest, NetworkMessage, Signed,
     db::Storable,
     intermediary::Intermediary,
     model::{
+        SignTypesNode, TimeStamp,
         common::{
-            emit_fail, get_gov, get_metadata, get_sign,
-            update_ledger_network, UpdateData,
+            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
+            update_ledger_network,
         },
         network::{RetryNetwork, TimeOutResponse},
-        SignTypesNode, TimeStamp,
     },
     subject::Subject,
-    ActorMessage, EventRequest, NetworkMessage, Signed,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
@@ -30,9 +30,9 @@ use store::store::PersistentActor;
 use tracing::{error, warn};
 
 use super::{
+    Approval, ApprovalMessage,
     request::ApprovalReq,
     response::{ApprovalRes, ApprovalSignature},
-    Approval, ApprovalMessage,
 };
 
 const TARGET_APPROVER: &str = "Kore-Approval-Approver";
@@ -396,7 +396,10 @@ impl Handler<Approver> for Approver {
                             };
 
                         let Some(approval_req) = self.request.clone() else {
-                            warn!(TARGET_APPROVER, "ChangeResponse, Can not obtain approval request");
+                            warn!(
+                                TARGET_APPROVER,
+                                "ChangeResponse, Can not obtain approval request"
+                            );
                             return Err(ActorError::Functional(
                                 "Can not get approval request".to_owned(),
                             ));
@@ -406,7 +409,10 @@ impl Handler<Approver> for Approver {
                             .send_response(ctx, approval_req, response)
                             .await
                         {
-                            error!(TARGET_APPROVER, "ChangeResponse, Can not send approver response to approval actor");
+                            error!(
+                                TARGET_APPROVER,
+                                "ChangeResponse, Can not send approver response to approval actor"
+                            );
                             return Err(emit_fail(ctx, e).await);
                         };
 
@@ -449,7 +455,11 @@ impl Handler<Approver> for Approver {
                         let signature = match get_sign(ctx, sign_type).await {
                             Ok(signature) => signature,
                             Err(e) => {
-                                error!(TARGET_APPROVER, "LocalApproval, can not sign approver response: {}", e);
+                                error!(
+                                    TARGET_APPROVER,
+                                    "LocalApproval, can not sign approver response: {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
@@ -473,7 +483,11 @@ impl Handler<Approver> for Approver {
                                 })
                                 .await
                             {
-                                error!(TARGET_APPROVER, "LocalApproval, can not send approver response to approval actor: {}", e);
+                                error!(
+                                    TARGET_APPROVER,
+                                    "LocalApproval, can not send approver response to approval actor: {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             }
                         } else {
@@ -516,7 +530,11 @@ impl Handler<Approver> for Approver {
                     event.subject_id
                 } else {
                     let e = "An attempt is being made to approve an event that is not fact.";
-                    error!(TARGET_APPROVER, "NetworkApproval, can not send approver response to approval actor: {}", e);
+                    error!(
+                        TARGET_APPROVER,
+                        "NetworkApproval, can not send approver response to approval actor: {}",
+                        e
+                    );
                     let e = ActorError::FunctionalFail(e.to_owned());
                     return Err(emit_fail(ctx, e).await);
                 };
@@ -565,7 +583,11 @@ impl Handler<Approver> for Approver {
                 };
 
                 if let Err(e) = retry.tell(RetryMessage::Retry).await {
-                    error!(TARGET_APPROVER, "NetworkApproval, can not send retry message to retry actor: {}", e);
+                    error!(
+                        TARGET_APPROVER,
+                        "NetworkApproval, can not send retry message to retry actor: {}",
+                        e
+                    );
                     return Err(emit_fail(ctx, e).await);
                 };
             }
@@ -582,7 +604,11 @@ impl Handler<Approver> for Approver {
                         return Err(ActorError::Functional(e.to_owned()));
                     }
                     if let Err(e) = approval_res.verify() {
-                        error!(TARGET_APPROVER, "NetworkResponse, Can not verify approval response signature: {}", e);
+                        error!(
+                            TARGET_APPROVER,
+                            "NetworkResponse, Can not verify approval response signature: {}",
+                            e
+                        );
                         return Err(ActorError::Functional(format!(
                             "Can not verify approval response signature: {}",
                             e
@@ -604,7 +630,11 @@ impl Handler<Approver> for Approver {
                             })
                             .await
                         {
-                            error!(TARGET_APPROVER, "NetworkResponse, can not send approver response to approval actor: {}", e);
+                            error!(
+                                TARGET_APPROVER,
+                                "NetworkResponse, can not send approver response to approval actor: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     } else {
@@ -626,7 +656,11 @@ impl Handler<Approver> for Approver {
                         };
 
                         if let Err(e) = retry.tell(RetryMessage::End).await {
-                            error!(TARGET_APPROVER, "NetworkResponse, can not send end message to retry actor: {}", e);
+                            error!(
+                                TARGET_APPROVER,
+                                "NetworkResponse, can not send end message to retry actor: {}",
+                                e
+                            );
                             // Aquí me da igual, porque al parar este actor para el hijo
                             break 'retry;
                         };
@@ -634,7 +668,10 @@ impl Handler<Approver> for Approver {
 
                     ctx.stop().await;
                 } else {
-                    warn!(TARGET_APPROVER, "NetworkResponse, A response has been received with a request id or a version different from the current one");
+                    warn!(
+                        TARGET_APPROVER,
+                        "NetworkResponse, A response has been received with a request id or a version different from the current one"
+                    );
                 }
             }
             ApproverMessage::NetworkRequest { approval_req, info } => {
@@ -654,7 +691,10 @@ impl Handler<Approver> for Approver {
                     || info.version != self.version
                 {
                     if let Err(e) = approval_req.verify() {
-                        let e = format!("Can not verify signature of request: {}", e);
+                        let e = format!(
+                            "Can not verify signature of request: {}",
+                            e
+                        );
                         error!(TARGET_APPROVER, "NetworkRequest, {}", e);
                         return Err(ActorError::Functional(e.to_owned()));
                     }
@@ -698,7 +738,11 @@ impl Handler<Approver> for Approver {
                             )
                             .await
                         {
-                            error!(TARGET_APPROVER, "NetworkRequest, can not send approver response: {}", e);
+                            error!(
+                                TARGET_APPROVER,
+                                "NetworkRequest, can not send approver response: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         };
 
@@ -741,19 +785,20 @@ impl Handler<Approver> for Approver {
                         return Ok(());
                     };
 
-                    let approval_req =
-                        if let Some(approval_req) = self.request.clone() {
-                            approval_req
-                        } else {
-                            error!(
+                    let approval_req = if let Some(approval_req) =
+                        self.request.clone()
+                    {
+                        approval_req
+                    } else {
+                        error!(
                             TARGET_APPROVER,
                             "NetworkRequest, can not obtain approval request"
                         );
-                            let e = ActorError::FunctionalFail(
-                                "Can not get approve request".to_owned(),
-                            );
-                            return Err(emit_fail(ctx, e).await);
-                        };
+                        let e = ActorError::FunctionalFail(
+                            "Can not get approve request".to_owned(),
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    };
 
                     if let Err(e) = self
                         .send_response(ctx, approval_req.clone(), response)
@@ -819,7 +864,11 @@ impl Handler<Approver> for Approver {
                         })
                         .await
                     {
-                        error!(TARGET_APPROVER, "OnChildError, can not send response to Approval actor: {}", e);
+                        error!(
+                            TARGET_APPROVER,
+                            "OnChildError, can not send response to Approval actor: {}",
+                            e
+                        );
                         emit_fail(ctx, e).await;
                     }
                 } else {

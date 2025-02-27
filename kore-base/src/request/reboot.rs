@@ -75,7 +75,11 @@ impl Reboot {
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(5)).await;
                 if let Err(e) = actor.tell(request).await {
-                    error!(TARGET_REBOOT, "Sleep, can not send Update message to Reboot actor: {}", e);
+                    error!(
+                        TARGET_REBOOT,
+                        "Sleep, can not send Update message to Reboot actor: {}",
+                        e
+                    );
                 }
             });
         } else {

@@ -13,8 +13,10 @@ mod runner;
 pub mod schema;
 
 use crate::{
-    governance::{model::Roles, Quorum},
+    DIGEST_DERIVATOR,
+    governance::{Quorum, model::Roles},
     model::{
+        HashId, SignTypesNode, ValueWrapper,
         common::{
             emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version,
             send_reboot_to_req, try_to_update,
@@ -22,11 +24,9 @@ use crate::{
         event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
         request::EventRequest,
         signature::{Signature, Signed},
-        HashId, SignTypesNode, ValueWrapper,
     },
     request::manager::{RequestManager, RequestManagerMessage},
     subject::Metadata,
-    DIGEST_DERIVATOR,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
@@ -35,7 +35,7 @@ use actor::{
 
 use async_trait::async_trait;
 use evaluator::{Evaluator, EvaluatorMessage};
-use identity::identifier::{derive::digest::DigestDerivator, KeyIdentifier};
+use identity::identifier::{KeyIdentifier, derive::digest::DigestDerivator};
 use request::{EvaluationReq, SubjectContext};
 use response::{EvalLedgerResponse, EvaluationRes, Response as EvalRes};
 use serde::{Deserialize, Serialize};
@@ -203,7 +203,7 @@ impl Evaluation {
                 return Err(ActorError::FunctionalFail(format!(
                     "Can not obtaing state hash: {}",
                     e
-                )))
+                )));
             }
         };
 
@@ -348,33 +348,34 @@ impl Handler<Evaluation> for Evaluation {
                     metadata.governance_id.clone()
                 };
 
-                let (state, gov_state) =
-                    if let EventRequest::Transfer(_) = request.content.clone() {
-                        if metadata.governance_id.is_empty() {
-                            (metadata.properties.clone(), ValueWrapper(json!({})))
-                        } else {
-                            let metadata_gov = match get_metadata(
-                                ctx,
-                                &metadata.governance_id.to_string(),
-                            )
-                            .await
-                            {
-                                Ok(metadata) => metadata,
-                                Err(e) => {
-                                    error!(
-                                        TARGET_EVALUATION,
-                                        "Create, can not get metadata: {}", e
-                                    );
-                                    return Err(emit_fail(ctx, e).await);
-                                }
-                            };
-    
-                            (metadata.properties.clone(), metadata_gov.properties)
-                        }
-                    } else {
+                let (state, gov_state) = if let EventRequest::Transfer(_) =
+                    request.content.clone()
+                {
+                    if metadata.governance_id.is_empty() {
                         (metadata.properties.clone(), ValueWrapper(json!({})))
-                    };
-                    
+                    } else {
+                        let metadata_gov = match get_metadata(
+                            ctx,
+                            &metadata.governance_id.to_string(),
+                        )
+                        .await
+                        {
+                            Ok(metadata) => metadata,
+                            Err(e) => {
+                                error!(
+                                    TARGET_EVALUATION,
+                                    "Create, can not get metadata: {}", e
+                                );
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        };
+
+                        (metadata.properties.clone(), metadata_gov.properties)
+                    }
+                } else {
+                    (metadata.properties.clone(), ValueWrapper(json!({})))
+                };
+
                 let (signers, quorum, gov_version) =
                     match get_signers_quorum_gov_version(
                         ctx,
@@ -387,7 +388,11 @@ impl Handler<Evaluation> for Evaluation {
                     {
                         Ok(data) => data,
                         Err(e) => {
-                            error!(TARGET_EVALUATION, "Create, can not get signers quorum and gov version: {}", e);
+                            error!(
+                                TARGET_EVALUATION,
+                                "Create, can not get signers quorum and gov version: {}",
+                                e
+                            );
                             return Err(emit_fail(ctx, e).await);
                         }
                     };
@@ -490,7 +495,11 @@ impl Handler<Evaluation> for Evaluation {
                                     let e = ActorError::FunctionalFail(
                                         "Can not get eval request".to_owned(),
                                     );
-                                    error!(TARGET_EVALUATION, "Response, can not get eval request: {}", e);
+                                    error!(
+                                        TARGET_EVALUATION,
+                                        "Response, can not get eval request: {}",
+                                        e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 };
 
@@ -501,7 +510,11 @@ impl Handler<Evaluation> for Evaluation {
                                 )
                                 .await
                                 {
-                                    error!(TARGET_EVALUATION, "Response, can not send reboot to Request actor: {}", e);
+                                    error!(
+                                        TARGET_EVALUATION,
+                                        "Response, can not send reboot to Request actor: {}",
+                                        e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 }
                                 self.reboot = true;
@@ -527,7 +540,11 @@ impl Handler<Evaluation> for Evaluation {
                                 match self.fail_evaluation(ctx).await {
                                     Ok(res) => res,
                                     Err(e) => {
-                                        error!(TARGET_EVALUATION, "Response, can not create evaluation response: {}", e);
+                                        error!(
+                                            TARGET_EVALUATION,
+                                            "Response, can not create evaluation response: {}",
+                                            e
+                                        );
                                         return Err(emit_fail(ctx, e).await);
                                     }
                                 }
@@ -536,7 +553,11 @@ impl Handler<Evaluation> for Evaluation {
                             if let Err(e) =
                                 self.send_evaluation_to_req(ctx, response).await
                             {
-                                error!(TARGET_EVALUATION, "Response, can send evaluation to request actor: {}", e);
+                                error!(
+                                    TARGET_EVALUATION,
+                                    "Response, can send evaluation to request actor: {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             };
                         } else if self.evaluators.is_empty() {
@@ -544,19 +565,30 @@ impl Handler<Evaluation> for Evaluation {
                             {
                                 Ok(res) => res,
                                 Err(e) => {
-                                    error!(TARGET_EVALUATION, "Response, can not create evaluation response: {}", e);
+                                    error!(
+                                        TARGET_EVALUATION,
+                                        "Response, can not create evaluation response: {}",
+                                        e
+                                    );
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             };
                             if let Err(e) =
                                 self.send_evaluation_to_req(ctx, response).await
                             {
-                                error!(TARGET_EVALUATION, "Response, can send evaluation to request actor: {}", e);
+                                error!(
+                                    TARGET_EVALUATION,
+                                    "Response, can send evaluation to request actor: {}",
+                                    e
+                                );
                                 return Err(emit_fail(ctx, e).await);
                             };
                         }
                     } else {
-                        warn!(TARGET_EVALUATION, "Response, A response has been received from someone we were not expecting.");
+                        warn!(
+                            TARGET_EVALUATION,
+                            "Response, A response has been received from someone we were not expecting."
+                        );
                     }
                 }
             }
@@ -582,7 +614,7 @@ mod tests {
 
     use actor::{ActorPath, ActorRef, SystemRef};
     use identity::{
-        identifier::{derive::digest::DigestDerivator, DigestIdentifier},
+        identifier::{DigestIdentifier, derive::digest::DigestDerivator},
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
     use serde_json::json;
@@ -590,10 +622,12 @@ mod tests {
     use test_log::test;
 
     use crate::{
+        EventRequest, FactRequest, Governance, NodeMessage, NodeResponse,
+        Signed, SubjectMessage, SubjectResponse, ValueWrapper,
         approval::approver::ApprovalStateRes,
         model::{
-            event::LedgerValue, request::TransferRequest, HashId, Namespace,
-            SignTypesNode,
+            HashId, Namespace, SignTypesNode, event::LedgerValue,
+            request::TransferRequest,
         },
         node::Node,
         query::{Query, QueryMessage, QueryResponse},
@@ -601,12 +635,10 @@ mod tests {
             RequestHandler, RequestHandlerMessage, RequestHandlerResponse,
         },
         subject::{
-            event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
             Subject,
+            event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
         },
         validation::tests::create_subject_gov,
-        EventRequest, FactRequest, Governance, NodeMessage, NodeResponse,
-        Signed, SubjectMessage, SubjectResponse, ValueWrapper,
     };
 
     #[test(tokio::test)]
@@ -696,7 +728,13 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(res, format!("The approval request for subject {} has changed to RespondedAccepted", subject_id.to_string()));
+        assert_eq!(
+            res,
+            format!(
+                "The approval request for subject {} has changed to RespondedAccepted",
+                subject_id.to_string()
+            )
+        );
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         let QueryResponse::ApprovalState(data) = query_actor
@@ -834,7 +872,13 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(res, format!("The approval request for subject {} has changed to RespondedAccepted", subject_id.to_string()));
+        assert_eq!(
+            res,
+            format!(
+                "The approval request for subject {} has changed to RespondedAccepted",
+                subject_id.to_string()
+            )
+        );
 
         let transfer_reques = EventRequest::Transfer(TransferRequest {
             subject_id: subject_id.clone(),
@@ -1082,7 +1126,13 @@ mod tests {
             panic!("Invalid response")
         };
 
-        assert_eq!(res, format!("The approval request for subject {} has changed to RespondedAccepted", subject_id.to_string()));
+        assert_eq!(
+            res,
+            format!(
+                "The approval request for subject {} has changed to RespondedAccepted",
+                subject_id.to_string()
+            )
+        );
 
         tokio::time::sleep(Duration::from_secs(1)).await;
         let QueryResponse::ApprovalState(data) = query_actor

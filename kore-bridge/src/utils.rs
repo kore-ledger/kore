@@ -10,7 +10,7 @@ use identity::{
     },
 };
 use kore_base::error::Error;
-use pkcs8::{pkcs5, Document, EncryptedPrivateKeyInfo, PrivateKeyInfo};
+use pkcs8::{Document, EncryptedPrivateKeyInfo, PrivateKeyInfo, pkcs5};
 
 use std::fs;
 

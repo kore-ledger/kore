@@ -4,24 +4,24 @@
 //! Adapter for pure Rust implementation of the secp256k1 curve and fast ECDSA signatures
 //!
 
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::pkcs8::DecodePrivateKey;
-use serde::{de::Deserializer, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer, de::Deserializer};
 
 use crate::identifier;
 use identifier::error::Error;
 
 use super::{
-    create_seed, BaseKeyPair, KeyGenerator, KeyMaterial, KeyPair, KeyPairType,
-    Payload, DHKE, DSA,
+    BaseKeyPair, DHKE, DSA, KeyGenerator, KeyMaterial, KeyPair, KeyPairType,
+    Payload, create_seed,
 };
 use k256::{
+    SecretKey,
     ecdsa::{
-        signature::{Signer, Verifier},
         Signature, SigningKey, VerifyingKey,
+        signature::{Signer, Verifier},
     },
     pkcs8::EncodePrivateKey,
-    SecretKey,
 };
 use sha2::{Digest, Sha256};
 
@@ -219,7 +219,7 @@ impl From<Secp256k1KeyPair> for KeyPair {
 mod tests {
 
     use super::Secp256k1KeyPair;
-    use crate::keys::{KeyGenerator, KeyMaterial, KeyPairType, Payload, DSA};
+    use crate::keys::{DSA, KeyGenerator, KeyMaterial, KeyPairType, Payload};
 
     #[test]
     fn test_ser_des() {
