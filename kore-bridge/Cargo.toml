@@ -20,7 +20,7 @@ prometheus-client = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "signal"] }
 tokio-util = { workspace = true }
 identity = { path = "../identity"}
-hex-literal = "0.4.1"
+hex-literal = "1.0.0"
 pkcs8 = { version = "0.10.2", features = ["encryption"]}
 borsh = { workspace = true }
 config = {version = "0.15.3", features = ["json", "toml", "yaml"]}

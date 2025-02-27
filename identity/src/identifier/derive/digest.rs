@@ -9,6 +9,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 use sha3::{Sha3_256, Sha3_512};
+use core::fmt;
 use std::str::FromStr;
 
 use crate::identifier::error::Error;
@@ -52,16 +53,18 @@ impl DigestDerivator {
             Self::SHA3_512 => sha3_512_digest(data),
         }
     }
-    pub fn to_string(&self) -> String {
+}
+
+impl fmt::Display for DigestDerivator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Blake3_256 => "Blake3_256",
-            Self::Blake3_512 => "Blake3_512",
-            Self::SHA2_256 => "SHA2_256",
-            Self::SHA2_512 => "SHA2_512",
-            Self::SHA3_256 => "SHA3_256",
-            Self::SHA3_512 => "SHA3_512",
+            Self::Blake3_256 => write!(f, "Blake3_256"),
+            Self::Blake3_512 => write!(f, "Blake3_512"),
+            Self::SHA2_256 => write!(f, "SHA2_256"),
+            Self::SHA2_512 => write!(f, "SHA2_512"),
+            Self::SHA3_256 => write!(f, "SHA3_256"),
+            Self::SHA3_512 => write!(f, "SHA3_512"),
         }
-        .to_string()
     }
 }
 

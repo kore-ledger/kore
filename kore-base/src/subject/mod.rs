@@ -801,7 +801,7 @@ impl Subject {
         if let Some(node_actor) = node_actor {
             node_actor
                 .tell(NodeMessage::TransferSubject(TransferSubject {
-                    subject: subject_id.to_owned(),
+                    subject_id: subject_id.to_owned(),
                     new_owner: new_owner.to_owned(),
                     actual_owner: actual_owner.to_owned(),
                 }))
@@ -1438,7 +1438,7 @@ impl Subject {
         let our_key = self.get_node_key(ctx).await?;
         let current_sn = self.sn;
         let current_new_owner_some = self.new_owner.is_some();
-        let i_current_new_owner = self.new_owner.clone().map_or(false, |x| x == our_key);
+        let i_current_new_owner = self.new_owner.clone() == Some(our_key.clone());
         let current_owner = self.owner.clone();
 
         if self.governance_id.is_empty() {
@@ -1527,7 +1527,7 @@ impl Subject {
                     };
 
                     let new_owner_some = self.new_owner.is_some();
-                    let i_new_owner = self.new_owner.clone().map_or(false, |x| x == our_key);
+                    let i_new_owner = self.new_owner.clone() == Some(our_key.clone());
                     let mut up_not_owner: bool = false;
                     let mut up_owner: bool = false;
 
@@ -1777,7 +1777,7 @@ impl Subject {
                     Self::down_owner_not_gov(ctx).await?;
                 }
 
-                let i_new_owner = self.new_owner.clone().map_or(false, |x| x == our_key);
+                let i_new_owner = self.new_owner.clone() == Some(our_key.clone());
 
                 // Si antes no eramos el new owner y ahora somos el new owner.
                 if !i_current_new_owner && i_new_owner && current_owner != our_key {

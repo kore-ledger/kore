@@ -6,6 +6,7 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use core::fmt;
 use std::str::FromStr;
 
 use super::{Derivator, SignatureDerivator};
@@ -44,13 +45,14 @@ impl KeyDerivator {
             KeyDerivator::Secp256k1 => SignatureDerivator::ECDSAsecp256k1,
         }
     }
+}
 
-    pub fn to_string(&self) -> String {
+impl fmt::Display for KeyDerivator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            KeyDerivator::Ed25519 => "Ed25519",
-            KeyDerivator::Secp256k1 => "Secp256k1",
+            KeyDerivator::Ed25519 => write!(f, "Ed25519"),
+            KeyDerivator::Secp256k1 => write!(f, "Secp256k1"),
         }
-        .into()
     }
 }
 

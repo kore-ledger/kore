@@ -1007,11 +1007,7 @@ impl Subscriber<SinkDataEvent> for SqliteLocal {
         let active = event.metadata.active.to_string();
         let sn = event.metadata.sn;
         let properties = event.metadata.properties.0.to_string();
-        let new_owner = if let Some(new_owner) = event.metadata.new_owner {
-            Some(new_owner.to_string())
-        } else {
-            None
-        };
+        let new_owner = event.metadata.new_owner.map(|new_owner| new_owner.to_string());
 
         if let Err(e) = self
         .conn

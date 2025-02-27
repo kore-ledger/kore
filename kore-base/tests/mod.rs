@@ -1332,12 +1332,12 @@ async fn test_transfer_event_governance_2() {
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, owner_governance.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, governance_id.to_string());
+    assert_eq!(transfer_data[0].subject_id, governance_id.to_string());
 
     let transfer_data = future_owner.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, owner_governance.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, governance_id.to_string());
+    assert_eq!(transfer_data[0].subject_id, governance_id.to_string());
     
     // Confirm transfer event
     emit_confirm(future_owner, governance_id.clone(), Some("Korenode_22".to_owned()),false).await;
@@ -1571,13 +1571,13 @@ async fn test_subject_transfer_event_1() {
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, owner_governance.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id.to_string());
 
     tokio::time::sleep(Duration::from_secs(5)).await;
     let transfer_data = future_owner.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, owner_governance.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id.to_string());
 
     emit_confirm(future_owner, subject_id.clone(), None, false).await;
 
@@ -1819,18 +1819,18 @@ async fn test_subject_transfer_event_2() {
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id.to_string());
 
     let transfer_data = old_owner.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id.to_string());
 
     tokio::time::sleep(Duration::from_secs(5)).await;
     let transfer_data = future_owner.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id.to_string());
 
     emit_confirm(future_owner, subject_id.clone(), None, false).await;
     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -1846,7 +1846,7 @@ async fn test_subject_transfer_event_2() {
     let transfer_data = old_owner.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id.to_string());
 
     old_owner
     .auth_subject(
@@ -2133,18 +2133,18 @@ async fn test_subject_transfer_event_3() {
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id_1.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id_1.to_string());
 
     let transfer_data = old_owner.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id_1.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id_1.to_string());
 
     tokio::time::sleep(Duration::from_secs(5)).await;
     let transfer_data = future_owner.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id_1.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id_1.to_string());
 
     let request = EventRequest::Confirm(ConfirmRequest { subject_id: subject_id_1.clone(), name_old_owner: None });
     assert!(future_owner.own_request(request).await.is_err());
@@ -2156,17 +2156,17 @@ async fn test_subject_transfer_event_3() {
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id_1.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id_1.to_string());
 
     let transfer_data = old_owner.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id_1.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id_1.to_string());
 
     let transfer_data = future_owner.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
     assert_eq!(transfer_data[0].new_owner, future_owner.controller_id());
-    assert_eq!(transfer_data[0].subject, subject_id_1.to_string());
+    assert_eq!(transfer_data[0].subject_id, subject_id_1.to_string());
 
     tokio::time::sleep(Duration::from_secs(5)).await;
     emit_reject(future_owner, subject_id_1.clone(), false).await;

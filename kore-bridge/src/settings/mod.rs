@@ -70,71 +70,74 @@ mod tests {
     #[test]
     #[serial]
     fn test_env_full() {
-        std::env::set_var("KORE_NETWORK_TELL_MESSAGE_TIMEOUT_SECS", "58");
-        std::env::set_var("KORE_NETWORK_TELL_MAX_CONCURRENT_STREAMS", "166");
-        std::env::set_var("KORE_NETWORK_ROUTING_BOOT_NODES", "/ip4/172.17.0.1/tcp/50000_/ip4/127.0.0.1/tcp/60001/p2p/12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B,/ip4/11.11.0.11/tcp/10000_/ip4/12.22.33.44/tcp/55511/p2p/12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze");
-        std::env::set_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK", "false");
-        std::env::set_var(
-            "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
-            "55",
-        );
-        std::env::set_var(
-            "KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_IN_DHT",
-            "true",
-        );
-        std::env::set_var("KORE_NETWORK_ROUTING_ALLOW_PRIVATE_IP", "true");
-        std::env::set_var("KORE_NETWORK_ROUTING_ENABLE_MDNS", "false");
-        std::env::set_var(
-            "KORE_NETWORK_ROUTING_KADEMLIA_DISJOINT_QUERY_PATHS",
-            "false",
-        );
-        std::env::set_var(
-            "KORE_NETWORK_ROUTING_KADEMLIA_REPLICATION_FACTOR",
-            "30",
-        );
+        unsafe {
+            std::env::set_var("KORE_NETWORK_TELL_MESSAGE_TIMEOUT_SECS", "58");
+            std::env::set_var("KORE_NETWORK_TELL_MAX_CONCURRENT_STREAMS", "166");
+            std::env::set_var("KORE_NETWORK_ROUTING_BOOT_NODES", "/ip4/172.17.0.1/tcp/50000_/ip4/127.0.0.1/tcp/60001/p2p/12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B,/ip4/11.11.0.11/tcp/10000_/ip4/12.22.33.44/tcp/55511/p2p/12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze");
+            std::env::set_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK", "false");
+            std::env::set_var(
+                "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
+                "55",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_IN_DHT",
+                "true",
+            );
+            std::env::set_var("KORE_NETWORK_ROUTING_ALLOW_PRIVATE_IP", "true");
+            std::env::set_var("KORE_NETWORK_ROUTING_ENABLE_MDNS", "false");
+            std::env::set_var(
+                "KORE_NETWORK_ROUTING_KADEMLIA_DISJOINT_QUERY_PATHS",
+                "false",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_ROUTING_KADEMLIA_REPLICATION_FACTOR",
+                "30",
+            );
+    
+            std::env::set_var("KORE_BASE_KEY_DERIVATOR", "Secp256k1");
+            std::env::set_var("KORE_BASE_DIGEST_DERIVATOR", "Blake3_512");
+            std::env::set_var("KORE_BASE_ALWAYS_ACCEPT", "true");
+            std::env::set_var("KORE_BASE_CONTRACTS_DIR", "./fake_route");
+            std::env::set_var("KORE_BASE_KORE_DB", "./fake/db/path");
+            std::env::set_var("KORE_BASE_EXTERNAL_DB", "./fake/db/path");
+            std::env::set_var("KORE_BASE_GARBAGE_COLLECTOR", "1000");
+            std::env::set_var("KORE_BASE_SINK", "http");
+    
+            std::env::set_var("KORE_NETWORK_PORT_REUSE", "true");
+            std::env::set_var("KORE_NETWORK_USER_AGENT", "Kore2.0");
+            std::env::set_var("KORE_NETWORK_NODE_TYPE", "Addressable");
+            std::env::set_var(
+                "KORE_NETWORK_LISTEN_ADDRESSES",
+                "/ip4/127.0.0.1/tcp/50000,/ip4/127.0.0.1/tcp/50001,/ip4/127.0.0.1/tcp/50002",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_EXTERNAL_ADDRESSES",
+                "/ip4/90.1.0.60/tcp/50000,/ip4/90.1.0.61/tcp/50000",
+            );
+    
+            std::env::set_var("KORE_KEYS_PATH", "./fake/keys/path");
+            std::env::set_var("KORE_PROMETHEUS", "10.0.0.0:3030");
+    
+            std::env::set_var("KORE_NETWORK_CONTROL_LIST_ENABLE", "true");
+            std::env::set_var(
+                "KORE_NETWORK_CONTROL_LIST_ALLOW_LIST",
+                "Peer200,Peer300",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_CONTROL_LIST_BLOCK_LIST",
+                "Peer1,Peer2",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_CONTROL_LIST_SERVICE_ALLOW_LIST",
+                "http://90.0.0.1:3000/allow_list,http://90.0.0.2:4000/allow_list",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_CONTROL_LIST_SERVICE_BLOCK_LIST",
+                "http://90.0.0.1:3000/block_list,http://90.0.0.2:4000/block_list",
+            );
+            std::env::set_var("KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST", "58");
+        }
 
-        std::env::set_var("KORE_BASE_KEY_DERIVATOR", "Secp256k1");
-        std::env::set_var("KORE_BASE_DIGEST_DERIVATOR", "Blake3_512");
-        std::env::set_var("KORE_BASE_ALWAYS_ACCEPT", "true");
-        std::env::set_var("KORE_BASE_CONTRACTS_DIR", "./fake_route");
-        std::env::set_var("KORE_BASE_KORE_DB", "./fake/db/path");
-        std::env::set_var("KORE_BASE_EXTERNAL_DB", "./fake/db/path");
-        std::env::set_var("KORE_BASE_GARBAGE_COLLECTOR", "1000");
-        std::env::set_var("KORE_BASE_SINK", "http");
-
-        std::env::set_var("KORE_NETWORK_PORT_REUSE", "true");
-        std::env::set_var("KORE_NETWORK_USER_AGENT", "Kore2.0");
-        std::env::set_var("KORE_NETWORK_NODE_TYPE", "Addressable");
-        std::env::set_var(
-            "KORE_NETWORK_LISTEN_ADDRESSES",
-            "/ip4/127.0.0.1/tcp/50000,/ip4/127.0.0.1/tcp/50001,/ip4/127.0.0.1/tcp/50002",
-        );
-        std::env::set_var(
-            "KORE_NETWORK_EXTERNAL_ADDRESSES",
-            "/ip4/90.1.0.60/tcp/50000,/ip4/90.1.0.61/tcp/50000",
-        );
-
-        std::env::set_var("KORE_KEYS_PATH", "./fake/keys/path");
-        std::env::set_var("KORE_PROMETHEUS", "10.0.0.0:3030");
-
-        std::env::set_var("KORE_NETWORK_CONTROL_LIST_ENABLE", "true");
-        std::env::set_var(
-            "KORE_NETWORK_CONTROL_LIST_ALLOW_LIST",
-            "Peer200,Peer300",
-        );
-        std::env::set_var(
-            "KORE_NETWORK_CONTROL_LIST_BLOCK_LIST",
-            "Peer1,Peer2",
-        );
-        std::env::set_var(
-            "KORE_NETWORK_CONTROL_LIST_SERVICE_ALLOW_LIST",
-            "http://90.0.0.1:3000/allow_list,http://90.0.0.2:4000/allow_list",
-        );
-        std::env::set_var(
-            "KORE_NETWORK_CONTROL_LIST_SERVICE_BLOCK_LIST",
-            "http://90.0.0.1:3000/block_list,http://90.0.0.2:4000/block_list",
-        );
-        std::env::set_var("KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST", "58");
 
         let config = build_config(true, "").unwrap();
 
@@ -296,42 +299,44 @@ mod tests {
             Duration::from_secs(58)
         );
 
-        std::env::remove_var("KORE_NETWORK_TELL_MESSAGE_TIMEOUT_SECS");
-        std::env::remove_var("KORE_NETWORK_TELL_MAX_CONCURRENT_STREAMS");
-        std::env::remove_var("KORE_NETWORK_ROUTING_BOOT_NODES");
-        std::env::remove_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK");
-        std::env::remove_var(
-            "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
-        );
-        std::env::remove_var("KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_IN_DHT");
-        std::env::remove_var("KORE_NETWORK_ROUTING_ALLOW_PRIVATE_IP");
-        std::env::remove_var("KORE_NETWORK_ROUTING_ENABLE_MDNS");
-        std::env::remove_var(
-            "KORE_NETWORK_ROUTING_KADEMLIA_DISJOINT_QUERY_PATHS",
-        );
-        std::env::remove_var(
-            "KORE_NETWORK_ROUTING_KADEMLIA_REPLICATION_FACTOR",
-        );
-        std::env::remove_var("KORE_KEYS_PATH");
-        std::env::remove_var("KORE_NETWORK_PORT_REUSE");
-        std::env::remove_var("KORE_NETWORK_USER_AGENT");
-        std::env::remove_var("KORE_NETWORK_NODE_TYPE");
-        std::env::remove_var("KORE_NETWORK_LISTEN_ADDRESSES");
-        std::env::remove_var("KORE_NETWORK_EXTERNAL_ADDRESSES");
-        std::env::remove_var("KORE_BASE_KEY_DERIVATOR");
-        std::env::remove_var("KORE_BASE_DIGEST_DERIVATOR");
-        std::env::remove_var("KORE_BASE_ALWAYS_ACCEPT");
-        std::env::remove_var("KORE_BASE_CONTRACTS_DIR");
-        std::env::remove_var("KORE_BASE_KORE_DB");
-        std::env::remove_var("KORE_BASE_EXTERNAL_DB");
-        std::env::remove_var("KORE_BASE_GARBAGE_COLLECTOR");
-        std::env::remove_var("KORE_BASE_SINK");
-        std::env::remove_var("KORE_PROMETHEUS");
-        std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ENABLE");
-        std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ALLOW_LIST");
-        std::env::remove_var("KORE_NETWORK_CONTROL_LIST_BLOCK_LIST");
-        std::env::remove_var("KORE_NETWORK_CONTROL_LIST_SERVICE_ALLOW_LIST");
-        std::env::remove_var("KORE_NETWORK_CONTROL_LIST_SERVICE_BLOCK_LIST");
-        std::env::remove_var("KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST");
+        unsafe {
+            std::env::remove_var("KORE_NETWORK_TELL_MESSAGE_TIMEOUT_SECS");
+            std::env::remove_var("KORE_NETWORK_TELL_MAX_CONCURRENT_STREAMS");
+            std::env::remove_var("KORE_NETWORK_ROUTING_BOOT_NODES");
+            std::env::remove_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK");
+            std::env::remove_var(
+                "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
+            );
+            std::env::remove_var("KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_IN_DHT");
+            std::env::remove_var("KORE_NETWORK_ROUTING_ALLOW_PRIVATE_IP");
+            std::env::remove_var("KORE_NETWORK_ROUTING_ENABLE_MDNS");
+            std::env::remove_var(
+                "KORE_NETWORK_ROUTING_KADEMLIA_DISJOINT_QUERY_PATHS",
+            );
+            std::env::remove_var(
+                "KORE_NETWORK_ROUTING_KADEMLIA_REPLICATION_FACTOR",
+            );
+            std::env::remove_var("KORE_KEYS_PATH");
+            std::env::remove_var("KORE_NETWORK_PORT_REUSE");
+            std::env::remove_var("KORE_NETWORK_USER_AGENT");
+            std::env::remove_var("KORE_NETWORK_NODE_TYPE");
+            std::env::remove_var("KORE_NETWORK_LISTEN_ADDRESSES");
+            std::env::remove_var("KORE_NETWORK_EXTERNAL_ADDRESSES");
+            std::env::remove_var("KORE_BASE_KEY_DERIVATOR");
+            std::env::remove_var("KORE_BASE_DIGEST_DERIVATOR");
+            std::env::remove_var("KORE_BASE_ALWAYS_ACCEPT");
+            std::env::remove_var("KORE_BASE_CONTRACTS_DIR");
+            std::env::remove_var("KORE_BASE_KORE_DB");
+            std::env::remove_var("KORE_BASE_EXTERNAL_DB");
+            std::env::remove_var("KORE_BASE_GARBAGE_COLLECTOR");
+            std::env::remove_var("KORE_BASE_SINK");
+            std::env::remove_var("KORE_PROMETHEUS");
+            std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ENABLE");
+            std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ALLOW_LIST");
+            std::env::remove_var("KORE_NETWORK_CONTROL_LIST_BLOCK_LIST");
+            std::env::remove_var("KORE_NETWORK_CONTROL_LIST_SERVICE_ALLOW_LIST");
+            std::env::remove_var("KORE_NETWORK_CONTROL_LIST_SERVICE_BLOCK_LIST");
+            std::env::remove_var("KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST");
+        }
     }
 }

@@ -9,15 +9,20 @@ use crate::Error;
 use libp2p::{
     core::{
         muxing::StreamMuxerBox,
-        transport::{memory, upgrade::Version, Boxed},
+        transport::{upgrade::Version, Boxed},
     },
     dns,
     identity::Keypair,
     metrics::{BandwidthTransport, Registry},
     noise,
-    tcp::{self, Config},
     yamux, PeerId, Transport,
 };
+
+#[cfg(feature = "test")]
+use libp2p::core::transport::memory;
+
+#[cfg(not(feature = "test"))]
+use libp2p::tcp::{self, Config};
 
 pub type KoreTransport = Boxed<(PeerId, StreamMuxerBox)>;
 

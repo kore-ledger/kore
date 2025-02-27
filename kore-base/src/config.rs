@@ -3,7 +3,7 @@
 
 //! # Configuration module
 
-use std::time::Duration;
+use std::{fmt, time::Duration};
 
 use identity::identifier::derive::{digest::DigestDerivator, KeyDerivator};
 use network::Config as NetworkConfig;
@@ -84,17 +84,6 @@ impl KoreDbConfig {
             };
         }
 
-        pub fn to_string(&self) -> String {
-            match self {
-                #[cfg(feature = "rocksdb")]
-                KoreDbConfig::Rocksdb { .. } => "Rocksdb",
-                #[cfg(feature = "sqlite")]
-                KoreDbConfig::Sqlite { .. } => "Sqlite",
-            }
-            .into()
-        }
-    
-
     pub fn build(path: &str) -> Self {
         #[cfg(feature = "rocksdb")]
         return KoreDbConfig::Rocksdb {
@@ -117,6 +106,17 @@ impl KoreDbConfig {
         return Ok(KoreDbConfig::Rocksdb { path });
         #[cfg(feature = "sqlite")]
         return Ok(KoreDbConfig::Sqlite { path });
+    }
+}
+
+impl fmt::Display for KoreDbConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            #[cfg(feature = "rocksdb")]
+            KoreDbConfig::Rocksdb { .. } => write!(f, "Rocksdb"),
+            #[cfg(feature = "sqlite")]
+            KoreDbConfig::Sqlite { .. } => write!(f, "Sqlite"),
+        }
     }
 }
 
@@ -150,14 +150,6 @@ impl ExternalDbConfig {
         };
     }
 
-    pub fn to_string(&self) -> String {
-        match self {
-            #[cfg(feature = "ext-sqlite")]
-            ExternalDbConfig::Sqlite { .. } => "Sqlite",
-        }
-        .into()
-    }
-
     pub fn build(path: &str) -> Self {
         #[cfg(feature = "ext-sqlite")]
         return ExternalDbConfig::Sqlite {
@@ -174,5 +166,11 @@ impl ExternalDbConfig {
         let path: String = String::deserialize(deserializer)?;
         #[cfg(feature = "ext-sqlite")]
         return Ok(ExternalDbConfig::Sqlite { path });
+    }
+}
+
+impl fmt::Display for ExternalDbConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Sqlite")
     }
 }

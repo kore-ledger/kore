@@ -16,7 +16,7 @@ mod transport;
 mod utils;
 mod worker;
 
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 
 pub use control_list::Config as ControlListConfig;
 pub use error::Error;
@@ -98,12 +98,12 @@ pub enum NodeType {
     Ephemeral,
 }
 
-impl ToString for NodeType {
-    fn to_string(&self) -> String {
+impl fmt::Display for NodeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            NodeType::Bootstrap   => "Bootstrap".to_owned(),
-            NodeType::Addressable => "Addressable".to_owned(),
-            NodeType::Ephemeral   => "Ephemeral".to_owned(),
+            NodeType::Bootstrap   => write!(f, "Bootstrap"),
+            NodeType::Addressable => write!(f, "Addressable"),
+            NodeType::Ephemeral   => write!(f, "Ephemeral"),
         }
     }
 }

@@ -7,9 +7,11 @@
 use crate::{
     control_list,
     routing::{self, DhtValue},
-    utils::is_memory,
     Config, Error, NodeType,
 };
+
+#[cfg(not(feature = "test"))]
+use crate::utils::is_memory;
 
 use libp2p::{
     identify::{self, Info as IdentifyInfo},

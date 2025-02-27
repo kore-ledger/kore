@@ -53,7 +53,7 @@ const TARGET_NODE: &str = "Kore-Node";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TransferSubject {
-    pub subject: String,
+    pub subject_id: String,
     pub new_owner: String,
     pub actual_owner: String,
 }
@@ -120,7 +120,7 @@ impl Node {
     }
 
     pub fn delete_transfer(&mut self, subject_id: String) {
-        self.transfer_subjects.retain(|x| *x.subject != subject_id);
+        self.transfer_subjects.retain(|x| *x.subject_id != subject_id);
     }
 
     pub fn change_subject_owner(
@@ -128,7 +128,7 @@ impl Node {
         subject_id: String,
         iam_owner: bool,
     ) {
-        self.transfer_subjects.retain(|x| *x.subject != subject_id);
+        self.transfer_subjects.retain(|x| *x.subject_id != subject_id);
 
         if iam_owner {
             self.known_subjects.retain(|x| *x != subject_id);
@@ -641,7 +641,7 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::IOwnerPending((
                     self.owned_subjects.iter().any(|x| **x == subject_id),
                     self.transfer_subjects.iter().any(|x| {
-                        x.subject == subject_id && x.new_owner == our_key
+                        x.subject_id == subject_id && x.new_owner == our_key
                     }),
                 )))
             }
@@ -649,7 +649,7 @@ impl Handler<Node> for Node {
                 let our_key = self.owner.key_identifier().to_string();
 
                 Ok(NodeResponse::IOld(self.transfer_subjects.iter().any(|x| {
-                    x.subject == subject_id && x.actual_owner == our_key
+                    x.subject_id == subject_id && x.actual_owner == our_key
                 })))
             }
             NodeMessage::IsAuthorized(subject_id) => {
