@@ -17,7 +17,7 @@ use crate::{
             register_relation, try_to_update, verify_protocols_state,
         }, event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures}, request::EventRequest, signature::Signed, HashId, Namespace, ValueWrapper
     }, node::{
-        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse}, register::{Register, RegisterData, RegisterMessage}, NodeMessage, TransferSubject
+        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse}, register::{Register, RegisterDataGov, RegisterDataSubj, RegisterMessage}, NodeMessage, TransferSubject
     }, update::TransferResponse, validation::{
         proof::ValidationProof, schema::{ValidationSchema, ValidationSchemaMessage}, validator::Validator, Validation
     }, CreateRequest, Error, EventRequestType, Governance, Node
@@ -1111,15 +1111,17 @@ impl Subject {
             let message = if self.governance_id.is_empty() {
                 RegisterMessage::RegisterGov {
                     gov_id: self.subject_id.to_string(),
-                    active,
+                    data: RegisterDataGov { active, name: self.name.clone(), description: self.description.clone() }
                 }
             } else {
                 RegisterMessage::RegisterSubj {
                     gov_id: self.governance_id.to_string(),
-                    data: RegisterData {
+                    data: RegisterDataSubj {
                         subject_id: self.subject_id.to_string(),
                         schema: self.schema_id.clone(),
                         active,
+                        name: self.name.clone(),
+                        description: self.description.clone()
                     },
                 }
             };

@@ -26,7 +26,7 @@ pub use kore_base::{
     },
     node::{
         TransferSubject,
-        register::{GovsData, RegisterData},
+        register::{GovsData, RegisterDataSubj},
     },
     request::RequestData,
 };
@@ -273,7 +273,7 @@ impl Bridge {
         gov_id: String,
         active: Option<bool>,
         schema: Option<String>,
-    ) -> Result<Vec<RegisterData>, Error> {
+    ) -> Result<Vec<RegisterDataSubj>, Error> {
         let gov_id = DigestIdentifier::from_str(&gov_id).map_err(|e| {
             Error::Bridge(format!("Invalid governance id: {}", e))
         })?;

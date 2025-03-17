@@ -180,7 +180,7 @@ async fn test_governance_and_subject_copy_with_approve() {
 
     assert_eq!(events.len(), 11);
 
-    let state = get_subject(node1, subject_id.clone()).await.unwrap();
+    let state = get_subject(node1, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -198,7 +198,7 @@ async fn test_governance_and_subject_copy_with_approve() {
         })
     );
 
-    let state = get_subject(node2, subject_id.clone()).await.unwrap();
+    let state = get_subject(node2, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -266,7 +266,7 @@ async fn test_basic_use_case_1b_1e_1a() {
         .await
         .unwrap();
 
-    let state = get_subject(owner_governance, governance_id.clone())
+    let state = get_subject(owner_governance, governance_id.clone(), None)
         .await
         .unwrap();
 
@@ -286,7 +286,7 @@ async fn test_basic_use_case_1b_1e_1a() {
         json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id":emit_events.controller_id(),"name":"KoreNode2"},{"id":intermediary.controller_id(),"name":"KoreNode3"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":1})
     );
 
-    let state = get_subject(intermediary, governance_id.clone())
+    let state = get_subject(intermediary, governance_id.clone(), None)
         .await
         .unwrap();
 
@@ -305,7 +305,7 @@ async fn test_basic_use_case_1b_1e_1a() {
         json!({"members":[{"id":owner_governance.controller_id(),"name":"Owner"},{"id":emit_events.controller_id(),"name":"KoreNode2"},{"id":intermediary.controller_id(),"name":"KoreNode3"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":1})
     );
 
-    let state = get_subject(emit_events, governance_id.clone())
+    let state = get_subject(emit_events, governance_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
@@ -508,7 +508,7 @@ async fn test_limits_in_subjects() {
         .await
         .unwrap();
 
-    let state = get_subject(emit_events, subject_id_1.clone())
+    let state = get_subject(emit_events, subject_id_1.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
@@ -528,7 +528,7 @@ async fn test_limits_in_subjects() {
         })
     );
 
-    let state = get_subject(owner_governance, subject_id_1.clone())
+    let state = get_subject(owner_governance, subject_id_1.clone(), None)
         .await
         .unwrap();
 
@@ -549,7 +549,7 @@ async fn test_limits_in_subjects() {
         })
     );
 
-    let state = get_subject(emit_events, subject_id_2.clone())
+    let state = get_subject(emit_events, subject_id_2.clone(), None)
         .await
         .unwrap();
 
@@ -570,7 +570,7 @@ async fn test_limits_in_subjects() {
         })
     );
 
-    let state = get_subject(owner_governance, subject_id_2.clone())
+    let state = get_subject(owner_governance, subject_id_2.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id_2.to_string());
@@ -811,7 +811,7 @@ async fn test_namespace_in_role_1() {
 
     assert!(state.signatures_eval.unwrap().len() == 2);
 
-    let state = get_subject(owner_governance, subject_id.clone())
+    let state = get_subject(owner_governance, subject_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -831,7 +831,7 @@ async fn test_namespace_in_role_1() {
         })
     );
 
-    let state = get_subject(emit_events, subject_id.clone()).await.unwrap();
+    let state = get_subject(emit_events, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -849,7 +849,7 @@ async fn test_namespace_in_role_1() {
         })
     );
 
-    let state = get_subject(witness_schema, subject_id.clone())
+    let state = get_subject(witness_schema, subject_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -1097,7 +1097,7 @@ async fn test_namespace_in_role_2() {
 
     assert!(state.signatures_eval.unwrap().len() == 2);
 
-    let state = get_subject(owner_governance, subject_id.clone())
+    let state = get_subject(owner_governance, subject_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -1117,7 +1117,7 @@ async fn test_namespace_in_role_2() {
         })
     );
 
-    let state = get_subject(emit_events, subject_id.clone()).await.unwrap();
+    let state = get_subject(emit_events, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1135,7 +1135,7 @@ async fn test_namespace_in_role_2() {
         })
     );
 
-    let state = get_subject(witness_schema, subject_id.clone())
+    let state = get_subject(witness_schema, subject_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -1214,7 +1214,7 @@ async fn test_many_schema_in_one_governance() {
         .await
         .unwrap();
 
-    let state = get_subject(owner_governance, governance_id.clone())
+    let state = get_subject(owner_governance, governance_id.clone(), None)
         .await
         .unwrap();
 
@@ -1306,7 +1306,7 @@ async fn test_transfer_event_governance_1() {
         .await
         .unwrap();
 
-    let state = get_subject(future_owner, governance_id.clone())
+    let state = get_subject(future_owner, governance_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
@@ -1324,7 +1324,7 @@ async fn test_transfer_event_governance_1() {
         json!({"members":[{"id":future_owner.controller_id(),"name":"Owner"},{"id":fake_node,"name":"KoreNode2"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":4})
     );
 
-    let state = get_subject(owner_governance, governance_id.clone())
+    let state = get_subject(owner_governance, governance_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
@@ -1449,7 +1449,7 @@ async fn test_transfer_event_governance_2() {
         .await
         .unwrap();
 
-    let state = get_subject(future_owner, governance_id.clone())
+    let state = get_subject(future_owner, governance_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
@@ -1467,7 +1467,7 @@ async fn test_transfer_event_governance_2() {
         json!({"members":[{"id":future_owner.controller_id(),"name":"Owner"},{"id":fake_node,"name":"KoreNode2"},{"id":owner_governance.controller_id(),"name":"Korenode_22"}],"policies":[{"approve":{"quorum":"MAJORITY"},"evaluate":{"quorum":"MAJORITY"},"id":"governance","validate":{"quorum":"MAJORITY"}}],"roles":[{"namespace":"","role":"WITNESS","schema":{"ID":"governance"},"who":"MEMBERS"},{"namespace":"","role":"EVALUATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"ISSUER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"APPROVER","schema":{"ID":"governance"},"who":{"NAME":"Owner"}},{"namespace":"","role":"VALIDATOR","schema":"ALL","who":{"NAME":"Owner"}},{"namespace":"","role":"WITNESS","schema":"ALL","who":{"NAME":"Owner"}}],"schemas":[],"version":4})
     );
 
-    let state = get_subject(owner_governance, governance_id.clone())
+    let state = get_subject(owner_governance, governance_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
@@ -1664,7 +1664,7 @@ async fn test_subject_transfer_event_1() {
         .await
         .unwrap();
 
-    let _ = get_subject(future_owner, subject_id.clone()).await.unwrap();
+    let _ = get_subject(future_owner, subject_id.clone(), None).await.unwrap();
 
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(
@@ -1707,7 +1707,7 @@ async fn test_subject_transfer_event_1() {
         .await
         .unwrap();
 
-    let state = get_subject(future_owner, subject_id.clone()).await.unwrap();
+    let state = get_subject(future_owner, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1725,7 +1725,7 @@ async fn test_subject_transfer_event_1() {
         })
     );
 
-    let state = get_subject(owner_governance, subject_id.clone())
+    let state = get_subject(owner_governance, subject_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -1932,7 +1932,7 @@ async fn test_subject_transfer_event_2() {
         .update_subject(subject_id.clone())
         .await
         .unwrap();
-    let _ = get_subject(future_owner, subject_id.clone()).await.unwrap();
+    let _ = get_subject(future_owner, subject_id.clone(), None).await.unwrap();
 
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
@@ -2008,7 +2008,7 @@ async fn test_subject_transfer_event_2() {
         .await
         .unwrap();
 
-    let state = get_subject(future_owner, subject_id.clone()).await.unwrap();
+    let state = get_subject(future_owner, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -2026,7 +2026,7 @@ async fn test_subject_transfer_event_2() {
         })
     );
 
-    let state = get_subject(owner_governance, subject_id.clone())
+    let state = get_subject(owner_governance, subject_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -2046,7 +2046,7 @@ async fn test_subject_transfer_event_2() {
         })
     );
 
-    let state = get_subject(old_owner, subject_id_2.clone()).await.unwrap();
+    let state = get_subject(old_owner, subject_id_2.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id_2.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -2064,7 +2064,7 @@ async fn test_subject_transfer_event_2() {
         })
     );
 
-    let state = get_subject(owner_governance, subject_id_2.clone())
+    let state = get_subject(owner_governance, subject_id_2.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id_2.to_string());
@@ -2282,7 +2282,7 @@ async fn test_subject_transfer_event_3() {
         .update_subject(subject_id_1.clone())
         .await
         .unwrap();
-    let _ = get_subject(future_owner, subject_id_1.clone())
+    let _ = get_subject(future_owner, subject_id_1.clone(), None)
         .await
         .unwrap();
 
@@ -2372,7 +2372,7 @@ async fn test_subject_transfer_event_3() {
         .await
         .unwrap();
 
-    let state = get_subject(old_owner, subject_id_1.clone()).await.unwrap();
+    let state = get_subject(old_owner, subject_id_1.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -2390,7 +2390,7 @@ async fn test_subject_transfer_event_3() {
         })
     );
 
-    let state = get_subject(owner_governance, subject_id_1.clone())
+    let state = get_subject(owner_governance, subject_id_1.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
@@ -2410,7 +2410,7 @@ async fn test_subject_transfer_event_3() {
         })
     );
 
-    let state = get_subject(future_owner, subject_id_1.clone())
+    let state = get_subject(future_owner, subject_id_1.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
@@ -2491,7 +2491,8 @@ async fn test_governance_fail_approve() {
 }
 
 #[test(tokio::test)]
-async fn test_dynamic_witnesses() {
+// Un testigo nuevo reciba las copias de un sujeto que ya va por un sn != 0.
+async fn test_dynamic_witnesses_1() {
     let nodes = create_nodes_and_connections(
         vec![vec![]],
         vec![vec![0], vec![0]],
@@ -2653,7 +2654,7 @@ async fn test_dynamic_witnesses() {
         .await
         .unwrap();
 
-        let state = get_subject(owner_governance, subject_id.clone())
+        let state = get_subject(owner_governance, subject_id.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -2672,7 +2673,7 @@ async fn test_dynamic_witnesses() {
             "one": 200, "three": 0, "two": 0
         })
     );
-    let state = get_subject(witness, subject_id.clone())
+    let state = get_subject(witness, subject_id.clone(), None)
     .await
     .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -2692,7 +2693,7 @@ async fn test_dynamic_witnesses() {
         })
     );
 
-    let state = get_subject(creator, subject_id.clone())
+    let state = get_subject(creator, subject_id.clone(), None)
     .await
     .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -2710,6 +2711,274 @@ async fn test_dynamic_witnesses() {
     json!({
         "one": 200, "three": 0, "two": 0
     })
+    );
+}
+
+#[test(tokio::test)]
+// Un testigo nuevo le pide la copia a otro testigo viejo.
+async fn test_dynamic_witnesses_2() {
+    let nodes = create_nodes_and_connections(
+        vec![vec![]],
+        vec![vec![0], vec![0], vec![0]],
+        vec![],
+        true,
+        45130,
+    )
+    .await;
+
+    let owner_governance = &nodes[0];
+    let creator = &nodes[1];
+    let witness = &nodes[2];
+    let new_witness = &nodes[3];
+
+    let governance_id =
+        create_and_authorize_governance(owner_governance, vec![creator, witness], "")
+            .await;
+
+    // add member to governance
+    let json = json!({"Patch": {
+            "data": [
+                {
+                    "op": "add",
+                    "path": "/members/1",
+                    "value": {
+                        "id": creator.controller_id(),
+                        "name": "KoreNode1"
+                    }
+                },
+                {
+                    "op": "add",
+                    "path": "/members/1",
+                    "value": {
+                        "id": witness.controller_id(),
+                        "name": "KoreNode2"
+                    }
+                },
+                {
+                    "op": "add",
+                    "path": "/roles/1",
+                    "value": {
+                        "namespace": "",
+                        "role": {
+                            "CREATOR": {
+                                "QUANTITY": 1
+                            }
+                        },
+                        "schema": {
+                            "ID": "Example"
+                        },
+                        "who": {
+                            "NAME": "KoreNode1"
+                        }
+                    }
+                },
+                {
+                    "op": "add",
+                    "path": "/roles/2",
+                    "value": {
+                        "namespace": "",
+                        "role": "ISSUER",
+                        "schema": {
+                            "ID": "Example"
+                        },
+                        "who": {
+                            "NAME": "KoreNode1"
+                        }
+                    }
+                },
+                {
+                    "op": "add",
+                    "path": "/roles/3",
+                    "value": {
+                        "namespace": "",
+                        "role": "WITNESS",
+                        "schema": {
+                            "ID": "Example"
+                        },
+                        "who": {
+                            "NAME": "KoreNode2"
+                        }
+                    }
+                },
+                {
+                    "op": "add",
+                    "path": "/policies/1",
+                    "value": {
+                        "id": "Example",
+                        "approve": {
+                            "quorum": "MAJORITY"
+                        },
+                        "evaluate": {
+                            "quorum": "MAJORITY"
+                        },
+                        "validate": {
+                            "quorum": "MAJORITY"
+                        }
+                    }
+                },
+                {
+                    "op": "add",
+                    "path": "/schemas/0",
+                    "value": {
+                        "contract": {
+                            "raw": "dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0="
+                        },
+                        "id": "Example",
+                        "initial_value": {
+                            "one": 0,
+                            "two": 0,
+                            "three": 0
+                        }
+                    }
+                }
+            ]
+    }});
+    emit_fact(owner_governance, governance_id.clone(), json, true)
+        .await
+        .unwrap();
+
+    // create subject
+    let subject_id =
+        create_subject(creator, governance_id.clone(), "Example", "", true)
+            .await
+            .unwrap();
+
+    // emit event to subject
+    let json = json!({
+        "ModOne": {
+            "data": 100,
+        }
+    });
+
+    emit_fact(creator, subject_id.clone(), json.clone(), true)
+        .await
+        .unwrap();
+
+    let json = json!({"Patch": {
+            "data": [
+                {
+                    "op": "add",
+                    "path": "/members/1",
+                    "value": {
+                        "id": new_witness.controller_id(),
+                        "name": "KoreNode3"
+                    }
+                },
+                {
+                    "op": "add",
+                    "path": "/roles/1",
+                    "value": {
+                        "namespace": "",
+                        "role": "WITNESS",
+                        "schema": {
+                            "ID": "Example"
+                        },
+                        "who": {
+                            "NAME": "KoreNode3"
+                        }
+                    }
+                }
+            ]
+    }});
+
+    emit_fact(owner_governance, governance_id.clone(), json, true)
+        .await
+        .unwrap();
+
+    new_witness
+        .auth_subject(governance_id.clone(), AuthWitness::One(KeyIdentifier::from_str(&witness.controller_id()).unwrap()))
+        .await
+        .unwrap();
+
+    new_witness
+        .auth_subject(subject_id.clone(), AuthWitness::One(KeyIdentifier::from_str(&witness.controller_id()).unwrap()))
+        .await
+        .unwrap();
+
+    new_witness.update_subject(governance_id.clone()).await.unwrap();
+    let _ = get_subject(new_witness, governance_id.clone(), None).await.unwrap();
+
+    new_witness.update_subject(subject_id.clone()).await.unwrap();
+
+    let state = get_subject(witness, subject_id.clone(), None)
+    .await
+    .unwrap();
+
+    assert_eq!(state.subject_id, subject_id.to_string());
+    assert_eq!(state.governance_id, governance_id.to_string());
+    assert_eq!(state.genesis_gov_version, 1);
+    assert_eq!(state.namespace, "");
+    assert_eq!(state.schema_id, "Example");
+    assert_eq!(state.owner, creator.controller_id());
+    assert_eq!(state.new_owner, None);
+    assert_eq!(state.creator, creator.controller_id());
+    assert_eq!(state.active, true);
+    assert_eq!(state.sn, 1);
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
+    let state = get_subject(new_witness, subject_id.clone(), Some(1))
+    .await
+    .unwrap();
+
+    assert_eq!(state.subject_id, subject_id.to_string());
+    assert_eq!(state.governance_id, governance_id.to_string());
+    assert_eq!(state.genesis_gov_version, 1);
+    assert_eq!(state.namespace, "");
+    assert_eq!(state.schema_id, "Example");
+    assert_eq!(state.owner, creator.controller_id());
+    assert_eq!(state.new_owner, None);
+    assert_eq!(state.creator, creator.controller_id());
+    assert_eq!(state.active, true);
+    assert_eq!(state.sn, 1);
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
+    let state = get_subject(creator, subject_id.clone(), None)
+    .await
+    .unwrap();
+
+    assert_eq!(state.subject_id, subject_id.to_string());
+    assert_eq!(state.governance_id, governance_id.to_string());
+    assert_eq!(state.genesis_gov_version, 1);
+    assert_eq!(state.namespace, "");
+    assert_eq!(state.schema_id, "Example");
+    assert_eq!(state.owner, creator.controller_id());
+    assert_eq!(state.new_owner, None);
+    assert_eq!(state.creator, creator.controller_id());
+    assert_eq!(state.active, true);
+    assert_eq!(state.sn, 1);
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
+    );
+    let state = get_subject(owner_governance, subject_id.clone(), None)
+    .await
+    .unwrap();
+
+    assert_eq!(state.subject_id, subject_id.to_string());
+    assert_eq!(state.governance_id, governance_id.to_string());
+    assert_eq!(state.genesis_gov_version, 1);
+    assert_eq!(state.namespace, "");
+    assert_eq!(state.schema_id, "Example");
+    assert_eq!(state.owner, creator.controller_id());
+    assert_eq!(state.new_owner, None);
+    assert_eq!(state.creator, creator.controller_id());
+    assert_eq!(state.active, true);
+    assert_eq!(state.sn, 1);
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 100, "three": 0, "two": 0
+        })
     );
 }
 

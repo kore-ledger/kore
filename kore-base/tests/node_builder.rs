@@ -350,12 +350,19 @@ pub async fn emit_fact(
 pub async fn get_subject(
     node: &Api,
     subject_id: DigestIdentifier,
+    sn: Option<u64>
 ) -> Result<SubjectInfo, Box<dyn std::error::Error>> {
     loop {
         if let Ok(state) =  node
             .get_subject(subject_id.clone())
             .await {
-                return Ok(state);
+                if let Some(sn) = sn {
+                    if sn == state.sn {
+                        return Ok(state);        
+                    }
+                } else {
+                    return Ok(state);
+                }
             }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }

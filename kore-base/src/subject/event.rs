@@ -148,14 +148,6 @@ impl Handler<LedgerEvent> for LedgerEvent {
                                 );
                                 return Err(emit_fail(ctx, e).await);
                             }
-                        } else {
-                            let e = ActorError::NotFound(approver_path);
-                            warn!(
-                                TARGET_EVENT,
-                                "UpdateLastEvent, can not obtain Approver actor {}",
-                                e
-                            );
-                            return Err(ActorError::Functional(e.to_string()));
                         }
                     };
                 }

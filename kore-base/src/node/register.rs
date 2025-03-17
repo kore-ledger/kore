@@ -16,22 +16,33 @@ use crate::{db::Storable, model::common::emit_fail};
 const TARGET_REGISTER: &str = "Kore-Node-Register";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RegisterData {
+pub struct RegisterDataSubj {
     pub subject_id: String,
     pub schema: String,
     pub active: bool,
+    pub name: Option<String>,
+    pub description: Option<String>
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RegisterDataGov {
+    pub active: bool,
+    pub name: Option<String>,
+    pub description: Option<String>
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GovsData {
     pub governance_id: String,
     pub active: bool,
+    pub name: Option<String>,
+    pub description: Option<String>
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Register {
-    register_gov: HashMap<String, bool>,
-    register_subj: HashMap<String, Vec<RegisterData>>,
+    register_gov: HashMap<String, RegisterDataGov>,
+    register_subj: HashMap<String, Vec<RegisterDataSubj>>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,11 +57,11 @@ pub enum RegisterMessage {
     },
     RegisterGov {
         gov_id: String,
-        active: bool,
+        data: RegisterDataGov,
     },
     RegisterSubj {
         gov_id: String,
-        data: RegisterData,
+        data: RegisterDataSubj,
     },
 }
 
@@ -59,7 +70,7 @@ impl Message for RegisterMessage {}
 #[derive(Debug, Clone)]
 pub enum RegisterResponse {
     Govs { governances: Vec<GovsData> },
-    Subjs { subjects: Vec<RegisterData> },
+    Subjs { subjects: Vec<RegisterDataSubj> },
     None,
 }
 
@@ -67,8 +78,8 @@ impl Response for RegisterResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RegisterEvent {
-    RegisterGov { gov_id: String, active: bool },
-    RegisterSubj { gov_id: String, data: RegisterData },
+    RegisterGov { gov_id: String, data: RegisterDataGov },
+    RegisterSubj { gov_id: String, data: RegisterDataSubj },
 }
 
 impl Event for RegisterEvent {}
@@ -109,10 +120,12 @@ impl Handler<Register> for Register {
                         governances: self
                             .register_gov
                             .iter()
-                            .filter(|x| *x.1 == active)
+                            .filter(|x| x.1.active == active)
                             .map(|x| GovsData {
-                                active: *x.1,
+                                active: x.1.active.clone(),
                                 governance_id: x.0.clone(),
+                                description: x.1.description.clone(),
+                                name: x.1.name.clone()
                             })
                             .collect(),
                     });
@@ -122,8 +135,10 @@ impl Handler<Register> for Register {
                             .register_gov
                             .iter()
                             .map(|x| GovsData {
-                                active: *x.1,
+                                active: x.1.active.clone(),
                                 governance_id: x.0.clone(),
+                                description: x.1.description.clone(),
+                                name: x.1.name.clone()
                             })
                             .collect(),
                     });
@@ -160,9 +175,9 @@ impl Handler<Register> for Register {
                     return Err(ActorError::Functional(e.to_owned()));
                 }
             }
-            RegisterMessage::RegisterGov { gov_id, active } => {
+            RegisterMessage::RegisterGov { gov_id, data } => {
                 self.on_event(
-                    RegisterEvent::RegisterGov { gov_id, active },
+                    RegisterEvent::RegisterGov { gov_id, data },
                     ctx,
                 )
                 .await
@@ -195,8 +210,8 @@ impl PersistentActor for Register {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
-            RegisterEvent::RegisterGov { gov_id, active } => {
-                self.register_gov.insert(gov_id.clone(), *active);
+            RegisterEvent::RegisterGov { gov_id, data } => {
+                self.register_gov.insert(gov_id.clone(), data.clone());
                 self.register_subj.insert(gov_id.clone(), vec![]);
             }
             RegisterEvent::RegisterSubj { gov_id, data } => {

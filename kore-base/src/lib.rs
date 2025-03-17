@@ -50,7 +50,7 @@ use model::signature::*;
 use model::{SignTypesNode, request::*};
 use network::{Monitor, MonitorMessage, MonitorNetworkState, MonitorResponse, NetworkWorker};
 use node::register::{
-    GovsData, Register, RegisterData, RegisterMessage, RegisterResponse,
+    GovsData, Register, RegisterDataSubj, RegisterMessage, RegisterResponse
 };
 use node::{Node, NodeMessage, NodeResponse, TransferSubject};
 use once_cell::sync::OnceCell;
@@ -625,7 +625,7 @@ impl Api {
         gov_id: DigestIdentifier,
         active: Option<bool>,
         schema: Option<String>,
-    ) -> Result<Vec<RegisterData>, Error> {
+    ) -> Result<Vec<RegisterDataSubj>, Error> {
         let response = self
             .register
             .ask(RegisterMessage::GetSubj {
