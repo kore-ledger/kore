@@ -78,6 +78,8 @@ async fn governance_copy_benchmark() {
             .await;
 
     let request = EventRequest::Create(CreateRequest {
+        name: None,
+        description: None,
         governance_id: Default::default(),
         schema_id: "governance".to_owned(),
         namespace: Default::default(),

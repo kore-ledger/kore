@@ -5,47 +5,22 @@
 //!
 
 use crate::{
-    CreateRequest, Error, EventRequestType, Governance, Node,
     approval::{
-        Approval,
-        approver::{Approver, VotationType},
-    },
-    config::Config,
-    db::Storable,
-    distribution::{Distribution, DistributionType, distributor::Distributor},
-    evaluation::{
-        Evaluation,
-        compiler::{Compiler, CompilerMessage},
-        evaluator::Evaluator,
-        schema::{EvaluationSchema, EvaluationSchemaMessage},
-    },
-    governance::{
-        Schema,
-        model::{CreatorQuantity, Roles},
-    },
-    helpers::db::ExternalDB,
-    model::{
-        HashId, Namespace, ValueWrapper,
+        approver::{Approver, VotationType}, Approval
+    }, auth::WitnessesAuth, config::Config, db::Storable, distribution::{distributor::Distributor, Distribution, DistributionType}, evaluation::{
+        compiler::{Compiler, CompilerMessage}, evaluator::Evaluator, schema::{EvaluationSchema, EvaluationSchemaMessage}, Evaluation
+    }, governance::{
+        model::{CreatorQuantity, Roles}, Schema
+    }, helpers::db::ExternalDB, model::{
         common::{
             delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
-            register_relation, try_to_update_subject, verify_protocols_state,
-        },
-        event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
-        request::EventRequest,
-        signature::Signed,
-    },
-    node::{
-        NodeMessage, TransferSubject,
-        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
-        register::{Register, RegisterData, RegisterMessage},
-    },
-    update::TransferResponse,
-    validation::{
-        Validation,
-        proof::ValidationProof,
-        schema::{ValidationSchema, ValidationSchemaMessage},
-        validator::Validator,
-    },
+            register_relation, try_to_update, verify_protocols_state,
+        }, event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures}, request::EventRequest, signature::Signed, HashId, Namespace, ValueWrapper
+    }, node::{
+        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse}, register::{Register, RegisterData, RegisterMessage}, NodeMessage, TransferSubject
+    }, update::TransferResponse, validation::{
+        proof::ValidationProof, schema::{ValidationSchema, ValidationSchemaMessage}, validator::Validator, Validation
+    }, CreateRequest, Error, EventRequestType, Governance, Node
 };
 
 use actor::{
@@ -91,6 +66,8 @@ pub struct CreateSubjectData {
     Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
 pub struct Metadata {
+    pub name: Option<String>,
+    pub description: Option<String>,
     /// The identifier of the subject of the event.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance contract.
@@ -115,8 +92,12 @@ pub struct Metadata {
 }
 
 /// Suject header
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct Subject {
+    /// The name of the subject.
+    pub name: Option<String>,
+    /// The description of the subject.
+    pub description: Option<String>,
     /// The identifier of the subject.
     pub subject_id: DigestIdentifier,
     /// The identifier of the governance that drives this subject.
@@ -146,6 +127,8 @@ pub struct Subject {
 impl Subject {
     pub fn new(data: CreateSubjectData) -> Self {
         Subject {
+            name: data.create_req.name,
+            description: data.create_req.description,
             subject_id: data.subject_id,
             governance_id: data.create_req.governance_id,
             genesis_gov_version: data.genesis_gov_version,
@@ -184,6 +167,8 @@ impl Subject {
             &ledger.content.event_request.content
         {
             let subject = Subject {
+                name: request.name.clone(),
+                description: request.description.clone(),
                 subject_id: ledger.content.subject_id.clone(),
                 governance_id: request.governance_id.clone(),
                 genesis_gov_version: ledger.content.gov_version,
@@ -234,6 +219,8 @@ impl Subject {
     ///
     fn get_metadata(&self) -> Metadata {
         Metadata {
+            description: self.description.clone(),
+            name: self.name.clone(),
             creator: self.creator.clone(),
             genesis_gov_version: self.genesis_gov_version,
             last_event_hash: self.last_event_hash.clone(),
@@ -965,7 +952,7 @@ impl Subject {
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                     if hash_without_patch != new_ledger.content.state_hash {
-                        return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
+                        return Err(Error::Subject("In Transfer event, the hash obtained without applying any patch is different from the state hash of the event".to_owned()));
                     }
                 }
                 EventRequest::Confirm(..) => {
@@ -985,7 +972,7 @@ impl Subject {
                         )?;
 
                         if hash_without_patch != new_ledger.content.state_hash {
-                            return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
+                            return Err(Error::Subject("In Confirm event, the hash obtained without applying any patch is different from the state hash of the event".to_owned()));
                         }
                     }
                 }
@@ -999,7 +986,7 @@ impl Subject {
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                     if hash_without_patch != new_ledger.content.state_hash {
-                        return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
+                        return Err(Error::Subject("In Reject event, the hash obtained without applying any patch is different from the state hash of the event".to_owned()));
                     }
                 }
                 EventRequest::EOL(..) => {
@@ -1012,15 +999,11 @@ impl Subject {
                         .hash_id(new_ledger.signature.content_hash.derivator)?;
 
                     if hash_without_patch != new_ledger.content.state_hash {
-                        return Err(Error::Subject("The hash obtained without applying any patch is different from the state hash of the event".to_owned()));
+                        return Err(Error::Subject("In EOL event, the hash obtained without applying any patch is different from the state hash of the event".to_owned()));
                     }
                 }
             };
         } else {
-            if let LedgerValue::Patch(_) = new_ledger.content.value {
-                return Err(Error::Subject("The event failed in some protocol but a patch arrived to apply".to_owned()));
-            }
-
             let hash_without_patch = self
                 .properties
                 .hash_id(new_ledger.signature.content_hash.derivator)?;
@@ -1039,6 +1022,18 @@ impl Subject {
         if let EventRequest::Create(event_req) =
             event.content.event_request.content.clone()
         {
+            if let Some(name) = event_req.name {
+                if name.is_empty() || name.len() > 100 {
+                    return Err(Error::Subject("The subject name must be less than 100 characters or not be empty.".to_owned()));
+                }    
+            }
+
+            if let Some(description) = event_req.description {
+                if description.is_empty() || description.len() > 200 {
+                    return Err(Error::Subject("The subject description must be less than 200 characters or not be empty.".to_owned()));
+                }
+            }
+
             if event_req.schema_id == "governance"
                 && (!event_req.governance_id.is_empty()
                     || !event_req.namespace.is_empty()
@@ -2031,25 +2026,6 @@ impl Subject {
     }
 }
 
-impl Clone for Subject {
-    fn clone(&self) -> Self {
-        Subject {
-            subject_id: self.subject_id.clone(),
-            governance_id: self.governance_id.clone(),
-            genesis_gov_version: self.genesis_gov_version,
-            namespace: self.namespace.clone(),
-            schema_id: self.schema_id.clone(),
-            last_event_hash: self.last_event_hash.clone(),
-            owner: self.owner.clone(),
-            new_owner: self.new_owner.clone(),
-            creator: self.creator.clone(),
-            active: self.active,
-            sn: self.sn,
-            properties: self.properties.clone(),
-        }
-    }
-}
-
 /// Subject command.
 #[derive(Debug, Clone)]
 pub enum SubjectMessage {
@@ -2213,7 +2189,7 @@ impl Handler<Subject> for Subject {
                             &self.subject_id.to_string(),
                         )
                         .await?;
-                        try_to_update_subject(ctx, self.subject_id.clone())
+                        try_to_update(ctx, self.subject_id.clone(), WitnessesAuth::None)
                             .await?;
                     }
                 }
@@ -2794,9 +2770,8 @@ mod tests {
         )
         .unwrap();
 
-        let bytes = bincode::serialize(&subject_a).unwrap();
-
-        let subject_b = bincode::deserialize::<Subject>(&bytes).unwrap();
+        let bytes = bincode::serde::encode_to_vec(subject_a.clone(),  bincode::config::standard()).unwrap();
+        let (subject_b, _) = bincode::serde::decode_from_slice::<Subject, _>(&bytes, bincode::config::standard()).unwrap();
         assert_eq!(subject_a.subject_id, subject_b.subject_id);
     }
 

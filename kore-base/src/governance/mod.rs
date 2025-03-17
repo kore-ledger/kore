@@ -29,8 +29,8 @@ use std::{
     str::FromStr,
 };
 
-type SchemRolNameSpace = HashMap<(String, Roles), Vec<String>>;
-type SchemaKeyNameSpace = HashMap<(String, String), Vec<String>>;
+pub type SchemRolNameSpace = HashMap<(String, Roles), Vec<String>>;
+pub type SchemaKeyNameSpace = HashMap<(String, String), Vec<String>>;
 
 /// Governance struct.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -212,8 +212,7 @@ impl Approver {
                     "/user/node/{}/approval/{}",
                     request.subject_id,
                     info.reciver.clone()
-                ),
-                schema: info.schema.clone(),
+                )
             };
 
             if let Err(e) = helper
@@ -550,7 +549,6 @@ impl Handler<Approver> for Approver {
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
-                        schema: "".to_string(),
                     },
                     message: ActorMessage::ApprovalReq { req: approval_req },
                 };

@@ -7,14 +7,9 @@ use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Event as KoreEvent, Signed,
-    approval::{request::ApprovalReq, response::ApprovalRes},
-    evaluation::{request::EvaluationReq, response::EvaluationRes},
-    model::event::{Ledger, ProtocolsSignatures},
-    update::TransferResponse,
-    validation::{
+    approval::{request::ApprovalReq, response::ApprovalRes}, evaluation::{request::EvaluationReq, response::EvaluationRes}, model::event::{Ledger, ProtocolsSignatures}, update::TransferResponse, validation::{
         proof::ValidationProof, request::ValidationReq, response::ValidationRes,
-    },
+    }, Event as KoreEvent, Signed
 };
 
 pub mod intermediary;
@@ -24,12 +19,14 @@ pub mod service;
 pub enum ActorMessage {
     ValidationReq {
         req: Box<Signed<ValidationReq>>,
+        schema: String,
     },
     ValidationRes {
         res: Signed<ValidationRes>,
     },
     EvaluationReq {
         req: Signed<EvaluationReq>,
+        schema: String,
     },
     EvaluationRes {
         res: Signed<EvaluationRes>,
@@ -58,6 +55,9 @@ pub enum ActorMessage {
         ledger: Vec<Signed<Ledger>>,
         last_event: Option<Signed<KoreEvent>>,
         last_proof: Option<ValidationProof>,
+        namespace: String,
+        schema: String,
+        governance_id: DigestIdentifier,
         prev_event_validation_response: Option<Vec<ProtocolsSignatures>>,
     },
     DistributionGetLastSn {

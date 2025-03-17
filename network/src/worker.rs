@@ -6,12 +6,7 @@
 
 // TODO: revisar eventos de la network. Ya no se los lanza a message receiver ahora debería manejarlos ella misma
 use crate::{
-    Command, CommandHelper, Config, Error, Event as NetworkEvent, Monitor,
-    NodeType,
-    behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage},
-    service::NetworkService,
-    transport::build_transport,
-    utils::convert_addresses,
+    behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage}, service::NetworkService, transport::build_transport, utils::convert_addresses, Command, CommandHelper, Config, Error, Event as NetworkEvent, Monitor, MonitorMessage, NodeType
 };
 
 use std::{fmt::Debug, time::Duration};
@@ -386,8 +381,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
     /// Send event
     async fn send_event(&mut self, event: NetworkEvent) {
         if let Some(monitor) = self.monitor.clone() {
-            if monitor.tell(event).await.is_err() {
-                error!(TARGET_WORKER, "Can't send network event.")
+            if monitor.tell(MonitorMessage::Network(event)).await.is_err() {
+                error!(TARGET_WORKER, "Can't send network event to monitor actor.");
+                self.cancel.cancel();
             }
         }
     }
@@ -402,6 +398,8 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             self.cancel.cancel();
             return;
         }
+
+        self.send_event(NetworkEvent::Running).await;
 
         // Finish pre routing state, activating random walk (if node is a bootstrap).
         self.swarm.behaviour_mut().finish_prerouting_state();

@@ -16,3 +16,6 @@ kore-base/contracts
 
 # Macs files
 .DS_Store
+
+**/*.profraw
+coverage

@@ -16,31 +16,17 @@ use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, info, warn};
 
 use crate::{
-    ActorMessage, DIGEST_DERIVATOR, Event as KoreEvent, EventRequest, HashId,
-    NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse,
-    Validation, ValidationInfo, ValidationMessage, ValueWrapper,
-    approval::{Approval, ApprovalMessage},
-    auth::{Auth, AuthMessage, AuthResponse, AuthWitness},
-    db::Storable,
-    distribution::{Distribution, DistributionMessage, DistributionType},
-    evaluation::{
-        Evaluation, EvaluationMessage, request::EvaluationReq,
-        response::EvalLedgerResponse,
-    },
-    intermediary::Intermediary,
-    model::{
-        SignTypesNode,
+    approval::{Approval, ApprovalMessage}, auth::{Auth, AuthMessage, AuthResponse, AuthWitness}, db::Storable, distribution::{Distribution, DistributionMessage, DistributionType}, error::Error, evaluation::{
+        request::EvaluationReq, response::EvalLedgerResponse, Evaluation, EvaluationMessage
+    }, intermediary::Intermediary, model::{
         common::{
             emit_fail, get_gov, get_metadata, get_sign, get_vali_data,
             update_event, update_vali_data,
-        },
-        event::{
+        }, event::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
             ProtocolsSignatures,
-        },
-    },
-    update::{Update, UpdateMessage, UpdateNew, UpdateRes, UpdateType},
-    validation::proof::{EventProof, ValidationProof},
+        }, SignTypesNode
+    }, update::{Update, UpdateMessage, UpdateNew, UpdateRes, UpdateType}, validation::proof::{EventProof, ValidationProof}, ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
 };
 
 const TARGET_MANAGER: &str = "Kore-Request-Manager";
@@ -276,21 +262,34 @@ impl RequestManager {
         signatures: Vec<ProtocolsSignatures>,
         result: bool,
         errors: &str,
-    ) -> (Ledger, KoreEvent) {
-        let value = {
+    ) -> Result<(Ledger, KoreEvent), Error> {
+        let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
+            *derivator
+        } else {
+            error!(TARGET_MANAGER, "Error getting derivator");
+            DigestDerivator::Blake3_256
+        };
+
+
+        let (value, state_hash) = {
             if result {
-                val_info.event_proof.content.value
+                (val_info.event_proof.content.value, val_info.event_proof.content.state_hash)
             } else if let LedgerValue::Error(mut e) =
                 val_info.event_proof.content.value
             {
-                e.validation = Some(errors.to_owned());
-                LedgerValue::Error(e)
+                e.validation = if errors.is_empty() {
+                    None
+                } else {
+                    Some(errors.to_owned())
+                };
+
+                (LedgerValue::Error(e), val_info.event_proof.content.state_hash)
             } else {
                 let e = ProtocolsError {
                     evaluation: None,
                     validation: Some(errors.to_owned()),
                 };
-                LedgerValue::Error(e)
+                (LedgerValue::Error(e), val_info.metadata.properties.hash_id(derivator)?)
             }
         };
 
@@ -300,7 +299,7 @@ impl RequestManager {
             sn: val_info.event_proof.content.sn,
             gov_version: val_info.event_proof.content.gov_version,
             value,
-            state_hash: val_info.event_proof.content.state_hash,
+            state_hash,
             eval_success: val_info.event_proof.content.eval_success,
             appr_required: val_info.event_proof.content.appr_required,
             appr_success: val_info.event_proof.content.appr_success,
@@ -311,7 +310,7 @@ impl RequestManager {
             validators: HashSet::from_iter(signatures.iter().cloned()),
         };
 
-        (Ledger::from(event.clone()), event)
+        Ok((Ledger::from(event.clone()), event))
     }
 
     pub async fn delete_subject(
@@ -634,8 +633,7 @@ impl RequestManager {
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
                         governance_string
-                    ),
-                    schema: "governance".to_owned(),
+                    )
                 };
 
                 let helper: Option<Intermediary> =
@@ -666,7 +664,7 @@ impl RequestManager {
             }
             AuthWitness::Many(vec) => {
                 let witnesses = vec.iter().cloned().collect();
-                let data = UpdateNew { subject_id: governance_id, our_key: self.our_key.clone(), response: Some(UpdateRes::Sn(metadata.sn)), witnesses, schema_id: "governance".to_owned(), request: Some(request), update_type: UpdateType::Request { id: self.id.clone()} };
+                let data = UpdateNew { subject_id: governance_id, our_key: self.our_key.clone(), response: Some(UpdateRes::Sn(metadata.sn)), witnesses, request: Some(request), update_type: UpdateType::Request { id: self.id.clone()} };
 
                 let update = Update::new(
                     data
@@ -1155,12 +1153,18 @@ impl Handler<RequestManager> for RequestManager {
                         return Err(emit_fail(ctx, e).await);
                     };
 
+                let (state_hash, value)= if !result {
+                    (None, LedgerValue::Patch(ValueWrapper(serde_json::Value::Array(vec![]))))
+                } else {
+                    (Some(eval_res.state_hash), eval_res.value)
+                };
+
                 let data = match self
                     .build_data_event_proof(
                         ctx,
                         Some(eval_req.sn),
-                        eval_res.value,
-                        Some(eval_res.state_hash),
+                        value,
+                        state_hash,
                         ProtocolsResult {
                             eval_success: Some(eval_res.eval_success),
                             appr_required: eval_res.appr_required,
@@ -1313,12 +1317,21 @@ impl Handler<RequestManager> for RequestManager {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                let (ledger, event) = self.create_ledger_event(
+                let (ledger, event) = match self.create_ledger_event(
                     val_info,
                     signatures.clone(),
                     result,
                     &errors,
-                );
+                ) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        error!(
+                            TARGET_MANAGER,
+                            "ValidationRes, can not generate Ledger data: {}", e
+                        );
+                        return Err(emit_fail(ctx, ActorError::FunctionalFail(e.to_string())).await);
+                    }
+                };
 
                 let (signed_ledger, signed_event) = match self
                     .safe_ledger_event(
@@ -1376,7 +1389,7 @@ impl Handler<RequestManager> for RequestManager {
                 if let Err(e) = self.evaluation(ctx).await {
                     error!(
                         TARGET_MANAGER,
-                        "EvaluationRes, can not init evaluation: {}", e
+                        "Evaluate, can not init evaluation: {}", e
                     );
                     return Err(emit_fail(ctx, e).await);
                 };
@@ -1388,7 +1401,7 @@ impl Handler<RequestManager> for RequestManager {
                     let e = ActorError::FunctionalFail(
                         "Invalid request state".to_owned(),
                     );
-                    error!(TARGET_MANAGER, "Other, {}", e);
+                    error!(TARGET_MANAGER, "Validate, {}", e);
                     return Err(emit_fail(ctx, e).await);
                 };
 
@@ -1400,12 +1413,12 @@ impl Handler<RequestManager> for RequestManager {
                                 .abort_request_manager(ctx, &e.to_string())
                                 .await
                             {
-                                error!(TARGET_MANAGER, "Other, {}", e);
+                                error!(TARGET_MANAGER, "Validate, {}", e);
                                 return Err(emit_fail(ctx, e).await);
                             }
                             return Ok(());
                         } else {
-                            error!(TARGET_MANAGER, "Other, {}", e);
+                            error!(TARGET_MANAGER, "Validate, {}", e);
                             return Err(emit_fail(ctx, e).await);
                         }
                     }
@@ -1425,7 +1438,7 @@ impl Handler<RequestManager> for RequestManager {
                     Err(e) => {
                         error!(
                             TARGET_MANAGER,
-                            "Other, can not build event proof: {}", e
+                            "Validate, can not build event proof: {}", e
                         );
                         return Err(emit_fail(ctx, e).await);
                     }
@@ -1434,7 +1447,7 @@ impl Handler<RequestManager> for RequestManager {
                 if let Err(e) = self.validation(ctx, data).await {
                     error!(
                         TARGET_MANAGER,
-                        "Other, can not init validation: {}", e
+                        "Validate, can not init validation: {}", e
                     );
                     return Err(emit_fail(ctx, e).await);
                 };

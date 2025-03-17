@@ -2,18 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    Error,
-    approval::approver::{Approver, ApproverMessage},
-    distribution::distributor::{Distributor, DistributorMessage},
-    evaluation::{
+    approval::approver::{Approver, ApproverMessage}, distribution::distributor::{Distributor, DistributorMessage}, evaluation::{
         evaluator::{Evaluator, EvaluatorMessage},
         schema::{EvaluationSchema, EvaluationSchemaMessage},
-    },
-    update::updater::{Updater, UpdaterMessage},
-    validation::{
+    }, model::Namespace, update::updater::{Updater, UpdaterMessage}, validation::{
         schema::{ValidationSchema, ValidationSchemaMessage},
         validator::{Validator, ValidatorMessage},
-    },
+    }, Error
 };
 
 use super::ActorMessage;
@@ -241,12 +236,12 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::ValidationReq { req } => {
+                    ActorMessage::ValidationReq { req, schema } => {
                         // Validator path.
                         let validator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
                         // Validator actor.
-                        if message.info.schema == "governance" {
+                        if schema == "governance" {
                             let validator_actor: Option<ActorRef<Validator>> =
                                 self.system.get_actor(&validator_path).await;
 
@@ -256,6 +251,7 @@ impl Intermediary {
                                     .tell(ValidatorMessage::NetworkRequest {
                                         validation_req: req,
                                         info: message.info,
+                                        schema
                                     })
                                     .await
                                 {
@@ -281,6 +277,7 @@ impl Intermediary {
                                     .tell(ValidationSchemaMessage::NetworkRequest {
                                         validation_req: req,
                                         info: message.info,
+                                        schema
                                     })
                                     .await
                                     {
@@ -294,12 +291,12 @@ impl Intermediary {
                             };
                         }
                     }
-                    ActorMessage::EvaluationReq { req } => {
+                    ActorMessage::EvaluationReq { req, schema } => {
                         // Evaluator path.
                         let evaluator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
 
-                        if message.info.schema == "governance" {
+                        if schema == "governance" {
                             // Evaluator actor.
                             let evaluator_actor: Option<ActorRef<Evaluator>> =
                                 self.system.get_actor(&evaluator_path).await;
@@ -310,6 +307,7 @@ impl Intermediary {
                                     .tell(EvaluatorMessage::NetworkRequest {
                                         evaluation_req: req,
                                         info: message.info,
+                                        schema
                                     })
                                     .await
                                 {
@@ -336,6 +334,7 @@ impl Intermediary {
                             .tell(EvaluationSchemaMessage::NetworkRequest {
                                 evaluation_req: req,
                                 info: message.info,
+                                schema
                             })
                             .await
                             {
@@ -423,7 +422,7 @@ impl Intermediary {
                                 event,
                                 ledger,
                                 info: message.info,
-                                last_proof,
+                                last_proof: last_proof.clone(),
                                 prev_event_validation_response,
                             })
                             .await
@@ -563,6 +562,9 @@ impl Intermediary {
                         last_event,
                         last_proof,
                         prev_event_validation_response,
+                        namespace,
+                        schema,
+                        governance_id
                     } => {
                         // Distributor path.
                         let distributor_path =
@@ -597,6 +599,8 @@ impl Intermediary {
                             }
                         };
 
+                        let namespace = Namespace::from(namespace);
+
                         // We obtain the validator
                         if let Err(e) = distributor_actor
                             .tell(DistributorMessage::LedgerDistribution {
@@ -605,6 +609,9 @@ impl Intermediary {
                                 info: message.info,
                                 last_proof,
                                 prev_event_validation_response,
+                                schema,
+                                namespace,
+                                governance_id
                             })
                             .await
                         {

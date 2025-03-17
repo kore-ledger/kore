@@ -13,8 +13,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 
 use crate::{
-    Signed,
-    model::common::{emit_fail, try_to_update_subject},
+    auth::WitnessesAuth, model::common::{emit_fail, try_to_update}, Signed
 };
 
 use super::{
@@ -44,6 +43,7 @@ pub enum ValidationSchemaMessage {
     NetworkRequest {
         validation_req: Box<Signed<ValidationReq>>,
         info: ComunicateInfo,
+        schema: String,
     },
     UpdateValidators(HashSet<KeyIdentifier>, u64),
 }
@@ -69,13 +69,15 @@ impl Handler<ValidationSchema> for ValidationSchema {
             ValidationSchemaMessage::NetworkRequest {
                 validation_req,
                 info,
+                schema
             } => {
                 if self.gov_version
                     < validation_req.content.proof.governance_version
                 {
-                    if let Err(e) = try_to_update_subject(
+                    if let Err(e) = try_to_update(
                         ctx,
                         validation_req.content.proof.governance_id.clone(),
+                        WitnessesAuth::Witnesses
                     )
                     .await
                     {
@@ -143,6 +145,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     .tell(ValidatorMessage::NetworkRequest {
                         validation_req,
                         info,
+                        schema
                     })
                     .await
                 {

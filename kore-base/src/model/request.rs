@@ -177,6 +177,10 @@ impl EventRequest {
     BorshDeserialize,
 )]
 pub struct CreateRequest {
+    /// The name of subject.
+    pub name: Option<String>,
+    /// The description of subject.
+    pub description: Option<String>,
     /// The identifier of the governance contract.
     pub governance_id: DigestIdentifier,
     /// The identifier of the schema used to validate the event.
@@ -395,6 +399,8 @@ pub mod tests {
         keys: KeyPair,
     ) -> Signed<EventRequest> {
         let req = CreateRequest {
+            name: None,
+            description: None,
             governance_id: DigestIdentifier::default(),
             schema_id: "governance".to_string(),
             namespace: Namespace::from("namespace"),

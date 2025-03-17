@@ -13,20 +13,12 @@ mod runner;
 pub mod schema;
 
 use crate::{
-    DIGEST_DERIVATOR,
-    governance::{Quorum, model::Roles},
-    model::{
-        HashId, SignTypesNode, ValueWrapper,
+    auth::WitnessesAuth, governance::{model::Roles, Quorum}, model::{
         common::{
             emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version,
             send_reboot_to_req, try_to_update,
-        },
-        event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
-        request::EventRequest,
-        signature::{Signature, Signed},
-    },
-    request::manager::{RequestManager, RequestManagerMessage},
-    subject::Metadata,
+        }, event::{LedgerValue, ProtocolsError, ProtocolsSignatures}, request::EventRequest, signature::{Signature, Signed}, HashId, SignTypesNode, ValueWrapper
+    }, request::manager::{RequestManager, RequestManagerMessage}, subject::Metadata, DIGEST_DERIVATOR
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
@@ -211,8 +203,15 @@ impl Evaluation {
         if self.errors.is_empty() {
             "who: ALL, error: No evaluator was able to evaluate the event."
                 .clone_into(&mut error);
-            try_to_update(self.evaluators_signatures.clone(), ctx, gov_id)
-                .await?;
+
+            let all_time_out = self
+                .evaluators_signatures
+                .iter()
+                .all(|x| matches!(x, ProtocolsSignatures::TimeOut(_)));
+
+            if all_time_out {
+                try_to_update(ctx, gov_id, WitnessesAuth::Witnesses).await?
+            }
         }
 
         Ok(EvalLedgerResponse {
@@ -791,6 +790,8 @@ mod tests {
 
         assert_eq!(metadata.subject_id, subject_id);
         assert_eq!(metadata.governance_id.to_string(), "");
+        assert_eq!(metadata.name.unwrap(), "Name");
+        assert_eq!(metadata.description.unwrap(), "Description");
         assert_eq!(metadata.genesis_gov_version, 0);
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());
@@ -949,6 +950,8 @@ mod tests {
         assert_eq!(metadata.subject_id, subject_id);
         assert_eq!(metadata.governance_id.to_string(), "");
         assert_eq!(metadata.genesis_gov_version, 0);
+        assert_eq!(metadata.name.unwrap(), "Name");
+        assert_eq!(metadata.description.unwrap(), "Description");
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 2);
@@ -1247,6 +1250,8 @@ mod tests {
         assert_eq!(metadata.subject_id, subject_id);
         assert_eq!(metadata.governance_id.to_string(), "");
         assert_eq!(metadata.genesis_gov_version, 0);
+        assert_eq!(metadata.name.unwrap(), "Name");
+        assert_eq!(metadata.description.unwrap(), "Description");
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 1);
@@ -1296,6 +1301,8 @@ mod tests {
         ) = init_gov_sub().await;
 
         let create_request = EventRequest::Create(crate::CreateRequest {
+            name: Some("Subject Name".to_owned()),
+            description: Some("Subject Description".to_owned()),
             governance_id: gov_id.clone(),
             schema_id: "Example".to_owned(),
             namespace: Namespace::new(),
@@ -1406,6 +1413,8 @@ mod tests {
 
         assert_eq!(metadata.subject_id.to_string(), request_id.subject_id);
         assert_eq!(metadata.governance_id.to_string(), gov_id.to_string());
+        assert_eq!(metadata.name.unwrap(), "Subject Name");
+        assert_eq!(metadata.description.unwrap(), "Subject Description");
         assert_eq!(metadata.genesis_gov_version, 1);
         assert_eq!(metadata.schema_id, "Example");
         assert_eq!(metadata.namespace, Namespace::new());
@@ -1517,6 +1526,8 @@ mod tests {
 
         assert_eq!(metadata.subject_id.to_string(), request_id.subject_id);
         assert_eq!(metadata.genesis_gov_version, 1);
+        assert_eq!(metadata.name.unwrap(), "Subject Name");
+        assert_eq!(metadata.description.unwrap(), "Subject Description");
         assert_eq!(metadata.schema_id, "Example");
         assert_eq!(metadata.namespace, Namespace::new());
         assert_eq!(metadata.sn, 1);

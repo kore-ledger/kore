@@ -123,6 +123,9 @@ pub enum Command {
 /// Event enumeration for the network service.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
+    /// Connected to network.
+    Running,
+
     /// Connected to a bootstrap node.
     ConnectedToBootstrap {
         /// The peer ID of the bootstrap node.
@@ -189,6 +192,4 @@ pub struct ComunicateInfo {
     pub reciver: KeyIdentifier,
     /// The receiver actor.
     pub reciver_actor: String,
-    /// schema of subject
-    pub schema: String,
 }

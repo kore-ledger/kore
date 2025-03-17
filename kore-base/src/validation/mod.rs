@@ -11,18 +11,12 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    governance::{Quorum, model::Roles},
-    model::{
-        SignTypesNode,
+    auth::WitnessesAuth, governance::{model::Roles, Quorum}, model::{
         common::{
             emit_fail, get_sign, get_signers_quorum_gov_version,
             send_reboot_to_req, try_to_update,
-        },
-        event::{ProofEvent, ProtocolsSignatures},
-        signature::Signed,
-    },
-    request::manager::{RequestManager, RequestManagerMessage},
-    subject::Metadata,
+        }, event::{ProofEvent, ProtocolsSignatures}, signature::Signed, SignTypesNode
+    }, request::manager::{RequestManager, RequestManagerMessage}, subject::Metadata
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
@@ -183,8 +177,15 @@ impl Validation {
             };
             "who: ALL, error: No validator was able to validate the event."
                 .clone_into(&mut error);
-            try_to_update(self.validators_response.clone(), ctx, gov_id)
-                .await?;
+
+            let all_time_out = self
+                .validators_response
+                .iter()
+                .all(|x| matches!(x, ProtocolsSignatures::TimeOut(_)));
+
+            if all_time_out {
+                try_to_update(ctx, gov_id, WitnessesAuth::Witnesses).await?
+            }
         }
 
         let req_path =
@@ -287,7 +288,7 @@ impl Handler<Validation> for Validation {
                     ctx,
                     &info.metadata.subject_id.to_string(),
                     &info.metadata.schema_id,
-                    info.metadata.namespace,
+                    info.metadata.namespace.clone(),
                     Roles::VALIDATOR,
                 )
                 .await
@@ -337,14 +338,22 @@ impl Handler<Validation> for Validation {
                     signature,
                 };
 
+
                 for signer in signers {
-                    self.create_validators(
+                    if let Err(e) =
+                        self.create_validators(
                         ctx,
                         signed_validation_req.clone(),
                         &info.metadata.schema_id,
-                        signer,
+                        signer.clone(),
                     )
-                    .await?
+                    .await
+                    {
+                        error!(
+                            TARGET_VALIDATION,
+                            "Can not create validator {}: {}", signer, e
+                        );
+                    }
                 }
             }
             ValidationMessage::Response {
@@ -507,6 +516,8 @@ pub mod tests {
         system.run_sink(sink).await;
 
         let create_req = EventRequest::Create(CreateRequest {
+            name: Some("Name".to_string()),
+            description: Some("Description".to_string()),
             governance_id: DigestIdentifier::default(),
             schema_id: "governance".to_owned(),
             namespace: Namespace::new(),
@@ -600,6 +611,8 @@ pub mod tests {
         assert!(!last_event.content.validators.is_empty());
 
         assert_eq!(metadata.subject_id.to_string(), owned_subj);
+        assert_eq!(metadata.name.unwrap(), "Name");
+        assert_eq!(metadata.description.unwrap(), "Description");
         assert_eq!(metadata.governance_id.to_string(), "");
         assert_eq!(metadata.genesis_gov_version, 0);
         assert_eq!(metadata.schema_id, "governance");
@@ -712,6 +725,8 @@ pub mod tests {
 
         assert_eq!(metadata.subject_id, subject_id);
         assert_eq!(metadata.governance_id.to_string(), "");
+        assert_eq!(metadata.name.unwrap(), "Name");
+        assert_eq!(metadata.description.unwrap(), "Description");
         assert_eq!(metadata.genesis_gov_version, 0);
         assert_eq!(metadata.schema_id, "governance");
         assert_eq!(metadata.namespace, Namespace::new());

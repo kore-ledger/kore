@@ -48,7 +48,7 @@ use model::ValueWrapper;
 use model::event::Event;
 use model::signature::*;
 use model::{SignTypesNode, request::*};
-use network::{Monitor, NetworkWorker};
+use network::{Monitor, MonitorMessage, MonitorNetworkState, MonitorResponse, NetworkWorker};
 use node::register::{
     GovsData, Register, RegisterData, RegisterMessage, RegisterResponse,
 };
@@ -96,6 +96,7 @@ pub struct Api {
     auth: ActorRef<Auth>,
     query: ActorRef<Query>,
     register: ActorRef<Register>,
+    monitor: ActorRef<Monitor>,
     manual_dis: ActorRef<ManualDistribution>,
 }
 
@@ -113,14 +114,12 @@ impl Api {
 
         if let Err(_e) = GOVERNANCE.set(RwLock::new(schema)) {
             error!(TARGET_API, "Can not set governance schema");
-            #[cfg(not(feature = "test"))]
-            return Err(Error::System("An error occurred with the governance schema, it could not be initialized globally".to_owned()));
         };
 
         let system =
             system(config.clone(), password, Some(token.clone())).await?;
 
-        let newtork_monitor = Monitor;
+        let newtork_monitor = Monitor::default();
         let newtork_monitor_actor = system
             .create_root_actor("network_monitor", newtork_monitor)
             .await
@@ -136,7 +135,7 @@ impl Api {
             registry,
             keys.clone(),
             config.network.clone(),
-            Some(newtork_monitor_actor),
+            Some(newtork_monitor_actor.clone()),
             config.key_derivator,
             token.clone(),
         )
@@ -237,6 +236,7 @@ impl Api {
             node: node_actor,
             query: query_actor,
             register: register_actor,
+            monitor: newtork_monitor_actor,
             manual_dis: manual_dis_actor,
         })
     }
@@ -247,6 +247,23 @@ impl Api {
 
     pub fn controller_id(&self) -> String {
         self.controller_id.clone()
+    }
+
+    pub async fn get_network_state(&self) -> Result<MonitorNetworkState, Error> {
+        let response = self.monitor.ask(MonitorMessage::State).await.map_err(|e| {
+            let e = format!("Can not get network state {}", e);
+            error!(TARGET_API, e);
+            Error::Api(e)
+        })?;
+
+        match response {
+            MonitorResponse::State(state) => Ok(state),
+            _ => {
+                let e = "A response was received that was not the expected one";
+                error!(TARGET_API, e);
+                Err(Error::Api(e.to_owned()))
+            }
+        }
     }
 
     /// Request from issuer.
@@ -561,7 +578,7 @@ impl Api {
     ) -> Result<String, Error> {
         let response = self
             .auth
-            .ask(AuthMessage::Update { subject_id })
+            .ask(AuthMessage::Update { subject_id, more_info: auth::WitnessesAuth::None })
             .await
             .map_err(|e| {
                 let e = format!("Can not update subject: {}", e);

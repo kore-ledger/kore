@@ -45,7 +45,6 @@ pub struct UpdateNew {
     pub our_key: KeyIdentifier,
     pub response: Option<UpdateRes>,
     pub witnesses: HashSet<KeyIdentifier>,
-    pub schema_id: String,
     pub request: Option<ActorMessage>,
     pub update_type: UpdateType,
 }
@@ -63,7 +62,6 @@ pub struct Update {
     response: Option<UpdateRes>,
     witnesses: HashSet<KeyIdentifier>,
     better: Option<KeyIdentifier>,
-    schema_id: String,
     request: Option<ActorMessage>,
     update_type: UpdateType,
 }
@@ -135,7 +133,6 @@ impl Update {
             response: data.response,
             witnesses: data.witnesses,
             better: None,
-            schema_id: data.schema_id,
             request: data.request,
             update_type: data.update_type,
         }
@@ -299,8 +296,7 @@ impl Handler<Update> for Update {
                                 reciver_actor: format!(
                                     "/user/node/{}/distributor",
                                     self.subject_id
-                                ),
-                                schema: self.schema_id.clone(),
+                                )
                             };
 
                             let helper: Option<Intermediary> =

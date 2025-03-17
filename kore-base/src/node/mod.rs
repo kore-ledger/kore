@@ -264,7 +264,11 @@ pub enum NodeResponse {
     IOwnerPending((bool, bool)),
     IOld(bool),
     Contract(Vec<u8>),
-    IsAuthorized(bool),
+    IsAuthorized {
+        owned: bool,
+        auth: bool,
+        know: bool
+    },
     KnowSubject(bool),
     None,
 }
@@ -687,7 +691,14 @@ impl Handler<Node> for Node {
                 let owned_subj =
                     self.owned_subjects.iter().any(|x| x.clone() == subject_id);
 
-                Ok(NodeResponse::IsAuthorized(auth_subj || owned_subj))
+                let know_subj =
+                    self.known_subjects.iter().any(|x| x.clone() == subject_id);
+
+                Ok(NodeResponse::IsAuthorized {
+                    auth: auth_subj,
+                    owned: owned_subj,
+                    know: know_subj
+                })
             }
         }
     }

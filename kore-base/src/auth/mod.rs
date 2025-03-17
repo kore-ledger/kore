@@ -11,14 +11,10 @@ use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, vec};
 use store::store::PersistentActor;
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::{
-    ActorMessage, NetworkMessage,
-    db::Storable,
-    intermediary::Intermediary,
-    model::common::{emit_fail, get_gov, get_metadata, subject_old},
-    update::{Update, UpdateMessage, UpdateNew, UpdateRes},
+    db::Storable, governance::model::Roles, intermediary::Intermediary, model::{common::{emit_fail, get_gov, get_metadata, subject_old}, Namespace}, update::{Update, UpdateMessage, UpdateNew, UpdateRes}, ActorMessage, NetworkMessage
 };
 
 const TARGET_AUTH: &str = "Kore-Auth";
@@ -28,6 +24,35 @@ pub enum AuthWitness {
     One(KeyIdentifier),
     Many(Vec<KeyIdentifier>),
     None,
+}
+
+impl AuthWitness {
+    fn merge(self, other: AuthWitness) -> AuthWitness {
+        match (self, other) {
+            (AuthWitness::None, w) | (w, AuthWitness::None) => w,
+            (AuthWitness::One(x), AuthWitness::One(y)) => AuthWitness::Many(vec![x, y]),
+            (AuthWitness::One(x), AuthWitness::Many(mut y)) => {
+                y.push(x);
+                AuthWitness::Many(y)
+            }
+            (AuthWitness::Many(mut x), AuthWitness::One(y)) => {
+                x.push(y);
+                AuthWitness::Many(x)
+            }
+            (AuthWitness::Many(mut x), AuthWitness::Many(y)) => {
+                x.extend(y);
+                AuthWitness::Many(x)
+            }
+        }
+    }
+}
+
+fn merge_options(opt1: Option<AuthWitness>, opt2: Option<AuthWitness>) -> Option<AuthWitness> {
+    match (opt1, opt2) {
+        (Some(w1), Some(w2)) => Some(w1.merge(w2)),
+        (Some(w), None) | (None, Some(w)) => Some(w),
+        (None, None) => None,
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -47,7 +72,7 @@ impl Auth {
     async fn create_req_schema(
         ctx: &mut ActorContext<Auth>,
         subject_id: DigestIdentifier,
-    ) -> Result<(u64, ActorMessage, String), ActorError> {
+    ) -> Result<(u64, ActorMessage), ActorError> {
         'req: {
             let Ok(metadata) = get_metadata(ctx, &subject_id.to_string()).await
             else {
@@ -62,7 +87,6 @@ impl Auth {
                     actual_sn: Some(metadata.sn),
                     subject_id,
                 },
-                metadata.schema_id,
             ));
         }
         Ok((
@@ -72,7 +96,6 @@ impl Auth {
                 actual_sn: None,
                 subject_id,
             },
-            String::default(),
         ))
     }
 }
@@ -95,7 +118,15 @@ pub enum AuthMessage {
     },
     Update {
         subject_id: DigestIdentifier,
+        more_info: WitnessesAuth
     },
+}
+
+#[derive(Debug, Clone)]
+pub enum WitnessesAuth {
+    None,
+    Owner(KeyIdentifier),
+    Witnesses
 }
 
 impl Message for AuthMessage {}
@@ -173,9 +204,6 @@ impl Handler<Auth> for Auth {
 
                 let witness = self.auth.get(&subject_id.to_string());
                 if let Some(witness) = witness {
-                    let metadata =
-                        get_metadata(ctx, &subject_id.to_string()).await?;
-
                     let witnesses = match witness {
                         AuthWitness::One(key_identifier) => {
                             vec![key_identifier.clone()]
@@ -194,7 +222,6 @@ impl Handler<Auth> for Auth {
                         our_key: self.our_node.clone(),
                         response: None,
                         witnesses,
-                        schema_id: metadata.schema_id,
                         request: None,
                         update_type: crate::update::UpdateType::Transfer,
                     };
@@ -260,10 +287,29 @@ impl Handler<Auth> for Auth {
                     subjects: self.auth.keys().cloned().collect(),
                 });
             }
-            AuthMessage::Update { subject_id } => {
-                let witness = self.auth.get(&subject_id.to_string());
+            AuthMessage::Update { subject_id, more_info } => {
+                let more_witness = match more_info {
+                    WitnessesAuth::None => None,
+                    WitnessesAuth::Owner(key_identifier) => Some(AuthWitness::One(key_identifier)),
+                    WitnessesAuth::Witnesses => {
+                        match get_gov(ctx, &subject_id.to_string()).await {
+                            Ok(gov) => {
+                                let (witnesses, _) = gov.get_signers(Roles::WITNESS, "governance", Namespace::from(""));
+                                Some(AuthWitness::Many(Vec::from_iter(witnesses.iter().cloned())))
+                            },
+                            Err(e) => {
+                                warn!(TARGET_AUTH, "Update, When attempting to update governance, the use of explicit witnesses within governance has been indicated, but no governance has been found: {}", e);
+                                Some(AuthWitness::None)
+                            },
+                        }
+                    },
+                };
+
+                let auth_witness = self.auth.get(&subject_id.to_string()).cloned();
+                let witness = merge_options(more_witness, auth_witness);
+
                 if let Some(witness) = witness {
-                    let (sn, request, schema_id) =
+                    let (sn, request) =
                         match Auth::create_req_schema(ctx, subject_id.clone())
                             .await
                         {
@@ -288,8 +334,7 @@ impl Handler<Auth> for Auth {
                                 reciver_actor: format!(
                                     "/user/node/{}/distributor",
                                     subject_id
-                                ),
-                                schema: schema_id,
+                                )
                             };
 
                             let helper: Option<Intermediary> =
@@ -331,7 +376,6 @@ impl Handler<Auth> for Auth {
                                 our_key: self.our_node.clone(),
                                 response: Some(UpdateRes::Sn(sn)),
                                 witnesses,
-                                schema_id,
                                 request: Some(request),
                                 update_type: crate::update::UpdateType::Auth,
                             };

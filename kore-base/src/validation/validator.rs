@@ -6,10 +6,7 @@ use std::{collections::HashSet, time::Duration};
 use crate::{
     Signed,
     governance::model::Roles,
-    helpers::{
-        db::{ExternalDB, Querys},
-        network::{NetworkMessage, intermediary::Intermediary},
-    },
+    helpers::network::{NetworkMessage, intermediary::Intermediary},
     model::{
         SignTypesNode, TimeStamp,
         common::{
@@ -18,7 +15,6 @@ use crate::{
         },
         event::ProtocolsSignatures,
         network::{RetryNetwork, TimeOutResponse},
-        signature::Signature,
     },
 };
 
@@ -103,14 +99,18 @@ impl Validator {
         &self,
         ctx: &mut ActorContext<Validator>,
         validation_req: ValidationReq,
-    ) -> Result<Signature, ActorError> {
-        self.check_proofs(
-            ctx,
-            &validation_req.proof,
-            validation_req.previous_proof,
-            validation_req.prev_event_validation_response,
-        )
-        .await?;
+    ) -> Result<ValidationRes, ActorError> {
+        if let Some(reboot) = self
+            .check_proofs(
+                ctx,
+                &validation_req.proof,
+                validation_req.previous_proof,
+                validation_req.prev_event_validation_response,
+            )
+            .await?
+        {
+            return Ok(reboot);
+        };
 
         let signature = get_sign(
             ctx,
@@ -118,7 +118,7 @@ impl Validator {
         )
         .await?;
 
-        Ok(signature)
+        Ok(ValidationRes::Signature(signature))
     }
 
     async fn check_proofs(
@@ -127,16 +127,34 @@ impl Validator {
         new_proof: &ValidationProof,
         previous_proof: Option<ValidationProof>,
         previous_validation_signatures: Vec<ProtocolsSignatures>,
-    ) -> Result<(), ActorError> {
+    ) -> Result<Option<ValidationRes>, ActorError> {
         // Not genesis event
         if let Some(previous_proof) = previous_proof {
             if new_proof.error_not_create(&previous_proof) {
                 return Err(ActorError::Functional("There are fields that do not match in the comparison of the previous validation proof and the new proof.".to_owned()));
             }
+            // Get validation signers
+            let governance_id = if new_proof.schema_id == "governance" {
+                new_proof.subject_id.clone()
+            } else {
+                new_proof.governance_id.clone()
+            };
 
-            // Validate the previous proof
-            // If all validations are correct, we get the public keys of the validators
-            let previous_signers: Result<HashSet<KeyIdentifier>, ActorError> =
+            let gov = get_gov(ctx, &governance_id.to_string()).await?;
+
+            // If the governance version is the same, we ask the governance for the current validators, to check that they are all part of it.
+            if previous_proof.governance_version == gov.version {
+                let actual_signers = gov
+                    .get_signers(
+                        Roles::VALIDATOR,
+                        &new_proof.schema_id,
+                        new_proof.namespace.clone(),
+                    )
+                    .0;
+
+                // Validate the previous proof
+                // If all validations are correct, we get the public keys of the validators
+                let previous_signers: Result<HashSet<KeyIdentifier>, ActorError> =
                 previous_validation_signatures
                     .into_iter()
                     .map(|signer_res| {
@@ -155,65 +173,21 @@ impl Validator {
                         }
                     })
                     .collect();
-            let previous_signers = previous_signers?;
+                let previous_signers = previous_signers?;
 
-            // TODO previamente se obtiene la governanza, ver si podemos refactorizar para no tener que volver a pedirla
-            // Get validation signers
-            let governance_id = if new_proof.schema_id == "governance" {
-                new_proof.subject_id.clone()
-            } else {
-                new_proof.governance_id.clone()
-            };
-
-            let actual_signers = get_gov(ctx, &governance_id.to_string())
-                .await?
-                .get_signers(
-                    Roles::VALIDATOR,
-                    &new_proof.schema_id,
-                    new_proof.namespace.clone(),
-                )
-                .0;
-
-            // If the governance version is the same, we ask the governance for the current validators, to check that they are all part of it.
-            if previous_proof.governance_version == new_proof.governance_version
-            {
                 if actual_signers != previous_signers {
                     return Err(ActorError::Functional("The previous event received validations from validators who are not part of governance.".to_owned()));
                 }
-            } else {
-                let Some(helper): Option<ExternalDB> =
-                    ctx.system().get_helper("ext_db").await
-                else {
-                    return Err(ActorError::NotHelper("ext_db".to_owned()));
-                };
-
-                let Ok(validators) = helper
-                    .get_last_validators(&new_proof.subject_id.to_string())
-                    .await
-                else {
-                    return Err(ActorError::Functional(
-                        "Can not get last validators".to_owned(),
-                    ));
-                };
-
-                let validators: HashSet<KeyIdentifier>  = serde_json::from_str(&validators).map_err(|e| ActorError::Functional(format!("Unable to get list of validators for previous test: {}", e)))?;
-                if validators != previous_signers {
-                    return Err(ActorError::Functional("The previous event received validations from validators who are not part of governance.".to_owned()));
-                }
             }
-            Ok(())
-
         // Genesis event, it is first proof
-        } else {
-            if new_proof.error_create() {
+        } else if new_proof.error_create() {
                 return Err(ActorError::Functional(
                     "There are incorrect fields in the validation test"
                         .to_owned(),
                 ));
             }
-
-            Ok(())
-        }
+        
+        Ok(None)
     }
 }
 
@@ -237,6 +211,7 @@ pub enum ValidatorMessage {
     NetworkRequest {
         validation_req: Box<Signed<ValidationReq>>,
         info: ComunicateInfo,
+        schema: String,
     },
 }
 
@@ -265,7 +240,7 @@ impl Handler<Validator> for Validator {
                 // Validate event
                 let validation_res =
                     match self.validation(ctx, validation_req).await {
-                        Ok(validation) => ValidationRes::Signature(validation),
+                        Ok(res) => res,
                         Err(e) => {
                             if let ActorError::Functional(_) = e {
                                 warn!(
@@ -342,10 +317,10 @@ impl Handler<Validator> for Validator {
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
-                        schema,
                     },
                     message: ActorMessage::ValidationReq {
                         req: Box::new(validation_req),
+                        schema
                     },
                 };
 
@@ -474,6 +449,7 @@ impl Handler<Validator> for Validator {
             ValidatorMessage::NetworkRequest {
                 validation_req,
                 info,
+                schema
             } => {
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
@@ -543,7 +519,7 @@ impl Handler<Validator> for Validator {
                         .validation(ctx, validation_req.content.clone())
                         .await
                     {
-                        Ok(validation) => ValidationRes::Signature(validation),
+                        Ok(res) => res,
                         Err(e) => {
                             if let ActorError::Functional(_) = e {
                                 warn!(
@@ -571,8 +547,7 @@ impl Handler<Validator> for Validator {
                         "/user/node/{}/validation/{}",
                         validation_req.content.proof.subject_id,
                         info.reciver.clone()
-                    ),
-                    schema: info.schema.clone(),
+                    )
                 };
 
                 let signature = match get_sign(
@@ -615,7 +590,7 @@ impl Handler<Validator> for Validator {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                if info.schema != "governance" {
+                if schema != "governance" {
                     ctx.stop().await;
                 }
             }

@@ -3,7 +3,7 @@
 
 use actor::Subscriber;
 use async_trait::async_trait;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     EventRequest, Signed,
@@ -49,6 +49,12 @@ impl Subscriber<Signed<Ledger>> for KoreSink {
         {
             Ok(res) => {
                 if let Err(e) = res.error_for_status() {
+                    if let Some(status) = e.status() {
+                        if status.as_u16() == 422 {
+                            warn!(TARGET_SINK, "The sink was expecting another type of data");
+                            return;
+                        }
+                    }
                     error!(
                         TARGET_SINK,
                         "The information was not sent to the sink: {}", e

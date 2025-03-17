@@ -151,8 +151,7 @@ impl Handler<Updater> for Updater {
                         reciver_actor: format!(
                             "/user/node/{}/distributor",
                             subject_id
-                        ),
-                        schema: String::default(),
+                        )
                     },
                     message: ActorMessage::Transfer { subject_id },
                 };
@@ -205,7 +204,6 @@ impl Handler<Updater> for Updater {
                             "/user/node/{}/distributor",
                             subject_id
                         ),
-                        schema: String::default(),
                     },
                     message: ActorMessage::DistributionGetLastSn { subject_id },
                 };

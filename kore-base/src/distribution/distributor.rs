@@ -13,24 +13,16 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
-    ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,
-    NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
-    SubjectResponse,
-    governance::{
-        Governance,
-        model::{CreatorQuantity, Roles},
-    },
-    intermediary::Intermediary,
-    model::{
+    auth::WitnessesAuth, governance::{
+        model::{CreatorQuantity, Roles}, Governance
+    }, intermediary::Intermediary, model::{
         common::{
             emit_fail, get_gov, get_metadata, get_quantity, subject_old_owner,
-            try_to_update_subject, update_event, update_vali_data,
+            try_to_update, update_event, update_vali_data,
         },
         event::{Ledger, ProtocolsSignatures},
-        network::RetryNetwork,
-    },
-    update::TransferResponse,
-    validation::proof::ValidationProof,
+        network::RetryNetwork, Namespace,
+    }, update::TransferResponse, validation::proof::ValidationProof, ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
 };
 
 use tracing::{error, warn};
@@ -172,7 +164,7 @@ impl Distributor {
         &self,
         ctx: &mut ActorContext<Distributor>,
         subject_id: &str,
-    ) -> Result<bool, ActorError> {
+    ) -> Result<(bool, bool, bool), ActorError> {
         let node_path = ActorPath::from("/user/node");
         let node_actor: Option<ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
@@ -185,7 +177,7 @@ impl Distributor {
             return Err(ActorError::NotFound(node_path));
         };
         match response {
-            NodeResponse::IsAuthorized(know) => Ok(know),
+            NodeResponse::IsAuthorized { owned, auth, know } => Ok((owned, auth, know)),
             _ => Err(ActorError::UnexpectedResponse(
                 node_path,
                 "NodeResponse::IsAuthorized".to_owned(),
@@ -200,26 +192,53 @@ impl Distributor {
         info: ComunicateInfo,
         ledger: Ledger,
         gov_version: Option<u64>,
+        schema: &str,
+        namespace: Namespace,
+        governance_id: DigestIdentifier
     ) -> Result<(), ActorError> {
         let our_key = info.reciver.clone();
         let subject_id = ledger.subject_id.clone();
-        let schema = info.schema.clone();
-        let know = self.authorized_subj(ctx, &subject_id.to_string()).await?;
+        // Si está auth o si soy el dueño del sujeto.
+        let (owned, auth, know) = self.authorized_subj(ctx, &subject_id.to_string()).await?;
 
-        let (namespace, governance_id) =
+        // Si es una gov
+        let is_gov = schema == "governance";
+
+        // es gov
+        if is_gov {
+            // No está auth
+            if !auth {
+                return Err(ActorError::Functional(
+                    "Governance is not authorized".to_owned(),
+                ))
+            // está auth y tengo la copia
+            } else if owned || know  {
+                return Ok(());
+            // está auth pero no tengo la copia
+            } else if let EventRequest::Create(_) = ledger.event_request.content.clone()
+                {
+                    return Ok(());
+                } else {
+                    try_to_update(ctx, subject_id, WitnessesAuth::Owner(signer)).await?;
+                    return Err(ActorError::Functional(
+                        "Updating governance".to_owned(),
+                    ));
+                }
+            
+        }
+
+        // no es gov.
+        let (namespace, governance_id, update) =
             match get_metadata(ctx, &subject_id.to_string()).await {
-                Ok(metadata) => (metadata.namespace, metadata.governance_id),
+                Ok(metadata) => (metadata.namespace, metadata.governance_id, false),
                 Err(e) => {
                     if let ActorError::NotFound(_) = e {
                         if let EventRequest::Create(request) =
                             ledger.event_request.content.clone()
                         {
-                            (request.namespace, request.governance_id)
+                            (request.namespace, request.governance_id, false)
                         } else {
-                            try_to_update_subject(ctx, subject_id).await?;
-                            return Err(ActorError::Functional(
-                                "Updating subject".to_owned(),
-                            ));
+                            (namespace, governance_id, true)
                         }
                     } else {
                         return Err(e);
@@ -227,38 +246,22 @@ impl Distributor {
                 }
             };
 
-        if governance_id.is_empty() {
-            if know {
-                Ok(())
-            } else {
-                Err(ActorError::Functional(
-                    "Governance is not authorized".to_owned(),
-                ))
-            }
-        } else {
-            // SI no es una gov
-            let governance_id_string = governance_id.to_string();
-            let gov =
-                if self.authorized_subj(ctx, &governance_id_string).await? {
-                    match get_gov(ctx, &governance_id_string).await {
-                        Ok(gov) => gov,
-                        Err(e) => {
-                            if let ActorError::NotFound(_) = e {
-                                try_to_update_subject(ctx, governance_id)
-                                    .await?;
-                                return Err(ActorError::Functional(
-                                    "Updating governance".to_owned(),
-                                ));
-                            }
-                            return Err(e);
-                        }
+            // obtenemos la gov.
+            let gov = match get_gov(ctx, &governance_id.to_string()).await {
+                Ok(gov) => gov,
+                Err(e) => {
+                    if let ActorError::NotFound(_) = e {
+                        try_to_update(ctx, governance_id, WitnessesAuth::Witnesses)
+                            .await?;
+                        return Err(ActorError::Functional(
+                            "Updating governance".to_owned(),
+                        ));
                     }
-                } else {
-                    return Err(ActorError::Functional(
-                        "Governance is not authorized".to_owned(),
-                    ));
-                };
+                    return Err(e);
+                }
+            };
 
+            // Comparamos las govs, puede ser que ya no seamos testigo o que de repente seamos testigos.
             if let Some(gov_version) = gov_version {
                 Self::cmp_govs(
                     ctx,
@@ -266,17 +269,18 @@ impl Distributor {
                     gov_version,
                     governance_id,
                     info,
+                    schema
                 )
                 .await?;
             }
 
-            if know {
-                Ok(())
-            } else if !know && schema != "governance" {
+            // Si no está autorizado explicitamente.
+            if !auth {
+                // Miramos que tengamos el rol.
                 if !gov.has_this_role(
                     &signer.to_string(),
                     Roles::CREATOR(CreatorQuantity::QUANTITY(0)),
-                    &schema,
+                    schema,
                     namespace.clone(),
                 ) {
                     return Err(ActorError::Functional(
@@ -287,21 +291,24 @@ impl Distributor {
                 if !gov.has_this_role(
                     &our_key.to_string(),
                     Roles::WITNESS,
-                    &schema,
+                    schema,
                     namespace,
                 ) {
                     return Err(ActorError::Functional(
                         "We are not witness".to_string(),
                     ));
                 }
+            }
 
-                return Ok(());
-            } else {
+            if update {
+                try_to_update(ctx, subject_id, WitnessesAuth::Owner(signer))
+                .await?;
                 return Err(ActorError::Functional(
-                    "Governance is not authorized".to_owned(),
+                    "Updating subject".to_owned(),
                 ));
             }
-        }
+
+            Ok(())
     }
 
     async fn cmp_govs(
@@ -310,6 +317,7 @@ impl Distributor {
         gov_version: u64,
         governance_id: DigestIdentifier,
         info: ComunicateInfo,
+        schema: &str
     ) -> Result<(), ActorError> {
         let governance_id_string = governance_id.to_string();
 
@@ -325,8 +333,7 @@ impl Distributor {
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
                         governance_id_string
-                    ),
-                    schema: "governance".to_owned(),
+                    )
                 };
 
                 let helper: Option<Intermediary> =
@@ -357,7 +364,7 @@ impl Distributor {
             std::cmp::Ordering::Greater => {
                 // Su version es menor. Traslado la solicitud de actualización
                 // a mi distributor gov.
-                if info.schema != "governance" {
+                if schema != "governance" {
                     let new_info = ComunicateInfo {
                         reciver: info.reciver,
                         sender: info.sender,
@@ -367,7 +374,6 @@ impl Distributor {
                             "/user/node/{}/distributor",
                             governance_id_string
                         ),
-                        schema: "governance".to_owned(),
                     };
 
                     let distributor_path = ActorPath::from(format!(
@@ -390,11 +396,7 @@ impl Distributor {
                             info: new_info,
                         })
                         .await?;
-
-                    return Err(ActorError::Functional(
-                        "His gov version is less than my gov version"
-                            .to_owned(),
-                    ));
+                    warn!(TARGET_DISTRIBUTOR, "His gov version is less than my gov version");
                 }
             }
         }
@@ -407,7 +409,7 @@ impl Distributor {
         ctx: &mut ActorContext<Distributor>,
         subject_id: &str,
         gov_version: Option<u64>,
-        info: &mut ComunicateInfo,
+        info: &ComunicateInfo,
     ) -> Result<(), ActorError> {
         let gov = match get_gov(ctx, subject_id).await {
             Ok(gov) => gov,
@@ -435,10 +437,6 @@ impl Distributor {
             }
         };
 
-        if info.schema.is_empty() {
-            info.schema = metadata.schema_id.clone();
-        }
-
         let governance_id = if metadata.governance_id.is_empty() {
             metadata.subject_id
         } else {
@@ -452,6 +450,7 @@ impl Distributor {
                 gov_version,
                 governance_id,
                 info.clone(),
+                &metadata.schema_id
             )
             .await?;
         }
@@ -531,6 +530,9 @@ pub enum DistributorMessage {
         last_event: Option<Signed<KoreEvent>>,
         last_proof: Option<ValidationProof>,
         prev_event_validation_response: Option<Vec<ProtocolsSignatures>>,
+        namespace: Namespace,
+        schema: String,
+        governance_id: DigestIdentifier,
         info: ComunicateInfo,
     },
 }
@@ -611,7 +613,6 @@ impl Handler<Distributor> for Distributor {
                         "/user/node/auth/transfer_{}/{}",
                         subject_id, info.reciver
                     ),
-                    schema: info.schema,
                 };
 
                 let helper: Option<Intermediary> =
@@ -695,8 +696,7 @@ impl Handler<Distributor> for Distributor {
                     reciver_actor: format!(
                         "/user/node/auth/{}/{}",
                         subject_id, info.reciver
-                    ),
-                    schema: info.schema,
+                    )
                 };
 
                 let helper: Option<Intermediary> =
@@ -731,12 +731,12 @@ impl Handler<Distributor> for Distributor {
             }
             DistributorMessage::SendDistribution {
                 actual_sn,
-                mut info,
+                info,
                 gov_version,
                 subject_id,
             } => {
                 if let Err(e) = self
-                    .check_gov_version(ctx, &subject_id, gov_version, &mut info)
+                    .check_gov_version(ctx, &subject_id, gov_version, &info)
                     .await
                 {
                     error!(
@@ -770,6 +770,17 @@ impl Handler<Distributor> for Distributor {
                     }
                 };
 
+                let metadata = match get_metadata(ctx, &subject_id).await {
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "SendDistribution, Can not obtain metadata {}", e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
+                };
+
                 let new_info = ComunicateInfo {
                     reciver: info.sender,
                     sender: info.reciver,
@@ -779,7 +790,6 @@ impl Handler<Distributor> for Distributor {
                         "/user/node/{}/distributor",
                         subject_id
                     ),
-                    schema: info.schema,
                 };
 
                 let helper: Option<Intermediary> =
@@ -803,6 +813,9 @@ impl Handler<Distributor> for Distributor {
                                 last_event,
                                 last_proof,
                                 prev_event_validation_response,
+                                schema: metadata.schema_id,
+                                namespace: metadata.namespace.to_string(),
+                                governance_id: metadata.governance_id
                             },
                         },
                     })
@@ -837,7 +850,6 @@ impl Handler<Distributor> for Distributor {
                         sender: our_key,
                         reciver: node_key,
                         reciver_actor,
-                        schema: last_proof.schema_id.clone(),
                     },
                     message: ActorMessage::DistributionLastEventReq {
                         ledger,
@@ -850,7 +862,7 @@ impl Handler<Distributor> for Distributor {
                 let target = RetryNetwork::default();
 
                 let strategy = Strategy::FixedInterval(
-                    FixedIntervalStrategy::new(3, Duration::from_secs(3)),
+                    FixedIntervalStrategy::new(2, Duration::from_secs(3)),
                 );
 
                 let retry_actor = RetryActor::new(target, message, strategy);
@@ -949,6 +961,9 @@ impl Handler<Distributor> for Distributor {
                         info.clone(),
                         ledger.content.clone(),
                         Some(ledger.content.gov_version),
+                        &last_proof.schema_id,
+                        last_proof.namespace.clone(),
+                        last_proof.governance_id.clone()
                     )
                     .await
                 {
@@ -1049,7 +1064,6 @@ impl Handler<Distributor> for Distributor {
                                         "/user/node/{}/distributor",
                                         ledger.content.subject_id
                                     ),
-                                    schema: info.schema,
                                 };
 
                                 let helper: Option<Intermediary> =
@@ -1153,7 +1167,6 @@ impl Handler<Distributor> for Distributor {
                         objetive,
                         info.reciver.clone()
                     ),
-                    schema: info.schema.clone(),
                 };
 
                 let helper: Option<Intermediary> =
@@ -1193,6 +1206,9 @@ impl Handler<Distributor> for Distributor {
                 last_event,
                 last_proof,
                 prev_event_validation_response,
+                namespace,
+                schema,
+                governance_id
             } => {
                 // TODO REFACTORIZAR.
                 if events.is_empty() {
@@ -1212,6 +1228,9 @@ impl Handler<Distributor> for Distributor {
                         info.clone(),
                         events[0].content.clone(),
                         None,
+                        &schema,
+                        namespace,
+                        governance_id
                     )
                     .await
                 {
@@ -1432,7 +1451,7 @@ impl Handler<Distributor> for Distributor {
                     return Ok(());
                 };
 
-                let gov_id = if info.schema == "governance" {
+                let gov_id = if metadata.schema_id == "governance" {
                     metadata.subject_id
                 } else {
                     metadata.governance_id
@@ -1460,7 +1479,6 @@ impl Handler<Distributor> for Distributor {
                         "/user/node/{}/distributor",
                         subject_id
                     ),
-                    schema: info.schema.clone(),
                 };
 
                 let helper: Option<Intermediary> =

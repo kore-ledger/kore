@@ -108,6 +108,9 @@ impl TryFrom<BridgeRejectRequest> for RejectRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BridgeCreateRequest {
+    pub name: Option<String>,
+
+    pub description: Option<String>,
     /// The identifier of the governance contract.
     pub governance_id: String,
     /// The identifier of the schema used to validate the event.
@@ -119,6 +122,8 @@ pub struct BridgeCreateRequest {
 impl From<CreateRequest> for BridgeCreateRequest {
     fn from(request: CreateRequest) -> Self {
         Self {
+            name: request.name,
+            description: request.description,
             governance_id: request.governance_id.to_str(),
             schema_id: request.schema_id,
             namespace: request.namespace.to_string(),
@@ -130,6 +135,8 @@ impl TryFrom<BridgeCreateRequest> for CreateRequest {
     type Error = Error;
     fn try_from(request: BridgeCreateRequest) -> Result<Self, Self::Error> {
         Ok(Self {
+            name: request.name,
+            description: request.description,
             governance_id: DigestIdentifier::from_str(&request.governance_id)
                 .map_err(|_| {
                 Error::Bridge("Invalid governance identifier".to_string())

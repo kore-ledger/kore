@@ -244,9 +244,8 @@ mod tests {
     #[test]
     fn test_serialize_deserialize() {
         let value = crate::governance::init::init_state("");
-        //let wrapper = ValueWrapper(value.clone());
-        let bytes = bincode::serialize(&value).unwrap();
-        let wrapper = bincode::deserialize::<ValueWrapper>(&bytes);
+        let bytes = bincode::serde::encode_to_vec(value,  bincode::config::standard()).unwrap();
+        let wrapper = bincode::serde::decode_from_slice::<ValueWrapper, _>(&bytes, bincode::config::standard());
         wrapper.unwrap();
     }
 }

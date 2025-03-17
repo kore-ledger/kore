@@ -13,6 +13,8 @@ pub struct PaginatorEvents {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateRequestInfo {
+    pub name: Option<String>,
+    pub description: Option<String>,
     pub governance_id: String,
     pub schema_id: String,
     pub namespace: Namespace,
@@ -69,6 +71,16 @@ impl<'de> Deserialize<'de> for EventRequestInfo {
                 .ok_or_else(|| serde::de::Error::missing_field("namespace"))?;
 
             return Ok(Self::Create(CreateRequestInfo {
+                name: create
+                .get("name")
+                .and_then(Value::as_str)
+                .map(|x| x.to_owned())
+                .to_owned(),
+                description: create
+                .get("description")
+                .and_then(Value::as_str)
+                .map(|x| x.to_owned())
+                .to_owned(),
                 governance_id: create
                     .get("governance_id")
                     .and_then(Value::as_str)
@@ -213,6 +225,8 @@ pub struct TimeOutResponseInfo {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct SubjectDB {
+    pub name: Option<String>,
+    pub description: Option<String>,
     pub subject_id: String,
     pub governance_id: String,
     pub genesis_gov_version: u64,
@@ -228,17 +242,19 @@ pub struct SubjectDB {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubjectInfo {
+    pub name: String,
+    pub description: String,
     pub subject_id: String,
     pub governance_id: String,
     pub genesis_gov_version: u64,
     pub namespace: String,
     pub schema_id: String,
     pub owner: String,
-    pub new_owner: Option<String>,
     pub creator: String,
     pub active: bool,
     pub sn: u64,
     pub properties: Value,
+    pub new_owner: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

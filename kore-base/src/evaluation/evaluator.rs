@@ -448,6 +448,7 @@ pub enum EvaluatorMessage {
     },
     NetworkRequest {
         evaluation_req: Signed<EvaluationReq>,
+        schema: String,
         info: ComunicateInfo,
     },
 }
@@ -582,11 +583,11 @@ impl Handler<Evaluator> for Evaluator {
                         version: self.version,
                         sender: our_key,
                         reciver: node_key,
-                        reciver_actor,
-                        schema,
+                        reciver_actor
                     },
                     message: ActorMessage::EvaluationReq {
                         req: evaluation_req,
+                        schema
                     },
                 };
 
@@ -594,7 +595,7 @@ impl Handler<Evaluator> for Evaluator {
 
                 // TODO, la evaluación, si hay compilación podría tardar más
                 let strategy = Strategy::FixedInterval(
-                    FixedIntervalStrategy::new(3, Duration::from_secs(5)),
+                    FixedIntervalStrategy::new(3, Duration::from_secs(10)),
                 );
 
                 let retry_actor = RetryActor::new(target, message, strategy);
@@ -709,6 +710,7 @@ impl Handler<Evaluator> for Evaluator {
             EvaluatorMessage::NetworkRequest {
                 evaluation_req,
                 info,
+                schema
             } => {
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
@@ -835,8 +837,7 @@ impl Handler<Evaluator> for Evaluator {
                         "/user/node/{}/evaluation/{}",
                         evaluation_req.content.context.subject_id,
                         info.reciver.clone()
-                    ),
-                    schema: info.schema.clone(),
+                    )
                 };
 
                 let signed_response: Signed<EvaluationRes> = Signed {
@@ -862,7 +863,7 @@ impl Handler<Evaluator> for Evaluator {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                if info.schema != "governance" {
+                if schema != "governance" {
                     ctx.stop().await;
                 }
             }
