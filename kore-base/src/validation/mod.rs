@@ -11,7 +11,7 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    auth::WitnessesAuth, governance::{model::Roles, Quorum}, model::{
+    auth::WitnessesAuth, governance::{model::ProtocolTypes, Quorum}, model::{
         common::{
             emit_fail, get_sign, get_signers_quorum_gov_version,
             send_reboot_to_req, try_to_update,
@@ -289,7 +289,7 @@ impl Handler<Validation> for Validation {
                     &info.metadata.subject_id.to_string(),
                     &info.metadata.schema_id,
                     info.metadata.namespace.clone(),
-                    Roles::VALIDATOR,
+                    ProtocolTypes::Validation,
                 )
                 .await
                 {

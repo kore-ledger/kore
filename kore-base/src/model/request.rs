@@ -10,7 +10,7 @@ use super::{HashId, Namespace, signature::Signed, wrapper::ValueWrapper};
 
 use crate::{
     Error,
-    governance::{Governance, model::Roles},
+    governance::{Governance, model::RoleTypes},
     subject::Metadata,
 };
 
@@ -144,7 +144,7 @@ impl EventRequest {
             }
             EventRequest::Fact(_) => {
                 let (set, any) = gov.get_signers(
-                    Roles::ISSUER,
+                    RoleTypes::Issuer,
                     &metadata.schema_id,
                     metadata.namespace.clone(),
                 );

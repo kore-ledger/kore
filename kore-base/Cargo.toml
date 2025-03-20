@@ -50,7 +50,7 @@ serial_test = { workspace = true }
 criterion = { version = "0.5.1", features = ["async_tokio"]}
 tokio = { workspace = true, features = ["full"] }
 futures ={ version = "0.3.31"}
-kore-base = { path = ".", features = ["rocksdb", "ext-sqlite", "test"] }
+kore-base = { path = ".", features = ["sqlite", "ext-sqlite", "test"] }
 network = { path = "../network", features = ["test"]}
 
 [[bench]]
@@ -61,7 +61,7 @@ harness = false
 bench = false
 
 [features]
-default = ["rocksdb", "ext-sqlite"]
+default = ["sqlite", "ext-sqlite"]
 rocksdb = ["rocksdb_db"]
 sqlite = ["sqlite_db"]
 ext-sqlite = ["rusqlite"]

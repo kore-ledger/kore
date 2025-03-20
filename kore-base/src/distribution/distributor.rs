@@ -14,7 +14,7 @@ use network::ComunicateInfo;
 
 use crate::{
     auth::WitnessesAuth, governance::{
-        model::{CreatorQuantity, Roles}, Governance
+        model::{CreatorQuantity, RoleTypes}, Governance
     }, intermediary::Intermediary, model::{
         common::{
             emit_fail, get_gov, get_metadata, get_quantity, subject_old_owner,
@@ -80,7 +80,7 @@ impl Distributor {
                     )
                     .await?;
 
-                    if let CreatorQuantity::QUANTITY(max_quantity) =
+                    if let CreatorQuantity::Quantity(max_quantity) =
                         max_quantity
                     {
                         if quantity >= max_quantity as usize {
@@ -278,8 +278,8 @@ impl Distributor {
             if !auth {
                 // Miramos que tengamos el rol.
                 if !gov.has_this_role(
-                    &signer.to_string(),
-                    Roles::CREATOR(CreatorQuantity::QUANTITY(0)),
+                    &signer,
+                    RoleTypes::Creator,
                     schema,
                     namespace.clone(),
                 ) {
@@ -289,8 +289,8 @@ impl Distributor {
                 }
 
                 if !gov.has_this_role(
-                    &our_key.to_string(),
-                    Roles::WITNESS,
+                    &our_key,
+                    RoleTypes::Witness,
                     schema,
                     namespace,
                 ) {
@@ -464,8 +464,8 @@ impl Distributor {
         }
 
         if !gov.has_this_role(
-            &info.sender.to_string(),
-            Roles::WITNESS,
+            &info.sender,
+            RoleTypes::Witness,
             &metadata.schema_id.clone(),
             metadata.namespace.clone(),
         ) {
@@ -677,8 +677,8 @@ impl Handler<Distributor> for Distributor {
 
                 if !is_owner
                     && !gov.has_this_role(
-                        &info.sender.to_string(),
-                        Roles::WITNESS,
+                        &info.sender,
+                        RoleTypes::Witness,
                         &metadata.schema_id.clone(),
                         metadata.namespace.clone(),
                     )

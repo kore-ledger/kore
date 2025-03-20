@@ -197,7 +197,7 @@ impl RequestHandler {
             schema_id,
             namespace.clone(),
         ) {
-            if let CreatorQuantity::QUANTITY(max_quantity) = max_quantity {
+            if let CreatorQuantity::Quantity(max_quantity) = max_quantity {
                 let quantity = match get_quantity(
                     ctx,
                     governance_id.to_string(),

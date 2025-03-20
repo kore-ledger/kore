@@ -10,7 +10,7 @@ use crate::{
     }, auth::WitnessesAuth, config::Config, db::Storable, distribution::{distributor::Distributor, Distribution, DistributionType}, evaluation::{
         compiler::{Compiler, CompilerMessage}, evaluator::Evaluator, schema::{EvaluationSchema, EvaluationSchemaMessage}, Evaluation
     }, governance::{
-        model::{CreatorQuantity, Roles}, Schema
+        model::{CreatorQuantity, ProtocolTypes, RoleTypes}, Schema
     }, helpers::db::ExternalDB, model::{
         common::{
             delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
@@ -43,7 +43,7 @@ use tracing::{error, warn};
 use transfer::{TransferRegister, TransferRegisterMessage};
 use validata::ValiData;
 
-use std::{collections::HashSet, str::FromStr};
+use std::collections::HashMap;
 
 pub mod event;
 pub mod sinkdata;
@@ -338,38 +338,26 @@ impl Subject {
             .await?;
         }
 
-        let schemas = gov.schemas(Roles::EVALUATOR, &our_key.to_string());
-        Self::up_schemas(ctx, schemas, self.subject_id.clone()).await?;
+        let schemas = gov.schemas(ProtocolTypes::Evaluation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+        Self::up_compilers_schemas(ctx, schemas, self.subject_id.clone()).await?;
 
-        let (our_roles, creators) =
-            gov.subjects_schemas_rol_namespace(&our_key.to_string());
-        for ((schema, rol), namespaces) in our_roles {
-            let mut valid_users = HashSet::new();
-            for ((schema_creator, id), namespaces_creator) in creators.clone() {
-                if schema == schema_creator
-                    && self.check_namespaces(&namespaces, &namespaces_creator)
-                {
-                    if let Ok(id) = KeyIdentifier::from_str(&id) {
-                        valid_users.insert(id);
-                    }
-                }
-            }
-            match rol {
-                crate::governance::model::Roles::EVALUATOR => {
+        let new_creators = gov.subjects_schemas_rol_namespace(&our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+
+        for creators in new_creators {
+            if let Some(eval_user) = creators.evaluation {
                     let eval_actor =
-                        EvaluationSchema::new(valid_users, gov.version);
-                    ctx.create_child(
-                        &format!("{}_evaluation", schema),
-                        eval_actor,
-                    )
+                    EvaluationSchema::new(eval_user, gov.version);
+                ctx.create_child(
+                    &format!("{}_evaluation", creators.schema),
+                    eval_actor,
+                )
+                .await?;
+            }
+
+            if let Some(val_user) = creators.validation {
+                let actor = ValidationSchema::new(val_user, gov.version);
+                ctx.create_child(&format!("{}_validation", creators.schema), actor)
                     .await?;
-                }
-                crate::governance::model::Roles::VALIDATOR => {
-                    let actor = ValidationSchema::new(valid_users, gov.version);
-                    ctx.create_child(&format!("{}_validation", schema), actor)
-                        .await?;
-                }
-                _ => {}
             }
         }
 
@@ -385,8 +373,8 @@ impl Subject {
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
         if gov.has_this_role(
-            &our_key.to_string(),
-            Roles::VALIDATOR,
+            &our_key,
+            RoleTypes::Validator,
             "governance",
             namespace.clone(),
         ) {
@@ -396,8 +384,8 @@ impl Subject {
         }
 
         if gov.has_this_role(
-            &our_key.to_string(),
-            Roles::EVALUATOR,
+            &our_key,
+            RoleTypes::Evaluator,
             "governance",
             namespace.clone(),
         ) {
@@ -407,8 +395,8 @@ impl Subject {
         }
 
         if gov.has_this_role(
-            &our_key.to_string(),
-            Roles::APPROVER,
+            &our_key,
+            RoleTypes::Approver,
             "governance",
             namespace.clone(),
         ) {
@@ -443,8 +431,8 @@ impl Subject {
         namespace: Namespace,
     ) -> Result<(), ActorError> {
         if gov.has_this_role(
-            &our_key.to_string(),
-            Roles::VALIDATOR,
+            &our_key,
+            RoleTypes::Validator,
             "governance",
             namespace.clone(),
         ) {
@@ -461,8 +449,8 @@ impl Subject {
         }
 
         if gov.has_this_role(
-            &our_key.to_string(),
-            Roles::EVALUATOR,
+            &our_key,
+            RoleTypes::Evaluator,
             "governance",
             namespace.clone(),
         ) {
@@ -479,8 +467,8 @@ impl Subject {
         }
 
         if gov.has_this_role(
-            &our_key.to_string(),
-            Roles::APPROVER,
+            &our_key,
+            RoleTypes::Approver,
             "governance",
             namespace.clone(),
         ) {
@@ -603,9 +591,9 @@ impl Subject {
         Ok(())
     }
 
-    async fn up_schemas(
+    async fn up_compilers_schemas(
         ctx: &mut ActorContext<Subject>,
-        schemas: Vec<Schema>,
+        schemas: HashMap<String, Schema>,
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
@@ -614,21 +602,21 @@ impl Subject {
             return Err(ActorError::NotHelper("config".to_owned()));
         };
 
-        for schema in schemas {
+        for (id, schema) in schemas {
             let actor = Compiler::default();
             let actor = ctx
-                .get_or_create_child(&format!("{}_compiler", schema.id), || {
+                .get_or_create_child(&format!("{}_compiler", id), || {
                     actor
                 })
                 .await?;
             actor
                 .tell(CompilerMessage::Compile {
-                    contract_name: format!("{}_{}", subject_id, schema.id),
-                    contract: schema.contract.raw.clone(),
+                    contract_name: format!("{}_{}", subject_id, id),
+                    contract: schema.contract.clone(),
                     initial_value: schema.initial_value.clone(),
                     contract_path: format!(
                         "{}/contracts/{}_{}",
-                        config.contracts_dir, subject_id, schema.id
+                        config.contracts_dir, subject_id, id
                     ),
                 })
                 .await?;
@@ -637,21 +625,51 @@ impl Subject {
         Ok(())
     }
 
-    async fn down_schemas(
+    async fn down_compilers_schemas(
         ctx: &mut ActorContext<Subject>,
-        schemas: Vec<Schema>,
+        schemas: Vec<String>,
     ) -> Result<(), ActorError> {
         for schema in schemas {
             let actor: Option<ActorRef<Compiler>> =
-                ctx.get_child(&format!("{}_compiler", schema.id)).await;
+                ctx.get_child(&format!("{}_compiler", schema)).await;
             if let Some(actor) = actor {
                 actor.stop().await;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/{}_compiler",
                     ctx.path(),
-                    schema.id
+                    schema
                 ))));
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn down_schemas(ctx: &mut ActorContext<Subject>, old_schemas_eval: Vec<String>, old_schemas_val: Vec<String>) -> Result<(), ActorError> {
+        for schema in old_schemas_eval {
+            let actor: Option<ActorRef<EvaluationSchema>> = ctx
+                .get_child(&format!("{}_evaluation", schema))
+                .await;
+            if let Some(actor) = actor {
+                actor.stop().await;
+            } else {
+                return Err(ActorError::NotFound(ActorPath::from(
+                    format!("{}/{}_evaluation", ctx.path(), schema),
+                )));
+            }
+        }
+
+        for schema in old_schemas_val {
+            let actor: Option<ActorRef<ValidationSchema>> = ctx
+                .get_child(&format!("{}_validation", schema))
+                .await;
+            if let Some(actor) = actor {
+                actor.stop().await;
+            } else {
+                return Err(ActorError::NotFound(ActorPath::from(
+                    format!("{}/{}_validation", ctx.path(), schema),
+                )));
             }
         }
 
@@ -660,7 +678,7 @@ impl Subject {
 
     async fn compile_schemas(
         ctx: &mut ActorContext<Subject>,
-        schemas: Vec<Schema>,
+        schemas: HashMap<String, Schema>,
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
@@ -669,18 +687,18 @@ impl Subject {
             return Err(ActorError::NotHelper("config".to_owned()));
         };
 
-        for schema in schemas {
+        for (id, schema) in schemas {
             let actor: Option<ActorRef<Compiler>> =
-                ctx.get_child(&format!("{}_compiler", schema.id)).await;
+                ctx.get_child(&format!("{}_compiler", id)).await;
             if let Some(actor) = actor {
                 actor
                     .tell(CompilerMessage::Compile {
-                        contract_name: format!("{}_{}", subject_id, schema.id),
-                        contract: schema.contract.raw.clone(),
+                        contract_name: format!("{}_{}", subject_id, id),
+                        contract: schema.contract.clone(),
                         initial_value: schema.initial_value.clone(),
                         contract_path: format!(
                             "{}/contracts/{}_{}",
-                            config.contracts_dir, subject_id, schema.id
+                            config.contracts_dir, subject_id, id
                         ),
                     })
                     .await?;
@@ -688,7 +706,7 @@ impl Subject {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/{}_compiler",
                     ctx.path(),
-                    schema.id
+                    id
                 ))));
             }
         }
@@ -1516,47 +1534,14 @@ impl Subject {
                         .await?;
                     }
 
-                    let old_schemas =
-                        old_gov.schemas(Roles::EVALUATOR, &our_key.to_string());
-                    Self::down_schemas(ctx, old_schemas.clone()).await?;
+                    let old_schemas_eval =
+                        old_gov.schemas(ProtocolTypes::Evaluation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
+                    Self::down_compilers_schemas(ctx, old_schemas_eval.clone()).await?;
 
-                    let old_schemas_val = old_gov
-                        .schemas(Roles::VALIDATOR, &our_key.to_string())
-                        .iter()
-                        .map(|x| x.id.clone())
-                        .collect::<Vec<String>>();
-                    let old_schemas_eval = old_schemas
-                        .iter()
-                        .map(|x| x.id.clone())
-                        .collect::<Vec<String>>();
+                    let old_schemas_val =
+                        old_gov.schemas(ProtocolTypes::Validation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
 
-                    for schema in old_schemas_eval {
-                        let actor: Option<ActorRef<EvaluationSchema>> = ctx
-                            .get_child(&format!("{}_evaluation", schema))
-                            .await;
-                        if let Some(actor) = actor {
-                            actor.stop().await;
-                        } else {
-                            let e = ActorError::NotFound(ActorPath::from(
-                                format!("{}/{}_evaluation", ctx.path(), schema),
-                            ));
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    }
-
-                    for schema in old_schemas_val {
-                        let actor: Option<ActorRef<ValidationSchema>> = ctx
-                            .get_child(&format!("{}_validation", schema))
-                            .await;
-                        if let Some(actor) = actor {
-                            actor.stop().await;
-                        } else {
-                            let e = ActorError::NotFound(ActorPath::from(
-                                format!("{}/{}_validation", ctx.path(), schema),
-                            ));
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    }
+                    Self::down_schemas(ctx, old_schemas_eval, old_schemas_val).await?;
                 } else {
                     let new_gov = Governance::try_from(self.properties.clone())
                         .map_err(|e| {
@@ -1640,24 +1625,21 @@ impl Subject {
                         .await?;
                     }
 
-                    let old_schemas =
-                        old_gov.schemas(Roles::EVALUATOR, &our_key.to_string());
-                    let new_schemas =
-                        new_gov.schemas(Roles::EVALUATOR, &our_key.to_string());
+                    let old_schemas_eval =
+                        old_gov.schemas(ProtocolTypes::Evaluation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+                    let new_schemas_eval =
+                        new_gov.schemas(ProtocolTypes::Evaluation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
 
                     // Bajamos los compilers que ya no soy evaluador
-                    let mut down = old_schemas.clone();
-                    down.retain(|x| !new_schemas.contains(x));
-                    Self::down_schemas(ctx, down).await?;
+                    let down = old_schemas_eval.clone().iter().filter(|x| !new_schemas_eval.contains_key(x.0)).map(|x| x.0.clone()).collect();
+                    Self::down_compilers_schemas(ctx, down).await?;
 
                     // Subimos los compilers que soy nuevo evaluador
-                    let mut up = new_schemas.clone();
-                    up.retain(|x| !old_schemas.contains(x));
-                    Self::up_schemas(ctx, up, self.subject_id.clone()).await?;
+                    let up = new_schemas_eval.clone().iter().filter(|x| !old_schemas_eval.contains_key(x.0)).map(|x| (x.0.clone(), x.1.clone())).collect();
+                    Self::up_compilers_schemas(ctx, up, self.subject_id.clone()).await?;
 
                     // Compilo los nuevos contratos en el caso de que hayan sido modificados, sino no afecta.
-                    let mut current = old_schemas.clone();
-                    current.retain(|x| new_schemas.contains(x));
+                    let current = old_schemas_eval.clone().iter().filter(|x| new_schemas_eval.contains_key(x.0)).map(|x| (x.0.clone(), x.1.clone())).collect();
                     Self::compile_schemas(
                         ctx,
                         current,
@@ -1665,146 +1647,98 @@ impl Subject {
                     )
                     .await?;
 
-                    let mut old_schemas_val = old_gov
-                        .schemas(Roles::VALIDATOR, &our_key.to_string())
-                        .iter()
-                        .map(|x| x.id.clone())
-                        .collect::<Vec<String>>();
-                    let mut old_schemas_eval = old_schemas
-                        .iter()
-                        .map(|x| x.id.clone())
-                        .collect::<Vec<String>>();
+                    let mut old_schemas_eval = old_schemas_eval.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
+                    let mut old_schemas_val =
+                        old_gov.schemas(ProtocolTypes::Validation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
 
-                    let (our_roles, creators) = new_gov
-                        .subjects_schemas_rol_namespace(&our_key.to_string());
-                    for ((schema, rol), namespaces) in our_roles {
-                        let mut valid_users = HashSet::new();
-                        for ((schema_creator, id), namespaces_creator) in
-                            creators.clone()
-                        {
-                            if schema == schema_creator
-                                && self.check_namespaces(
-                                    &namespaces,
-                                    &namespaces_creator,
+                    let new_creators = new_gov.subjects_schemas_rol_namespace(&our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+
+                    for creators in new_creators {
+                        if let Some(eval_users) = creators.evaluation {
+                            let pos = old_schemas_eval
+                                    .iter()
+                                    .position(|x| *x == creators.schema);
+
+                            if let Some(pos) = pos {
+                                old_schemas_eval.remove(pos);
+                                let actor: Option<
+                                    ActorRef<EvaluationSchema>,
+                                > = ctx
+                                    .get_child(&format!(
+                                        "{}_evaluation",
+                                        creators.schema
+                                    ))
+                                    .await;
+                                if let Some(actor) = actor {
+                                    if let Err(e) = actor.tell(EvaluationSchemaMessage::UpdateEvaluators(eval_users, new_gov.version)).await {
+                                        return Err(emit_fail(ctx, e).await);
+                                    }
+                                } else {
+                                    let e = ActorError::NotFound(
+                                        ActorPath::from(format!(
+                                            "{}/{}_evaluation",
+                                            ctx.path(),
+                                            creators.schema
+                                        )),
+                                    );
+                                    return Err(emit_fail(ctx, e).await);
+                                }
+                            } else {
+                                let eval_actor = EvaluationSchema::new(
+                                    eval_users,
+                                    new_gov.version,
+                                );
+                                ctx.create_child(
+                                    &format!("{}_evaluation", creators.schema),
+                                    eval_actor,
                                 )
-                            {
-                                if let Ok(id) = KeyIdentifier::from_str(&id) {
-                                    valid_users.insert(id);
-                                }
+                                .await?;
                             }
                         }
-                        match rol {
-                            crate::governance::model::Roles::EVALUATOR => {
-                                let pos = old_schemas_eval
-                                    .iter()
-                                    .position(|x| *x == schema);
-                                if let Some(pos) = pos {
-                                    old_schemas_eval.remove(pos);
-                                    let actor: Option<
-                                        ActorRef<EvaluationSchema>,
-                                    > = ctx
-                                        .get_child(&format!(
-                                            "{}_evaluation",
-                                            schema
-                                        ))
-                                        .await;
-                                    if let Some(actor) = actor {
-                                        if let Err(e) = actor.tell(EvaluationSchemaMessage::UpdateEvaluators(valid_users, new_gov.version)).await {
-                                            return Err(emit_fail(ctx, e).await);
-                                        }
-                                    } else {
-                                        let e = ActorError::NotFound(
-                                            ActorPath::from(format!(
-                                                "{}/{}_evaluation",
-                                                ctx.path(),
-                                                schema
-                                            )),
-                                        );
-                                        return Err(emit_fail(ctx, e).await);
-                                    }
-                                } else {
-                                    let eval_actor = EvaluationSchema::new(
-                                        valid_users,
-                                        new_gov.version,
-                                    );
-                                    ctx.create_child(
-                                        &format!("{}_evaluation", schema),
-                                        eval_actor,
-                                    )
-                                    .await?;
-                                }
-                            }
-                            crate::governance::model::Roles::VALIDATOR => {
+
+                        if let Some(val_user) = creators.validation {
                                 let pos = old_schemas_val
-                                    .iter()
-                                    .position(|x| *x == schema);
-                                if let Some(pos) = pos {
-                                    old_schemas_val.remove(pos);
-                                    let actor: Option<
-                                        ActorRef<ValidationSchema>,
-                                    > = ctx
-                                        .get_child(&format!(
-                                            "{}_validation",
-                                            schema
-                                        ))
-                                        .await;
-                                    if let Some(actor) = actor {
-                                        if let Err(e) = actor.tell(ValidationSchemaMessage::UpdateValidators(valid_users, new_gov.version)).await {
-                                            return Err(emit_fail(ctx, e).await);
-                                        }
-                                    } else {
-                                        let e = ActorError::NotFound(
-                                            ActorPath::from(format!(
-                                                "{}/{}_validation",
-                                                ctx.path(),
-                                                schema
-                                            )),
-                                        );
+                                .iter()
+                                .position(|x| *x == creators.schema);
+                            if let Some(pos) = pos {
+                                old_schemas_val.remove(pos);
+                                let actor: Option<
+                                    ActorRef<ValidationSchema>,
+                                > = ctx
+                                    .get_child(&format!(
+                                        "{}_validation",
+                                        creators.schema
+                                    ))
+                                    .await;
+                                if let Some(actor) = actor {
+                                    if let Err(e) = actor.tell(ValidationSchemaMessage::UpdateValidators(val_user, new_gov.version)).await {
                                         return Err(emit_fail(ctx, e).await);
                                     }
                                 } else {
-                                    let actor = ValidationSchema::new(
-                                        valid_users,
-                                        new_gov.version,
+                                    let e = ActorError::NotFound(
+                                        ActorPath::from(format!(
+                                            "{}/{}_validation",
+                                            ctx.path(),
+                                            creators.schema
+                                        )),
                                     );
-                                    ctx.create_child(
-                                        &format!("{}_validation", schema),
-                                        actor,
-                                    )
-                                    .await?;
+                                    return Err(emit_fail(ctx, e).await);
                                 }
+                            } else {
+                                let actor = ValidationSchema::new(
+                                    val_user,
+                                    new_gov.version,
+                                );
+                                ctx.create_child(
+                                    &format!("{}_validation", creators.schema),
+                                    actor,
+                                )
+                                .await?;
                             }
-                            _ => {}
                         }
                     }
 
-                    for schema in old_schemas_eval {
-                        let actor: Option<ActorRef<EvaluationSchema>> = ctx
-                            .get_child(&format!("{}_evaluation", schema))
-                            .await;
-                        if let Some(actor) = actor {
-                            actor.stop().await;
-                        } else {
-                            let e = ActorError::NotFound(ActorPath::from(
-                                format!("{}/{}_evaluation", ctx.path(), schema),
-                            ));
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    }
-
-                    for schema in old_schemas_val {
-                        let actor: Option<ActorRef<ValidationSchema>> = ctx
-                            .get_child(&format!("{}_validation", schema))
-                            .await;
-                        if let Some(actor) = actor {
-                            actor.stop().await;
-                        } else {
-                            let e = ActorError::NotFound(ActorPath::from(
-                                format!("{}/{}_validation", ctx.path(), schema),
-                            ));
-                            return Err(emit_fail(ctx, e).await);
-                        }
-                    }
+                    Self::down_schemas(ctx, old_schemas_eval, old_schemas_val).await?;
                 }
             }
         } else {

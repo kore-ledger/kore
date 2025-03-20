@@ -13,7 +13,7 @@ mod runner;
 pub mod schema;
 
 use crate::{
-    auth::WitnessesAuth, governance::{model::Roles, Quorum}, model::{
+    auth::WitnessesAuth, governance::{model::ProtocolTypes, Quorum}, model::{
         common::{
             emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version,
             send_reboot_to_req, try_to_update,
@@ -381,7 +381,7 @@ impl Handler<Evaluation> for Evaluation {
                         &governance.to_string(),
                         &metadata.schema_id,
                         metadata.namespace.clone(),
-                        Roles::EVALUATOR,
+                        ProtocolTypes::Evaluation
                     )
                     .await
                     {

@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use crate::{
     CONTRACTS, DIGEST_DERIVATOR, Error, EventRequest, Signed, Subject,
@@ -93,7 +93,7 @@ impl Evaluator {
         &self,
         ctx: &mut ActorContext<Evaluator>,
         ids: &[String],
-        schemas: Vec<Schema>,
+        schemas: HashMap<String, Schema>,
         governance_id: &str,
     ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
@@ -103,8 +103,8 @@ impl Evaluator {
         };
 
         for id in ids {
-            let schema = if let Some(schema) =
-                schemas.iter().find(|x| x.id.clone() == id.clone())
+            let (name,schema) = if let Some(schema) =
+                schemas.iter().find(|(name, _)| *name.clone() == id.clone())
             {
                 schema
             } else {
@@ -113,7 +113,7 @@ impl Evaluator {
 
             let compiler_path = ActorPath::from(format!(
                 "/user/node/{}/{}_compiler",
-                governance_id, schema.id
+                governance_id, name
             ));
             let compiler_actor: Option<ActorRef<Compiler>> =
                 ctx.system().get_actor(&compiler_path).await;
@@ -122,7 +122,7 @@ impl Evaluator {
                 compiler_actor
                     .ask(CompilerMessage::Compile {
                         contract_name: format!("{}_{}", governance_id, id),
-                        contract: schema.contract.raw.clone(),
+                        contract: schema.contract.clone(),
                         initial_value: schema.initial_value.clone(),
                         contract_path: format!(
                             "{}/contracts/{}_{}",

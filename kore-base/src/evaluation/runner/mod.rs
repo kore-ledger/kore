@@ -9,6 +9,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, to_vec};
+use identity::identifier::KeyIdentifier;
 use json_patch::diff;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, to_value};
@@ -20,7 +21,7 @@ use crate::{
     Error, GOVERNANCE, ValueWrapper,
     governance::{
         Governance, Member, Policy, Role, Schema, Who,
-        model::{CreatorQuantity, Roles, SchemaEnum},
+        model::{CreatorQuantity, RoleTypes, SchemaEnum},
     },
     model::{
         Namespace,
@@ -53,7 +54,7 @@ impl Runner {
             EvaluateType::GovTransfer { new_owner } => {
                 Self::execute_transfer_gov(
                     state.clone(),
-                    &new_owner.to_string(),
+                    &new_owner,
                 )
             }
             EvaluateType::NotGovTransfer {
@@ -62,7 +63,7 @@ impl Runner {
                 schema_id,
             } => Self::execute_transfer_not_gov(
                 state.clone(),
-                &new_owner.to_string(),
+                &new_owner,
                 namespace,
                 &schema_id,
             ),
@@ -72,14 +73,14 @@ impl Runner {
             } => Self::execute_confirm_gov(
                 state,
                 old_owner_name,
-                &new_owner.to_string(),
+                &new_owner,
             ),
         }
     }
 
     fn execute_transfer_not_gov(
         state: ValueWrapper,
-        new_owner: &str,
+        new_owner: &KeyIdentifier,
         namespace: Namespace,
         schema_id: &str,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
@@ -96,7 +97,7 @@ impl Runner {
 
         if !governance.has_this_role(
             new_owner,
-            Roles::CREATOR(CreatorQuantity::QUANTITY(0)),
+            RoleTypes::Creator,
             schema_id,
             namespace.clone(),
         ) {
@@ -119,7 +120,7 @@ impl Runner {
 
     fn execute_transfer_gov(
         state: ValueWrapper,
-        new_owner: &str,
+        new_owner: &KeyIdentifier,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
         let governance = serde_json::from_value::<Governance>(state.0)
             .map_err(|e| {
@@ -146,7 +147,7 @@ impl Runner {
     fn execute_confirm_gov(
         state: &ValueWrapper,
         old_owner_name: Option<String>,
-        new_owner: &str,
+        new_owner: &KeyIdentifier,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
         let mut governance = serde_json::from_value::<Governance>(
             state.0.clone(),

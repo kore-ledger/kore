@@ -4,18 +4,11 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    Signed,
-    governance::model::Roles,
-    helpers::network::{NetworkMessage, intermediary::Intermediary},
-    model::{
-        SignTypesNode, TimeStamp,
+    governance::model::RoleTypes, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
         common::{
-            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
-            update_ledger_network,
-        },
-        event::ProtocolsSignatures,
-        network::{RetryNetwork, TimeOutResponse},
-    },
+            emit_fail, get_gov, get_metadata, get_sign, update_ledger_network, UpdateData
+        }, event::ProtocolsSignatures, network::{RetryNetwork, TimeOutResponse}, SignTypesNode, TimeStamp
+    }, Signed
 };
 
 use super::{
@@ -146,7 +139,7 @@ impl Validator {
             if previous_proof.governance_version == gov.version {
                 let actual_signers = gov
                     .get_signers(
-                        Roles::VALIDATOR,
+                        RoleTypes::Validator,
                         &new_proof.schema_id,
                         new_proof.namespace.clone(),
                     )

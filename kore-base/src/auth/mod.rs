@@ -14,7 +14,7 @@ use store::store::PersistentActor;
 use tracing::{error, warn};
 
 use crate::{
-    db::Storable, governance::model::Roles, intermediary::Intermediary, model::{common::{emit_fail, get_gov, get_metadata, subject_old}, Namespace}, update::{Update, UpdateMessage, UpdateNew, UpdateRes}, ActorMessage, NetworkMessage
+    db::Storable, governance::model::RoleTypes, intermediary::Intermediary, model::{common::{emit_fail, get_gov, get_metadata, subject_old}, Namespace}, update::{Update, UpdateMessage, UpdateNew, UpdateRes}, ActorMessage, NetworkMessage
 };
 
 const TARGET_AUTH: &str = "Kore-Auth";
@@ -294,7 +294,7 @@ impl Handler<Auth> for Auth {
                     WitnessesAuth::Witnesses => {
                         match get_gov(ctx, &subject_id.to_string()).await {
                             Ok(gov) => {
-                                let (witnesses, _) = gov.get_signers(Roles::WITNESS, "governance", Namespace::from(""));
+                                let (witnesses, _) = gov.get_signers(RoleTypes::Witness, "governance", Namespace::from(""));
                                 Some(AuthWitness::Many(Vec::from_iter(witnesses.iter().cloned())))
                             },
                             Err(e) => {

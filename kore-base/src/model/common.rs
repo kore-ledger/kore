@@ -14,7 +14,7 @@ use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
     auth::{Auth, AuthMessage, WitnessesAuth}, governance::{
-        model::{CreatorQuantity, Roles}, Quorum
+        model::{CreatorQuantity, ProtocolTypes}, Quorum
     }, intermediary::Intermediary, model::SignTypesNode, node::relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
     }, request::manager::{RequestManager, RequestManagerMessage}, subject::{
@@ -490,7 +490,7 @@ pub async fn get_signers_quorum_gov_version<A>(
     governance: &str,
     schema_id: &str,
     namespace: Namespace,
-    role: Roles,
+    role: ProtocolTypes,
 ) -> Result<(HashSet<KeyIdentifier>, Quorum, u64), ActorError>
 where
     A: Actor + Handler<A>,
