@@ -242,10 +242,19 @@ impl Subject {
         our_key: KeyIdentifier,
     ) -> Result<(), ActorError> {
         let owner = our_key == self.owner;
+        let new_owner = self.new_owner.is_some();
+        let i_new_owner = self.new_owner == Some(our_key.clone());
 
-        if owner {
-            Self::up_owner_not_gov(ctx, &our_key).await?;
+        if new_owner {
+            if i_new_owner {
+                Self::up_owner_not_gov(ctx, &our_key).await?;
+            }
+        } else {
+            if owner {
+                Self::up_owner_not_gov(ctx, &our_key).await?;
+            }
         }
+
         Ok(())
     }
 
@@ -272,7 +281,7 @@ impl Subject {
         let actor: Option<ActorRef<Validation>> =
             ctx.get_child("validation").await;
         if let Some(actor) = actor {
-            actor.stop().await;
+            actor.stop().await?;
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/validation",
@@ -283,7 +292,7 @@ impl Subject {
         let actor: Option<ActorRef<Evaluation>> =
             ctx.get_child("evaluation").await;
         if let Some(actor) = actor {
-            actor.stop().await;
+            actor.stop().await?;
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/evaluation",
@@ -294,7 +303,7 @@ impl Subject {
         let actor: Option<ActorRef<Distribution>> =
             ctx.get_child("distribution").await;
         if let Some(actor) = actor {
-            actor.stop().await;
+            actor.stop().await?;
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/distribution",
@@ -316,26 +325,49 @@ impl Subject {
             .map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
 
         let owner = our_key == self.owner;
+        let new_owner = self.new_owner.is_some();
+        let i_new_owner = self.new_owner == Some(our_key.clone());
 
-        // If we are owner of subject
-        if owner {
-            Self::up_owner(
-                ctx,
-                our_key.clone(),
-                self.subject_id.clone(),
-                ext_db,
-            )
-            .await?;
+        if new_owner {
+            if i_new_owner {
+                Self::up_owner(
+                    ctx,
+                    our_key.clone(),
+                    self.subject_id.clone(),
+                    ext_db,
+                )
+                .await?;
+            } else {
+                Self::up_not_owner(
+                    ctx,
+                    gov.clone(),
+                    our_key.clone(),
+                    self.namespace.clone(),
+                    ext_db,
+                    self.subject_id.clone(),
+                )
+                .await?;
+            }
         } else {
-            Self::up_not_owner(
-                ctx,
-                gov.clone(),
-                our_key.clone(),
-                self.namespace.clone(),
-                ext_db,
-                self.subject_id.clone(),
-            )
-            .await?;
+            if owner {
+                Self::up_owner(
+                    ctx,
+                    our_key.clone(),
+                    self.subject_id.clone(),
+                    ext_db,
+                )
+                .await?;
+            } else {
+                Self::up_not_owner(
+                    ctx,
+                    gov.clone(),
+                    our_key.clone(),
+                    self.namespace.clone(),
+                    ext_db,
+                    self.subject_id.clone(),
+                )
+                .await?;
+            }
         }
 
         let schemas = gov.schemas(ProtocolTypes::Evaluation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
@@ -439,7 +471,7 @@ impl Subject {
             let actor: Option<ActorRef<Validator>> =
                 ctx.get_child("validator").await;
             if let Some(actor) = actor {
-                actor.stop().await;
+                actor.stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/validator",
@@ -457,7 +489,7 @@ impl Subject {
             let actor: Option<ActorRef<Evaluator>> =
                 ctx.get_child("evaluator").await;
             if let Some(actor) = actor {
-                actor.stop().await;
+                actor.stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/evaluator",
@@ -475,7 +507,7 @@ impl Subject {
             let actor: Option<ActorRef<Approver>> =
                 ctx.get_child("approver").await;
             if let Some(actor) = actor {
-                actor.stop().await;
+                actor.stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/approver",
@@ -533,7 +565,7 @@ impl Subject {
         let actor: Option<ActorRef<Validation>> =
             ctx.get_child("validation").await;
         if let Some(actor) = actor {
-            actor.stop().await;
+            actor.stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/validation",
@@ -545,7 +577,7 @@ impl Subject {
         let actor: Option<ActorRef<Evaluation>> =
             ctx.get_child("evaluation").await;
         if let Some(actor) = actor {
-            actor.stop().await;
+            actor.stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/evaluation",
@@ -556,7 +588,7 @@ impl Subject {
 
         let actor: Option<ActorRef<Approval>> = ctx.get_child("approval").await;
         if let Some(actor) = actor {
-            actor.stop().await;
+            actor.stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/approval",
@@ -567,7 +599,7 @@ impl Subject {
 
         let actor: Option<ActorRef<Approver>> = ctx.get_child("approver").await;
         if let Some(actor) = actor {
-            actor.stop().await;
+            actor.stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/approver",
@@ -579,7 +611,7 @@ impl Subject {
         let actor: Option<ActorRef<Distribution>> =
             ctx.get_child("distribution").await;
         if let Some(actor) = actor {
-            actor.stop().await;
+            actor.stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/distribution",
@@ -633,7 +665,7 @@ impl Subject {
             let actor: Option<ActorRef<Compiler>> =
                 ctx.get_child(&format!("{}_compiler", schema)).await;
             if let Some(actor) = actor {
-                actor.stop().await;
+                actor.stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/{}_compiler",
@@ -652,7 +684,7 @@ impl Subject {
                 .get_child(&format!("{}_evaluation", schema))
                 .await;
             if let Some(actor) = actor {
-                actor.stop().await;
+                actor.stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(
                     format!("{}/{}_evaluation", ctx.path(), schema),
@@ -665,7 +697,7 @@ impl Subject {
                 .get_child(&format!("{}_validation", schema))
                 .await;
             if let Some(actor) = actor {
-                actor.stop().await;
+                actor.stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(
                     format!("{}/{}_validation", ctx.path(), schema),
@@ -712,23 +744,6 @@ impl Subject {
         }
 
         Ok(())
-    }
-
-    fn check_namespaces(&self, our: &[String], creator: &[String]) -> bool {
-        for our_namespace in our {
-            let our_namespace = Namespace::from(our_namespace.clone());
-            for creator_namespace in creator {
-                let creator_namespace =
-                    Namespace::from(creator_namespace.clone());
-                if our_namespace.is_ancestor_of(&creator_namespace)
-                    || our_namespace == creator_namespace
-                    || our_namespace.is_empty()
-                {
-                    return true;
-                }
-            }
-        }
-        false
     }
 
     async fn get_governance_from_other_subject(
@@ -807,6 +822,7 @@ impl Subject {
 
     async fn new_transfer_subject(
         ctx: &mut ActorContext<Subject>,
+        name: Option<String>,
         subject_id: &str,
         new_owner: &str,
         actual_owner: &str,
@@ -818,6 +834,7 @@ impl Subject {
         if let Some(node_actor) = node_actor {
             node_actor
                 .tell(NodeMessage::TransferSubject(TransferSubject {
+                    name: name.unwrap_or(String::default()),
                     subject_id: subject_id.to_owned(),
                     new_owner: new_owner.to_owned(),
                     actual_owner: actual_owner.to_owned(),
@@ -1197,6 +1214,7 @@ impl Subject {
                     EventRequest::Transfer(transfer_request) => {
                         Subject::new_transfer_subject(
                             ctx,
+                            self.name.clone(),
                             &transfer_request.subject_id.to_string(),
                             &transfer_request.new_owner.to_string(),
                             &self.owner.to_string(),
@@ -1408,6 +1426,7 @@ impl Subject {
                     EventRequest::Transfer(transfer_request) => {
                         Subject::new_transfer_subject(
                             ctx,
+                            self.name.clone(),
                             &transfer_request.subject_id.to_string(),
                             &transfer_request.new_owner.to_string(),
                             &self.owner.to_string(),
@@ -2050,6 +2069,7 @@ impl Actor for Subject {
                 .await?;
         }
 
+        // TODO
         if self.active {
             if self.governance_id.is_empty() {
                 self.build_childs_governance(
@@ -2371,13 +2391,12 @@ impl Storable for Subject {}
 #[cfg(test)]
 mod tests {
 
-    use std::time::{Duration, Instant};
+    use std::{collections::HashSet, time::{Duration, Instant}};
 
     use super::*;
 
     use crate::{
         FactRequest,
-        governance::init::init_state,
         model::{
             event::Event as KoreEvent,
             request::tests::create_start_request_mock, signature::Signature,
@@ -2400,7 +2419,8 @@ mod tests {
         let event = KoreEvent::from_create_request(
             &request,
             0,
-            &init_state(&node_keys.key_identifier().to_string()),
+            &Governance::new(node_keys.key_identifier()).to_value_wrapper().unwrap(),
+            
             DigestDerivator::Blake3_256,
         )
         .unwrap();
@@ -2427,7 +2447,7 @@ mod tests {
 
         let subject = Subject::from_event(
             &signed_ledger,
-            init_state(&signed_ledger.signature.signer.to_string()),
+            Governance::new(signed_ledger.signature.signer.clone()).to_value_wrapper().unwrap(),
         )
         .unwrap();
 
@@ -2615,7 +2635,7 @@ mod tests {
         let event = KoreEvent::from_create_request(
             &request,
             0,
-            &init_state(&node_keys.key_identifier().to_string()),
+            &Governance::new(node_keys.key_identifier()).to_value_wrapper().unwrap(),
             DigestDerivator::Blake3_256,
         )
         .unwrap();
@@ -2630,7 +2650,7 @@ mod tests {
 
         let subject = Subject::from_event(
             &signed_ledger,
-            init_state(&signed_ledger.signature.signer.to_string()),
+            Governance::new(signed_ledger.signature.signer.clone()).to_value_wrapper().unwrap()
         )
         .unwrap();
 
@@ -2655,7 +2675,7 @@ mod tests {
             panic!("Invalid response");
         }
 
-        subject_actor.stop().await;
+        subject_actor.stop().await.unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let subject_actor = system.get_actor::<Subject>(&path).await;
@@ -2679,7 +2699,7 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize() {
-        let value = init_state("");
+        let value = Governance::new(KeyIdentifier::default()).to_value_wrapper().unwrap();
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let request = create_start_request_mock("issuer", node_keys.clone());
         let event = KoreEvent::from_create_request(
@@ -2702,7 +2722,7 @@ mod tests {
 
         let subject_a = Subject::from_event(
             &signed_ledger,
-            init_state(&signed_ledger.signature.signer.to_string()),
+            Governance::new(signed_ledger.signature.signer.clone()).to_value_wrapper().unwrap(),
         )
         .unwrap();
 

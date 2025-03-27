@@ -103,17 +103,13 @@ impl Evaluator {
         };
 
         for id in ids {
-            let (name,schema) = if let Some(schema) =
-                schemas.iter().find(|(name, _)| *name.clone() == id.clone())
-            {
-                schema
-            } else {
+            let Some(schema) = schemas.get(id) else {
                 return Err(ActorError::Functional("There is a contract that requires compilation but its scheme could not be found".to_owned()));
             };
 
             let compiler_path = ActorPath::from(format!(
                 "/user/node/{}/{}_compiler",
-                governance_id, name
+                governance_id, id
             ));
             let compiler_actor: Option<ActorRef<Compiler>> =
                 ctx.system().get_actor(&compiler_path).await;
@@ -221,6 +217,7 @@ impl Evaluator {
                     (
                         EvaluateType::NotGovTransfer {
                             new_owner: transfer_event.new_owner,
+                            old_owner: evaluation_req.event_request.signature.signer.clone(),
                             namespace: Namespace::from(
                                 evaluation_req.context.namespace.clone(),
                             ),

@@ -4,7 +4,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::{ValueWrapper, model::Namespace};
 
@@ -39,6 +38,7 @@ pub enum EvaluateType {
     },
     NotGovTransfer {
         new_owner: KeyIdentifier,
+        old_owner: KeyIdentifier,
         namespace: Namespace,
         schema_id: String,
     },
@@ -46,9 +46,4 @@ pub enum EvaluateType {
         new_owner: KeyIdentifier,
         old_owner_name: Option<String>,
     },
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum GovernancePatch {
-    Patch { data: Value },
 }

@@ -71,13 +71,6 @@ pub mod tests {
     use std::{fs, time::Duration};
     use test_log::test;
 
-    use async_std::sync::RwLock;
-
-    use crate::{
-        GOVERNANCE,
-        governance::{json_schema::JsonSchema, schema},
-    };
-
     use super::*;
 
     #[derive(Debug, Clone)]
@@ -112,10 +105,6 @@ pub mod tests {
     }
 
     pub async fn create_system() -> SystemRef {
-        let schema = JsonSchema::compile(&schema()).unwrap();
-
-        let _ = GOVERNANCE.get_or_init(|| RwLock::new(schema));
-
         let dir =
             tempfile::tempdir().expect("Can not create temporal directory.");
         let path = dir.path().to_str().unwrap();

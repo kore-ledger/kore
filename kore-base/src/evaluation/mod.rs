@@ -71,14 +71,16 @@ impl Evaluation {
         }
     }
 
-    async fn end_evaluators(&self, ctx: &mut ActorContext<Evaluation>) {
+    async fn end_evaluators(&self, ctx: &mut ActorContext<Evaluation>) -> Result<(), ActorError> {
         for evaluator in self.evaluators.clone() {
             let child: Option<ActorRef<Evaluator>> =
                 ctx.get_child(&evaluator.to_string()).await;
             if let Some(child) = child {
-                child.stop().await;
+                child.stop().await?;
             }
         }
+
+        Ok(())
     }
 
     fn check_evaluator(&mut self, evaluator: KeyIdentifier) -> bool {
@@ -518,7 +520,15 @@ impl Handler<Evaluation> for Evaluation {
                                 }
                                 self.reboot = true;
 
-                                self.end_evaluators(ctx).await;
+                                if let Err(e) = self.end_evaluators(ctx).await {
+                                    error!(
+                                        TARGET_EVALUATION,
+                                        "Response, can not end evaluators: {}",
+                                        e
+                                    );
+                                    return Err(emit_fail(ctx, e).await);
+                                };
+
                                 return Ok(());
                             }
                         };
@@ -800,10 +810,11 @@ mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 1);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
+        assert!(gov.roles_schema.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(gov.policies_schema.is_empty());
     }
 
     #[test(tokio::test)]
@@ -960,10 +971,11 @@ mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 2);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
+        assert!(gov.roles_schema.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(gov.policies_schema.is_empty());
 
         if !request_actor
             .ask(RequestHandlerMessage::NewRequest {
@@ -1259,10 +1271,11 @@ mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 1);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
-        assert!(!gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(gov.roles_schema.is_empty());
+        assert!(gov.schemas.is_empty());
+        assert!(gov.policies_schema.is_empty());
 
         (
             system,

@@ -19,7 +19,6 @@ borsh = { workspace = true }
 generic-array = {version = "1.0", features = ["zeroize"] }
 identity = { path = "../identity"}
 json-patch = { version = "4.0.0" }
-jsonschema = { version = "0.29.0", default-features = false }
 lazy_static = { workspace = true }
 memsecurity = { version = "3.5", features = ["encryption"]}
 rocksdb_db = { path = "../../rush-rs/databases/rocksdb_db", optional = true }
@@ -33,7 +32,7 @@ tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
 tracing = { workspace = true }
 network = { path = "../network" }
 rmp-serde = { workspace = true }
-wasmtime = {version = "30.0.0"}
+wasmtime = {version = "31.0.0"}
 async-std = "1.13.1"
 rusqlite = { version = "0.34.0", features = ["bundled"], optional = true}
 once_cell = { workspace = true }

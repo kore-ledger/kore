@@ -9,13 +9,14 @@ use serde::{Deserialize, Serialize};
 
 use std::{
     collections::HashSet,
-    fmt::{self},
+    fmt::{self}, hash::Hash,
 };
 
 use crate::model::Namespace;
+pub type MemberName = String;
 
 /// Governance schema.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Schema {
     pub initial_value: serde_json::Value,
     pub contract: String,
@@ -40,94 +41,82 @@ pub struct SchemaKeyCreators {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct RolesGov {
-    pub approver: HashSet<Role>,
-    pub evaluator: HashSet<Role>,
-    pub validator: HashSet<Role>,
-    pub issuer: RoleIssuer,
+    pub approver: HashSet<MemberName>,
+    pub evaluator: HashSet<MemberName>,
+    pub validator: HashSet<MemberName>,
+    pub witness: HashSet<MemberName>,
+    pub issuer: RoleGovIssuer,
 }
 
 impl RolesGov {
+    pub fn remove_member_role(&mut self, remove_members: &Vec<String>) {
+        for remove in remove_members {
+            self.approver.remove(remove);
+            self.evaluator.remove(remove);
+            self.validator.remove(remove);
+            self.witness.remove(remove);
+            self.issuer.users.remove(remove);
+        }   
+    }
+
+    pub fn change_name_role(&mut self, chang_name_members: &Vec<(String, String)>) {
+        for (old_name, new_name) in chang_name_members {
+            if self.approver.remove(old_name) {
+                self.approver.insert(new_name.clone());
+            };
+            if self.evaluator.remove(old_name) {
+                self.evaluator.insert(new_name.clone());
+            };
+            if self.validator.remove(old_name) {
+                self.validator.insert(new_name.clone());
+            };
+            if self.witness.remove(old_name) {
+                self.witness.insert(new_name.clone());
+            };
+            if self.issuer.users.remove(old_name) {
+                self.issuer.users.insert(new_name.clone());
+            };            
+        }
+    }
+
     pub fn hash_this_rol(
         &self,
         role: RoleTypes,
-        namespace: Namespace,
         name: &str,
     ) -> bool {
         match role {
-            RoleTypes::Approver => {
-                self.approver.iter().any(|x| {
-                    let namespace_role = x.namespace.clone();
-                    namespace_role.is_ancestor_of(&namespace)
-                        || namespace_role == namespace
-                        || namespace_role.is_empty() && x.name == name
-                })
-            },
-            RoleTypes::Evaluator => self.evaluator.iter().any(|x| {
-                let namespace_role = x.namespace.clone();
-                namespace_role.is_ancestor_of(&namespace)
-                    || namespace_role == namespace
-                    || namespace_role.is_empty() && x.name == name
-            }),
-            RoleTypes::Validator => self.validator.iter().any(|x| {
-                let namespace_role = x.namespace.clone();
-                namespace_role.is_ancestor_of(&namespace)
-                    || namespace_role == namespace
-                    || namespace_role.is_empty() && x.name == name
-            }),
-            RoleTypes::Issuer => {
-                self.issuer.users.iter().any(|x| {
-                    let namespace_role = x.namespace.clone();
-                    namespace_role.is_ancestor_of(&namespace)
-                        || namespace_role == namespace
-                        || namespace_role.is_empty() && x.name == name
-                }) || self.issuer.any
-            },
-            RoleTypes::Creator | RoleTypes::Witness => false
+            RoleTypes::Approver => self.approver.get(name).is_some(),
+            RoleTypes::Evaluator => self.evaluator.get(name).is_some(),
+            RoleTypes::Validator => self.validator.get(name).is_some(),
+            RoleTypes::Issuer => self.issuer.users.get(name).is_some() || self.issuer.any,
+            RoleTypes::Creator => self.witness.get(name).is_some(),
+            RoleTypes::Witness => false
         }
     }
 
     pub fn get_signers(
         &self,
         role: RoleTypes,
-        namespace: Namespace,
     ) -> (Vec<String>, bool) {
         match role {
             RoleTypes::Evaluator => (
                 self.evaluator
                     .iter()
-                    .filter(|x| {
-                        let namespace_role = x.namespace.clone();
-                        namespace_role.is_ancestor_of(&namespace)
-                            || namespace_role == namespace
-                            || namespace_role.is_empty()
-                    })
-                    .map(|x| x.name.clone())
+                    .map(|x| x.clone())
                     .collect::<Vec<String>>(),
                 false,
             ),
             RoleTypes::Validator => (
                 self.validator
                     .iter()
-                    .filter(|x| {
-                        let namespace_role = x.namespace.clone();
-                        namespace_role.is_ancestor_of(&namespace)
-                            || namespace_role == namespace
-                            || namespace_role.is_empty()
-                    })
-                    .map(|x| x.name.clone())
+                    .map(|x| x.clone())
                     .collect::<Vec<String>>(),
                 false,
             ),
             RoleTypes::Approver => (
                 self.approver
                     .iter()
-                    .filter(|x| {
-                        let namespace_role = x.namespace.clone();
-                        namespace_role.is_ancestor_of(&namespace)
-                            || namespace_role == namespace
-                            || namespace_role.is_empty()
-                    })
-                    .map(|x| x.name.clone())
+                    .map(|x| x.clone())
                     .collect::<Vec<String>>(),
                 false,
             ),
@@ -135,31 +124,102 @@ impl RolesGov {
                 self.issuer
                     .users
                     .iter()
-                    .filter(|x| {
-                        let namespace_role = x.namespace.clone();
-                        namespace_role.is_ancestor_of(&namespace)
-                            || namespace_role == namespace
-                            || namespace_role.is_empty()
-                    })
-                    .map(|x| x.name.clone())
+                    .map(|x| x.clone())
                     .collect::<Vec<String>>(),
                 self.issuer.any,
             ),
-            RoleTypes::Creator | RoleTypes::Witness => (vec![], false)
+            RoleTypes::Witness => (
+                self.witness            
+                    .iter()
+                    .map(|x| x.clone())
+                    .collect::<Vec<String>>(),
+                false
+            ),
+            RoleTypes::Creator => (vec![], false)
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
 pub struct RolesSchema {
     pub evaluator: HashSet<Role>,
     pub validator: HashSet<Role>,
     pub witness: HashSet<Role>,
     pub creator: HashSet<RoleCreator>,
-    pub issuer: RoleIssuer,
+    pub issuer: RoleSchemaIssuer,
 }
 
 impl RolesSchema {
+    pub fn remove_member_role(&mut self, remove_members: &Vec<String>) {
+        for remove in remove_members {
+            self.evaluator.retain(|x| x.name != *remove);
+            self.validator.retain(|x| x.name != *remove);
+            self.witness.retain(|x| x.name != *remove);
+            self.issuer.users.retain(|x| x.name != *remove);
+            self.creator.retain(|x| x.name != *remove);
+        }   
+    }
+
+    pub fn change_name_role(&mut self, chang_name_members: &Vec<(String, String)>) {
+        for (old_name, new_name) in chang_name_members {
+            self.evaluator = self.evaluator.iter().map(|x| {
+                if x.name == *old_name {
+                    Role {
+                        name: new_name.clone(),
+                        namespace: x.namespace.clone(),
+                    }
+                } else {
+                    x.clone()
+                }
+            }).collect();
+
+            self.validator = self.validator.iter().map(|x| {
+                if x.name == *old_name {
+                    Role {
+                        name: new_name.clone(),
+                        namespace: x.namespace.clone(),
+                    }
+                } else {
+                    x.clone()
+                }
+            }).collect();
+
+            self.witness = self.witness.iter().map(|x| {
+                if x.name == *old_name {
+                    Role {
+                        name: new_name.clone(),
+                        namespace: x.namespace.clone(),
+                    }
+                } else {
+                    x.clone()
+                }
+            }).collect();
+
+            self.creator = self.creator.iter().map(|x| {
+                if x.name == *old_name {
+                    RoleCreator {
+                        quantity: x.quantity.clone(),
+                        name: new_name.clone(),
+                        namespace: x.namespace.clone(),
+                    }
+                } else {
+                    x.clone()
+                }
+            }).collect();
+
+            self.issuer.users = self.issuer.users.iter().map(|x| {
+                if x.name == *old_name {
+                    Role {
+                        name: new_name.clone(),
+                        namespace: x.namespace.clone(),
+                    }
+                } else {
+                    x.clone()
+                }
+            }).collect();
+        }
+    }
+
     pub fn roles_creators(&self, name: &str, not_gov_val: Option<Vec<Namespace>>, not_gov_eval: Option<Vec<Namespace>>, not_gov_creators: Option<Vec<Role>>) -> NameCreators {
         let mut val_namespace = self.validator.iter().filter(|x| x.name == name).map(|x| x.namespace.clone()).collect::<Vec<Namespace>>();
         if let Some(mut not_gov_val) = not_gov_val {
@@ -446,26 +506,47 @@ impl From<ProtocolTypes> for RoleTypes {
 }
 
 /// Governance role.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash, Eq, PartialOrd, Ord)]
 pub struct Role {
     pub name: String,
     pub namespace: Namespace,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialOrd, Ord)]
 pub struct RoleCreator {
     pub name: String,
     pub namespace: Namespace,
     pub quantity: CreatorQuantity,
 }
 
+impl Hash for RoleCreator {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.namespace.hash(state);
+    }
+}
+
+impl PartialEq for RoleCreator{
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.namespace == other.namespace
+    }
+}
+
+impl Eq for RoleCreator {}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct RoleIssuer {
+pub struct RoleGovIssuer {
+    pub users: HashSet<MemberName>,
+    pub any: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct RoleSchemaIssuer {
     pub users: HashSet<Role>,
     pub any: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub enum CreatorQuantity {
     Quantity(u32),
     Infinity,
@@ -505,15 +586,26 @@ impl fmt::Display for ProtocolTypes {
 }
 
 /// Governance quorum.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Hash, Eq)]
 pub enum Quorum {
     #[default]
     Majority,
     Fixed(u32),
-    Percentage(f64),
+    Percentage(u8),
 }
 
 impl Quorum {
+    pub fn check_values(&self) -> Result<(), String> {
+        match self {
+            Quorum::Percentage(percentage) => if *percentage == 0_u8 || *percentage > 100_u8 {
+                return Err("the percentage must be between 1 and 100".to_owned());
+            },
+            _ => {}
+        }
+
+        Ok(())
+    }
+
     pub fn check_quorum(&self, total_members: u32, signers: u32) -> bool {
         match self {
             Quorum::Fixed(fixed) => {
@@ -522,7 +614,7 @@ impl Quorum {
             }
             Quorum::Majority => signers > total_members / 2,
             Quorum::Percentage(percentage) => {
-                signers >= ((total_members as f64 * percentage).ceil() as u32)
+                signers >= (total_members * (percentage / 100) as u32)
             }
         }
     }
@@ -549,7 +641,7 @@ impl PolicyGov {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Hash, PartialEq, Eq, Default)]
 pub struct PolicySchema {
     /// Evaluate quorum
     pub evaluate: Quorum,

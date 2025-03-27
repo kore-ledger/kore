@@ -12,22 +12,20 @@ use borsh::{BorshDeserialize, to_vec};
 use identity::identifier::KeyIdentifier;
 use json_patch::diff;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, to_value};
+use serde_json::to_value;
 use tracing::error;
-use types::{ContractResult, EvaluateType, GovernancePatch, RunnerResult};
+use types::{ContractResult, EvaluateType, RunnerResult};
 use wasmtime::{Config, Engine, Module, Store};
 
 use crate::{
-    Error, GOVERNANCE, ValueWrapper,
     governance::{
-        Governance, Member, Policy, Role, Schema, Who,
-        model::{CreatorQuantity, RoleTypes, SchemaEnum},
-    },
-    model::{
-        Namespace,
-        common::{MemoryManager, generate_linker},
-        patch::apply_patch,
-    },
+        events::{
+            GovernanceEvent, MemberEvent, PoliciesEvent, RolesEvent,
+            SchemasEvent,
+        }, model::RoleTypes, Governance, Schema
+    }, model::{
+        common::{generate_linker, MemoryManager}, patch::apply_patch, Namespace
+    }, Error, ValueWrapper
 };
 
 const TARGET_RUNNER: &str = "Kore-Evaluation-Runner";
@@ -52,38 +50,46 @@ impl Runner {
                 Self::execute_fact_gov(state, &payload).await
             }
             EvaluateType::GovTransfer { new_owner } => {
-                Self::execute_transfer_gov(
-                    state.clone(),
-                    &new_owner,
-                )
+                Self::execute_transfer_gov(state.clone(), &new_owner)
             }
             EvaluateType::NotGovTransfer {
                 new_owner,
+                old_owner,
                 namespace,
                 schema_id,
             } => Self::execute_transfer_not_gov(
                 state.clone(),
                 &new_owner,
+                &old_owner,
                 namespace,
                 &schema_id,
             ),
             EvaluateType::GovConfirm {
                 old_owner_name,
                 new_owner,
-            } => Self::execute_confirm_gov(
-                state,
-                old_owner_name,
-                &new_owner,
-            ),
+            } => Self::execute_confirm_gov(state, old_owner_name, &new_owner),
         }
     }
 
     fn execute_transfer_not_gov(
         state: ValueWrapper,
         new_owner: &KeyIdentifier,
+        old_owner: &KeyIdentifier,
         namespace: Namespace,
         schema_id: &str,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
+        if new_owner.is_empty() {
+            return Err(Error::Runner(
+                "New owner KeyIdentifier can not be empty".to_owned(),
+            ));
+        }
+
+        if new_owner == old_owner {
+            return Err(Error::Runner(
+                "The new owner is now the owner".to_owned(),
+            ));
+        }
+
         let governance = serde_json::from_value::<Governance>(state.0)
             .map_err(|e| {
                 Error::Runner(format!("Can deserialice governance patch {}", e))
@@ -122,10 +128,26 @@ impl Runner {
         state: ValueWrapper,
         new_owner: &KeyIdentifier,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
+        if new_owner.is_empty() {
+            return Err(Error::Runner(
+                "New owner KeyIdentifier can not be empty".to_owned(),
+            ));
+        }
+
         let governance = serde_json::from_value::<Governance>(state.0)
             .map_err(|e| {
                 Error::Runner(format!("Can deserialice governance patch {}", e))
             })?;
+
+        let Some(owner_key) = governance.members.get("Owner") else {
+            return Err(Error::Runner("Can not get Owner into members".to_owned()));
+        };
+
+        if owner_key == new_owner {
+            return Err(Error::Runner(
+                "The new owner is now the owner".to_owned(),
+            ));
+        }
 
         if !governance.is_member(new_owner) {
             return Err(Error::Runner(
@@ -149,6 +171,10 @@ impl Runner {
         old_owner_name: Option<String>,
         new_owner: &KeyIdentifier,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
+        if new_owner.is_empty() {
+            return Err(Error::Runner("New owner KeyIdentifier can not be empty".to_owned()))
+        }
+
         let mut governance = serde_json::from_value::<Governance>(
             state.0.clone(),
         )
@@ -156,67 +182,51 @@ impl Runner {
             Error::Runner(format!("Can deserialice governance patch {}", e))
         })?;
 
-        let old_owner = governance
+        let Some(old_owner_key) = governance.members.get("Owner").cloned() else {
+            return Err(Error::Runner(
+                "Cannot find 'Owner' member in governance".to_owned(),
+            ));
+        };
+
+        let Some(new_owner_member) = governance
             .members
             .iter()
-            .find(|x| x.name == "Owner")
+            .find(|x| x.1 == new_owner)
+            .map(|x| x.0)
             .cloned()
-            .ok_or_else(|| {
-                Error::Runner(
-                    "Cannot find 'Owner' member in governance".to_owned(),
-                )
-            })?;
+        else {
+            return Err(Error::Runner(
+                "Cannot find new_owner member in governance".to_owned(),
+            ));
+        };
 
-        let new_owner_member = governance
-            .members
-            .iter()
-            .find(|x| x.id == new_owner)
-            .cloned()
-            .ok_or_else(|| {
-                Error::Runner(
-                    "Cannot find new_owner member in governance".to_owned(),
-                )
-            })?;
+        governance.members.insert("Owner".to_owned(), new_owner.clone());
+        governance.members.remove(&new_owner_member);
 
-        for member in &mut governance.members {
-            if member.name == "Owner" {
-                member.id = new_owner.to_owned();
-            }
-        }
-
-        for role in &mut governance.roles {
-            if let Who::ID { ID } = &mut role.who {
-                if *ID == old_owner.id {
-                    *ID = new_owner.to_owned();
-                }
-            }
-            if let Who::NAME { NAME } = &mut role.who {
-                if *NAME == new_owner_member.name {
-                    *NAME = "Owner".to_owned();
-                }
-            }
-        }
+        governance.change_name_role(&vec![(new_owner_member, "Owner".to_owned())]);
 
         if let Some(old_owner_name) = old_owner_name {
-            if governance.members.iter().any(|x| x.name == old_owner_name) {
+            if old_owner_name.is_empty() {
+                return Err(Error::Runner("New name to old owner can not be empty".to_owned()));
+            }
+
+            if old_owner_name.contains(" ") {
                 return Err(Error::Runner(format!(
-                    "Cannot add old owner as member: '{}' already exists",
+                    "New name to old owner can not contains blank spaces, {}",
                     old_owner_name
                 )));
             }
 
-            governance.members.push(Member {
-                id: old_owner.id,
-                name: old_owner_name,
-            });
+            if governance.members.insert(old_owner_name.clone(), old_owner_key.clone()).is_some() {
+                return Err(Error::Runner(format!(
+                    "Can not add old owner as member: '{}' already exists",
+                    old_owner_name
+                )));
+            }
         }
 
-        governance
-            .members
-            .retain(|x| x.name != new_owner_member.name);
-
         let mod_state = to_value(governance).map_err(|e| {
-            Error::Runner(format!("Can not convert governance in JSON {}", e))
+            Error::Runner(format!("Can not serialice Governance into Value {}", e))
         })?;
         let patch = diff(&state.0, &mod_state);
         let json_patch = to_value(patch).map_err(|e| {
@@ -232,7 +242,7 @@ impl Runner {
                 final_state: ValueWrapper(to_value(patched_state).map_err(
                     |e| {
                         Error::Runner(format!(
-                            "Can not conver patch to JSON patch: {}",
+                            "Can not conver patched state into Value: {}",
                             e
                         ))
                     },
@@ -318,326 +328,613 @@ impl Runner {
         state: &ValueWrapper,
         event: &ValueWrapper,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
-        let event = serde_json::from_value::<GovernancePatch>(event.0.clone())
+        let mut governance: Governance =
+            serde_json::from_value(state.0.clone()).map_err(|e| {
+                Error::Runner(format!(
+                    "Can not deserialize Value into Governance: {}",
+                    e.to_string()
+                ))
+            })?;
+        let event: GovernanceEvent = serde_json::from_value(event.0.clone())
             .map_err(|e| {
-                Error::Runner(format!("Can not create governance event {}", e))
+                Error::Runner(format!(
+                    "Can not deserialize events into GovernanceEvent: {}",
+                    e.to_string()
+                ))
             })?;
 
-        match &event {
-            GovernancePatch::Patch { data } => {
-                // TODO estudiar todas las operaciones de jsonpatch, qué pasa si eliminamos un schema del cual hay sujetos?
-                // o si hacemos un copy o move. Deberíamos permitirlos?
-                let patched_state = apply_patch(data.clone(), state.0.clone())
-                    .map_err(|e| {
-                        Error::Runner(format!("Can not apply patch {}", e))
-                    })?;
+        if event.is_empty() {
+            return Err(Error::Runner("Event can not be empty".to_owned()));
+        }
 
-                Self::check_governance_state(&patched_state)?;
+        if let Some(member_event) = event.members {
+            let (change_name, remove) =
+                Self::check_members(&member_event, &mut governance)?;
+            if !remove.is_empty() {
+                governance.remove_member_role(&remove);
+            }
 
-                let compilations = Self::check_compilation(data.clone())?;
-
-                let final_state = ValueWrapper(
-                    serde_json::to_value(patched_state)
-                        .map_err(|e| Error::Runner(e.to_string()))?,
-                );
-
-                let schema = {
-                    if let Some(lock) = GOVERNANCE.get() {
-                        lock.read().await
-                    } else {
-                        return Err(Error::Runner(
-                            "Can not get governance JSOn Schema".to_owned(),
-                        ));
-                    }
-                };
-
-                if !schema.fast_validate(&final_state.0) {
-                    return Err(Error::Runner(
-                        "Fail in JSON Schema validation".to_owned(),
-                    ));
-                }
-
-                Ok((
-                    RunnerResult {
-                        final_state,
-                        approval_required: true,
-                    },
-                    compilations,
-                ))
+            if !change_name.is_empty() {
+                governance.change_name_role(&change_name);
             }
         }
+
+        let add_change_schemas = if let Some(schema_event) = event.schemas {
+            let (add_schemas, remove_schemas, change_schemas) =
+                Self::check_schemas(&schema_event, &mut governance)?;
+            governance.remove_schema(remove_schemas);
+            governance.add_schema(add_schemas.clone());
+
+            add_schemas
+                .union(&change_schemas)
+                .cloned()
+                .collect::<Vec<String>>()
+        } else {
+            vec![]
+        };
+
+        if let Some(roles_event) = event.roles {
+            Self::check_roles(roles_event, &mut governance)?;
+        }
+
+        if let Some(policies_event) = event.policies {
+            Self::check_policies(policies_event, &mut governance)?;
+        }
+
+        let mod_state = to_value(governance).map_err(|e| {
+            Error::Runner(format!("Can not serialice Governance into Value {}", e))
+        })?;
+        let patch = diff(&state.0, &mod_state);
+        let json_patch = to_value(patch).map_err(|e| {
+            Error::Runner(format!("Can not conver patch to JSON patch: {}", e))
+        })?;
+
+        let patched_state: Governance =
+            apply_patch(json_patch.clone(), state.0.clone()).map_err(|e| {
+                Error::Runner(format!("Can not apply patch {}", e))
+            })?;
+
+        Ok((
+            RunnerResult {
+                final_state: ValueWrapper(to_value(patched_state).map_err(
+                    |e| {
+                        Error::Runner(format!(
+                            "Can not conver patched state into Value: {}",
+                            e
+                        ))
+                    },
+                )?),
+                approval_required: false,
+            },
+            add_change_schemas,
+        ))
     }
 
-    fn check_compilation(operations: Value) -> Result<Vec<String>, Error> {
-        // En caso de que sea un replace habría que ver realmente si hay algún cambio, solo cambiar el orden es una operación de replace aunque no cambie nada TODO.
-        // TODO ver si tenemos que permitir más operaciones de JSON patch y como las abordamos, sobretodo el remove
-        let operations_array =
-            if let Some(operations_array) = operations.as_array() {
-                operations_array
-            } else {
-                return Err(Error::Runner(
-                    "json patch operations are not an array".to_owned(),
-                ));
-            };
+    fn check_policies(
+        policies_event: PoliciesEvent,
+        governance: &mut Governance,
+    ) -> Result<(), Error> {
+        if policies_event.is_empty() {
+            return Err(Error::Runner(
+                "PoliciesEvent can not be empty".to_owned(),
+            ));
+        }
 
-        let mut compilations = vec![];
-        for val in operations_array {
-            // obtain op
-            let op = if let Some(op) = val["op"].as_str() {
-                op
-            } else {
+        if let Some(gov) = policies_event.governance {
+            if gov.change.is_empty() {
                 return Err(Error::Runner(
-                    "json patch operations have no “op” field".to_owned(),
+                    "Change in GovPolicieEvent can not be empty".to_owned(),
                 ));
-            };
+            }
 
-            // Check if op is add or replace, or remove for roles and members
-            match op {
-                "add" | "replace" => {}
-                "remove" => {
-                    // Obtain path
-                    let path = if let Some(path) = val["path"].as_str() {
-                        path
-                    } else {
-                        return Err(Error::Runner(
-                            "The path field is not a str".to_owned(),
-                        ));
-                    };
-                    if !path.contains("roles") && !path.contains("members") {
-                        return Err(Error::Runner(format!(
-                            "Remove operation in JSON parch is only allowed for members and roles, invalid operation {} for {}",
-                            op, path
-                        )));
-                    }
-                }
-                _ => {
+            let mut new_policies = governance.policies_gov.clone();
+
+            if let Some(approve) = gov.change.approve {
+                if let Err(e) = approve.check_values() {
                     return Err(Error::Runner(format!(
-                        "The only json patch operations that are allowed are add, replace and remove (only for members and roles), invalid operation: {}",
-                        op
+                        "Gov change policies, approve quorum error: {}",
+                        e
                     )));
                 }
+
+                new_policies.approve = approve;
             }
 
-            if !val["value"]["contract"].is_null() {
-                let id = if let Some(id) = val["value"]["id"].as_str() {
-                    id
-                } else {
-                    return Err(Error::Runner(
-                        "The id field is not a str".to_owned(),
-                    ));
-                };
+            if let Some(evaluate) = gov.change.evaluate {
+                if let Err(e) = evaluate.check_values() {
+                    return Err(Error::Runner(format!(
+                        "Gov change policies, evaluate quorum error: {}",
+                        e
+                    )));
+                }
 
-                // Save the id that needs to be compiled
-                compilations.push(id.to_owned());
+                new_policies.evaluate = evaluate;
             }
+
+            if let Some(validate) = gov.change.validate {
+                if let Err(e) = validate.check_values() {
+                    return Err(Error::Runner(format!(
+                        "Gov change policies, validate quorum error: {}",
+                        e
+                    )));
+                }
+
+                new_policies.validate = validate;
+            }
+
+            governance.policies_gov = new_policies;
         }
-        Ok(compilations)
-    }
 
-    fn check_governance_state(governance: &Governance) -> Result<(), Error> {
-        // Nombre e ID unicos
-        let (id_set, name_set) = Self::check_members(&governance.members)?;
-        // Políticas únicas
-        let policies_names = Self::check_policies(&governance.policies)?;
-        // Schemas y politicas 1:1, no puede aparecer el schema de governance
-        Self::check_schemas(&governance.schemas, policies_names.clone())?;
-        // Los roles tiene que ser asignados a miembros, sea por ID o NAME y tienen que pertenecer a una schema (politicas y schemas son las mismas)
-        Self::check_roles(&governance.roles, policies_names, id_set, name_set)
-    }
-
-    fn check_members(
-        members: &[Member],
-    ) -> Result<(HashSet<String>, HashSet<String>), Error> {
-        let mut name_set = HashSet::new();
-        let mut id_set = HashSet::new();
-        let mut owner_name = false;
-
-        for member in members {
-            if !name_set.insert(member.name.clone()) {
+        if let Some(schemas) = policies_event.schema {
+            if schemas.is_empty() {
                 return Err(Error::Runner(
-                    "There are duplicate names in members".to_owned(),
+                    "SchemaIdPolicie vec can not be empty".to_owned(),
                 ));
             }
-            if member.name == "Owner" {
-                owner_name = true;
-            }
-            if !id_set.insert(member.id.clone()) {
-                return Err(Error::Runner(
-                    "There are duplicate id in members".to_owned(),
-                ));
-            }
-        }
 
-        if !owner_name {
-            return Err(Error::Runner(
-                "The owner of the governance must be a member of the governance".to_owned(),
-            ));
-        }
+            let mut new_policies = governance.policies_schema.clone();
 
-        Ok((id_set, name_set))
-    }
-
-    fn check_policies(policies: &[Policy]) -> Result<HashSet<String>, Error> {
-        let mut is_governance_present = false;
-        let mut id_set = HashSet::new();
-
-        for policy in policies {
-            if policy.id != "governance" {
-                if !id_set.insert(policy.id.clone()) {
+            for schema in schemas {
+                if schema.is_empty() {
                     return Err(Error::Runner(
-                        "There are duplicate id in polities".to_owned(),
+                        "SchemaIdPolicie can not be empty".to_owned(),
                     ));
                 }
-            } else if !is_governance_present {
-                is_governance_present = true;
-            } else {
-                return Err(Error::Runner(
-                    "The policy of governance appears more than once."
-                        .to_owned(),
-                ));
+
+                let Some(policies_schema) =
+                    new_policies.get_mut(&schema.schema_id)
+                else {
+                    return Err(Error::Runner(format!(
+                        "{} is not a schema",
+                        schema.schema_id
+                    )));
+                };
+
+                if let Some(change) = schema.policies.change {
+                    if change.is_empty() {
+                        return Err(Error::Runner(
+                            "Change in SchemaIdPolicie can not be empty"
+                                .to_owned(),
+                        ));
+                    }
+
+                    if let Some(evaluate) = change.evaluate {
+                        if let Err(e) = evaluate.check_values() {
+                            return Err(Error::Runner(format!(
+                                "Schema {} change policies, evaluate quorum error: {}",
+                                schema.schema_id, e
+                            )));
+                        }
+
+                        policies_schema.evaluate = evaluate;
+                    }
+
+                    if let Some(validate) = change.validate {
+                        if let Err(e) = validate.check_values() {
+                            return Err(Error::Runner(format!(
+                                "Schema {} change policies, validate quorum error: {}",
+                                schema.schema_id, e
+                            )));
+                        }
+
+                        policies_schema.validate = validate;
+                    }
+                }
             }
+
+            governance.policies_schema = new_policies
         }
 
-        if !is_governance_present {
-            return Err(Error::Runner(
-                "governance policy is not present".to_owned(),
-            ));
-        }
-
-        Ok(id_set)
-    }
-
-    fn check_schemas(
-        schemas: &[Schema],
-        mut policies_names: HashSet<String>,
-    ) -> Result<(), Error> {
-        for schema in schemas {
-            if &schema.id == "governance" {
-                return Err(Error::Runner(
-                    "There cannot exist a schema with the name governance"
-                        .to_owned(),
-                ));
-            }
-
-            if !policies_names.remove(&schema.id) {
-                // Error hay un schema que no está en policies
-                return Err(Error::Runner(
-                    "There is a schema that has no associated policy"
-                        .to_owned(),
-                ));
-            }
-        }
-
-        if !policies_names.is_empty() {
-            // Error hay un policie que no está en schema.
-            return Err(Error::Runner(
-                "There is a policy that has no associated schema".to_owned(),
-            ));
-        }
         Ok(())
     }
 
     fn check_roles(
-        roles: &[Role],
-        mut policies: HashSet<String>,
-        id_set: HashSet<String>,
-        name_set: HashSet<String>,
+        roles_event: RolesEvent,
+        governance: &mut Governance,
     ) -> Result<(), Error> {
-        policies.insert("governance".into());
-        let mut owner_eval = false;
-        let mut owner_appr = false;
-        let mut owner_val = false;
-        let mut owner_witness = false;
-        let mut owner_issuer = false;
-        let mut members_witness = false;
-
-        for role in roles {
-            if let Who::NOT_MEMBERS = role.who {
-                if role.role != Roles::ISSUER {
-                    return Err(Error::Runner("The user NOT_MEMBERS only can be assigned to ISSUER rol".to_owned()));
-                }
-            };
-
-            if let Roles::APPROVER = role.role {
-                if role.schema == SchemaEnum::ALL
-                    || SchemaEnum::NOT_GOVERNANCE == role.schema
-                {
-                    return Err(Error::Runner("The approver role only can be asing to governance schema".to_owned()));
-                }
-            };
-
-            if let SchemaEnum::ID { ID } = &role.schema {
-                if !policies.contains(ID) {
-                    return Err(Error::Runner(format!(
-                        "The role {} of member {} belongs to an invalid schema.",
-                        role.role, role.who
-                    )));
-                }
-                if ID == "governance" {
-                    if let Who::MEMBERS = role.who {
-                        if role.role == Roles::WITNESS
-                            && role.namespace.is_empty()
-                        {
-                            members_witness = true;
-                        }
-                    }
-                }
-            }
-            match &role.who {
-                Who::ID { ID } => {
-                    if !id_set.contains(ID) {
-                        return Err(Error::Runner(format!(
-                            "No members have been added with this ID: {}",
-                            ID
-                        )));
-                    }
-                }
-                Who::NAME { NAME } => {
-                    if !name_set.contains(NAME) {
-                        return Err(Error::Runner(format!(
-                            "No members have been added with this ID: {}",
-                            NAME
-                        )));
-                    }
-                    if NAME == "Owner" && role.namespace.is_empty() {
-                        match role.schema.clone() {
-                            SchemaEnum::ID { ID } => {
-                                if ID == "governance" {
-                                    match role.role {
-                                        Roles::APPROVER => owner_appr = true,
-                                        Roles::ISSUER => owner_issuer = true,
-                                        _ => {}
-                                    };
-                                }
-                            }
-                            SchemaEnum::NOT_GOVERNANCE => return Err(Error::Runner(
-                                "For an empty namespace the owner cannot have any role for NOT_GOVERNANCE".to_owned(),
-                            )),
-                            SchemaEnum::ALL => match role.role {
-                                Roles::EVALUATOR => owner_eval = true,
-                                Roles::VALIDATOR => owner_val = true,
-                                Roles::WITNESS => owner_witness = true,
-                                _ => {}
-                            },
-                        };
-                    }
-                }
-                _ => {}
-            }
+        if roles_event.is_empty() {
+            return Err(Error::Runner("RolesEvent can not be empty".to_owned()));
         }
-        if !owner_eval
-            || !owner_appr
-            || !owner_val
-            || !owner_witness
-            || !members_witness
-            || !owner_issuer
-        {
-            return Err(Error::Runner(
-                "Basic metagovernance roles have been modified".to_owned(),
-            ));
+
+        if let Some(gov) = roles_event.governance {
+            if gov.is_empty() {
+                return Err(Error::Runner(
+                    "GovRoleEvent can not be empty".to_owned(),
+                ));
+            }
+
+            let mut new_roles = governance.roles_gov.clone();
+
+            gov.check_data(governance, &mut new_roles)?;
+
+            governance.roles_gov = new_roles;
+        }
+
+        if let Some(schemas) = roles_event.schema {
+            if schemas.is_empty() {
+                return Err(Error::Runner(
+                    "SchemaIdRole vec can not be empty".to_owned(),
+                ));
+            }
+
+            let mut new_roles = governance.roles_schema.clone();
+
+            for schema in schemas {
+                if schema.is_empty() {
+                    return Err(Error::Runner(
+                        "SchemaIdRole can not be empty".to_owned(),
+                    ));
+                }
+
+                let Some(roles_schema) = new_roles.get_mut(&schema.schema_id)
+                else {
+                    return Err(Error::Runner(format!(
+                        "{} is not a schema",
+                        schema.schema_id
+                    )));
+                };
+
+                schema.roles.check_data(
+                    governance,
+                    roles_schema,
+                    &schema.schema_id,
+                )?
+            }
+
+            governance.roles_schema = new_roles;
+        }
+
+        if let Some(not_governance) = roles_event.not_governance {
+            let mut new_roles = governance.roles_not_governance.clone();
+
+            not_governance.check_data(
+                governance,
+                &mut new_roles,
+                "not_governance",
+            )?;
+
+            governance.roles_not_governance = new_roles;
         }
 
         Ok(())
+    }
+
+    fn check_schemas(
+        schema_event: &SchemasEvent,
+        governance: &mut Governance,
+    ) -> Result<(HashSet<String>, HashSet<String>, HashSet<String>), Error>
+    {
+        if schema_event.is_empty() {
+            return Err(Error::Runner(
+                "SchemasEvent can not be empty".to_owned(),
+            ));
+        }
+
+        let mut remove_schemas = HashSet::new();
+        let mut add_schemas = HashSet::new();
+        let mut change_schemas = HashSet::new();
+
+        let mut new_schemas = governance.schemas.clone();
+
+        if let Some(add) = schema_event.add.clone() {
+            if add.is_empty() {
+                return Err(Error::Runner(
+                    "SchemaAdd vec can not be empty".to_owned(),
+                ));
+            }
+
+            for new_schema in add {
+                if new_schema.id.is_empty() {
+                    return Err(Error::Runner(
+                        "Id of schema to add can not be empty".to_owned(),
+                    ));
+                }
+
+                if new_schema.id == "not_governance" {
+                    return Err(Error::Runner("There can not be a schema whose id is not_governance, it is a reserved word".to_owned()));
+                }
+
+                if new_schema.id == "governance" {
+                    return Err(Error::Runner("There can not be a schema whose id is governance, it is a reserved word".to_owned()));
+                }
+
+                if new_schema.id.contains(" ") {
+                    return Err(Error::Runner(format!(
+                        "Id of schema to add can not contains blank spaces, {}",
+                        new_schema.id
+                    )));
+                }
+
+                if new_schema.contract.is_empty() {
+                    return Err(Error::Runner(format!(
+                        "Contract of schema to add can not be empty, in {}",
+                        new_schema.id
+                    )));
+                }
+
+                if new_schema.contract.contains(" ") {
+                    return Err(Error::Runner(format!(
+                        "Contract of schema to add can not contains blank spaces, in {}",
+                        new_schema.id
+                    )));
+                }
+
+                if new_schemas
+                    .insert(
+                        new_schema.id.clone(),
+                        Schema {
+                            initial_value: new_schema.initial_value,
+                            contract: new_schema.contract,
+                        },
+                    )
+                    .is_some()
+                {
+                    return Err(Error::Runner(format!(
+                        "There is already a schema with this id: {}",
+                        new_schema.id
+                    )));
+                };
+
+                add_schemas.insert(new_schema.id);
+            }
+        }
+
+        if let Some(remove) = schema_event.remove.clone() {
+            if remove.is_empty() {
+                return Err(Error::Runner(
+                    "String vec can not be empty in remove schema".to_owned(),
+                ));
+            }
+
+            for remove_schema in remove.clone() {
+                if remove_schema.is_empty() {
+                    return Err(Error::Runner(
+                        "Id of schema to remove can not be empty".to_owned(),
+                    ));
+                }
+
+                if new_schemas.remove(&remove_schema).is_none() {
+                    return Err(Error::Runner(format!(
+                        "Can not remove {}, is not a schema",
+                        remove_schema
+                    )));
+                }
+            }
+
+            remove_schemas = remove;
+        }
+
+        if let Some(change) = schema_event.change.clone() {
+            if change.is_empty() {
+                return Err(Error::Runner(
+                    "SchemaChange vec can not be empty in change schema"
+                        .to_owned(),
+                ));
+            }
+
+            for change_schema in change {
+                if change_schema.is_empty() {
+                    return Err(Error::Runner(format!(
+                        "Can not change a schema {}, has empty data",
+                        change_schema.actual_id
+                    )));
+                }
+
+                let Some(schema_data) =
+                    new_schemas.get_mut(&change_schema.actual_id)
+                else {
+                    return Err(Error::Runner(format!(
+                        "Can not change a schema, {} is not a actual schema",
+                        change_schema.actual_id
+                    )));
+                };
+
+                if let Some(new_contract) = change_schema.new_contract {
+                    if new_contract.is_empty() {
+                        return Err(Error::Runner(format!(
+                            "Contract of schema to add can not be empty, in {}",
+                            change_schema.actual_id
+                        )));
+                    }
+
+                    if new_contract.contains(" ") {
+                        return Err(Error::Runner(format!(
+                            "Contract of schema to change can not contains blank spaces, in {}",
+                            change_schema.actual_id
+                        )));
+                    }
+
+                    schema_data.contract = new_contract;
+                }
+
+                if let Some(init_value) = change_schema.new_initial_value {
+                    schema_data.initial_value = init_value;
+                }
+
+                change_schemas.insert(change_schema.actual_id);
+            }
+        }
+
+        governance.schemas = new_schemas;
+        Ok((add_schemas, remove_schemas, change_schemas))
+    }
+
+    fn check_members(
+        member_event: &MemberEvent,
+        governance: &mut Governance,
+    ) -> Result<(Vec<(String, String)>, Vec<String>), Error> {
+        if member_event.is_empty() {
+            return Err(Error::Runner(
+                "MemberEvent can not be empty".to_owned(),
+            ));
+        }
+
+        let mut new_members = governance.members.clone();
+        if let Some(add) = member_event.add.clone() {
+            if add.is_empty() {
+                return Err(Error::Runner(
+                    "NewMember vec can not be empty in add member".to_owned(),
+                ));
+            }
+
+            for new_member in add {
+                if new_member.name.is_empty() {
+                    return Err(Error::Runner(
+                        "Name of member to add can not be empty".to_owned(),
+                    ));
+                }
+
+                if new_member.name.contains(" ") {
+                    return Err(Error::Runner(format!(
+                        "Name of member to add can not contains blank spaces, {}",
+                        new_member.name
+                    )));
+                }
+
+                if new_member.key.is_empty() {
+                    return Err(Error::Runner(format!(
+                        "Key of {} can not be empty",
+                        new_member.name
+                    )));
+                }
+
+                if new_members
+                    .insert(new_member.name.clone(), new_member.key)
+                    .is_some()
+                {
+                    return Err(Error::Runner(format!(
+                        "There is already a member with this name: {}",
+                        new_member.name
+                    )));
+                };
+            }
+        }
+
+        let mut remove_members = vec![];
+        if let Some(remove) = member_event.remove.clone() {
+            if remove.is_empty() {
+                return Err(Error::Runner(
+                    "String vec can not be empty in remove member".to_owned(),
+                ));
+            }
+            for remove_member in remove.clone() {
+                if remove_member == "Owner" {
+                    return Err(Error::Runner(
+                        "Can not remove Owner of governance".to_owned(),
+                    ));
+                }
+
+                if remove_member.is_empty() {
+                    return Err(Error::Runner(
+                        "Name of member to remove can not be empty".to_owned(),
+                    ));
+                }
+
+                if new_members.remove(&remove_member).is_none() {
+                    return Err(Error::Runner(format!(
+                        "Can not remove {}, is not a member",
+                        remove_member
+                    )));
+                }
+            }
+
+            remove_members = remove.iter().cloned().collect::<Vec<String>>();
+        }
+
+        let mut change_name_members: Vec<(String, String)> = vec![];
+        if let Some(change) = member_event.change.clone() {
+            if change.is_empty() {
+                return Err(Error::Runner(
+                    "ChangeMember vec can not be empty in change member"
+                        .to_owned(),
+                ));
+            }
+
+            for change_member in change {
+                if change_member.actual_name == "Owner" {
+                    return Err(Error::Runner(
+                        "Can not change Owner of governance".to_owned(),
+                    ));
+                }
+
+                if change_member.is_empty() {
+                    return Err(Error::Runner(format!(
+                        "Can not change a member {}, has empty data",
+                        change_member.actual_name
+                    )));
+                }
+
+                let mut actual_member_name = change_member.actual_name.clone();
+                let Some(mut actual_member_key) =
+                    new_members.remove(&change_member.actual_name)
+                else {
+                    return Err(Error::Runner(format!(
+                        "Can not change a member, {} is not a actual member",
+                        change_member.actual_name
+                    )));
+                };
+
+                if let Some(new_name) = change_member.new_name.clone() {
+                    if new_name.is_empty() {
+                        return Err(Error::Runner(format!(
+                            "New name of {} can not be empty",
+                            actual_member_name
+                        )));
+                    }
+
+                    if new_name.contains(" ") {
+                        return Err(Error::Runner(format!(
+                            "New name of {} can not contains blank spaces",
+                            actual_member_name
+                        )));
+                    }
+
+                    change_name_members
+                        .push((actual_member_name, new_name.clone()));
+                    actual_member_name = new_name;
+                };
+
+                if let Some(new_key) = change_member.new_key.clone() {
+                    if new_key.is_empty() {
+                        return Err(Error::Runner(format!(
+                            "New key of {} can not be empty",
+                            actual_member_name
+                        )));
+                    }
+
+                    actual_member_key = new_key;
+                };
+
+                if new_members
+                    .insert(actual_member_name.clone(), actual_member_key)
+                    .is_some()
+                {
+                    return Err(Error::Runner(format!(
+                        "There is already a member with this name: {}",
+                        actual_member_name
+                    )));
+                };
+            }
+        }
+
+        let members_name: HashSet<String> =
+            new_members.keys().cloned().collect();
+        let members_value: HashSet<KeyIdentifier> =
+            new_members.values().cloned().collect();
+
+        if new_members.contains_key("Any") {
+            return Err(Error::Runner("There can not be a member whose name is Any, it is a reserved word".to_owned()));
+        }
+
+        if members_name.len() != members_value.len() {
+            return Err(Error::Runner(
+                "There are members who have the same key".to_owned(),
+            ));
+        }
+
+        governance.members = new_members;
+
+        Ok((change_name_members, remove_members))
     }
 
     fn generate_context(

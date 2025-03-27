@@ -23,7 +23,6 @@ use crate::{
     db::Storable,
     governance::{Governance, model::CreatorQuantity},
     helpers::db::ExternalDB,
-    init_state,
     model::{
         Namespace,
         common::{get_gov, get_metadata, get_quantity, subject_owner},
@@ -96,12 +95,17 @@ impl RequestHandler {
             .map_err(|e| ActorError::Functional(e.to_string()))?;
 
         let data = if create_req.schema_id == "governance" {
+            let gov = Governance::new(request.signature.signer.clone());
+            let value = gov.to_value_wrapper().map_err(|e| {
+                ActorError::FunctionalFail(e.to_string())
+            })?;
+            
             CreateSubjectData {
                 create_req,
                 subject_id,
                 creator: request.signature.signer.clone(),
                 genesis_gov_version: 0,
-                value: init_state(&request.signature.signer.to_string()),
+                value,
             }
         } else {
             let governance =

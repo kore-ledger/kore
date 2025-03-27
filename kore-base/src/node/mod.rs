@@ -13,21 +13,9 @@ use relationship::RelationShip;
 use tracing::{error, warn};
 
 use crate::{
-    DIGEST_DERIVATOR, Error, EventRequest, Subject, SubjectMessage,
-    SubjectResponse,
-    auth::{Auth, AuthMessage, AuthResponse},
-    config::Config,
-    db::Storable,
-    distribution::distributor::Distributor,
-    governance::init::init_state,
-    helpers::{db::ExternalDB, sink::KoreSink},
-    manual_distribution::ManualDistribution,
-    model::{
-        HashId, SignTypesNode,
-        event::{Ledger, LedgerValue},
-        signature::{Signature, Signed},
-    },
-    subject::CreateSubjectData,
+    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, governance::Governance, helpers::{db::ExternalDB, sink::KoreSink}, manual_distribution::ManualDistribution, model::{
+        event::{Ledger, LedgerValue}, signature::{Signature, Signed}, HashId, SignTypesNode
+    }, subject::CreateSubjectData, Error, EventRequest, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
 };
 
 use identity::{
@@ -53,6 +41,7 @@ const TARGET_NODE: &str = "Kore-Node";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TransferSubject {
+    pub name: String,
     pub subject_id: String,
     pub new_owner: String,
     pub actual_owner: String,
@@ -481,14 +470,15 @@ impl Handler<Node> for Node {
                     ledger.content.event_request.content.clone()
                 {
                     let properties = if create_event.schema_id == "governance" {
-                        init_state(
-                            &ledger
-                                .content
-                                .event_request
-                                .signature
-                                .signer
-                                .to_string(),
-                        )
+                        let gov = Governance::new(ledger
+                            .content
+                            .event_request
+                            .signature
+                            .signer.clone());
+                        gov.to_value_wrapper().map_err(|e| {
+                            error!(TARGET_NODE, "CreateNewSubjectLedger, {}", e);
+                            ActorError::FunctionalFail(e.to_string())
+                        })?
                     } else if let LedgerValue::Patch(init_state) =
                         ledger.content.value.clone()
                     {

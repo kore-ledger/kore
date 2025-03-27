@@ -4,10 +4,8 @@
 //! # Governance module.
 //!
 
-pub mod init;
-pub mod json_schema;
+pub mod events;
 pub mod model;
-mod schema;
 
 use crate::{
     Error,
@@ -15,10 +13,12 @@ use crate::{
 };
 
 use actor::Error as ActorError;
-use model::{CreatorQuantity, PolicyGov, PolicySchema, ProtocolTypes, RoleIssuer, RoleTypes, RolesGov, RolesSchema, SchemaKeyCreators};
-pub use schema::schema;
+use model::{
+    CreatorQuantity, PolicyGov, PolicySchema, ProtocolTypes, RoleGovIssuer,
+    RoleSchemaIssuer, RoleTypes, RolesGov, RolesSchema, SchemaKeyCreators,
+};
 
-pub use model::{Member, Quorum, Role, Schema,};
+pub use model::{Member, Quorum, Role, Schema};
 
 use identity::identifier::KeyIdentifier;
 
@@ -34,13 +34,56 @@ pub struct Governance {
     pub version: u64,
     pub members: HashMap<MemberName, KeyIdentifier>,
     pub roles_gov: RolesGov,
-    pub policies_gov: PolicyGov,    
+    pub policies_gov: PolicyGov,
     pub schemas: HashMap<SchemaId, Schema>,
     pub roles_schema: HashMap<SchemaId, RolesSchema>,
-    pub policies_schema: HashMap<SchemaId, PolicySchema>
+    pub roles_not_governance: RolesSchema,
+    pub policies_schema: HashMap<SchemaId, PolicySchema>,
 }
 
 impl Governance {
+    pub fn remove_schema(&mut self, remove_schemas: HashSet<SchemaId>) {
+        for schema in remove_schemas {
+            self.roles_schema.remove(&schema);
+            self.policies_schema.remove(&schema);
+        }
+    }
+
+    pub fn add_schema(&mut self, add_schema: HashSet<SchemaId>) {
+        for schema in add_schema {
+            self.roles_schema.insert(schema.clone(), RolesSchema::default());
+            self.policies_schema.insert(schema, PolicySchema::default());
+        }
+    }
+
+    pub fn remove_member_role(&mut self, remove_members: &Vec<MemberName>) {
+        self.roles_gov.remove_member_role(remove_members);
+
+        for (_, roles) in self.roles_schema.iter_mut() {
+            roles.remove_member_role(remove_members);
+        }
+    }
+
+    pub fn change_name_role(
+        &mut self,
+        chang_name_members: &Vec<(String, String)>,
+    ) {
+        self.roles_gov.change_name_role(chang_name_members);
+
+        for (_, roles) in self.roles_schema.iter_mut() {
+            roles.change_name_role(chang_name_members);
+        }
+    }
+
+    pub fn to_value_wrapper(&self) -> Result<ValueWrapper, Error> {
+        Ok(ValueWrapper(serde_json::to_value(self).map_err(|e| {
+            Error::Governance(format!(
+                "Can not convert governance into Value: {}",
+                e
+            ))
+        })?))
+    }
+
     pub fn new(owner_key: KeyIdentifier) -> Self {
         let policies_gov = PolicyGov {
             approve: Quorum::Majority,
@@ -48,24 +91,33 @@ impl Governance {
             validate: Quorum::Majority,
         };
 
-        let owner_users: HashSet<Role> = HashSet::from([Role {name: "Owner".to_owned(), namespace: Namespace::new()}]);
+        let owner_users_schema: HashSet<Role> = HashSet::from([Role {
+            name: "Owner".to_owned(),
+            namespace: Namespace::new(),
+        }]);
+        let owner_users_gov: HashSet<MemberName> =
+            HashSet::from(["Owner".to_owned()]);
 
         let roles_gov = RolesGov {
-            approver: owner_users.clone(),
-            evaluator: owner_users.clone(),
-            validator: owner_users.clone(),
-            issuer: RoleIssuer {
+            approver: owner_users_gov.clone(),
+            evaluator: owner_users_gov.clone(),
+            validator: owner_users_gov.clone(),
+            witness: HashSet::new(),
+            issuer: RoleGovIssuer {
                 any: false,
-                users: owner_users.clone()
+                users: owner_users_gov.clone(),
             },
         };
 
         let not_gov_role = RolesSchema {
-            evaluator: owner_users.clone(),
-            validator: owner_users.clone(),
-            witness: owner_users,
+            evaluator: owner_users_schema.clone(),
+            validator: owner_users_schema.clone(),
+            witness: owner_users_schema,
             creator: HashSet::new(),
-            issuer: RoleIssuer { users: HashSet::new(), any: false },
+            issuer: RoleSchemaIssuer {
+                users: HashSet::new(),
+                any: false,
+            },
         };
 
         Self {
@@ -74,7 +126,8 @@ impl Governance {
             roles_gov,
             policies_gov,
             schemas: HashMap::new(),
-            roles_schema: HashMap::from([("not_governance".to_owned(), not_gov_role)]),
+            roles_schema: HashMap::new(),
+            roles_not_governance: not_gov_role,
             policies_schema: HashMap::new(),
         }
     }
@@ -91,7 +144,7 @@ impl Governance {
         schema_id: &str,
     ) -> Result<ValueWrapper, Error> {
         let Some(schema) = self.schemas.get(schema_id) else {
-            return Err(Error::Governance("Schema not found.".to_owned()))
+            return Err(Error::Governance("Schema not found.".to_owned()));
         };
 
         return Ok(ValueWrapper(schema.initial_value.clone()));
@@ -103,20 +156,7 @@ impl Governance {
     /// # Errors
     /// * `Error` - If the key identifier is not valid.
     pub fn members_to_key_identifier(&self) -> HashSet<KeyIdentifier> {
-        HashSet::from_iter(
-            self.members
-                .iter()
-                .map(|(_name, key)| key.clone())
-        )
-    }
-
-    /// Get the member id by name.
-    /// # Arguments
-    /// * `name` - The name of the member.
-    /// # Returns
-    /// * `Option<KeyIdentifier>` - The member id.
-    fn id_by_name(&self, name: &str) -> Option<KeyIdentifier> {
-        self.members.get(name).cloned()
+        HashSet::from_iter(self.members.iter().map(|(_name, key)| key.clone()))
     }
 
     /// Check if the user has a role.
@@ -132,17 +172,23 @@ impl Governance {
         schema: &str,
         namespace: Namespace,
     ) -> bool {
-        let Some(name) = self.members.iter().find(|x| x.1 == key).map(|x| x.0).cloned() else {
+        let Some(name) = self
+            .members
+            .iter()
+            .find(|x| x.1 == key)
+            .map(|x| x.0)
+            .cloned()
+        else {
             return false;
         };
 
         if schema == "governance" {
-            self.roles_gov.hash_this_rol(role, namespace, &name)
+            self.roles_gov.hash_this_rol(role, &name)
         } else {
             let Some(roles) = self.roles_schema.get(schema) else {
                 return false;
             };
-        
+
             roles.hash_this_rol(role, namespace, &name)
         }
     }
@@ -181,7 +227,7 @@ impl Governance {
         namespace: Namespace,
     ) -> (HashSet<KeyIdentifier>, bool) {
         let (names, any) = if schema == "governance" {
-            self.roles_gov.get_signers(role, namespace)
+            self.roles_gov.get_signers(role)
         } else {
             let Some(roles) = self.roles_schema.get(schema) else {
                 return (HashSet::new(), false);
@@ -212,7 +258,7 @@ impl Governance {
             let Some(policie) = self.policies_schema.get(schema) else {
                 return None;
             };
-    
+
             policie.get_quorum(role)
         }
     }
@@ -243,32 +289,41 @@ impl Governance {
         Ok((signers, quorum))
     }
 
-    pub fn schemas(&self, role: ProtocolTypes, key: &KeyIdentifier) -> Result<HashMap<SchemaId, Schema>, Error> {
-        let Some(name) = self.members.iter().find(|x| x.1 == key).map(|x| x.0).cloned() else {
-            return Err(Error::Governance(format!("Can not get member by KeyIdentifier: {}", key)));
+    pub fn schemas(
+        &self,
+        role: ProtocolTypes,
+        key: &KeyIdentifier,
+    ) -> Result<HashMap<SchemaId, Schema>, Error> {
+        let Some(name) = self
+            .members
+            .iter()
+            .find(|x| x.1 == key)
+            .map(|x| x.0)
+            .cloned()
+        else {
+            return Err(Error::Governance(format!(
+                "Can not get member by KeyIdentifier: {}",
+                key
+            )));
         };
         let role = RoleTypes::from(role);
 
-        if let Some(not_governance_schema) = self.roles_schema.get("not_governance") {
-            if not_governance_schema.hash_this_rol_not_namespace(role.clone(), &name) {
-                let mut copy_schemas = self.schemas.clone();
-                copy_schemas.remove("not_governance");
-                return Ok(copy_schemas)
-            }
+        if self
+            .roles_not_governance
+            .hash_this_rol_not_namespace(role.clone(), &name)
+        {
+            return Ok(self.schemas.clone());
         }
 
         let mut not_schemas: Vec<String> = vec![];
 
         for (schema, roles) in self.roles_schema.iter() {
-            if schema != "not_governance" {
-                if !roles.hash_this_rol_not_namespace(role.clone(), &name) {
-                    not_schemas.push(schema.clone());
-                }
+            if !roles.hash_this_rol_not_namespace(role.clone(), &name) {
+                not_schemas.push(schema.clone());
             }
         }
 
         let mut copy_schemas = self.schemas.clone();
-        copy_schemas.remove("not_governance");
         for schema in not_schemas {
             copy_schemas.remove(&schema);
         }
@@ -278,55 +333,70 @@ impl Governance {
 
     pub fn subjects_schemas_rol_namespace(
         &self,
-        key: &KeyIdentifier
+        key: &KeyIdentifier,
     ) -> Result<Vec<SchemaKeyCreators>, Error> {
-        let Some(name) = self.members.iter().find(|x| x.1 == key).map(|x| x.0).cloned() else {
-            return Err(Error::Governance(format!("Can not get member by KeyIdentifier: {}", key)));
+        let Some(name) = self
+            .members
+            .iter()
+            .find(|x| x.1 == key)
+            .map(|x| x.0)
+            .cloned()
+        else {
+            return Err(Error::Governance(format!(
+                "Can not get member by KeyIdentifier: {}",
+                key
+            )));
         };
 
-        let (not_gov_val, not_gov_eval, not_gov_creators) = if let Some(not_gov) = self.roles_schema.get("not_governance") {
-            not_gov.roles_namespace_creators(&name)
-        } else {
-            (None, None, None)
-        };
+        let (not_gov_val, not_gov_eval, not_gov_creators) =
+            self.roles_not_governance.roles_namespace_creators(&name);
 
         let mut schema_key_creators: Vec<SchemaKeyCreators> = vec![];
-        
+
         for (schema, roles) in self.roles_schema.iter() {
-            if schema != "not_governance" {
-                let schema_creators =  roles.roles_creators(&name, not_gov_val.clone(), not_gov_eval.clone(), not_gov_creators.clone());
-                if !schema_creators.is_empty() {
-                    let mut schema_key = SchemaKeyCreators {
-                        schema: schema.clone(),
-                        validation: None,
-                        evaluation: None
-                    };
+            let schema_creators = roles.roles_creators(
+                &name,
+                not_gov_val.clone(),
+                not_gov_eval.clone(),
+                not_gov_creators.clone(),
+            );
+            if !schema_creators.is_empty() {
+                let mut schema_key = SchemaKeyCreators {
+                    schema: schema.clone(),
+                    validation: None,
+                    evaluation: None,
+                };
 
-                    if let Some(val_schema_creators) = schema_creators.validation {
-                        let mut hash_keys: HashSet<KeyIdentifier> = HashSet::new();
-                        for name in val_schema_creators {
-                            let Some(key) = self.members.get(&name) else {
-                                return Err(Error::Governance(format!("Can not find KeyIdentifier of: {}", name)));
-                            };
-                            hash_keys.insert(key.clone());
-                        }
-
-                        schema_key.validation = Some(hash_keys);
+                if let Some(val_schema_creators) = schema_creators.validation {
+                    let mut hash_keys: HashSet<KeyIdentifier> = HashSet::new();
+                    for name in val_schema_creators {
+                        let Some(key) = self.members.get(&name) else {
+                            return Err(Error::Governance(format!(
+                                "Can not find KeyIdentifier of: {}",
+                                name
+                            )));
+                        };
+                        hash_keys.insert(key.clone());
                     }
 
-                    if let Some(eval_schema_creators) = schema_creators.evaluation {
-                        let mut hash_keys: HashSet<KeyIdentifier> = HashSet::new();
-                        for name in eval_schema_creators {
-                            let Some(key) = self.members.get(&name) else {
-                                return Err(Error::Governance(format!("Can not find KeyIdentifier of: {}", name)));
-                            };
-                            hash_keys.insert(key.clone());
-                        }
-                        schema_key.evaluation = Some(hash_keys);
-                    }
-
-                    schema_key_creators.push(schema_key);
+                    schema_key.validation = Some(hash_keys);
                 }
+
+                if let Some(eval_schema_creators) = schema_creators.evaluation {
+                    let mut hash_keys: HashSet<KeyIdentifier> = HashSet::new();
+                    for name in eval_schema_creators {
+                        let Some(key) = self.members.get(&name) else {
+                            return Err(Error::Governance(format!(
+                                "Can not find KeyIdentifier of: {}",
+                                name
+                            )));
+                        };
+                        hash_keys.insert(key.clone());
+                    }
+                    schema_key.evaluation = Some(hash_keys);
+                }
+
+                schema_key_creators.push(schema_key);
             }
         }
         Ok(schema_key_creators)
@@ -355,6 +425,7 @@ impl TryFrom<ValueWrapper> for Governance {
 
 #[cfg(test)]
 mod tests {
+    /*
     use crate::model::{Namespace, ValueWrapper};
     use test_log::test;
 
@@ -369,7 +440,7 @@ mod tests {
     };
     use serde_json::Value;
 
-    /*
+    
     fn create_governance(
         key1: KeyIdentifier,
         key2: KeyIdentifier,

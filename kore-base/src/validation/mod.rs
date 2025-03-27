@@ -75,14 +75,16 @@ impl Validation {
         }
     }
 
-    async fn end_validators(&self, ctx: &mut ActorContext<Validation>) {
+    async fn end_validators(&self, ctx: &mut ActorContext<Validation>) -> Result<(), ActorError> {
         for validator in self.validators.clone() {
             let child: Option<ActorRef<Validator>> =
                 ctx.get_child(&validator.to_string()).await;
             if let Some(child) = child {
-                child.stop().await;
+                child.stop().await?;
             }
         }
+
+        Ok(())
     }
 
     fn check_validator(&mut self, validator: KeyIdentifier) -> bool {
@@ -398,7 +400,15 @@ impl Handler<Validation> for Validation {
                                 }
                                 self.reboot = true;
 
-                                self.end_validators(ctx).await;
+                                if let Err(e) = self.end_validators(ctx).await {
+                                    error!(
+                                        TARGET_VALIDATION,
+                                        "Response, can not end validators: {}",
+                                        e
+                                    );
+                                    return Err(emit_fail(ctx, e).await);
+                                };
+
                                 return Ok(());
                             }
                         };
@@ -623,10 +633,11 @@ pub mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 0);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
+        assert!(gov.roles_schema.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(gov.policies_schema.is_empty());
 
         (
             system,
@@ -735,10 +746,11 @@ pub mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 1);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
+        assert!(gov.roles_schema.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(gov.policies_schema.is_empty());
 
         if !request_actor
             .ask(RequestHandlerMessage::NewRequest {
