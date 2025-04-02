@@ -664,7 +664,7 @@ impl Handler<Approver> for Approver {
                         };
                     }
 
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                 } else {
                     warn!(
                         TARGET_APPROVER,
@@ -877,7 +877,7 @@ impl Handler<Approver> for Approver {
                     );
                     emit_fail(ctx, e).await;
                 }
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             _ => {
                 error!(TARGET_APPROVER, "OnChildError, unexpected error");

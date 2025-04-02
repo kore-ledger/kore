@@ -13,14 +13,10 @@ use identity::identifier::KeyIdentifier;
 use tracing::error;
 
 use crate::{
-    Event as KoreEvent, Signed,
-    governance::model::Roles,
-    model::{
+    governance::model::RoleTypes, model::{
         common::{emit_fail, get_gov},
         event::{Ledger, ProtocolsSignatures},
-    },
-    request::manager::{RequestManager, RequestManagerMessage},
-    validation::proof::ValidationProof,
+    }, request::manager::{RequestManager, RequestManagerMessage}, validation::proof::ValidationProof, Event as KoreEvent, Signed
 };
 
 pub mod distributor;
@@ -183,7 +179,7 @@ impl Handler<Distribution> for Distribution {
                 } else {
                     governance
                         .get_signers(
-                            Roles::WITNESS,
+                            RoleTypes::Witness,
                             &last_proof.schema_id,
                             last_proof.namespace.clone(),
                         )
@@ -230,7 +226,7 @@ impl Handler<Distribution> for Distribution {
 
                     if let DistributionType::Subject = self.dis_type {
                     } else {
-                        ctx.stop().await;
+                        ctx.stop(None).await;
                     };
                 }
             }

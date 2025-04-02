@@ -13,12 +13,21 @@ mod runner;
 pub mod schema;
 
 use crate::{
-    auth::WitnessesAuth, governance::{model::Roles, Quorum}, model::{
+    DIGEST_DERIVATOR,
+    auth::WitnessesAuth,
+    governance::{Quorum, model::ProtocolTypes},
+    model::{
+        HashId, SignTypesNode, ValueWrapper,
         common::{
             emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version,
             send_reboot_to_req, try_to_update,
-        }, event::{LedgerValue, ProtocolsError, ProtocolsSignatures}, request::EventRequest, signature::{Signature, Signed}, HashId, SignTypesNode, ValueWrapper
-    }, request::manager::{RequestManager, RequestManagerMessage}, subject::Metadata, DIGEST_DERIVATOR
+        },
+        event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
+        request::EventRequest,
+        signature::{Signature, Signed},
+    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::Metadata,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
@@ -71,14 +80,19 @@ impl Evaluation {
         }
     }
 
-    async fn end_evaluators(&self, ctx: &mut ActorContext<Evaluation>) {
+    async fn end_evaluators(
+        &self,
+        ctx: &mut ActorContext<Evaluation>,
+    ) -> Result<(), ActorError> {
         for evaluator in self.evaluators.clone() {
             let child: Option<ActorRef<Evaluator>> =
                 ctx.get_child(&evaluator.to_string()).await;
             if let Some(child) = child {
-                child.stop().await;
+                child.ask_stop().await?;
             }
         }
+
+        Ok(())
     }
 
     fn check_evaluator(&mut self, evaluator: KeyIdentifier) -> bool {
@@ -381,7 +395,7 @@ impl Handler<Evaluation> for Evaluation {
                         &governance.to_string(),
                         &metadata.schema_id,
                         metadata.namespace.clone(),
-                        Roles::EVALUATOR,
+                        ProtocolTypes::Evaluation,
                     )
                     .await
                     {
@@ -518,7 +532,15 @@ impl Handler<Evaluation> for Evaluation {
                                 }
                                 self.reboot = true;
 
-                                self.end_evaluators(ctx).await;
+                                if let Err(e) = self.end_evaluators(ctx).await {
+                                    error!(
+                                        TARGET_EVALUATION,
+                                        "Response, can not end evaluators: {}",
+                                        e
+                                    );
+                                    return Err(emit_fail(ctx, e).await);
+                                };
+
                                 return Ok(());
                             }
                         };
@@ -617,7 +639,6 @@ mod tests {
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
     use serde_json::json;
-    use serial_test::serial;
     use test_log::test;
 
     use crate::{
@@ -654,16 +675,16 @@ mod tests {
 
         let fact_request = EventRequest::Fact(FactRequest {
             subject_id: subject_id.clone(),
-            payload: ValueWrapper(json!({"Patch": {
-                    "data": [
-            {
-                "op": "add",
-                "path": "/members/1",
-                "value": {
-                    "id": "EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE",
-                    "name": "KoreNode1"
+            payload: ValueWrapper(json!({
+                "members": {
+                    "add": [
+                        {
+                            "name": "KoreNode1",
+                            "key": "EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE"
+                        }
+                    ]
                 }
-            }]}})),
+            })),
         });
 
         let response = node_actor
@@ -771,14 +792,7 @@ mod tests {
         assert_eq!(
             last_event.content.value,
             LedgerValue::Patch(ValueWrapper(json!([
-            {
-                "op": "add",
-                "path": "/members/1",
-                "value": {
-                    "id": "EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE",
-                    "name": "KoreNode1"
-                }
-            }])))
+                {"op":"add","path":"/members/KoreNode1","value":"EUrVnqpwo9EKBvMru4wWLMpJgOTKM5gZnxApRmjrRbbE"}])))
         );
         assert!(last_event.content.eval_success.unwrap());
         assert!(last_event.content.appr_required);
@@ -800,10 +814,11 @@ mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 1);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
+        assert!(gov.roles_schema.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(gov.policies_schema.is_empty());
     }
 
     #[test(tokio::test)]
@@ -822,17 +837,16 @@ mod tests {
 
         let fact_request = EventRequest::Fact(FactRequest {
             subject_id: subject_id.clone(),
-            payload: ValueWrapper(json!({"Patch": {
-                    "data": [
+            payload: ValueWrapper(json!({
+                "members": {
+                    "add": [
                         {
-                                "op": "add",
-                                "path": "/members/0",
-                                "value": {
-                                    "id": new_owner.key_identifier().to_string(),
-                                    "name": "TestMember"
-                                }
+                            "name": "TestMember",
+                            "key": new_owner.key_identifier().to_string()
                         }
-            ]}})),
+                    ]
+                }
+            })),
         });
 
         let response = node_actor
@@ -960,10 +974,11 @@ mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 2);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
+        assert!(gov.roles_schema.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(gov.policies_schema.is_empty());
 
         if !request_actor
             .ask(RequestHandlerMessage::NewRequest {
@@ -997,74 +1012,48 @@ mod tests {
 
         let fact_request = EventRequest::Fact(FactRequest {
             subject_id: subject_id.clone(),
-            payload: ValueWrapper(json!({"Patch": {
-                    "data": [
+            payload: ValueWrapper(json!({
+                "schemas": {
+                    "add": [
                         {
-                            "op": "add",
-                            "path": "/roles/6",
-                            "value": {
-                                "namespace": "",
-                                "role": {
-                                    "CREATOR": {
-                                        "QUANTITY": 2
-                                    }
-                                },
-                                "schema": {
-                                    "ID": "Example"
-                                },
-                                "who": {
-                                    "NAME": "Owner"
-                                }
+                            "id": "Example",
+                            "contract": "dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07CnVzZSBrb3JlX2NvbnRyYWN0X3NkayBhcyBzZGs7CgovLy8gRGVmaW5lIHRoZSBzdGF0ZSBvZiB0aGUgY29udHJhY3QuIAojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplLCBDbG9uZSldCnN0cnVjdCBTdGF0ZSB7CiAgcHViIG9uZTogdTMyLAogIHB1YiB0d286IHUzMiwKICBwdWIgdGhyZWU6IHUzMgp9CgojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplKV0KZW51bSBTdGF0ZUV2ZW50IHsKICBNb2RPbmUgeyBkYXRhOiB1MzIgfSwKICBNb2RUd28geyBkYXRhOiB1MzIgfSwKICBNb2RUaHJlZSB7IGRhdGE6IHUzMiB9LAogIE1vZEFsbCB7IG9uZTogdTMyLCB0d286IHUzMiwgdGhyZWU6IHUzMiB9Cn0KCiNbdW5zYWZlKG5vX21hbmdsZSldCnB1YiB1bnNhZmUgZm4gbWFpbl9mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMiwgZXZlbnRfcHRyOiBpMzIsIGlzX293bmVyOiBpMzIpIC0+IHUzMiB7CiAgc2RrOjpleGVjdXRlX2NvbnRyYWN0KHN0YXRlX3B0ciwgZXZlbnRfcHRyLCBpc19vd25lciwgY29udHJhY3RfbG9naWMpCn0KCiNbdW5zYWZlKG5vX21hbmdsZSldCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0=",
+                            "initial_value": {
+                                "one": 0,
+                                "two": 0,
+                                "three": 0
                             }
-                        },
+                        }
+                    ]
+                },
+                "roles": {
+                    "schema":
+                        [
                         {
-                            "op": "add",
-                            "path": "/roles/7",
-                            "value": {
-                                "namespace": "",
-                                "role": "ISSUER",
-                                "schema": {
-                                    "ID": "Example"
-                                },
-                                "who": {
-                                    "NAME": "Owner"
-                                }
-                            }
-                        },
-                        {
-                            "op": "add",
-                            "path": "/policies/1",
-                            "value": {
-                                "id": "Example",
-                                "approve": {
-                                    "quorum": {
-                                        "FIXED": 1
-                                    }
-                                },
-                                "evaluate": {
-                                    "quorum": "MAJORITY"
-                                },
-                                "validate": {
-                                    "quorum": "MAJORITY"
-                                }
-                            }
-                        },
-                        {
-                            "op": "add",
-                            "path": "/schemas/0",
-                            "value": {
-                                "contract": {
-                                    "raw": "dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0="
-                                },
-                                "id": "Example",
-                                "initial_value": {
-                                    "one": 0,
-                                    "two": 0,
-                                    "three": 0
+                            "schema_id": "Example",
+                            "roles": {
+                                "add": {
+                                    "creator": [
+                                        {
+                                            "name": "Owner",
+                                            "namespace": [],
+                                            "quantity": {
+                                                "Quantity": 2
+                                            }
+                                        }
+                                    ],
+                                    "issuer": [
+                                        {
+                                            "name": "Owner",
+                                            "namespace": [],
+                                        }
+                                    ]
                                 }
                             }
                         }
-            ]}})),
+                    ]
+                }
+            })),
         });
 
         let response = node_actor
@@ -1172,72 +1161,9 @@ mod tests {
         assert_eq!(last_event.content.gov_version, 0);
         assert_eq!(
             last_event.content.value,
-            LedgerValue::Patch(ValueWrapper(json!([
-            {
-                "op": "add",
-                "path": "/policies/1",
-                "value": {
-                    "id": "Example",
-                    "approve": {
-                        "quorum": {
-                            "FIXED": 1
-                        }
-                    },
-                    "evaluate": {
-                        "quorum": "MAJORITY"
-                    },
-                    "validate": {
-                        "quorum": "MAJORITY"
-                    }
-                }
-            },
-            {
-                "op": "add",
-                "path": "/roles/6",
-                "value": {
-                    "namespace": "",
-                    "role": {
-                        "CREATOR": {
-                            "QUANTITY": 2
-                        }
-                    },
-                    "schema": {
-                        "ID": "Example"
-                    },
-                    "who": {
-                        "NAME": "Owner"
-                    }
-                }
-            },
-            {
-                "op": "add",
-                "path": "/roles/7",
-                "value": {
-                    "namespace": "",
-                    "role": "ISSUER",
-                    "schema": {
-                        "ID": "Example"
-                    },
-                    "who": {
-                        "NAME": "Owner"
-                    }
-                }
-            },
-            {
-                "op": "add",
-                "path": "/schemas/0",
-                "value": {
-                    "contract": {
-                        "raw": "dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07Cgp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogIHB1YiBvbmU6IHUzMiwKICBwdWIgdHdvOiB1MzIsCiAgcHViIHRocmVlOiB1MzIKfQoKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSldCmVudW0gU3RhdGVFdmVudCB7CiAgTW9kT25lIHsgZGF0YTogdTMyIH0sCiAgTW9kVHdvIHsgZGF0YTogdTMyIH0sCiAgTW9kVGhyZWUgeyBkYXRhOiB1MzIgfSwKICBNb2RBbGwgeyBvbmU6IHUzMiwgdHdvOiB1MzIsIHRocmVlOiB1MzIgfQp9CgojW25vX21hbmdsZV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBldmVudF9wdHIsIGlzX293bmVyLCBjb250cmFjdF9sb2dpYykKfQoKI1tub19tYW5nbGVdCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0="
-                    },
-                    "id": "Example",
-                    "initial_value": {
-                        "one": 0,
-                        "two": 0,
-                        "three": 0
-                    }
-                }
-            }])))
+            LedgerValue::Patch(ValueWrapper(
+                json!([{"op":"add","path":"/policies_schema/Example","value":{"evaluate":"Majority","validate":"Majority"}},{"op":"add","path":"/roles_schema/Example","value":{"creator":[{"name":"Owner","namespace":[],"quantity":{"Quantity":2}}],"evaluator":[],"issuer":{"any":false,"users":[{"name":"Owner","namespace":[]}]},"validator":[],"witness":[]}},{"op":"add","path":"/schemas/Example","value":{"contract":"dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07CnVzZSBrb3JlX2NvbnRyYWN0X3NkayBhcyBzZGs7CgovLy8gRGVmaW5lIHRoZSBzdGF0ZSBvZiB0aGUgY29udHJhY3QuIAojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplLCBDbG9uZSldCnN0cnVjdCBTdGF0ZSB7CiAgcHViIG9uZTogdTMyLAogIHB1YiB0d286IHUzMiwKICBwdWIgdGhyZWU6IHUzMgp9CgojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplKV0KZW51bSBTdGF0ZUV2ZW50IHsKICBNb2RPbmUgeyBkYXRhOiB1MzIgfSwKICBNb2RUd28geyBkYXRhOiB1MzIgfSwKICBNb2RUaHJlZSB7IGRhdGE6IHUzMiB9LAogIE1vZEFsbCB7IG9uZTogdTMyLCB0d286IHUzMiwgdGhyZWU6IHUzMiB9Cn0KCiNbdW5zYWZlKG5vX21hbmdsZSldCnB1YiB1bnNhZmUgZm4gbWFpbl9mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMiwgZXZlbnRfcHRyOiBpMzIsIGlzX293bmVyOiBpMzIpIC0+IHUzMiB7CiAgc2RrOjpleGVjdXRlX2NvbnRyYWN0KHN0YXRlX3B0ciwgZXZlbnRfcHRyLCBpc19vd25lciwgY29udHJhY3RfbG9naWMpCn0KCiNbdW5zYWZlKG5vX21hbmdsZSldCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxTdGF0ZSwgU3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5maW5hbF9zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0=","initial_value":{"one":0,"three":0,"two":0}}}])
+            ))
         );
         assert!(last_event.content.eval_success.unwrap());
         assert!(last_event.content.appr_required);
@@ -1259,10 +1185,11 @@ mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 1);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
+        assert!(!gov.roles_schema.is_empty());
         assert!(!gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(!gov.policies_schema.is_empty());
 
         (
             system,
@@ -1276,7 +1203,6 @@ mod tests {
     }
 
     #[test(tokio::test)]
-    #[serial]
     async fn test_fact_sub() {
         init_gov_sub().await;
     }
@@ -1433,13 +1359,11 @@ mod tests {
     }
 
     #[test(tokio::test)]
-    #[serial]
-    async fn test_subject() {
+    async fn test_create_subject() {
         let _ = create_subject().await;
     }
 
     #[test(tokio::test)]
-    #[serial]
     async fn test_subject_events() {
         let (
             _system,

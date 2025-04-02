@@ -67,16 +67,8 @@ pub mod tests {
     use crate::config::{ExternalDbConfig, KoreDbConfig};
     use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
     use network::Config as NetworkConfig;
-    use serial_test::serial;
     use std::{fs, time::Duration};
     use test_log::test;
-
-    use async_std::sync::RwLock;
-
-    use crate::{
-        GOVERNANCE,
-        governance::{json_schema::JsonSchema, schema},
-    };
 
     use super::*;
 
@@ -84,7 +76,6 @@ pub mod tests {
     pub struct Dummy;
 
     #[test(tokio::test)]
-    #[serial]
     async fn test_system() {
         let system = create_system().await;
         let db: Option<Database> = system.get_helper("store").await;
@@ -112,10 +103,6 @@ pub mod tests {
     }
 
     pub async fn create_system() -> SystemRef {
-        let schema = JsonSchema::compile(&schema()).unwrap();
-
-        let _ = GOVERNANCE.get_or_init(|| RwLock::new(schema));
-
         let dir =
             tempfile::tempdir().expect("Can not create temporal directory.");
         let path = dir.path().to_str().unwrap();

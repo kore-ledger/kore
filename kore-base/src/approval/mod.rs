@@ -17,7 +17,7 @@ use store::store::PersistentActor;
 use tracing::{error, warn};
 
 use crate::evaluation::response::EvalLedgerResponse;
-use crate::governance::model::Roles;
+use crate::governance::model::ProtocolTypes;
 use crate::model::common::{
     emit_fail, get_sign, get_signers_quorum_gov_version,
 };
@@ -323,7 +323,7 @@ impl Handler<Approval> for Approval {
                             &eval_req.context.subject_id.to_string(),
                             &eval_req.context.schema_id,
                             Namespace::from(eval_req.context.namespace),
-                            Roles::APPROVER,
+                            ProtocolTypes::Aprovation,
                         )
                         .await
                         {

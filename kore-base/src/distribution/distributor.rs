@@ -14,7 +14,7 @@ use network::ComunicateInfo;
 
 use crate::{
     auth::WitnessesAuth, governance::{
-        model::{CreatorQuantity, Roles}, Governance
+        model::{CreatorQuantity, RoleTypes}, Governance
     }, intermediary::Intermediary, model::{
         common::{
             emit_fail, get_gov, get_metadata, get_quantity, subject_old_owner,
@@ -30,6 +30,13 @@ use tracing::{error, warn};
 const TARGET_DISTRIBUTOR: &str = "Kore-Distribution-Distributor";
 
 use super::{Distribution, DistributionMessage};
+
+pub struct AuthGovData {
+    pub gov_version: Option<u64>,
+    pub schema: String,
+    pub namespace: Namespace,
+    pub governance_id: DigestIdentifier
+}
 
 pub struct Distributor {
     pub node: KeyIdentifier,
@@ -67,7 +74,7 @@ impl Distributor {
                     get_gov(ctx, &request.governance_id.to_string()).await?;
 
                 if let Some(max_quantity) = gov.max_creations(
-                    &ledger.signature.signer.to_string(),
+                    &ledger.signature.signer,
                     &request.schema_id,
                     request.namespace.clone(),
                 ) {
@@ -80,7 +87,7 @@ impl Distributor {
                     )
                     .await?;
 
-                    if let CreatorQuantity::QUANTITY(max_quantity) =
+                    if let CreatorQuantity::Quantity(max_quantity) =
                         max_quantity
                     {
                         if quantity >= max_quantity as usize {
@@ -191,10 +198,7 @@ impl Distributor {
         signer: KeyIdentifier,
         info: ComunicateInfo,
         ledger: Ledger,
-        gov_version: Option<u64>,
-        schema: &str,
-        namespace: Namespace,
-        governance_id: DigestIdentifier
+        auth_data: AuthGovData
     ) -> Result<(), ActorError> {
         let our_key = info.reciver.clone();
         let subject_id = ledger.subject_id.clone();
@@ -202,7 +206,7 @@ impl Distributor {
         let (owned, auth, know) = self.authorized_subj(ctx, &subject_id.to_string()).await?;
 
         // Si es una gov
-        let is_gov = schema == "governance";
+        let is_gov = auth_data.schema == "governance";
 
         // es gov
         if is_gov {
@@ -238,7 +242,7 @@ impl Distributor {
                         {
                             (request.namespace, request.governance_id, false)
                         } else {
-                            (namespace, governance_id, true)
+                            (auth_data.namespace, auth_data.governance_id, true)
                         }
                     } else {
                         return Err(e);
@@ -262,14 +266,14 @@ impl Distributor {
             };
 
             // Comparamos las govs, puede ser que ya no seamos testigo o que de repente seamos testigos.
-            if let Some(gov_version) = gov_version {
+            if let Some(gov_version) = auth_data.gov_version {
                 Self::cmp_govs(
                     ctx,
                     gov.clone(),
                     gov_version,
                     governance_id,
                     info,
-                    schema
+                    &auth_data.schema
                 )
                 .await?;
             }
@@ -278,9 +282,9 @@ impl Distributor {
             if !auth {
                 // Miramos que tengamos el rol.
                 if !gov.has_this_role(
-                    &signer.to_string(),
-                    Roles::CREATOR(CreatorQuantity::QUANTITY(0)),
-                    schema,
+                    &signer,
+                    RoleTypes::Creator,
+                    &auth_data.schema,
                     namespace.clone(),
                 ) {
                     return Err(ActorError::Functional(
@@ -289,9 +293,9 @@ impl Distributor {
                 }
 
                 if !gov.has_this_role(
-                    &our_key.to_string(),
-                    Roles::WITNESS,
-                    schema,
+                    &our_key,
+                    RoleTypes::Witness,
+                    &auth_data.schema,
                     namespace,
                 ) {
                     return Err(ActorError::Functional(
@@ -464,8 +468,8 @@ impl Distributor {
         }
 
         if !gov.has_this_role(
-            &info.sender.to_string(),
-            Roles::WITNESS,
+            &info.sender,
+            RoleTypes::Witness,
             &metadata.schema_id.clone(),
             metadata.namespace.clone(),
         ) {
@@ -677,8 +681,8 @@ impl Handler<Distributor> for Distributor {
 
                 if !is_owner
                     && !gov.has_this_role(
-                        &info.sender.to_string(),
-                        Roles::WITNESS,
+                        &info.sender,
+                        RoleTypes::Witness,
                         &metadata.schema_id.clone(),
                         metadata.namespace.clone(),
                     )
@@ -944,7 +948,7 @@ impl Handler<Distributor> for Distributor {
                         };
                     }
 
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                 }
             }
             DistributorMessage::LastEventDistribution {
@@ -954,16 +958,20 @@ impl Handler<Distributor> for Distributor {
                 last_proof,
                 prev_event_validation_response,
             } => {
+                let auth_data = AuthGovData { 
+                    gov_version: Some(ledger.content.gov_version),
+                    schema: last_proof.schema_id.clone(),
+                    namespace: last_proof.namespace.clone(),
+                    governance_id: last_proof.governance_id.clone()
+                };
+
                 if let Err(e) = self
                     .check_auth(
                         ctx,
                         event.signature.signer.clone(),
                         info.clone(),
                         ledger.content.clone(),
-                        Some(ledger.content.gov_version),
-                        &last_proof.schema_id,
-                        last_proof.namespace.clone(),
-                        last_proof.governance_id.clone()
+                        auth_data
                     )
                     .await
                 {
@@ -1220,6 +1228,13 @@ impl Handler<Distributor> for Distributor {
                         "Events is empty".to_owned(),
                     ));
                 }
+                
+                let auth_data = AuthGovData { 
+                    gov_version: None,
+                    schema: schema.clone(),
+                    namespace: namespace.clone(),
+                    governance_id: governance_id.clone()
+                };
 
                 if let Err(e) = self
                     .check_auth(
@@ -1227,10 +1242,7 @@ impl Handler<Distributor> for Distributor {
                         events[0].signature.signer.clone(),
                         info.clone(),
                         events[0].content.clone(),
-                        None,
-                        &schema,
-                        namespace,
-                        governance_id
+                        auth_data
                     )
                     .await
                 {
@@ -1555,7 +1567,7 @@ impl Handler<Distributor> for Distributor {
                     );
                     emit_fail(ctx, e).await;
                 }
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             _ => {
                 error!(TARGET_DISTRIBUTOR, "OnChildError, unexpected error");

@@ -44,12 +44,12 @@ impl Compiler {
     [package]
     name = "contract"
     version = "0.1.0"
-    edition = "2021"
+    edition = "2024"
     
     [dependencies]
-    serde = { version = "1.0.217", features = ["derive"] }
-    serde_json = "1.0.138"
-    kore-contract-sdk = "0.3.0"
+    serde = { version = "1.0.219", features = ["derive"] }
+    serde_json = "1.0.140"
+    kore-contract-sdk = "0.4.0"
     
     [profile.release]
     strip = "debuginfo"

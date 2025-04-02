@@ -16,12 +16,11 @@ actor = { workspace = true }
 async-trait = { workspace = true }
 bincode = { workspace = true }
 borsh = { workspace = true }
-generic-array = {version = "1.0", features = ["zeroize"] }
+generic-array = {version = "1.2.0", features = ["zeroize"] }
 identity = { path = "../identity"}
 json-patch = { version = "4.0.0" }
-jsonschema = { version = "0.29.0", default-features = false }
 lazy_static = { workspace = true }
-memsecurity = { version = "3.5", features = ["encryption"]}
+memsecurity = { version = "3.5.2", features = ["encryption"]}
 rocksdb_db = { path = "../../rush-rs/databases/rocksdb_db", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -33,7 +32,7 @@ tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
 tracing = { workspace = true }
 network = { path = "../network" }
 rmp-serde = { workspace = true }
-wasmtime = {version = "30.0.0"}
+wasmtime = {version = "31.0.0"}
 async-std = "1.13.1"
 rusqlite = { version = "0.34.0", features = ["bundled"], optional = true}
 once_cell = { workspace = true }
@@ -46,19 +45,11 @@ reqwest = { workspace = true }
 test-log = { workspace = true } 
 tempfile = { workspace = true }
 tracing-subscriber = { workspace = true }
-serial_test = { workspace = true }
 criterion = { version = "0.5.1", features = ["async_tokio"]}
 tokio = { workspace = true, features = ["full"] }
 futures ={ version = "0.3.31"}
 kore-base = { path = ".", features = ["rocksdb", "ext-sqlite", "test"] }
 network = { path = "../network", features = ["test"]}
-
-[[bench]]
-name = "my_benchmark"
-harness = false
-
-[lib]
-bench = false
 
 [features]
 default = ["rocksdb", "ext-sqlite"]

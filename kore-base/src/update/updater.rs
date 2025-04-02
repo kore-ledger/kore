@@ -135,7 +135,7 @@ impl Handler<Updater> for Updater {
                     };
                 }
 
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             UpdaterMessage::Transfer {
                 subject_id,
@@ -290,7 +290,7 @@ impl Handler<Updater> for Updater {
                     };
                 }
 
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
         };
 
@@ -333,7 +333,7 @@ impl Handler<Updater> for Updater {
                     );
                     emit_fail(ctx, e).await;
                 }
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             _ => {
                 error!(TARGET_UPDATER, "OnChildError, unexpected error");

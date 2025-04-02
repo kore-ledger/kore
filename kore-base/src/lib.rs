@@ -29,9 +29,7 @@ use async_std::sync::RwLock;
 use auth::{Auth, AuthMessage, AuthResponse, AuthWitness};
 use config::Config as KoreBaseConfig;
 use error::Error;
-use governance::json_schema::JsonSchema;
-use governance::schema;
-use governance::{Governance, init::init_state};
+use governance::Governance;
 use helpers::db::ExternalDB;
 use helpers::db::common::{
     ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo,
@@ -53,7 +51,6 @@ use node::register::{
     GovsData, Register, RegisterDataSubj, RegisterMessage, RegisterResponse
 };
 use node::{Node, NodeMessage, NodeResponse, TransferSubject};
-use once_cell::sync::OnceCell;
 use prometheus_client::registry::Registry;
 use query::{Query, QueryMessage, QueryResponse};
 use request::{
@@ -85,8 +82,6 @@ lazy_static! {
     };
 }
 
-static GOVERNANCE: OnceCell<RwLock<JsonSchema>> = OnceCell::new();
-
 #[derive(Clone)]
 pub struct Api {
     peer_id: String,
@@ -110,11 +105,6 @@ impl Api {
         token: &CancellationToken,
     ) -> Result<Self, Error> {
         info!(TARGET_API, "Creating Api");
-        let schema = JsonSchema::compile(&schema())?;
-
-        if let Err(_e) = GOVERNANCE.set(RwLock::new(schema)) {
-            error!(TARGET_API, "Can not set governance schema");
-        };
 
         let system =
             system(config.clone(), password, Some(token.clone())).await?;

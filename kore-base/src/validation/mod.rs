@@ -11,7 +11,7 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    auth::WitnessesAuth, governance::{model::Roles, Quorum}, model::{
+    auth::WitnessesAuth, governance::{model::ProtocolTypes, Quorum}, model::{
         common::{
             emit_fail, get_sign, get_signers_quorum_gov_version,
             send_reboot_to_req, try_to_update,
@@ -75,14 +75,16 @@ impl Validation {
         }
     }
 
-    async fn end_validators(&self, ctx: &mut ActorContext<Validation>) {
+    async fn end_validators(&self, ctx: &mut ActorContext<Validation>) -> Result<(), ActorError> {
         for validator in self.validators.clone() {
             let child: Option<ActorRef<Validator>> =
                 ctx.get_child(&validator.to_string()).await;
             if let Some(child) = child {
-                child.stop().await;
+                child.ask_stop().await?;
             }
         }
+
+        Ok(())
     }
 
     fn check_validator(&mut self, validator: KeyIdentifier) -> bool {
@@ -289,7 +291,7 @@ impl Handler<Validation> for Validation {
                     &info.metadata.subject_id.to_string(),
                     &info.metadata.schema_id,
                     info.metadata.namespace.clone(),
-                    Roles::VALIDATOR,
+                    ProtocolTypes::Validation,
                 )
                 .await
                 {
@@ -398,7 +400,15 @@ impl Handler<Validation> for Validation {
                                 }
                                 self.reboot = true;
 
-                                self.end_validators(ctx).await;
+                                if let Err(e) = self.end_validators(ctx).await {
+                                    error!(
+                                        TARGET_VALIDATION,
+                                        "Response, can not end validators: {}",
+                                        e
+                                    );
+                                    return Err(emit_fail(ctx, e).await);
+                                };
+
                                 return Ok(());
                             }
                         };
@@ -459,7 +469,6 @@ impl Handler<Validation> for Validation {
 pub mod tests {
     use core::panic;
     use identity::identifier::derive::digest::DigestDerivator;
-    use serial_test::serial;
     use std::time::Duration;
     use test_log::test;
 
@@ -623,10 +632,11 @@ pub mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 0);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
+        assert!(gov.roles_schema.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(gov.policies_schema.is_empty());
 
         (
             system,
@@ -640,13 +650,11 @@ pub mod tests {
     }
 
     #[test(tokio::test)]
-    #[serial]
     async fn test_create_req() {
         let _ = create_subject_gov().await;
     }
 
     #[test(tokio::test)]
-    #[serial]
     async fn test_eol_req() {
         let (
             _system,
@@ -735,10 +743,11 @@ pub mod tests {
 
         let gov = Governance::try_from(metadata.properties).unwrap();
         assert_eq!(gov.version, 1);
+        // TODO MEJORAR
         assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
+        assert!(gov.roles_schema.is_empty());
         assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
+        assert!(gov.policies_schema.is_empty());
 
         if !request_actor
             .ask(RequestHandlerMessage::NewRequest {

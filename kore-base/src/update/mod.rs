@@ -272,7 +272,7 @@ impl Handler<Update> for Update {
                         );
                     };
 
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                 }
             }
             UpdateMessage::Response { sender, sn } => {
@@ -378,7 +378,7 @@ impl Handler<Update> for Update {
                             }
                         };
 
-                        ctx.stop().await;
+                        ctx.stop(None).await;
                     }
                 }
             }

@@ -23,7 +23,6 @@ use crate::{
     db::Storable,
     governance::{Governance, model::CreatorQuantity},
     helpers::db::ExternalDB,
-    init_state,
     model::{
         Namespace,
         common::{get_gov, get_metadata, get_quantity, subject_owner},
@@ -96,12 +95,17 @@ impl RequestHandler {
             .map_err(|e| ActorError::Functional(e.to_string()))?;
 
         let data = if create_req.schema_id == "governance" {
+            let gov = Governance::new(request.signature.signer.clone());
+            let value = gov.to_value_wrapper().map_err(|e| {
+                ActorError::FunctionalFail(e.to_string())
+            })?;
+            
             CreateSubjectData {
                 create_req,
                 subject_id,
                 creator: request.signature.signer.clone(),
                 genesis_gov_version: 0,
-                value: init_state(&request.signature.signer.to_string()),
+                value,
             }
         } else {
             let governance =
@@ -193,11 +197,11 @@ impl RequestHandler {
         gov: Governance,
     ) -> Result<(), ActorError> {
         if let Some(max_quantity) = gov.max_creations(
-            &self.node_key.to_string(),
+            &self.node_key,
             schema_id,
             namespace.clone(),
         ) {
-            if let CreatorQuantity::QUANTITY(max_quantity) = max_quantity {
+            if let CreatorQuantity::Quantity(max_quantity) = max_quantity {
                 let quantity = match get_quantity(
                     ctx,
                     governance_id.to_string(),
@@ -403,8 +407,6 @@ impl Handler<RequestHandler> for RequestHandler {
                 subject_id,
                 state,
             } => {
-                info!(TARGET_REQUEST, "New approval response");
-
                 match state.to_string().as_str() {
                     "RespondedAccepted" | "RespondedRejected" => {}
                     _ => {
@@ -1051,6 +1053,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 );
                 ctx.system().run_sink(sink).await;
 
+                info!(TARGET_REQUEST, "New Request {}!!!", request_id);
                 if let Err(e) = request_actor.tell(message).await {
                     error!(
                         TARGET_REQUEST,

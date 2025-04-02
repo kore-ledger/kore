@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use crate::{
     CONTRACTS, DIGEST_DERIVATOR, Error, EventRequest, Signed, Subject,
@@ -93,7 +93,7 @@ impl Evaluator {
         &self,
         ctx: &mut ActorContext<Evaluator>,
         ids: &[String],
-        schemas: Vec<Schema>,
+        schemas: BTreeMap<String, Schema>,
         governance_id: &str,
     ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
@@ -103,17 +103,13 @@ impl Evaluator {
         };
 
         for id in ids {
-            let schema = if let Some(schema) =
-                schemas.iter().find(|x| x.id.clone() == id.clone())
-            {
-                schema
-            } else {
+            let Some(schema) = schemas.get(id) else {
                 return Err(ActorError::Functional("There is a contract that requires compilation but its scheme could not be found".to_owned()));
             };
 
             let compiler_path = ActorPath::from(format!(
                 "/user/node/{}/{}_compiler",
-                governance_id, schema.id
+                governance_id, id
             ));
             let compiler_actor: Option<ActorRef<Compiler>> =
                 ctx.system().get_actor(&compiler_path).await;
@@ -122,7 +118,7 @@ impl Evaluator {
                 compiler_actor
                     .ask(CompilerMessage::Compile {
                         contract_name: format!("{}_{}", governance_id, id),
-                        contract: schema.contract.raw.clone(),
+                        contract: schema.contract.clone(),
                         initial_value: schema.initial_value.clone(),
                         contract_path: format!(
                             "{}/contracts/{}_{}",
@@ -221,6 +217,7 @@ impl Evaluator {
                     (
                         EvaluateType::NotGovTransfer {
                             new_owner: transfer_event.new_owner,
+                            old_owner: evaluation_req.event_request.signature.signer.clone(),
                             namespace: Namespace::from(
                                 evaluation_req.context.namespace.clone(),
                             ),
@@ -556,7 +553,7 @@ impl Handler<Evaluator> for Evaluator {
                     return Err(ActorError::Exists(evaluation_path));
                 }
 
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             EvaluatorMessage::NetworkEvaluation {
                 evaluation_req,
@@ -699,7 +696,7 @@ impl Handler<Evaluator> for Evaluator {
                         };
                     }
 
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                 } else {
                     warn!(
                         TARGET_EVALUATOR,
@@ -864,7 +861,7 @@ impl Handler<Evaluator> for Evaluator {
                 };
 
                 if schema != "governance" {
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                 }
             }
         }
@@ -915,7 +912,7 @@ impl Handler<Evaluator> for Evaluator {
                     );
                     emit_fail(ctx, e).await;
                 }
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             _ => {
                 error!(TARGET_EVALUATOR, "OnChildError, unexpected error");

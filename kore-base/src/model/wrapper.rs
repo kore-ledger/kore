@@ -227,6 +227,10 @@ impl BorshDeserialize for ValueWrapper {
 #[cfg(test)]
 mod tests {
 
+    use identity::identifier::KeyIdentifier;
+
+    use crate::governance::Governance;
+
     use super::*;
 
     #[test]
@@ -243,7 +247,7 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize() {
-        let value = crate::governance::init::init_state("");
+        let value = Governance::new(KeyIdentifier::default()).to_value_wrapper().unwrap();
         let bytes = bincode::serde::encode_to_vec(value,  bincode::config::standard()).unwrap();
         let wrapper = bincode::serde::decode_from_slice::<ValueWrapper, _>(&bytes, bincode::config::standard());
         wrapper.unwrap();

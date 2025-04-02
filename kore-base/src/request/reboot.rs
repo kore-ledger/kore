@@ -104,7 +104,7 @@ impl Reboot {
             return Err(ActorError::NotFound(path));
         }
 
-        ctx.stop().await;
+        ctx.stop(None).await;
         Ok(())
     }
 }
