@@ -122,7 +122,7 @@ impl Handler<Register> for Register {
                             .iter()
                             .filter(|x| x.1.active == active)
                             .map(|x| GovsData {
-                                active: x.1.active.clone(),
+                                active: x.1.active,
                                 governance_id: x.0.clone(),
                                 description: x.1.description.clone(),
                                 name: x.1.name.clone()
@@ -135,7 +135,7 @@ impl Handler<Register> for Register {
                             .register_gov
                             .iter()
                             .map(|x| GovsData {
-                                active: x.1.active.clone(),
+                                active: x.1.active,
                                 governance_id: x.0.clone(),
                                 description: x.1.description.clone(),
                                 name: x.1.name.clone()

@@ -37,7 +37,7 @@ impl Database {
             }
             #[cfg(feature = "sqlite")]
             KoreDbConfig::Sqlite { path } => {
-                let manager = SqliteManager::new(&path)?;
+                let manager = SqliteManager::new(path)?;
                 Ok(Database::SQLite(manager))
             }
         }

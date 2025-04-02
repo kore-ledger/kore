@@ -197,7 +197,7 @@ impl RequestHandler {
         gov: Governance,
     ) -> Result<(), ActorError> {
         if let Some(max_quantity) = gov.max_creations(
-            &self.node_key.to_string(),
+            &self.node_key,
             schema_id,
             namespace.clone(),
         ) {
@@ -407,8 +407,6 @@ impl Handler<RequestHandler> for RequestHandler {
                 subject_id,
                 state,
             } => {
-                info!(TARGET_REQUEST, "New approval response");
-
                 match state.to_string().as_str() {
                     "RespondedAccepted" | "RespondedRejected" => {}
                     _ => {
@@ -1055,6 +1053,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 );
                 ctx.system().run_sink(sink).await;
 
+                info!(TARGET_REQUEST, "New Request {}!!!", request_id);
                 if let Err(e) = request_actor.tell(message).await {
                     error!(
                         TARGET_REQUEST,

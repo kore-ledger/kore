@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::{collections::HashMap, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 use crate::{
     CONTRACTS, DIGEST_DERIVATOR, Error, EventRequest, Signed, Subject,
@@ -93,7 +93,7 @@ impl Evaluator {
         &self,
         ctx: &mut ActorContext<Evaluator>,
         ids: &[String],
-        schemas: HashMap<String, Schema>,
+        schemas: BTreeMap<String, Schema>,
         governance_id: &str,
     ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
@@ -553,7 +553,7 @@ impl Handler<Evaluator> for Evaluator {
                     return Err(ActorError::Exists(evaluation_path));
                 }
 
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             EvaluatorMessage::NetworkEvaluation {
                 evaluation_req,
@@ -696,7 +696,7 @@ impl Handler<Evaluator> for Evaluator {
                         };
                     }
 
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                 } else {
                     warn!(
                         TARGET_EVALUATOR,
@@ -861,7 +861,7 @@ impl Handler<Evaluator> for Evaluator {
                 };
 
                 if schema != "governance" {
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                 }
             }
         }
@@ -912,7 +912,7 @@ impl Handler<Evaluator> for Evaluator {
                     );
                     emit_fail(ctx, e).await;
                 }
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             _ => {
                 error!(TARGET_EVALUATOR, "OnChildError, unexpected error");

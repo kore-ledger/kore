@@ -5,22 +5,50 @@
 //!
 
 use crate::{
+    CreateRequest, Error, EventRequestType, Governance, Node,
     approval::{
-        approver::{Approver, VotationType}, Approval
-    }, auth::WitnessesAuth, config::Config, db::Storable, distribution::{distributor::Distributor, Distribution, DistributionType}, evaluation::{
-        compiler::{Compiler, CompilerMessage}, evaluator::Evaluator, schema::{EvaluationSchema, EvaluationSchemaMessage}, Evaluation
-    }, governance::{
-        model::{CreatorQuantity, ProtocolTypes, RoleTypes}, Schema
-    }, helpers::db::ExternalDB, model::{
+        Approval,
+        approver::{Approver, VotationType},
+    },
+    auth::WitnessesAuth,
+    config::Config,
+    db::Storable,
+    distribution::{Distribution, DistributionType, distributor::Distributor},
+    evaluation::{
+        Evaluation,
+        compiler::{Compiler, CompilerMessage},
+        evaluator::Evaluator,
+        schema::{EvaluationSchema, EvaluationSchemaMessage},
+    },
+    governance::{
+        Schema,
+        model::{CreatorQuantity, ProtocolTypes, RoleTypes},
+    },
+    helpers::db::ExternalDB,
+    model::{
+        HashId, Namespace, ValueWrapper,
         common::{
             delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
             register_relation, try_to_update, verify_protocols_state,
-        }, event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures}, request::EventRequest, signature::Signed, HashId, Namespace, ValueWrapper
-    }, node::{
-        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse}, register::{Register, RegisterDataGov, RegisterDataSubj, RegisterMessage}, NodeMessage, TransferSubject
-    }, update::TransferResponse, validation::{
-        proof::ValidationProof, schema::{ValidationSchema, ValidationSchemaMessage}, validator::Validator, Validation
-    }, CreateRequest, Error, EventRequestType, Governance, Node
+        },
+        event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
+        request::EventRequest,
+        signature::Signed,
+    },
+    node::{
+        NodeMessage, TransferSubject,
+        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
+        register::{
+            Register, RegisterDataGov, RegisterDataSubj, RegisterMessage,
+        },
+    },
+    update::TransferResponse,
+    validation::{
+        Validation,
+        proof::ValidationProof,
+        schema::{ValidationSchema, ValidationSchemaMessage},
+        validator::Validator,
+    },
 };
 
 use actor::{
@@ -43,7 +71,7 @@ use tracing::{error, warn};
 use transfer::{TransferRegister, TransferRegisterMessage};
 use validata::ValiData;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub mod event;
 pub mod sinkdata;
@@ -249,11 +277,10 @@ impl Subject {
             if i_new_owner {
                 Self::up_owner_not_gov(ctx, &our_key).await?;
             }
-        } else {
-            if owner {
-                Self::up_owner_not_gov(ctx, &our_key).await?;
-            }
+        } else if owner {
+            Self::up_owner_not_gov(ctx, &our_key).await?;
         }
+        
 
         Ok(())
     }
@@ -281,7 +308,7 @@ impl Subject {
         let actor: Option<ActorRef<Validation>> =
             ctx.get_child("validation").await;
         if let Some(actor) = actor {
-            actor.stop().await?;
+            actor.ask_stop().await?;
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/validation",
@@ -292,7 +319,7 @@ impl Subject {
         let actor: Option<ActorRef<Evaluation>> =
             ctx.get_child("evaluation").await;
         if let Some(actor) = actor {
-            actor.stop().await?;
+            actor.ask_stop().await?;
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/evaluation",
@@ -303,7 +330,7 @@ impl Subject {
         let actor: Option<ActorRef<Distribution>> =
             ctx.get_child("distribution").await;
         if let Some(actor) = actor {
-            actor.stop().await?;
+            actor.ask_stop().await?;
         } else {
             return Err(ActorError::NotFound(ActorPath::from(format!(
                 "{}/distribution",
@@ -348,37 +375,35 @@ impl Subject {
                 )
                 .await?;
             }
+        } else if owner {
+            Self::up_owner(
+                ctx,
+                our_key.clone(),
+                self.subject_id.clone(),
+                ext_db,
+            )
+            .await?;
         } else {
-            if owner {
-                Self::up_owner(
-                    ctx,
-                    our_key.clone(),
-                    self.subject_id.clone(),
-                    ext_db,
-                )
-                .await?;
-            } else {
-                Self::up_not_owner(
-                    ctx,
-                    gov.clone(),
-                    our_key.clone(),
-                    self.namespace.clone(),
-                    ext_db,
-                    self.subject_id.clone(),
-                )
-                .await?;
-            }
+            Self::up_not_owner(
+                ctx,
+                gov.clone(),
+                our_key.clone(),
+                self.namespace.clone(),
+                ext_db,
+                self.subject_id.clone(),
+            )
+            .await?;
         }
 
-        let schemas = gov.schemas(ProtocolTypes::Evaluation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
-        Self::up_compilers_schemas(ctx, schemas, self.subject_id.clone()).await?;
+        let schemas = gov.schemas(ProtocolTypes::Evaluation, &our_key);
+        Self::up_compilers_schemas(ctx, schemas, self.subject_id.clone())
+            .await?;
 
-        let new_creators = gov.subjects_schemas_rol_namespace(&our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+        let new_creators = gov.subjects_schemas_rol_namespace(&our_key);
 
         for creators in new_creators {
             if let Some(eval_user) = creators.evaluation {
-                    let eval_actor =
-                    EvaluationSchema::new(eval_user, gov.version);
+                let eval_actor = EvaluationSchema::new(eval_user, gov.version);
                 ctx.create_child(
                     &format!("{}_evaluation", creators.schema),
                     eval_actor,
@@ -388,8 +413,11 @@ impl Subject {
 
             if let Some(val_user) = creators.validation {
                 let actor = ValidationSchema::new(val_user, gov.version);
-                ctx.create_child(&format!("{}_validation", creators.schema), actor)
-                    .await?;
+                ctx.create_child(
+                    &format!("{}_validation", creators.schema),
+                    actor,
+                )
+                .await?;
             }
         }
 
@@ -471,7 +499,7 @@ impl Subject {
             let actor: Option<ActorRef<Validator>> =
                 ctx.get_child("validator").await;
             if let Some(actor) = actor {
-                actor.stop().await?;
+                actor.ask_stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/validator",
@@ -489,7 +517,7 @@ impl Subject {
             let actor: Option<ActorRef<Evaluator>> =
                 ctx.get_child("evaluator").await;
             if let Some(actor) = actor {
-                actor.stop().await?;
+                actor.ask_stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/evaluator",
@@ -507,7 +535,7 @@ impl Subject {
             let actor: Option<ActorRef<Approver>> =
                 ctx.get_child("approver").await;
             if let Some(actor) = actor {
-                actor.stop().await?;
+                actor.ask_stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/approver",
@@ -565,7 +593,7 @@ impl Subject {
         let actor: Option<ActorRef<Validation>> =
             ctx.get_child("validation").await;
         if let Some(actor) = actor {
-            actor.stop().await?;
+            actor.ask_stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/validation",
@@ -577,7 +605,7 @@ impl Subject {
         let actor: Option<ActorRef<Evaluation>> =
             ctx.get_child("evaluation").await;
         if let Some(actor) = actor {
-            actor.stop().await?;
+            actor.ask_stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/evaluation",
@@ -588,7 +616,7 @@ impl Subject {
 
         let actor: Option<ActorRef<Approval>> = ctx.get_child("approval").await;
         if let Some(actor) = actor {
-            actor.stop().await?;
+            actor.ask_stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/approval",
@@ -599,7 +627,7 @@ impl Subject {
 
         let actor: Option<ActorRef<Approver>> = ctx.get_child("approver").await;
         if let Some(actor) = actor {
-            actor.stop().await?;
+            actor.ask_stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/approver",
@@ -611,7 +639,7 @@ impl Subject {
         let actor: Option<ActorRef<Distribution>> =
             ctx.get_child("distribution").await;
         if let Some(actor) = actor {
-            actor.stop().await?;
+            actor.ask_stop().await?;
         } else {
             let e = ActorError::NotFound(ActorPath::from(format!(
                 "{}/distribution",
@@ -625,7 +653,7 @@ impl Subject {
 
     async fn up_compilers_schemas(
         ctx: &mut ActorContext<Subject>,
-        schemas: HashMap<String, Schema>,
+        schemas: BTreeMap<String, Schema>,
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
         let Some(config): Option<Config> =
@@ -637,9 +665,7 @@ impl Subject {
         for (id, schema) in schemas {
             let actor = Compiler::default();
             let actor = ctx
-                .get_or_create_child(&format!("{}_compiler", id), || {
-                    actor
-                })
+                .get_or_create_child(&format!("{}_compiler", id), || actor)
                 .await?;
             actor
                 .tell(CompilerMessage::Compile {
@@ -665,7 +691,7 @@ impl Subject {
             let actor: Option<ActorRef<Compiler>> =
                 ctx.get_child(&format!("{}_compiler", schema)).await;
             if let Some(actor) = actor {
-                actor.stop().await?;
+                actor.ask_stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/{}_compiler",
@@ -678,30 +704,36 @@ impl Subject {
         Ok(())
     }
 
-    async fn down_schemas(ctx: &mut ActorContext<Subject>, old_schemas_eval: Vec<String>, old_schemas_val: Vec<String>) -> Result<(), ActorError> {
+    async fn down_schemas(
+        ctx: &mut ActorContext<Subject>,
+        old_schemas_eval: Vec<String>,
+        old_schemas_val: Vec<String>,
+    ) -> Result<(), ActorError> {
         for schema in old_schemas_eval {
-            let actor: Option<ActorRef<EvaluationSchema>> = ctx
-                .get_child(&format!("{}_evaluation", schema))
-                .await;
+            let actor: Option<ActorRef<EvaluationSchema>> =
+                ctx.get_child(&format!("{}_evaluation", schema)).await;
             if let Some(actor) = actor {
-                actor.stop().await?;
+                actor.ask_stop().await?;
             } else {
-                return Err(ActorError::NotFound(ActorPath::from(
-                    format!("{}/{}_evaluation", ctx.path(), schema),
-                )));
+                return Err(ActorError::NotFound(ActorPath::from(format!(
+                    "{}/{}_evaluation",
+                    ctx.path(),
+                    schema
+                ))));
             }
         }
 
         for schema in old_schemas_val {
-            let actor: Option<ActorRef<ValidationSchema>> = ctx
-                .get_child(&format!("{}_validation", schema))
-                .await;
+            let actor: Option<ActorRef<ValidationSchema>> =
+                ctx.get_child(&format!("{}_validation", schema)).await;
             if let Some(actor) = actor {
-                actor.stop().await?;
+                actor.ask_stop().await?;
             } else {
-                return Err(ActorError::NotFound(ActorPath::from(
-                    format!("{}/{}_validation", ctx.path(), schema),
-                )));
+                return Err(ActorError::NotFound(ActorPath::from(format!(
+                    "{}/{}_validation",
+                    ctx.path(),
+                    schema
+                ))));
             }
         }
 
@@ -834,7 +866,7 @@ impl Subject {
         if let Some(node_actor) = node_actor {
             node_actor
                 .tell(NodeMessage::TransferSubject(TransferSubject {
-                    name: name.unwrap_or(String::default()),
+                    name: name.unwrap_or_default(),
                     subject_id: subject_id.to_owned(),
                     new_owner: new_owner.to_owned(),
                     actual_owner: actual_owner.to_owned(),
@@ -1060,7 +1092,7 @@ impl Subject {
             if let Some(name) = event_req.name {
                 if name.is_empty() || name.len() > 100 {
                     return Err(Error::Subject("The subject name must be less than 100 characters or not be empty.".to_owned()));
-                }    
+                }
             }
 
             if let Some(description) = event_req.description {
@@ -1146,7 +1178,11 @@ impl Subject {
             let message = if self.governance_id.is_empty() {
                 RegisterMessage::RegisterGov {
                     gov_id: self.subject_id.to_string(),
-                    data: RegisterDataGov { active, name: self.name.clone(), description: self.description.clone() }
+                    data: RegisterDataGov {
+                        active,
+                        name: self.name.clone(),
+                        description: self.description.clone(),
+                    },
                 }
             } else {
                 RegisterMessage::RegisterSubj {
@@ -1156,7 +1192,7 @@ impl Subject {
                         schema: self.schema_id.clone(),
                         active,
                         name: self.name.clone(),
-                        description: self.description.clone()
+                        description: self.description.clone(),
                     },
                 }
             };
@@ -1183,7 +1219,7 @@ impl Subject {
             if let Err(e) =
                 self.verify_first_ledger_event(events[0].clone()).await
             {
-                self.delete_subject(ctx, false).await?;
+                self.delete_subject(ctx).await?;
                 return Err(ActorError::Functional(e.to_string()));
             }
 
@@ -1337,9 +1373,8 @@ impl Subject {
     async fn delete_subject(
         &self,
         ctx: &mut ActorContext<Subject>,
-        relation: bool,
     ) -> Result<(), ActorError> {
-        if relation {
+        if self.schema_id != "governance" {
             delete_relation(
                 ctx,
                 self.governance_id.to_string(),
@@ -1355,7 +1390,7 @@ impl Subject {
 
         Self::purge_storage(ctx).await?;
 
-        ctx.stop().await;
+        ctx.stop(None).await;
 
         Ok(())
     }
@@ -1371,7 +1406,7 @@ impl Subject {
         let gov = get_gov(ctx, &self.governance_id.to_string()).await?;
 
         let Some(max_quantity) = gov.max_creations(
-            &events[0].signature.signer.to_string(),
+            &events[0].signature.signer,
             &self.schema_id,
             self.namespace.clone(),
         ) else {
@@ -1394,7 +1429,7 @@ impl Subject {
             if let Err(e) =
                 self.verify_first_ledger_event(events[0].clone()).await
             {
-                self.delete_subject(ctx, true).await?;
+                self.delete_subject(ctx).await?;
                 return Err(ActorError::Functional(e.to_string()));
             }
 
@@ -1528,8 +1563,16 @@ impl Subject {
 
             if let Err(e) = self.verify_new_ledger_events_gov(ctx, events).await
             {
-                if let ActorError::Functional(e) = e {
-                    warn!(TARGET_SUBJECT, "Error verifying new events: {}", e);
+                if let ActorError::Functional(error) = e.clone() {
+                    warn!(
+                        TARGET_SUBJECT,
+                        "Error verifying new events: {}", error
+                    );
+
+                    // Falló en la creación
+                    if self.sn == 0 {
+                        return Err(e);
+                    }
                     // TODO falló pero pudo aplicar algún evento entonces seguimos.
                 } else {
                     error!(TARGET_SUBJECT, "Error verifying new events {}", e);
@@ -1553,14 +1596,22 @@ impl Subject {
                         .await?;
                     }
 
-                    let old_schemas_eval =
-                        old_gov.schemas(ProtocolTypes::Evaluation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
-                    Self::down_compilers_schemas(ctx, old_schemas_eval.clone()).await?;
+                    let old_schemas_eval = old_gov
+                        .schemas(ProtocolTypes::Evaluation, &our_key)
+                        .iter()
+                        .map(|x| x.0.clone())
+                        .collect::<Vec<String>>();
+                    Self::down_compilers_schemas(ctx, old_schemas_eval.clone())
+                        .await?;
 
-                    let old_schemas_val =
-                        old_gov.schemas(ProtocolTypes::Validation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
+                    let old_schemas_val = old_gov
+                        .schemas(ProtocolTypes::Validation, &our_key)
+                        .iter()
+                        .map(|x| x.0.clone())
+                        .collect::<Vec<String>>();
 
-                    Self::down_schemas(ctx, old_schemas_eval, old_schemas_val).await?;
+                    Self::down_schemas(ctx, old_schemas_eval, old_schemas_val)
+                        .await?;
                 } else {
                     let new_gov = Governance::try_from(self.properties.clone())
                         .map_err(|e| {
@@ -1645,20 +1696,40 @@ impl Subject {
                     }
 
                     let old_schemas_eval =
-                        old_gov.schemas(ProtocolTypes::Evaluation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+                        old_gov.schemas(ProtocolTypes::Evaluation, &our_key);
                     let new_schemas_eval =
-                        new_gov.schemas(ProtocolTypes::Evaluation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+                        new_gov.schemas(ProtocolTypes::Evaluation, &our_key);
 
                     // Bajamos los compilers que ya no soy evaluador
-                    let down = old_schemas_eval.clone().iter().filter(|x| !new_schemas_eval.contains_key(x.0)).map(|x| x.0.clone()).collect();
+                    let down = old_schemas_eval
+                        .clone()
+                        .iter()
+                        .filter(|x| !new_schemas_eval.contains_key(x.0))
+                        .map(|x| x.0.clone())
+                        .collect();
                     Self::down_compilers_schemas(ctx, down).await?;
 
                     // Subimos los compilers que soy nuevo evaluador
-                    let up = new_schemas_eval.clone().iter().filter(|x| !old_schemas_eval.contains_key(x.0)).map(|x| (x.0.clone(), x.1.clone())).collect();
-                    Self::up_compilers_schemas(ctx, up, self.subject_id.clone()).await?;
+                    let up = new_schemas_eval
+                        .clone()
+                        .iter()
+                        .filter(|x| !old_schemas_eval.contains_key(x.0))
+                        .map(|x| (x.0.clone(), x.1.clone()))
+                        .collect();
+                    Self::up_compilers_schemas(
+                        ctx,
+                        up,
+                        self.subject_id.clone(),
+                    )
+                    .await?;
 
                     // Compilo los nuevos contratos en el caso de que hayan sido modificados, sino no afecta.
-                    let current = old_schemas_eval.clone().iter().filter(|x| new_schemas_eval.contains_key(x.0)).map(|x| (x.0.clone(), x.1.clone())).collect();
+                    let current = old_schemas_eval
+                        .clone()
+                        .iter()
+                        .filter(|x| new_schemas_eval.contains_key(x.0))
+                        .map(|x| (x.0.clone(), x.1.clone()))
+                        .collect();
                     Self::compile_schemas(
                         ctx,
                         current,
@@ -1666,24 +1737,29 @@ impl Subject {
                     )
                     .await?;
 
-                    let mut old_schemas_eval = old_schemas_eval.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
-                    let mut old_schemas_val =
-                        old_gov.schemas(ProtocolTypes::Validation, &our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?.iter().map(|x| x.0.clone()).collect::<Vec<String>>();
+                    let mut old_schemas_eval = old_schemas_eval
+                        .iter()
+                        .map(|x| x.0.clone())
+                        .collect::<Vec<String>>();
+                    let mut old_schemas_val = old_gov
+                        .schemas(ProtocolTypes::Validation, &our_key)
+                        .iter()
+                        .map(|x| x.0.clone())
+                        .collect::<Vec<String>>();
 
-                    let new_creators = new_gov.subjects_schemas_rol_namespace(&our_key).map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+                    let new_creators =
+                        new_gov.subjects_schemas_rol_namespace(&our_key);
 
                     for creators in new_creators {
                         if let Some(eval_users) = creators.evaluation {
                             let pos = old_schemas_eval
-                                    .iter()
-                                    .position(|x| *x == creators.schema);
+                                .iter()
+                                .position(|x| *x == creators.schema);
 
                             if let Some(pos) = pos {
                                 old_schemas_eval.remove(pos);
-                                let actor: Option<
-                                    ActorRef<EvaluationSchema>,
-                                > = ctx
-                                    .get_child(&format!(
+                                let actor: Option<ActorRef<EvaluationSchema>> =
+                                    ctx.get_child(&format!(
                                         "{}_evaluation",
                                         creators.schema
                                     ))
@@ -1716,15 +1792,13 @@ impl Subject {
                         }
 
                         if let Some(val_user) = creators.validation {
-                                let pos = old_schemas_val
+                            let pos = old_schemas_val
                                 .iter()
                                 .position(|x| *x == creators.schema);
                             if let Some(pos) = pos {
                                 old_schemas_val.remove(pos);
-                                let actor: Option<
-                                    ActorRef<ValidationSchema>,
-                                > = ctx
-                                    .get_child(&format!(
+                                let actor: Option<ActorRef<ValidationSchema>> =
+                                    ctx.get_child(&format!(
                                         "{}_validation",
                                         creators.schema
                                     ))
@@ -1757,16 +1831,26 @@ impl Subject {
                         }
                     }
 
-                    Self::down_schemas(ctx, old_schemas_eval, old_schemas_val).await?;
+                    Self::down_schemas(ctx, old_schemas_eval, old_schemas_val)
+                        .await?;
                 }
             }
         } else {
             if let Err(e) =
                 self.verify_new_ledger_events_not_gov(ctx, events).await
             {
-                if let ActorError::Functional(e) = e {
-                    warn!(TARGET_SUBJECT, "Error verifying new events: {}", e);
+                if let ActorError::Functional(error) = e.clone() {
+                    warn!(
+                        TARGET_SUBJECT,
+                        "Error verifying new events: {}", error
+                    );
+
+                    // Falló en la creación
+                    if self.sn == 0 {
+                        return Err(e);
+                    }
                 } else {
+                    error!(TARGET_SUBJECT, "Error verifying new events {}", e);
                     return Err(e);
                 }
             };
@@ -2145,15 +2229,19 @@ impl Handler<Subject> for Subject {
                             &self.subject_id.to_string(),
                         )
                         .await?;
-                        try_to_update(ctx, self.subject_id.clone(), WitnessesAuth::None)
-                            .await?;
+                        try_to_update(
+                            ctx,
+                            self.subject_id.clone(),
+                            WitnessesAuth::None,
+                        )
+                        .await?;
                     }
                 }
 
                 Ok(SubjectResponse::Ok)
             }
             SubjectMessage::DeleteSubject => {
-                self.delete_subject(ctx, false).await?;
+                self.delete_subject(ctx).await?;
                 Ok(SubjectResponse::Ok)
             }
             SubjectMessage::CreateCompilers(compilers) => {
@@ -2391,7 +2479,10 @@ impl Storable for Subject {}
 #[cfg(test)]
 mod tests {
 
-    use std::{collections::HashSet, time::{Duration, Instant}};
+    use std::{
+        collections::HashSet,
+        time::{Duration, Instant},
+    };
 
     use super::*;
 
@@ -2419,8 +2510,9 @@ mod tests {
         let event = KoreEvent::from_create_request(
             &request,
             0,
-            &Governance::new(node_keys.key_identifier()).to_value_wrapper().unwrap(),
-            
+            &Governance::new(node_keys.key_identifier())
+                .to_value_wrapper()
+                .unwrap(),
             DigestDerivator::Blake3_256,
         )
         .unwrap();
@@ -2447,7 +2539,9 @@ mod tests {
 
         let subject = Subject::from_event(
             &signed_ledger,
-            Governance::new(signed_ledger.signature.signer.clone()).to_value_wrapper().unwrap(),
+            Governance::new(signed_ledger.signature.signer.clone())
+                .to_value_wrapper()
+                .unwrap(),
         )
         .unwrap();
 
@@ -2505,22 +2599,16 @@ mod tests {
         let mut vec: Vec<Signed<Ledger>> = vec![];
 
         for i in 0..n {
+            let key = KeyPair::Ed25519(Ed25519KeyPair::new())
+                .key_identifier()
+                .to_string();
             let patch_event_req = json!(
-                    [
-                        {
-                            "op": "add",
-                            "path": "/members/0",
-                            "value": {
-                                "id": KeyIdentifier::new(KeyDerivator::Ed25519, &vec![]),
-                                "name": format!("KoreNode{}", i)
-                            }
-                        },
-                        {
-                            "op": "add",
-                            "path": "/version",
-                            "value": i
-                        }
-                    ]
+                    [{"op":"add","path": format!("/members/KoreNode{}", i),"value": key},
+                    {
+                        "op": "add",
+                        "path": "/version",
+                        "value": i
+                    }]
             );
 
             let event_req = EventRequest::Fact(FactRequest {
@@ -2619,7 +2707,7 @@ mod tests {
     use actor::SystemRef;
     use event::LedgerEventMessage;
     use identity::{
-        identifier::derive::{KeyDerivator, digest::DigestDerivator},
+        identifier::derive::digest::DigestDerivator,
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
     use serde_json::{Value, json};
@@ -2635,7 +2723,9 @@ mod tests {
         let event = KoreEvent::from_create_request(
             &request,
             0,
-            &Governance::new(node_keys.key_identifier()).to_value_wrapper().unwrap(),
+            &Governance::new(node_keys.key_identifier())
+                .to_value_wrapper()
+                .unwrap(),
             DigestDerivator::Blake3_256,
         )
         .unwrap();
@@ -2650,7 +2740,9 @@ mod tests {
 
         let subject = Subject::from_event(
             &signed_ledger,
-            Governance::new(signed_ledger.signature.signer.clone()).to_value_wrapper().unwrap()
+            Governance::new(signed_ledger.signature.signer.clone())
+                .to_value_wrapper()
+                .unwrap(),
         )
         .unwrap();
 
@@ -2675,7 +2767,7 @@ mod tests {
             panic!("Invalid response");
         }
 
-        subject_actor.stop().await.unwrap();
+        subject_actor.ask_stop().await.unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         let subject_actor = system.get_actor::<Subject>(&path).await;
@@ -2699,7 +2791,9 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize() {
-        let value = Governance::new(KeyIdentifier::default()).to_value_wrapper().unwrap();
+        let value = Governance::new(KeyIdentifier::default())
+            .to_value_wrapper()
+            .unwrap();
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
         let request = create_start_request_mock("issuer", node_keys.clone());
         let event = KoreEvent::from_create_request(
@@ -2722,12 +2816,22 @@ mod tests {
 
         let subject_a = Subject::from_event(
             &signed_ledger,
-            Governance::new(signed_ledger.signature.signer.clone()).to_value_wrapper().unwrap(),
+            Governance::new(signed_ledger.signature.signer.clone())
+                .to_value_wrapper()
+                .unwrap(),
         )
         .unwrap();
 
-        let bytes = bincode::serde::encode_to_vec(subject_a.clone(),  bincode::config::standard()).unwrap();
-        let (subject_b, _) = bincode::serde::decode_from_slice::<Subject, _>(&bytes, bincode::config::standard()).unwrap();
+        let bytes = bincode::serde::encode_to_vec(
+            subject_a.clone(),
+            bincode::config::standard(),
+        )
+        .unwrap();
+        let (subject_b, _) = bincode::serde::decode_from_slice::<Subject, _>(
+            &bytes,
+            bincode::config::standard(),
+        )
+        .unwrap();
         assert_eq!(subject_a.subject_id, subject_b.subject_id);
     }
 

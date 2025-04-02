@@ -353,7 +353,12 @@ impl RequestManager {
             signature: signature_ledger,
         };
 
-        RequestManager::update_ledger(ctx, signed_ledger.clone()).await?;
+        if let Err(e) = RequestManager::update_ledger(ctx, signed_ledger.clone()).await {
+            if let ActorError::Functional(_) = e {
+                self.abort_request_manager(ctx, &e.to_string(), false).await?;
+            }
+            return Err(e);
+        };
 
         let signature_event =
             get_sign(ctx, SignTypesNode::Event(event.clone())).await?;
@@ -365,7 +370,7 @@ impl RequestManager {
 
         if let Err(e) = update_event(ctx, signed_event.clone()).await {
             if let ActorError::Functional(_) = e {
-                self.abort_request_manager(ctx, &e.to_string()).await?;
+                self.abort_request_manager(ctx, &e.to_string(), true).await?;
             }
             return Err(e);
         };
@@ -378,7 +383,7 @@ impl RequestManager {
         .await
         {
             if let ActorError::Functional(_) = e {
-                self.abort_request_manager(ctx, &e.to_string()).await?;
+                self.abort_request_manager(ctx, &e.to_string(), true).await?;
             }
             return Err(e);
         };
@@ -716,18 +721,21 @@ impl RequestManager {
         &self,
         ctx: &mut ActorContext<RequestManager>,
         error: &str,
+        delete_subj: bool
     ) -> Result<(), ActorError> {
         error!(TARGET_MANAGER, "Aborting request {}", self.id);
 
         if self.request.content.is_create_event() {
             error!(TARGET_MANAGER, "Deleting Subject {}", self.subject_id);
-            Self::delete_subject(ctx, &self.subject_id).await?;
+            if delete_subj {
+                Self::delete_subject(ctx, &self.subject_id).await?;
+            }
         }
 
         self.abort_request(ctx, error).await?;
 
         Self::purge_storage(ctx).await?;
-        ctx.stop().await;
+        ctx.stop(None).await;
 
         Ok(())
     }
@@ -932,6 +940,7 @@ impl Handler<RequestManager> for RequestManager {
                                         .abort_request_manager(
                                             ctx,
                                             &e.to_string(),
+                                            true
                                         )
                                         .await
                                     {
@@ -1010,6 +1019,7 @@ impl Handler<RequestManager> for RequestManager {
                                                 .abort_request_manager(
                                                     ctx,
                                                     &e.to_string(),
+                                                    true
                                                 )
                                                 .await
                                             {
@@ -1294,7 +1304,7 @@ impl Handler<RequestManager> for RequestManager {
                     return Err(emit_fail(ctx, e).await);
                 }
 
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             RequestManagerMessage::ValidationRes {
                 result,
@@ -1410,7 +1420,7 @@ impl Handler<RequestManager> for RequestManager {
                     Err(e) => {
                         if let ActorError::Functional(_) = e {
                             if let Err(e) = self
-                                .abort_request_manager(ctx, &e.to_string())
+                                .abort_request_manager(ctx, &e.to_string(), true)
                                 .await
                             {
                                 error!(TARGET_MANAGER, "Validate, {}", e);

@@ -29,6 +29,8 @@ use crate::{
 };
 
 const TARGET_RUNNER: &str = "Kore-Evaluation-Runner";
+type ChangeRemoveMembers = (Vec<(String, String)>, Vec<String>);
+type AddRemoveChangeSchema = (HashSet<String>, HashSet<String>, HashSet<String>);
 
 pub mod types;
 
@@ -228,6 +230,7 @@ impl Runner {
         let mod_state = to_value(governance).map_err(|e| {
             Error::Runner(format!("Can not serialice Governance into Value {}", e))
         })?;
+
         let patch = diff(&state.0, &mod_state);
         let json_patch = to_value(patch).map_err(|e| {
             Error::Runner(format!("Can not conver patch to JSON patch: {}", e))
@@ -236,7 +239,6 @@ impl Runner {
             apply_patch(json_patch.clone(), state.0.clone()).map_err(|e| {
                 Error::Runner(format!("Can not apply patch {}", e))
             })?;
-
         Ok((
             RunnerResult {
                 final_state: ValueWrapper(to_value(patched_state).map_err(
@@ -332,14 +334,14 @@ impl Runner {
             serde_json::from_value(state.0.clone()).map_err(|e| {
                 Error::Runner(format!(
                     "Can not deserialize Value into Governance: {}",
-                    e.to_string()
+                    e
                 ))
             })?;
         let event: GovernanceEvent = serde_json::from_value(event.0.clone())
             .map_err(|e| {
                 Error::Runner(format!(
                     "Can not deserialize events into GovernanceEvent: {}",
-                    e.to_string()
+                    e
                 ))
             })?;
 
@@ -381,6 +383,10 @@ impl Runner {
             Self::check_policies(policies_event, &mut governance)?;
         }
 
+        if !governance.check_basic_gov() {
+            return Err(Error::Runner("The basic roles of the governance owner have been modified".to_owned()));
+        }
+
         let mod_state = to_value(governance).map_err(|e| {
             Error::Runner(format!("Can not serialice Governance into Value {}", e))
         })?;
@@ -404,7 +410,7 @@ impl Runner {
                         ))
                     },
                 )?),
-                approval_required: false,
+                approval_required: true,
             },
             add_change_schemas,
         ))
@@ -585,11 +591,11 @@ impl Runner {
         }
 
         if let Some(not_governance) = roles_event.not_governance {
-            let mut new_roles = governance.roles_not_governance.clone();
+            let new_roles = governance.roles_not_governance.clone();
 
-            not_governance.check_data(
+            let new_roles = not_governance.check_data(
                 governance,
-                &mut new_roles,
+                new_roles,
                 "not_governance",
             )?;
 
@@ -602,7 +608,7 @@ impl Runner {
     fn check_schemas(
         schema_event: &SchemasEvent,
         governance: &mut Governance,
-    ) -> Result<(HashSet<String>, HashSet<String>, HashSet<String>), Error>
+    ) -> Result<AddRemoveChangeSchema, Error>
     {
         if schema_event.is_empty() {
             return Err(Error::Runner(
@@ -762,7 +768,7 @@ impl Runner {
     fn check_members(
         member_event: &MemberEvent,
         governance: &mut Governance,
-    ) -> Result<(Vec<(String, String)>, Vec<String>), Error> {
+    ) -> Result<ChangeRemoveMembers, Error> {
         if member_event.is_empty() {
             return Err(Error::Runner(
                 "MemberEvent can not be empty".to_owned(),

@@ -226,7 +226,7 @@ impl Handler<Distribution> for Distribution {
 
                     if let DistributionType::Subject = self.dis_type {
                     } else {
-                        ctx.stop().await;
+                        ctx.stop(None).await;
                     };
                 }
             }

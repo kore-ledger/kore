@@ -16,11 +16,11 @@ actor = { workspace = true }
 async-trait = { workspace = true }
 bincode = { workspace = true }
 borsh = { workspace = true }
-generic-array = {version = "1.0", features = ["zeroize"] }
+generic-array = {version = "1.2.0", features = ["zeroize"] }
 identity = { path = "../identity"}
 json-patch = { version = "4.0.0" }
 lazy_static = { workspace = true }
-memsecurity = { version = "3.5", features = ["encryption"]}
+memsecurity = { version = "3.5.2", features = ["encryption"]}
 rocksdb_db = { path = "../../rush-rs/databases/rocksdb_db", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -45,7 +45,6 @@ reqwest = { workspace = true }
 test-log = { workspace = true } 
 tempfile = { workspace = true }
 tracing-subscriber = { workspace = true }
-serial_test = { workspace = true }
 criterion = { version = "0.5.1", features = ["async_tokio"]}
 tokio = { workspace = true, features = ["full"] }
 futures ={ version = "0.3.31"}

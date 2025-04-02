@@ -282,7 +282,7 @@ impl Handler<Validator> for Validator {
                     return Err(emit_fail(ctx, e).await);
                 }
 
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             ValidatorMessage::NetworkValidation {
                 validation_req,
@@ -431,7 +431,7 @@ impl Handler<Validator> for Validator {
                         };
                     }
 
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                 } else {
                     warn!(
                         TARGET_VALIDATOR,
@@ -584,7 +584,7 @@ impl Handler<Validator> for Validator {
                 };
 
                 if schema != "governance" {
-                    ctx.stop().await;
+                    ctx.stop(None).await;
                 }
             }
         }
@@ -633,7 +633,7 @@ impl Handler<Validator> for Validator {
                     );
                     emit_fail(ctx, e).await;
                 }
-                ctx.stop().await;
+                ctx.stop(None).await;
             }
             _ => {
                 error!(TARGET_VALIDATOR, "OnChildError, unexpected error");

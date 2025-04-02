@@ -80,7 +80,7 @@ impl Validation {
             let child: Option<ActorRef<Validator>> =
                 ctx.get_child(&validator.to_string()).await;
             if let Some(child) = child {
-                child.stop().await?;
+                child.ask_stop().await?;
             }
         }
 
@@ -469,7 +469,6 @@ impl Handler<Validation> for Validation {
 pub mod tests {
     use core::panic;
     use identity::identifier::derive::digest::DigestDerivator;
-    use serial_test::serial;
     use std::time::Duration;
     use test_log::test;
 
@@ -651,13 +650,11 @@ pub mod tests {
     }
 
     #[test(tokio::test)]
-    #[serial]
     async fn test_create_req() {
         let _ = create_subject_gov().await;
     }
 
     #[test(tokio::test)]
-    #[serial]
     async fn test_eol_req() {
         let (
             _system,

@@ -15,7 +15,8 @@ use crate::{
 use actor::Error as ActorError;
 use model::{
     CreatorQuantity, PolicyGov, PolicySchema, ProtocolTypes, RoleGovIssuer,
-    RoleSchemaIssuer, RoleTypes, RolesGov, RolesSchema, SchemaKeyCreators,
+    RoleSchemaIssuer, RoleTypes, RolesGov, RolesNotGov, RolesSchema,
+    SchemaKeyCreators,
 };
 
 pub use model::{Member, Quorum, Role, Schema};
@@ -24,7 +25,7 @@ use identity::identifier::KeyIdentifier;
 
 use serde::{Deserialize, Serialize};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub type MemberName = String;
 pub type SchemaId = String;
@@ -32,13 +33,13 @@ pub type SchemaId = String;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Governance {
     pub version: u64,
-    pub members: HashMap<MemberName, KeyIdentifier>,
+    pub members: BTreeMap<MemberName, KeyIdentifier>,
     pub roles_gov: RolesGov,
     pub policies_gov: PolicyGov,
-    pub schemas: HashMap<SchemaId, Schema>,
-    pub roles_schema: HashMap<SchemaId, RolesSchema>,
-    pub roles_not_governance: RolesSchema,
-    pub policies_schema: HashMap<SchemaId, PolicySchema>,
+    pub schemas: BTreeMap<SchemaId, Schema>,
+    pub roles_schema: BTreeMap<SchemaId, RolesSchema>,
+    pub roles_not_governance: RolesNotGov,
+    pub policies_schema: BTreeMap<SchemaId, PolicySchema>,
 }
 
 impl Governance {
@@ -51,13 +52,15 @@ impl Governance {
 
     pub fn add_schema(&mut self, add_schema: HashSet<SchemaId>) {
         for schema in add_schema {
-            self.roles_schema.insert(schema.clone(), RolesSchema::default());
+            self.roles_schema
+                .insert(schema.clone(), RolesSchema::default());
             self.policies_schema.insert(schema, PolicySchema::default());
         }
     }
 
     pub fn remove_member_role(&mut self, remove_members: &Vec<MemberName>) {
         self.roles_gov.remove_member_role(remove_members);
+        self.roles_not_governance.remove_member_role(remove_members);
 
         for (_, roles) in self.roles_schema.iter_mut() {
             roles.remove_member_role(remove_members);
@@ -69,6 +72,8 @@ impl Governance {
         chang_name_members: &Vec<(String, String)>,
     ) {
         self.roles_gov.change_name_role(chang_name_members);
+        self.roles_not_governance
+            .change_name_role(chang_name_members);
 
         for (_, roles) in self.roles_schema.iter_mut() {
             roles.change_name_role(chang_name_members);
@@ -84,6 +89,11 @@ impl Governance {
         })?))
     }
 
+    pub fn check_basic_gov(&self) -> bool {
+        self.roles_gov.check_basic_gov()
+            && self.roles_not_governance.check_basic_gov()
+    }
+
     pub fn new(owner_key: KeyIdentifier) -> Self {
         let policies_gov = PolicyGov {
             approve: Quorum::Majority,
@@ -91,44 +101,43 @@ impl Governance {
             validate: Quorum::Majority,
         };
 
-        let owner_users_schema: HashSet<Role> = HashSet::from([Role {
+        let owner_users_schema: BTreeSet<Role> = BTreeSet::from([Role {
             name: "Owner".to_owned(),
             namespace: Namespace::new(),
         }]);
-        let owner_users_gov: HashSet<MemberName> =
-            HashSet::from(["Owner".to_owned()]);
+        let owner_users_gov: BTreeSet<MemberName> =
+            BTreeSet::from(["Owner".to_owned()]);
 
         let roles_gov = RolesGov {
             approver: owner_users_gov.clone(),
             evaluator: owner_users_gov.clone(),
             validator: owner_users_gov.clone(),
-            witness: HashSet::new(),
+            witness: BTreeSet::new(),
             issuer: RoleGovIssuer {
                 any: false,
                 users: owner_users_gov.clone(),
             },
         };
 
-        let not_gov_role = RolesSchema {
+        let not_gov_role = RolesNotGov {
             evaluator: owner_users_schema.clone(),
             validator: owner_users_schema.clone(),
             witness: owner_users_schema,
-            creator: HashSet::new(),
             issuer: RoleSchemaIssuer {
-                users: HashSet::new(),
+                users: BTreeSet::new(),
                 any: false,
             },
         };
 
         Self {
             version: 0,
-            members: HashMap::from([("Owner".to_owned(), owner_key)]),
+            members: BTreeMap::from([("Owner".to_owned(), owner_key)]),
             roles_gov,
             policies_gov,
-            schemas: HashMap::new(),
-            roles_schema: HashMap::new(),
+            schemas: BTreeMap::new(),
+            roles_schema: BTreeMap::new(),
             roles_not_governance: not_gov_role,
-            policies_schema: HashMap::new(),
+            policies_schema: BTreeMap::new(),
         }
     }
 
@@ -147,7 +156,7 @@ impl Governance {
             return Err(Error::Governance("Schema not found.".to_owned()));
         };
 
-        return Ok(ValueWrapper(schema.initial_value.clone()));
+        Ok(ValueWrapper(schema.initial_value.clone()))
     }
 
     /// Get the members as a set of key identifiers.
@@ -156,7 +165,7 @@ impl Governance {
     /// # Errors
     /// * `Error` - If the key identifier is not valid.
     pub fn members_to_key_identifier(&self) -> HashSet<KeyIdentifier> {
-        HashSet::from_iter(self.members.iter().map(|(_name, key)| key.clone()))
+        HashSet::from_iter(self.members.values().cloned())
     }
 
     /// Check if the user has a role.
@@ -183,8 +192,20 @@ impl Governance {
         };
 
         if schema == "governance" {
+            if let RoleTypes::Witness = role {
+                return true;
+            }
+
             self.roles_gov.hash_this_rol(role, &name)
         } else {
+            if self.roles_not_governance.hash_this_rol(
+                role.clone(),
+                namespace.clone(),
+                &name,
+            ) {
+                return true;
+            }
+
             let Some(roles) = self.roles_schema.get(schema) else {
                 return false;
             };
@@ -202,15 +223,20 @@ impl Governance {
     /// * Option<[`CreatorQuantity`]> - The maximum creations.
     pub fn max_creations(
         &self,
-        name: &str,
+        key: &KeyIdentifier,
         schema: &str,
         namespace: Namespace,
     ) -> Option<CreatorQuantity> {
-        let Some(roles) = self.roles_schema.get(schema) else {
-            return None;
-        };
+        let name = self
+            .members
+            .iter()
+            .find(|x| x.1 == key)
+            .map(|x| x.0)
+            .cloned()?;
 
-        roles.max_creations(namespace, name)
+        let roles = self.roles_schema.get(schema)?;
+
+        roles.max_creations(namespace, &name)
     }
 
     /// Gets the signers for the request stage.
@@ -229,10 +255,19 @@ impl Governance {
         let (names, any) = if schema == "governance" {
             self.roles_gov.get_signers(role)
         } else {
-            let Some(roles) = self.roles_schema.get(schema) else {
-                return (HashSet::new(), false);
-            };
-            roles.get_signers(role, namespace)
+            let (mut not_gov_signers, not_gov_any) = self
+                .roles_not_governance
+                .get_signers(role.clone(), namespace.clone());
+            let (mut schema_signers, schema_any) =
+                if let Some(roles) = self.roles_schema.get(schema) {
+                    roles.get_signers(role, namespace)
+                } else {
+                    (vec![], false)
+                };
+
+            not_gov_signers.append(&mut schema_signers);
+
+            (not_gov_signers, not_gov_any || schema_any)
         };
 
         let mut signers = HashSet::new();
@@ -255,9 +290,7 @@ impl Governance {
         if schema == "governance" {
             self.policies_gov.get_quorum(role)
         } else {
-            let Some(policie) = self.policies_schema.get(schema) else {
-                return None;
-            };
+            let policie = self.policies_schema.get(schema)?;
 
             policie.get_quorum(role)
         }
@@ -293,7 +326,7 @@ impl Governance {
         &self,
         role: ProtocolTypes,
         key: &KeyIdentifier,
-    ) -> Result<HashMap<SchemaId, Schema>, Error> {
+    ) -> BTreeMap<SchemaId, Schema> {
         let Some(name) = self
             .members
             .iter()
@@ -301,10 +334,7 @@ impl Governance {
             .map(|x| x.0)
             .cloned()
         else {
-            return Err(Error::Governance(format!(
-                "Can not get member by KeyIdentifier: {}",
-                key
-            )));
+            return BTreeMap::new();
         };
         let role = RoleTypes::from(role);
 
@@ -312,7 +342,7 @@ impl Governance {
             .roles_not_governance
             .hash_this_rol_not_namespace(role.clone(), &name)
         {
-            return Ok(self.schemas.clone());
+            return self.schemas.clone();
         }
 
         let mut not_schemas: Vec<String> = vec![];
@@ -328,13 +358,13 @@ impl Governance {
             copy_schemas.remove(&schema);
         }
 
-        Ok(copy_schemas)
+        copy_schemas
     }
 
     pub fn subjects_schemas_rol_namespace(
         &self,
         key: &KeyIdentifier,
-    ) -> Result<Vec<SchemaKeyCreators>, Error> {
+    ) -> Vec<SchemaKeyCreators> {
         let Some(name) = self
             .members
             .iter()
@@ -342,14 +372,11 @@ impl Governance {
             .map(|x| x.0)
             .cloned()
         else {
-            return Err(Error::Governance(format!(
-                "Can not get member by KeyIdentifier: {}",
-                key
-            )));
+            return vec![];
         };
 
-        let (not_gov_val, not_gov_eval, not_gov_creators) =
-            self.roles_not_governance.roles_namespace_creators(&name);
+        let (not_gov_val, not_gov_eval) =
+            self.roles_not_governance.roles_namespace(&name);
 
         let mut schema_key_creators: Vec<SchemaKeyCreators> = vec![];
 
@@ -358,8 +385,8 @@ impl Governance {
                 &name,
                 not_gov_val.clone(),
                 not_gov_eval.clone(),
-                not_gov_creators.clone(),
             );
+
             if !schema_creators.is_empty() {
                 let mut schema_key = SchemaKeyCreators {
                     schema: schema.clone(),
@@ -371,10 +398,7 @@ impl Governance {
                     let mut hash_keys: HashSet<KeyIdentifier> = HashSet::new();
                     for name in val_schema_creators {
                         let Some(key) = self.members.get(&name) else {
-                            return Err(Error::Governance(format!(
-                                "Can not find KeyIdentifier of: {}",
-                                name
-                            )));
+                            return vec![];
                         };
                         hash_keys.insert(key.clone());
                     }
@@ -386,10 +410,7 @@ impl Governance {
                     let mut hash_keys: HashSet<KeyIdentifier> = HashSet::new();
                     for name in eval_schema_creators {
                         let Some(key) = self.members.get(&name) else {
-                            return Err(Error::Governance(format!(
-                                "Can not find KeyIdentifier of: {}",
-                                name
-                            )));
+                            return vec![];
                         };
                         hash_keys.insert(key.clone());
                     }
@@ -399,7 +420,7 @@ impl Governance {
                 schema_key_creators.push(schema_key);
             }
         }
-        Ok(schema_key_creators)
+        schema_key_creators
     }
 
     /// Check if the key is a member.
@@ -421,296 +442,4 @@ impl TryFrom<ValueWrapper> for Governance {
             })?;
         Ok(governance)
     }
-}
-
-#[cfg(test)]
-mod tests {
-    /*
-    use crate::model::{Namespace, ValueWrapper};
-    use test_log::test;
-
-    use super::{
-        Governance, Member, Policy, Role, Schema, Who,
-        init::init_state,
-        model::{Contract, CreatorQuantity, Roles, SchemaEnum, Validation},
-    };
-    use identity::{
-        identifier::{Derivable, KeyIdentifier},
-        keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
-    };
-    use serde_json::Value;
-
-    
-    fn create_governance(
-        key1: KeyIdentifier,
-        key2: KeyIdentifier,
-    ) -> Governance {
-        Governance {
-            version: 1,
-            members: vec![
-                Member {
-                    id: key1.to_string(),
-                    name: "test".to_string(),
-                },
-                Member {
-                    id: key2.to_string(),
-                    name: "test1".to_string(),
-                },
-            ],
-            roles: vec![
-                Role {
-                    who: Who::NAME {
-                        NAME: "test".to_string(),
-                    },
-                    namespace: "".to_string(),
-                    role: Roles::CREATOR(CreatorQuantity::QUANTITY(12)),
-                    schema: SchemaEnum::ALL,
-                },
-                Role {
-                    who: Who::NAME {
-                        NAME: "test1".to_string(),
-                    },
-                    namespace: "".to_string(),
-                    role: Roles::CREATOR(CreatorQuantity::INFINITY),
-                    schema: SchemaEnum::ALL,
-                },
-                Role {
-                    who: Who::NAME {
-                        NAME: "test1".to_string(),
-                    },
-                    namespace: "".to_string(),
-                    role: Roles::APPROVER,
-                    schema: SchemaEnum::ID {
-                        ID: "governance".to_string(),
-                    },
-                },
-            ],
-            schemas: vec![Schema {
-                id: "governance".to_string(),
-                initial_value: Value::default(),
-                contract: Contract {
-                    raw: "".to_string(),
-                },
-            }],
-            policies: vec![Policy {
-                id: "governance".to_string(),
-                approve: Validation {
-                    quorum: super::Quorum::MAJORITY,
-                },
-                evaluate: Validation {
-                    quorum: super::Quorum::MAJORITY,
-                },
-                validate: Validation {
-                    quorum: super::Quorum::MAJORITY,
-                },
-            }],
-        }
-    }
-
-    fn create_governance_init_state() -> Governance {
-        let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let governance_value = init_state(&keys.key_identifier().to_string());
-        Governance::try_from(governance_value).unwrap()
-    }
-    #[test(tokio::test)]
-    async fn test_try_from_value_wrapper() {
-        let original_gov = create_governance_init_state();
-        let wrapper =
-            ValueWrapper(serde_json::to_value(&original_gov).unwrap());
-        let new_gov = Governance::try_from(wrapper);
-        assert!(new_gov.is_ok());
-
-        let invalid_wrapper = ValueWrapper(serde_json::json!({ "abc": 123 }));
-        let invalid_gov = Governance::try_from(invalid_wrapper);
-        assert!(invalid_gov.is_err());
-    }
-
-    #[test(tokio::test)]
-    async fn test_init_state() {
-        let gov = create_governance_init_state();
-        assert_eq!(gov.version, 0);
-        assert!(!gov.members.is_empty());
-        assert!(!gov.roles.is_empty());
-        assert!(gov.schemas.is_empty());
-        assert!(!gov.policies.is_empty());
-    }
-
-    #[test(tokio::test)]
-    async fn test_get_schema() {
-        let gov = create_governance_init_state();
-        if gov.schemas.is_empty() {
-            let res = gov.get_schema("governance");
-            assert!(res.is_err());
-        } else {
-            panic!("")
-        }
-        let fail = gov.get_schema("missing_schema");
-        assert!(fail.is_err());
-    }
-
-    #[test(tokio::test)]
-    async fn test_members_to_key_identifier() {
-        let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let key2 = KeyPair::Ed25519(Ed25519KeyPair::new());
-
-        let gov =
-            create_governance(key1.key_identifier(), key2.key_identifier());
-        let set_ids = gov.members_to_key_identifier();
-
-        assert_eq!(set_ids.len(), 2);
-        assert!(set_ids.contains(&key1.key_identifier()));
-        assert!(set_ids.contains(&key2.key_identifier()));
-    }
-
-    #[test(tokio::test)]
-    async fn test_max_creation() {
-        let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let key2 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let governance =
-            create_governance(key1.key_identifier(), key2.key_identifier());
-        let response = governance
-            .max_creations(
-                &key1.key_identifier().to_str(),
-                "governance",
-                Namespace::new(),
-            )
-            .unwrap();
-        assert_eq!(response, CreatorQuantity::QUANTITY(12));
-        let response = governance
-            .max_creations(
-                &key2.key_identifier().to_str(),
-                "governance",
-                Namespace::new(),
-            )
-            .unwrap();
-        assert_eq!(response, CreatorQuantity::INFINITY)
-    }
-
-    #[test(tokio::test)]
-    async fn test_get_signers() {
-        let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let key2 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let governance =
-            create_governance(key1.key_identifier(), key2.key_identifier());
-        let response = governance.get_signers(
-            Roles::CREATOR(CreatorQuantity::QUANTITY(12)),
-            "governance",
-            Namespace::new(),
-        );
-        response.0.get(&key1.key_identifier()).unwrap();
-        assert!(!response.1);
-        let response = governance.get_signers(
-            Roles::CREATOR(CreatorQuantity::INFINITY),
-            "governance",
-            Namespace::new(),
-        );
-        response.0.get(&key2.key_identifier()).unwrap();
-        assert!(!response.1);
-        let random_key = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let response3 = governance.max_creations(
-            &random_key.key_identifier().to_string(),
-            "governance",
-            Namespace::new(),
-        );
-        assert!(response3.is_none());
-    }
-    #[test(tokio::test)]
-    async fn test_has_this_role() {
-        let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let governance =
-            create_governance(key1.key_identifier(), KeyIdentifier::default());
-
-        // El usuario `key1` tiene el rol de CREATOR(12) (nombre "test")
-        let has_role = governance.has_this_role(
-            &key1.key_identifier().to_string(),
-            Roles::CREATOR(CreatorQuantity::QUANTITY(12)),
-            "All",
-            Namespace::new(),
-        );
-        assert!(has_role);
-
-        // No debería tener el rol de APPROVER
-        let has_role_approver = governance.has_this_role(
-            &key1.key_identifier().to_string(),
-            Roles::APPROVER,
-            "All",
-            Namespace::new(),
-        );
-        assert!(!has_role_approver);
-    }
-
-    #[test(tokio::test)]
-    async fn test_get_quorum_and_signers() {
-        let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let gov =
-            create_governance(key1.key_identifier(), KeyIdentifier::default());
-
-        // En create_governance, tenemos `policies` con Quorum::MAJORITY para governance
-        // Rol: APPROVER y schema: "governance" => debe existir
-        let res = gov.get_quorum_and_signers(
-            Roles::APPROVER,
-            "governance",
-            Namespace::new(),
-        );
-        assert!(
-            res.is_ok(),
-            "Debería existir la policy para APPROVER-governance"
-        );
-        let (signers, _) = res.unwrap();
-        // signers debe contener a test1 (quien tiene APPROVER en "governance"):
-        assert!(
-            signers.is_empty() == false,
-            "En create_governance se asignó APPROVER a test1"
-        );
-
-        // Caso error -> schema que no exista
-        let error_res = gov.get_quorum_and_signers(
-            Roles::APPROVER,
-            "missing",
-            Namespace::new(),
-        );
-        assert!(error_res.is_err(), "No existe la policy para esa schema");
-    }
-
-    #[test(tokio::test)]
-    async fn test_schemas_method() {
-        let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let governance =
-            create_governance(key1.key_identifier(), KeyIdentifier::default());
-
-        // Este key1 tiene Roles::CREATOR(12) para todos los schemas
-        let schemas = governance.schemas(
-            Roles::CREATOR(CreatorQuantity::QUANTITY(12)),
-            &key1.key_identifier().to_string(),
-        );
-        // Debería retornar TODOS los schemas (solo hay uno: "governance")
-        assert_eq!(schemas.len(), 1);
-        assert_eq!(schemas[0].id, "governance");
-
-        // Usuario sin rol no obtiene nada
-        let random_key = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let schemas_empty = governance.schemas(
-            Roles::CREATOR(CreatorQuantity::QUANTITY(12)),
-            &random_key.key_identifier().to_string(),
-        );
-        assert_eq!(schemas_empty.len(), 0);
-    }
-
-    #[test(tokio::test)]
-    async fn test_subjects_schemas_rol_namespace() {
-        let key1 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let key2 = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let governance =
-            create_governance(key1.key_identifier(), key2.key_identifier());
-
-        let (roles_map, creators_map) = governance
-            .subjects_schemas_rol_namespace(&key1.key_identifier().to_string());
-
-        // roles_map -> Rol EVALUATOR o VALIDATOR, etc. En nuestra create_governance no hay EVALUATOR/VALIDATOR,
-        // así que debería estar vacío
-        assert!(roles_map.is_empty());
-        println!("{:?}", creators_map);
-        assert!(!creators_map.is_empty());
-    }
-     */
 }

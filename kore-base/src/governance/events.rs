@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::{error::Error, model::Namespace};
 
-use super::{model::{CreatorQuantity, RoleCreator, RolesGov, RolesSchema}, Governance, Quorum, Role};
+use super::{model::{CreatorQuantity, RoleCreator, RolesGov, RolesNotGov, RolesSchema}, Governance, Quorum, Role};
 pub type MemberName = String;
 pub type SchemaId = String;
 
@@ -72,7 +72,7 @@ impl ChangeMember {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RolesEvent {
     pub governance: Option<GovRoleEvent>,
-    pub not_governance: Option<SchemaRoleEvent>,
+    pub not_governance: Option<NotGovRoleEvent>,
     pub schema: Option<HashSet<SchemaIdRole>>
 }
 
@@ -315,6 +315,7 @@ pub struct SchemaIdRole {
     pub roles: SchemaRoleEvent
 }
 
+
 impl SchemaIdRole {
     pub fn is_empty(&self) -> bool {
         self.schema_id.is_empty() || self.schema_id.contains(" ") || self.roles.add.is_none() && self.roles.change.is_none() && self.roles.remove.is_none()
@@ -322,10 +323,38 @@ impl SchemaIdRole {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+pub struct NotGovRoleEvent {
+    pub add: Option<NotGovRolesAddEvent>,
+    pub remove: Option<NotGovRolesRemoveEvent>,
+    pub change: Option<NotGovRolesChangeEvent>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct SchemaRoleEvent {
     pub add: Option<SchemaRolesAddEvent>,
     pub remove: Option<SchemaRolesRemoveEvent>,
     pub change: Option<SchemaRolesChangeEvent>
+}
+
+impl NotGovRoleEvent {
+    pub fn check_data(&self, governance: &Governance, roles_not_gov: RolesNotGov, schema_id: &str) -> Result<RolesNotGov, Error> {
+        let schema = SchemaRoleEvent::from(self.clone());
+        
+        let mut roles_schema = RolesSchema::from(roles_not_gov);
+        schema.check_data(governance, &mut roles_schema, schema_id)?;
+        let roles_not_gov = RolesNotGov::from(roles_schema.clone());
+        Ok(roles_not_gov)
+    }
+}
+
+impl From<NotGovRoleEvent> for SchemaRoleEvent {
+    fn from(value: NotGovRoleEvent) -> Self {
+
+        Self { 
+            add: value.add.map(SchemaRolesAddEvent::from),
+            remove: value.remove.map(SchemaRolesRemoveEvent::from),
+            change: value.change.map(SchemaRolesChangeEvent::from) }
+    }
 }
 
 impl SchemaRoleEvent {
@@ -665,6 +694,26 @@ impl GovRolesEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct NotGovRolesAddEvent {
+    pub evaluator: Option<BTreeSet<Role>>,
+    pub validator: Option<BTreeSet<Role>>,
+    pub witness: Option<BTreeSet<Role>>,
+    pub issuer: Option<BTreeSet<Role>>
+}
+
+impl NotGovRolesAddEvent {
+    pub fn is_empty(&self) -> bool {
+        self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+    }
+}
+
+impl From<NotGovRolesAddEvent> for SchemaRolesAddEvent {
+    fn from(value: NotGovRolesAddEvent) -> Self {
+        Self { evaluator: value.evaluator, validator: value.validator, witness: value.witness, creator: None, issuer: value.issuer }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct SchemaRolesAddEvent {
     pub evaluator: Option<BTreeSet<Role>>,
     pub validator: Option<BTreeSet<Role>>,
@@ -676,6 +725,26 @@ pub struct SchemaRolesAddEvent {
 impl SchemaRolesAddEvent {
     pub fn is_empty(&self) -> bool {
         self.creator.is_none() && self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct NotGovRolesRemoveEvent {
+    pub evaluator: Option<BTreeSet<Role>>,
+    pub validator: Option<BTreeSet<Role>>,
+    pub witness: Option<BTreeSet<Role>>,
+    pub issuer: Option<BTreeSet<Role>>
+}
+
+impl NotGovRolesRemoveEvent {
+    pub fn is_empty(&self) -> bool {
+        self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+    }
+}
+
+impl From<NotGovRolesRemoveEvent> for SchemaRolesRemoveEvent {
+    fn from(value: NotGovRolesRemoveEvent) -> Self {
+        Self { evaluator: value.evaluator, validator: value.validator, witness: value.witness, creator: None, issuer: value.issuer }
     }
 }
 
@@ -693,6 +762,27 @@ impl SchemaRolesRemoveEvent {
         self.creator.is_none() && self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NotGovRolesChangeEvent {
+    pub evaluator: Option<BTreeSet<RoleChange>>,
+    pub validator: Option<BTreeSet<RoleChange>>,
+    pub witness: Option<BTreeSet<RoleChange>>,
+    pub issuer: Option<BTreeSet<RoleChange>>,
+}
+
+impl NotGovRolesChangeEvent {
+    pub fn is_empty(&self) -> bool {
+        self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+    }
+}
+
+impl From<NotGovRolesChangeEvent> for SchemaRolesChangeEvent {
+    fn from(value: NotGovRolesChangeEvent) -> Self {
+        Self { evaluator: value.evaluator, validator: value.validator, witness: value.witness, creator: None, issuer: value.issuer }
+    }
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SchemaRolesChangeEvent {
