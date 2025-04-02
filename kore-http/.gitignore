@@ -1,0 +1,9 @@
+/target
+Cargo.lock
+db
+keys
+contracts
+nodo*
+*.json
+selfsigned.*
+.DS_Store

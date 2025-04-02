@@ -1,0 +1,35 @@
+[package]
+name = "kore-http"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+kore-bridge = { path = "../kore-bridge" }
+
+tokio = {  workspace = true }
+
+serde_json = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+rustls = { version = "0.23.23", features = ["ring"] }
+axum-server = { version = "0.7.1", features = ["tls-rustls"] }
+axum = { version = "0.8.1" }
+axum-extra = "0.10.0"
+tower = "0.5.2"
+tower-http = {version = "0.6.2", features = ["trace", "metrics", "cors"]}
+utoipa = { version = "5.3.1", features = ["axum_extras"]}
+utoipa-rapidoc = { version = "6.0.0", features = ["axum"]}
+zip = "2.2.2"
+bytes = "1.10.0"
+[features]
+default = []

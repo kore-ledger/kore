@@ -48,18 +48,11 @@ tracing-subscriber = { workspace = true }
 criterion = { version = "0.5.1", features = ["async_tokio"]}
 tokio = { workspace = true, features = ["full"] }
 futures ={ version = "0.3.31"}
-kore-base = { path = ".", features = ["sqlite", "ext-sqlite", "test"] }
+kore-base = { path = ".", features = ["rocksdb", "ext-sqlite", "test"] }
 network = { path = "../network", features = ["test"]}
 
-[[bench]]
-name = "my_benchmark"
-harness = false
-
-[lib]
-bench = false
-
 [features]
-default = ["sqlite", "ext-sqlite"]
+default = ["rocksdb", "ext-sqlite"]
 rocksdb = ["rocksdb_db"]
 sqlite = ["sqlite_db"]
 ext-sqlite = ["rusqlite"]

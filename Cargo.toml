@@ -5,6 +5,7 @@ members = [
     "kore-bridge",
     "network",
     "protocols/tell",
+    "kore-http"
 ]
 
 resolver = "2"
@@ -68,3 +69,4 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 test-log = {version = "0.2.17", features = ["trace"] }
 actor = { path = "../rush-rs/actor" }
 reqwest = { version = "0.12.15", features = ["json"] }
+config = { version = "0.15.8", features = ["json", "toml", "yaml"]}
