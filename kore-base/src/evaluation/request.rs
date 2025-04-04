@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    Error,
-    model::{HashId, ValueWrapper, request::EventRequest, signature::Signed},
+    model::{request::EventRequest, signature::Signed, HashId, Namespace, ValueWrapper}, Error
 };
 use identity::identifier::{
     DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
@@ -58,7 +57,7 @@ pub struct SubjectContext {
     pub governance_id: DigestIdentifier,
     pub schema_id: String,
     pub is_owner: bool,
-    pub namespace: String,
+    pub namespace: Namespace,
 }
 
 impl HashId for EvaluationReq {

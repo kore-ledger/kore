@@ -11,7 +11,7 @@ use crate::{
     governance::{Governance, Schema},
     helpers::network::{NetworkMessage, intermediary::Intermediary},
     model::{
-        HashId, Namespace, SignTypesNode, TimeStamp,
+        HashId, SignTypesNode, TimeStamp,
         common::{
             UpdateData, emit_fail, get_gov, get_metadata, get_sign,
             update_ledger_network,
@@ -199,7 +199,7 @@ impl Evaluator {
                         governance_id, evaluation_req.context.schema_id
                     )) {
                         (
-                            EvaluateType::NotGovFact {
+                            EvaluateType::AllSchemasFact {
                                 contract: contract.to_vec(),
                                 payload: fact_event.payload,
                             },
@@ -215,12 +215,10 @@ impl Evaluator {
             EventRequest::Transfer(transfer_event) => {
                 if !is_governance {
                     (
-                        EvaluateType::NotGovTransfer {
+                        EvaluateType::AllSchemasTransfer {
                             new_owner: transfer_event.new_owner,
                             old_owner: evaluation_req.event_request.signature.signer.clone(),
-                            namespace: Namespace::from(
-                                evaluation_req.context.namespace.clone(),
-                            ),
+                            namespace: evaluation_req.context.namespace.clone(),
                             schema_id: evaluation_req.context.schema_id.clone(),
                         },
                         evaluation_req.gov.clone(),

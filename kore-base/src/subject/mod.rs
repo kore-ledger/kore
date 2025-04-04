@@ -264,7 +264,7 @@ impl Subject {
         }
     }
 
-    async fn build_childs_not_governance(
+    async fn build_childs_all_schemas(
         &self,
         ctx: &mut ActorContext<Subject>,
         our_key: KeyIdentifier,
@@ -2163,7 +2163,7 @@ impl Actor for Subject {
                 )
                 .await?;
             } else {
-                self.build_childs_not_governance(ctx, our_key.clone())
+                self.build_childs_all_schemas(ctx, our_key.clone())
                     .await?;
             }
         }
@@ -2182,8 +2182,7 @@ impl Actor for Subject {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.stop_store(ctx).await.map_err(|_| ActorError::Stop)?;
-        Ok(())
+        self.stop_store(ctx).await
     }
 }
 

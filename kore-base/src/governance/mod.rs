@@ -15,7 +15,7 @@ use crate::{
 use actor::Error as ActorError;
 use model::{
     CreatorQuantity, PolicyGov, PolicySchema, ProtocolTypes, RoleGovIssuer,
-    RoleSchemaIssuer, RoleTypes, RolesGov, RolesNotGov, RolesSchema,
+    RoleSchemaIssuer, RoleTypes, RolesGov, RolesAllSchemas, RolesSchema,
     SchemaKeyCreators,
 };
 
@@ -38,7 +38,7 @@ pub struct Governance {
     pub policies_gov: PolicyGov,
     pub schemas: BTreeMap<SchemaId, Schema>,
     pub roles_schema: BTreeMap<SchemaId, RolesSchema>,
-    pub roles_not_governance: RolesNotGov,
+    pub roles_all_schemas: RolesAllSchemas,
     pub policies_schema: BTreeMap<SchemaId, PolicySchema>,
 }
 
@@ -60,7 +60,7 @@ impl Governance {
 
     pub fn remove_member_role(&mut self, remove_members: &Vec<MemberName>) {
         self.roles_gov.remove_member_role(remove_members);
-        self.roles_not_governance.remove_member_role(remove_members);
+        self.roles_all_schemas.remove_member_role(remove_members);
 
         for (_, roles) in self.roles_schema.iter_mut() {
             roles.remove_member_role(remove_members);
@@ -72,7 +72,7 @@ impl Governance {
         chang_name_members: &Vec<(String, String)>,
     ) {
         self.roles_gov.change_name_role(chang_name_members);
-        self.roles_not_governance
+        self.roles_all_schemas
             .change_name_role(chang_name_members);
 
         for (_, roles) in self.roles_schema.iter_mut() {
@@ -91,7 +91,7 @@ impl Governance {
 
     pub fn check_basic_gov(&self) -> bool {
         self.roles_gov.check_basic_gov()
-            && self.roles_not_governance.check_basic_gov()
+            && self.roles_all_schemas.check_basic_gov()
     }
 
     pub fn new(owner_key: KeyIdentifier) -> Self {
@@ -119,7 +119,7 @@ impl Governance {
             },
         };
 
-        let not_gov_role = RolesNotGov {
+        let not_gov_role = RolesAllSchemas {
             evaluator: owner_users_schema.clone(),
             validator: owner_users_schema.clone(),
             witness: owner_users_schema,
@@ -136,7 +136,7 @@ impl Governance {
             policies_gov,
             schemas: BTreeMap::new(),
             roles_schema: BTreeMap::new(),
-            roles_not_governance: not_gov_role,
+            roles_all_schemas: not_gov_role,
             policies_schema: BTreeMap::new(),
         }
     }
@@ -198,7 +198,7 @@ impl Governance {
 
             self.roles_gov.hash_this_rol(role, &name)
         } else {
-            if self.roles_not_governance.hash_this_rol(
+            if self.roles_all_schemas.hash_this_rol(
                 role.clone(),
                 namespace.clone(),
                 &name,
@@ -256,7 +256,7 @@ impl Governance {
             self.roles_gov.get_signers(role)
         } else {
             let (mut not_gov_signers, not_gov_any) = self
-                .roles_not_governance
+                .roles_all_schemas
                 .get_signers(role.clone(), namespace.clone());
             let (mut schema_signers, schema_any) =
                 if let Some(roles) = self.roles_schema.get(schema) {
@@ -339,7 +339,7 @@ impl Governance {
         let role = RoleTypes::from(role);
 
         if self
-            .roles_not_governance
+            .roles_all_schemas
             .hash_this_rol_not_namespace(role.clone(), &name)
         {
             return self.schemas.clone();
@@ -376,7 +376,7 @@ impl Governance {
         };
 
         let (not_gov_val, not_gov_eval) =
-            self.roles_not_governance.roles_namespace(&name);
+            self.roles_all_schemas.roles_namespace(&name);
 
         let mut schema_key_creators: Vec<SchemaKeyCreators> = vec![];
 

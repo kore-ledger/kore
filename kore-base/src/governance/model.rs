@@ -5,7 +5,7 @@
 //!
 
 use identity::identifier::KeyIdentifier;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 use std::{
     collections::{BTreeSet, HashSet},
@@ -147,15 +147,15 @@ impl RolesGov {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
-pub struct RolesNotGov {
+pub struct RolesAllSchemas {
     pub evaluator: BTreeSet<Role>,
     pub validator: BTreeSet<Role>,
     pub witness: BTreeSet<Role>,
     pub issuer: RoleSchemaIssuer,
 }
 
-impl From<RolesNotGov> for RolesSchema {
-    fn from(value: RolesNotGov) -> Self {
+impl From<RolesAllSchemas> for RolesSchema {
+    fn from(value: RolesAllSchemas) -> Self {
         Self {
             evaluator: value.evaluator,
             validator: value.validator,
@@ -166,7 +166,7 @@ impl From<RolesNotGov> for RolesSchema {
     }
 }
 
-impl From<RolesSchema> for RolesNotGov {
+impl From<RolesSchema> for RolesAllSchemas {
     fn from(value: RolesSchema) -> Self {
         Self {
             evaluator: value.evaluator,
@@ -177,7 +177,7 @@ impl From<RolesSchema> for RolesNotGov {
     }
 }
 
-impl RolesNotGov {
+impl RolesAllSchemas {
     pub fn check_basic_gov(&self) -> bool {
         let owner = Role {
             name: "Owner".to_string(),
@@ -834,21 +834,42 @@ pub struct RoleSchemaIssuer {
 }
 
 #[derive(
-    Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash, PartialOrd, Ord,
+    Debug, Clone, Eq, PartialEq, Hash, PartialOrd, Ord,
 )]
 pub enum CreatorQuantity {
     Quantity(u32),
     Infinity,
 }
 
-impl fmt::Display for CreatorQuantity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CreatorQuantity::Quantity(quantity) => write!(f, "{}", quantity),
-            CreatorQuantity::Infinity => write!(f, "Infinity"),
+impl<'de> Deserialize<'de> for CreatorQuantity {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+
+        match value {
+            serde_json::Value::String(s) if s == "infinity" => Ok(CreatorQuantity::Infinity),
+            serde_json::Value::Number(n) if n.is_u64() => {
+                Ok(CreatorQuantity::Quantity(n.as_u64().ok_or_else(|| serde::de::Error::custom("Quantity must be a number or 'infinity'"))? as u32))
+            }
+            _ => Err(serde::de::Error::custom("Quantity must be a number or 'infinity'")),
         }
     }
 }
+
+impl Serialize for CreatorQuantity {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            CreatorQuantity::Quantity(n) => serializer.serialize_u32(*n),
+            CreatorQuantity::Infinity => serializer.serialize_str("infinity"),
+        }
+    }
+}
+
 
 /// Governance member.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
@@ -878,6 +899,7 @@ impl fmt::Display for ProtocolTypes {
 #[derive(
     Debug, Clone, Default, Serialize, Deserialize, PartialEq, Hash, Eq,
 )]
+#[serde(rename_all = "lowercase")]
 pub enum Quorum {
     #[default]
     Majority,

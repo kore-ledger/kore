@@ -26,7 +26,7 @@ pub struct RunnerResult {
 
 #[derive(Debug, Clone)]
 pub enum EvaluateType {
-    NotGovFact {
+    AllSchemasFact {
         contract: Vec<u8>,
         payload: ValueWrapper,
     },
@@ -36,7 +36,7 @@ pub enum EvaluateType {
     GovTransfer {
         new_owner: KeyIdentifier,
     },
-    NotGovTransfer {
+    AllSchemasTransfer {
         new_owner: KeyIdentifier,
         old_owner: KeyIdentifier,
         namespace: Namespace,

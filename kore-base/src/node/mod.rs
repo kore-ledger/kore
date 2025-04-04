@@ -323,8 +323,7 @@ impl Actor for Node {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.stop_store(ctx).await?;
-        Ok(())
+        self.stop_store(ctx).await
     }
 }
 

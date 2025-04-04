@@ -39,6 +39,10 @@ impl Namespace {
         Namespace(Vec::new())
     }
 
+    pub fn check(&self) -> bool {
+        !self.0.iter().any(|x| x.trim().is_empty())
+    }
+
     /// Add a name to the `Namespace`.
     ///
     /// # Arguments
@@ -46,7 +50,11 @@ impl Namespace {
     /// * `name` - The name to add.
     ///
     pub fn add(&mut self, name: &str) {
-        self.0.push(name.to_owned())
+        let name = name.trim();
+
+        if !name.is_empty() {
+            self.0.push(name.to_owned())
+        }
     }
 
     /// Root name of the `Namespace`.
@@ -237,7 +245,7 @@ impl From<&str> for Namespace {
         let tokens: Vec<String> = str
             .split('.')
             .filter(|x| !x.trim().is_empty())
-            .map(|s| s.to_string())
+            .map(|s| s.trim().to_string())
             .collect();
 
         Namespace(tokens)

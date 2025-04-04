@@ -22,7 +22,7 @@ use crate::model::common::{
     emit_fail, get_sign, get_signers_quorum_gov_version,
 };
 use crate::model::event::{LedgerValue, ProtocolsSignatures};
-use crate::model::{Namespace, SignTypesNode};
+use crate::model::SignTypesNode;
 use crate::request::manager::{RequestManager, RequestManagerMessage};
 use crate::{EventRequest, SubjectMessage, SubjectResponse};
 use crate::{
@@ -322,7 +322,7 @@ impl Handler<Approval> for Approval {
                             ctx,
                             &eval_req.context.subject_id.to_string(),
                             &eval_req.context.schema_id,
-                            Namespace::from(eval_req.context.namespace),
+                            eval_req.context.namespace,
                             ProtocolTypes::Aprovation,
                         )
                         .await

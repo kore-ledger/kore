@@ -294,7 +294,7 @@ impl Handler<Auth> for Auth {
                     WitnessesAuth::Witnesses => {
                         match get_gov(ctx, &subject_id.to_string()).await {
                             Ok(gov) => {
-                                let (witnesses, _) = gov.get_signers(RoleTypes::Witness, "governance", Namespace::from(""));
+                                let (witnesses, _) = gov.get_signers(RoleTypes::Witness, "governance", Namespace::new());
                                 Some(AuthWitness::Many(Vec::from_iter(witnesses.iter().cloned())))
                             },
                             Err(e) => {

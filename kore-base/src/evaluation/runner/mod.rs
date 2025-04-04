@@ -44,7 +44,7 @@ impl Runner {
         is_owner: bool,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
         match evaluate_type {
-            EvaluateType::NotGovFact { contract, payload } => {
+            EvaluateType::AllSchemasFact { contract, payload } => {
                 Self::execute_fact_not_gov(state, &payload, &contract, is_owner)
                     .await
             }
@@ -54,7 +54,7 @@ impl Runner {
             EvaluateType::GovTransfer { new_owner } => {
                 Self::execute_transfer_gov(state.clone(), &new_owner)
             }
-            EvaluateType::NotGovTransfer {
+            EvaluateType::AllSchemasTransfer {
                 new_owner,
                 old_owner,
                 namespace,
@@ -390,6 +390,7 @@ impl Runner {
         let mod_state = to_value(governance).map_err(|e| {
             Error::Runner(format!("Can not serialice Governance into Value {}", e))
         })?;
+
         let patch = diff(&state.0, &mod_state);
         let json_patch = to_value(patch).map_err(|e| {
             Error::Runner(format!("Can not conver patch to JSON patch: {}", e))
@@ -590,16 +591,16 @@ impl Runner {
             governance.roles_schema = new_roles;
         }
 
-        if let Some(not_governance) = roles_event.not_governance {
-            let new_roles = governance.roles_not_governance.clone();
+        if let Some(all_schemas) = roles_event.all_schemas {
+            let new_roles = governance.roles_all_schemas.clone();
 
-            let new_roles = not_governance.check_data(
+            let new_roles = all_schemas.check_data(
                 governance,
                 new_roles,
-                "not_governance",
+                "all_schemas",
             )?;
 
-            governance.roles_not_governance = new_roles;
+            governance.roles_all_schemas = new_roles;
         }
 
         Ok(())
@@ -636,8 +637,8 @@ impl Runner {
                     ));
                 }
 
-                if new_schema.id == "not_governance" {
-                    return Err(Error::Runner("There can not be a schema whose id is not_governance, it is a reserved word".to_owned()));
+                if new_schema.id == "all_schemas" {
+                    return Err(Error::Runner("There can not be a schema whose id is all_schemas, it is a reserved word".to_owned()));
                 }
 
                 if new_schema.id == "governance" {
@@ -797,6 +798,13 @@ impl Runner {
                     )));
                 }
 
+                if new_member.name == "Any" {
+                    return Err(Error::Runner(format!(
+                        "Name of member to add can not be 'Any', {}",
+                        new_member.name
+                    )));
+                }
+
                 if new_member.key.is_empty() {
                     return Err(Error::Runner(format!(
                         "Key of {} can not be empty",
@@ -892,6 +900,13 @@ impl Runner {
                         return Err(Error::Runner(format!(
                             "New name of {} can not contains blank spaces",
                             actual_member_name
+                        )));
+                    }
+
+                    if new_name == "Any" {
+                        return Err(Error::Runner(format!(
+                            "New name of member can not be 'Any', {}",
+                            new_name
                         )));
                     }
 

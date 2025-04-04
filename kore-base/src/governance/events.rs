@@ -6,19 +6,19 @@ use serde_json::Value;
 
 use crate::{error::Error, model::Namespace};
 
-use super::{model::{CreatorQuantity, RoleCreator, RolesGov, RolesNotGov, RolesSchema}, Governance, Quorum, Role};
+use super::{model::{CreatorQuantity, RoleCreator, RolesGov, RolesAllSchemas, RolesSchema}, Governance, Quorum, Role};
 pub type MemberName = String;
 pub type SchemaId = String;
 
 // Nombres reservados
-// Any, not_governance,
+// Any, all_schemas,
 // CUando se borre un schema borramos sus políticas y roles.
 
 
 // Cuando se cree el schema se debe crear el de las politicas y roles
 // No pueden haber politicas para not governance, ni schema.
 
-// Not_governance va a ser un atributo fijo en los roles.
+// all_schemas va a ser un atributo fijo en los roles.
 
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,13 +72,13 @@ impl ChangeMember {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RolesEvent {
     pub governance: Option<GovRoleEvent>,
-    pub not_governance: Option<NotGovRoleEvent>,
+    pub all_schemas: Option<AllSchemasRoleEvent>,
     pub schema: Option<HashSet<SchemaIdRole>>
 }
 
 impl RolesEvent {
     pub fn is_empty(&self) -> bool {
-        self.governance.is_none() && self.schema.is_none() && self.not_governance.is_none()
+        self.governance.is_none() && self.schema.is_none() && self.all_schemas.is_none()
     }
 }
 
@@ -323,10 +323,10 @@ impl SchemaIdRole {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
-pub struct NotGovRoleEvent {
-    pub add: Option<NotGovRolesAddEvent>,
-    pub remove: Option<NotGovRolesRemoveEvent>,
-    pub change: Option<NotGovRolesChangeEvent>
+pub struct AllSchemasRoleEvent {
+    pub add: Option<AllSchemasRolesAddEvent>,
+    pub remove: Option<AllSchemasRolesRemoveEvent>,
+    pub change: Option<AllSchemasRolesChangeEvent>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
@@ -336,19 +336,19 @@ pub struct SchemaRoleEvent {
     pub change: Option<SchemaRolesChangeEvent>
 }
 
-impl NotGovRoleEvent {
-    pub fn check_data(&self, governance: &Governance, roles_not_gov: RolesNotGov, schema_id: &str) -> Result<RolesNotGov, Error> {
+impl AllSchemasRoleEvent {
+    pub fn check_data(&self, governance: &Governance, roles_not_gov: RolesAllSchemas, schema_id: &str) -> Result<RolesAllSchemas, Error> {
         let schema = SchemaRoleEvent::from(self.clone());
         
         let mut roles_schema = RolesSchema::from(roles_not_gov);
         schema.check_data(governance, &mut roles_schema, schema_id)?;
-        let roles_not_gov = RolesNotGov::from(roles_schema.clone());
+        let roles_not_gov = RolesAllSchemas::from(roles_schema.clone());
         Ok(roles_not_gov)
     }
 }
 
-impl From<NotGovRoleEvent> for SchemaRoleEvent {
-    fn from(value: NotGovRoleEvent) -> Self {
+impl From<AllSchemasRoleEvent> for SchemaRoleEvent {
+    fn from(value: AllSchemasRoleEvent) -> Self {
 
         Self { 
             add: value.add.map(SchemaRolesAddEvent::from),
@@ -380,6 +380,10 @@ impl SchemaRoleEvent {
                         return Err(Error::Runner("Evaluator name in schema roles can not contains blank spaces".to_owned()));
                     }
 
+                    if !evaluator.namespace.check() {
+                        return Err(Error::Runner("Evaluator namespace in schema roles is invalid".to_owned()));
+                    }
+
                     if !members.contains(&evaluator.name) {
                         return Err(Error::Runner("Evaluator name in schema roles is not a governance member".to_owned()));
                     }
@@ -404,6 +408,10 @@ impl SchemaRoleEvent {
                         return Err(Error::Runner("Validator name in schema roles can not contains blank spaces".to_owned()));
                     }
 
+                    if !validator.namespace.check() {
+                        return Err(Error::Runner("Validator namespace in schema roles is invalid".to_owned()));
+                    }
+
                     if !members.contains(&validator.name) {
                         return Err(Error::Runner("Validator name in schema roles is not a governance member".to_owned()));
                     }
@@ -426,6 +434,10 @@ impl SchemaRoleEvent {
 
                     if witness.name.contains(" ") {
                         return Err(Error::Runner("Witness name in schema roles can not contains blank spaces".to_owned()));
+                    }
+
+                    if !witness.namespace.check() {
+                        return Err(Error::Runner("Witness namespace in schema roles is invalid".to_owned()));
                     }
 
                     if !members.contains(&witness.name) {
@@ -458,6 +470,10 @@ impl SchemaRoleEvent {
                         }
                     }
 
+                    if !creator.namespace.check() {
+                        return Err(Error::Runner("Creator namespace in schema roles is invalid".to_owned()));
+                    }
+
                     if !members.contains(&creator.name) {
                         return Err(Error::Runner("Creator name in schema roles is not a governance member".to_owned()));
                     }
@@ -483,6 +499,10 @@ impl SchemaRoleEvent {
                     }
 
                     if issuer.name != "Any" {
+                        if !issuer.namespace.check() {
+                            return Err(Error::Runner("Issuer namespace in schema roles is invalid".to_owned()));
+                        }
+
                         if !members.contains(&issuer.name) {
                             return Err(Error::Runner("Issuer name in schema roles is not a governance member".to_owned()));
                         }
@@ -586,6 +606,10 @@ impl SchemaRoleEvent {
                 }
 
                 for evaluator in evaluators {
+                    if !evaluator.new_namespace.check() {
+                        return Err(Error::Runner(format!("Can not change evaluator {} {} from {} schema, invalid new namespace", evaluator.actual_name, evaluator.actual_namespace, schema_id)));
+                    }
+
                     if !roles_schema.evaluator.remove(&Role { name: evaluator.actual_name.clone(), namespace: evaluator.actual_namespace.clone() }) {
                         return Err(Error::Runner(format!("Can not change evaluator {} {} from {} schema, does not have this role", evaluator.actual_name, evaluator.actual_namespace, schema_id)));
                     }; 
@@ -603,6 +627,10 @@ impl SchemaRoleEvent {
                 }
 
                 for validator in validators {
+                    if !validator.new_namespace.check() {
+                        return Err(Error::Runner(format!("Can not change validator {} {} from {} schema, invalid new namespace", validator.actual_name, validator.actual_namespace, schema_id)));
+                    }
+
                     if !roles_schema.validator.remove(&Role { name: validator.actual_name.clone(), namespace: validator.actual_namespace.clone() }) {
                         return Err(Error::Runner(format!("Can not change validator {} {} from {} schema, does not have this role", validator.actual_name, validator.actual_namespace, schema_id)));
                     }; 
@@ -619,6 +647,10 @@ impl SchemaRoleEvent {
                 }
 
                 for witness in witnesses {
+                    if !witness.new_namespace.check() {
+                        return Err(Error::Runner(format!("Can not change witness {} {} from {} schema, invalid new namespace", witness.actual_name, witness.actual_namespace, schema_id)));
+                    }
+
                     if !roles_schema.witness.remove(&Role { name: witness.actual_name.clone(), namespace: witness.actual_namespace.clone() }) {
                         return Err(Error::Runner(format!("Can not change witness {} {} from {} schema, does not have this role", witness.actual_name, witness.actual_namespace, schema_id)));
                     }; 
@@ -647,7 +679,14 @@ impl SchemaRoleEvent {
                         return Err(Error::Runner(format!("Can not change creator {} {} from {} schema, does not have this role", creator.actual_name, creator.actual_namespace, schema_id)));
                     }; 
 
-                    if !roles_schema.creator.insert(RoleCreator { name: creator.actual_name.clone(), namespace: creator.new_namespace.unwrap_or(creator.actual_namespace.clone()), quantity: creator.new_quantity.unwrap_or(old_creator.quantity)}) {
+                    let new_namespace = creator.new_namespace.unwrap_or(creator.actual_namespace.clone());
+
+                    if !new_namespace.check() {
+                        return Err(Error::Runner(format!("Can not change creator {} {} from {} schema, invalid new namespace", creator.actual_name, creator.actual_namespace, schema_id)));
+                    }
+
+
+                    if !roles_schema.creator.insert(RoleCreator { name: creator.actual_name.clone(), namespace: new_namespace, quantity: creator.new_quantity.unwrap_or(old_creator.quantity)}) {
                         return Err(Error::Runner(format!("Can not change creator {} {} from {} schema, creator whith this namespace already exist", creator.actual_name, creator.actual_namespace, schema_id)));
                     } 
                 }
@@ -660,6 +699,10 @@ impl SchemaRoleEvent {
 
                 for issuer in issuers {
                     if issuer.actual_name != "Any" {
+                        if !issuer.new_namespace.check() {
+                            return Err(Error::Runner(format!("Can not change issuer {} {} from {} schema, invalid new namespace", issuer.actual_name, issuer.actual_namespace, schema_id)));
+                        }
+
                         if !roles_schema.issuer.users.remove(&Role { name: issuer.actual_name.clone(), namespace: issuer.actual_namespace.clone() }) {
                             return Err(Error::Runner(format!("Can not change issuer {} {} from {} schema, does not have this role", issuer.actual_name, issuer.actual_namespace, schema_id)));
                         }; 
@@ -694,21 +737,21 @@ impl GovRolesEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct NotGovRolesAddEvent {
+pub struct AllSchemasRolesAddEvent {
     pub evaluator: Option<BTreeSet<Role>>,
     pub validator: Option<BTreeSet<Role>>,
     pub witness: Option<BTreeSet<Role>>,
     pub issuer: Option<BTreeSet<Role>>
 }
 
-impl NotGovRolesAddEvent {
+impl AllSchemasRolesAddEvent {
     pub fn is_empty(&self) -> bool {
         self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
     }
 }
 
-impl From<NotGovRolesAddEvent> for SchemaRolesAddEvent {
-    fn from(value: NotGovRolesAddEvent) -> Self {
+impl From<AllSchemasRolesAddEvent> for SchemaRolesAddEvent {
+    fn from(value: AllSchemasRolesAddEvent) -> Self {
         Self { evaluator: value.evaluator, validator: value.validator, witness: value.witness, creator: None, issuer: value.issuer }
     }
 }
@@ -729,21 +772,21 @@ impl SchemaRolesAddEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct NotGovRolesRemoveEvent {
+pub struct AllSchemasRolesRemoveEvent {
     pub evaluator: Option<BTreeSet<Role>>,
     pub validator: Option<BTreeSet<Role>>,
     pub witness: Option<BTreeSet<Role>>,
     pub issuer: Option<BTreeSet<Role>>
 }
 
-impl NotGovRolesRemoveEvent {
+impl AllSchemasRolesRemoveEvent {
     pub fn is_empty(&self) -> bool {
         self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
     }
 }
 
-impl From<NotGovRolesRemoveEvent> for SchemaRolesRemoveEvent {
-    fn from(value: NotGovRolesRemoveEvent) -> Self {
+impl From<AllSchemasRolesRemoveEvent> for SchemaRolesRemoveEvent {
+    fn from(value: AllSchemasRolesRemoveEvent) -> Self {
         Self { evaluator: value.evaluator, validator: value.validator, witness: value.witness, creator: None, issuer: value.issuer }
     }
 }
@@ -764,21 +807,21 @@ impl SchemaRolesRemoveEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct NotGovRolesChangeEvent {
+pub struct AllSchemasRolesChangeEvent {
     pub evaluator: Option<BTreeSet<RoleChange>>,
     pub validator: Option<BTreeSet<RoleChange>>,
     pub witness: Option<BTreeSet<RoleChange>>,
     pub issuer: Option<BTreeSet<RoleChange>>,
 }
 
-impl NotGovRolesChangeEvent {
+impl AllSchemasRolesChangeEvent {
     pub fn is_empty(&self) -> bool {
         self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
     }
 }
 
-impl From<NotGovRolesChangeEvent> for SchemaRolesChangeEvent {
-    fn from(value: NotGovRolesChangeEvent) -> Self {
+impl From<AllSchemasRolesChangeEvent> for SchemaRolesChangeEvent {
+    fn from(value: AllSchemasRolesChangeEvent) -> Self {
         Self { evaluator: value.evaluator, validator: value.validator, witness: value.witness, creator: None, issuer: value.issuer }
     }
 }
