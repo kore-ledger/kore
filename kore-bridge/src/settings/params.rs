@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
 use kore_base::config::{ExternalDbConfig, KoreDbConfig};
@@ -694,8 +694,10 @@ struct BaseParams {
     kore_db: KoreDbConfig,
     #[serde(default, deserialize_with = "ExternalDbConfig::deserialize_db")]
     external_db: ExternalDbConfig,
-    #[serde(default)]
-    sink: String,
+    #[serde(
+        default,
+        deserialize_with = "deserialize_sinks")]
+    sink: BTreeMap<String, String>,
 }
 
 impl BaseParams {
@@ -801,6 +803,28 @@ impl Default for BaseParams {
             sink: Default::default(),
         }
     }
+}
+
+
+fn deserialize_sinks<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let u: String = String::deserialize(deserializer)?;
+    let elements = u.split(",").collect::<Vec<&str>>();
+    let vec = elements.iter().map(|x| {
+        match x.split_once(":") {
+            Some((k, v)) => (k.to_owned(), v.to_owned()),
+            None => (String::default(), String::default()),
+        }
+    }).collect::<Vec<(String, String)>>();
+
+    let mut btreemap = BTreeMap::from_iter(vec.iter().cloned());
+    btreemap.remove("");
+
+    Ok(btreemap)
 }
 
 fn default_garbage_collector_secs() -> Duration {

@@ -67,7 +67,7 @@ pub mod tests {
     use crate::config::{ExternalDbConfig, KoreDbConfig};
     use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
     use network::Config as NetworkConfig;
-    use std::{fs, time::Duration};
+    use std::{collections::{BTreeMap, HashMap}, fs, time::Duration};
     use test_log::test;
 
     use super::*;
@@ -123,7 +123,7 @@ pub mod tests {
             contracts_dir: create_temp_dir(),
             always_accept: false,
             garbage_collector: Duration::from_secs(500),
-            sink: "".to_owned(),
+            sink: BTreeMap::new(),
         };
 
         let sys = system(config.clone(), "password", None).await.unwrap();

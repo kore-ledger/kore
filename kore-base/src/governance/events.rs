@@ -10,17 +10,6 @@ use super::{model::{CreatorQuantity, RoleCreator, RolesGov, RolesAllSchemas, Rol
 pub type MemberName = String;
 pub type SchemaId = String;
 
-// Nombres reservados
-// Any, all_schemas,
-// CUando se borre un schema borramos sus políticas y roles.
-
-
-// Cuando se cree el schema se debe crear el de las politicas y roles
-// No pueden haber politicas para not governance, ni schema.
-
-// all_schemas va a ser un atributo fijo en los roles.
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GovernanceEvent {
     pub members: Option<MemberEvent>,
@@ -64,7 +53,7 @@ pub struct ChangeMember {
 
 impl ChangeMember {
     pub fn is_empty(&self) -> bool {
-        self.actual_name.is_empty() || self.actual_name.contains(" ") || self.new_key.is_none() && self.new_name.is_none()
+        self.actual_name.is_empty() || self.new_key.is_none() && self.new_name.is_none()
     }
 }
 
@@ -107,13 +96,15 @@ impl GovRoleEvent {
                     return Err(Error::Runner("Approvers vec in governance roles add can not be empty".to_owned()));
                 }
 
-                for approver in approvers {
+                for mut approver in approvers {
+                    approver = approver.trim().to_owned();
+
                     if approver.is_empty() {
                         return Err(Error::Runner("Approver name in governance roles can not empty".to_owned()));
                     }
 
-                    if approver.contains(" ") {
-                        return Err(Error::Runner("Approver name in governance roles can not contains blank spaces".to_owned()));
+                    if approver.len() > 50 {
+                        return Err(Error::Runner("Approver name len in governance roles must be less than or equal to 50".to_owned()));
                     }
 
                     if !members.contains(&approver) {
@@ -132,13 +123,15 @@ impl GovRoleEvent {
                     return Err(Error::Runner("Evaluators vec in governance roles add can not be empty".to_owned()));
                 }
 
-                for evaluator in evaluators {
+                for mut evaluator in evaluators {
+                    evaluator = evaluator.trim().to_owned();
+
                     if evaluator.is_empty() {
                         return Err(Error::Runner("Evaluator name in governance roles can not empty".to_owned()));
                     }
 
-                    if evaluator.contains(" ") {
-                        return Err(Error::Runner("Evaluator name in governance roles can not contains blank spaces".to_owned()));
+                    if evaluator.len() > 50 {
+                        return Err(Error::Runner("Evaluator name len in governance roles must be less than or equal to 50".to_owned()));
                     }
 
                     if !members.contains(&evaluator) {
@@ -158,13 +151,15 @@ impl GovRoleEvent {
                     return Err(Error::Runner("Validators vec in governance roles add can not be empty".to_owned()));
                 }
 
-                for validator in validators {
+                for mut validator in validators {
+                    validator = validator.trim().to_owned();
+
                     if validator.is_empty() {
                         return Err(Error::Runner("Validator name in governance roles can not empty".to_owned()));
                     }
 
-                    if validator.contains(" ") {
-                        return Err(Error::Runner("Validator name in governance roles can not contains blank spaces".to_owned()));
+                    if validator.len() > 50 {
+                        return Err(Error::Runner("Validator name len in governance roles must be less than or equal to 50".to_owned()));
                     }
 
                     if !members.contains(&validator) {
@@ -183,13 +178,15 @@ impl GovRoleEvent {
                     return Err(Error::Runner("Witnesses vec in governance roles add can not be empty".to_owned()));
                 }
 
-                for witness in witnesses {
+                for mut witness in witnesses {
+                    witness = witness.trim().to_owned();
+
                     if witness.is_empty() {
                         return Err(Error::Runner("Witness name in governance roles can not empty".to_owned()));
                     }
 
-                    if witness.contains(" ") {
-                        return Err(Error::Runner("Witness name in governance roles can not contains blank spaces".to_owned()));
+                    if witness.len() > 50 {
+                        return Err(Error::Runner("Witness name len in governance roles must be less than or equal to 50".to_owned()));
                     }
 
                     if !members.contains(&witness) {
@@ -208,13 +205,15 @@ impl GovRoleEvent {
                     return Err(Error::Runner("Issuers vec in governance roles can not be empty".to_owned()));
                 }
 
-                for issuer in issuers {
+                for mut issuer in issuers {
+                    issuer = issuer.trim().to_owned();
+
                     if issuer.is_empty() {
                         return Err(Error::Runner("Issuer name in governance roles can not empty".to_owned()));
                     }
 
-                    if issuer.contains(" ") {
-                        return Err(Error::Runner("Issuer name in governance roles can not contains blank spaces".to_owned()));
+                    if issuer.len() > 50 {
+                        return Err(Error::Runner("Issuer name len in governance roles must be less than or equal to 50".to_owned()));
                     }
 
                     if issuer != "Any" {
@@ -318,7 +317,7 @@ pub struct SchemaIdRole {
 
 impl SchemaIdRole {
     pub fn is_empty(&self) -> bool {
-        self.schema_id.is_empty() || self.schema_id.contains(" ") || self.roles.add.is_none() && self.roles.change.is_none() && self.roles.remove.is_none()
+        self.schema_id.is_empty() || self.roles.add.is_none() && self.roles.change.is_none() && self.roles.remove.is_none()
     }
 }
 
@@ -371,21 +370,23 @@ impl SchemaRoleEvent {
                     return Err(Error::Runner("Evaluators vec in schema roles add can not be empty".to_owned()));
                 }
 
-                for evaluator in evaluators {
+                for mut evaluator in evaluators {
+                    evaluator.name = evaluator.name.trim().to_owned();
+
                     if evaluator.name.is_empty() {
-                        return Err(Error::Runner("Evaluator name in schema roles can not empty".to_owned()));
+                        return Err(Error::Runner(format!("Evaluator name in schema {} roles can not be empty", schema_id)));
                     }
 
-                    if evaluator.name.contains(" ") {
-                        return Err(Error::Runner("Evaluator name in schema roles can not contains blank spaces".to_owned()));
+                    if evaluator.name.len() > 50 {
+                        return Err(Error::Runner(format!("Evaluator name len in schema {} roles must be less than or equal to 50",schema_id)));
                     }
 
                     if !evaluator.namespace.check() {
-                        return Err(Error::Runner("Evaluator namespace in schema roles is invalid".to_owned()));
+                        return Err(Error::Runner(format!("Evaluator namespace in schema {} roles is invalid", schema_id)));
                     }
 
                     if !members.contains(&evaluator.name) {
-                        return Err(Error::Runner("Evaluator name in schema roles is not a governance member".to_owned()));
+                        return Err(Error::Runner(format!("Evaluator name in schema {} roles is not a governance member", schema_id)));
                     }
 
                     if !roles_schema.evaluator.insert(evaluator.clone()) {
@@ -399,21 +400,23 @@ impl SchemaRoleEvent {
                     return Err(Error::Runner("Validators vec in schema roles add can not be empty".to_owned()));
                 }
 
-                for validator in validators {
+                for mut validator in validators {
+                    validator.name = validator.name.trim().to_owned();
+
                     if validator.name.is_empty() {
-                        return Err(Error::Runner("Validator name in schema roles can not empty".to_owned()));
+                        return Err(Error::Runner(format!("Validator name in schema {} roles can not be empty", schema_id)));
                     }
 
-                    if validator.name.contains(" ") {
-                        return Err(Error::Runner("Validator name in schema roles can not contains blank spaces".to_owned()));
+                    if validator.name.len() > 50 {
+                        return Err(Error::Runner(format!("Validator name len in schema {} roles must be less than or equal to 50",schema_id)));
                     }
 
                     if !validator.namespace.check() {
-                        return Err(Error::Runner("Validator namespace in schema roles is invalid".to_owned()));
+                        return Err(Error::Runner(format!("Validator namespace in schema {} roles is invalid", schema_id)));
                     }
 
                     if !members.contains(&validator.name) {
-                        return Err(Error::Runner("Validator name in schema roles is not a governance member".to_owned()));
+                        return Err(Error::Runner(format!("Validator name in schema {} roles is not a governance member", schema_id)));
                     }
 
                     if !roles_schema.validator.insert(validator.clone()) {
@@ -427,21 +430,23 @@ impl SchemaRoleEvent {
                     return Err(Error::Runner("Witnesses vec in schema roles add can not be empty".to_owned()));
                 }
 
-                for witness in witnesses {
+                for mut witness in witnesses {
+                    witness.name =  witness.name.trim().to_owned();
+
                     if witness.name.is_empty() {
-                        return Err(Error::Runner("Witness name in schema roles can not empty".to_owned()));
+                        return Err(Error::Runner(format!("Witness name in schema {} roles can not be empty", schema_id)));
                     }
 
-                    if witness.name.contains(" ") {
-                        return Err(Error::Runner("Witness name in schema roles can not contains blank spaces".to_owned()));
+                    if witness.name.len() > 50 {
+                        return Err(Error::Runner(format!("Witness name len in schema {} roles must be less than or equal to 50",schema_id)));
                     }
 
                     if !witness.namespace.check() {
-                        return Err(Error::Runner("Witness namespace in schema roles is invalid".to_owned()));
+                        return Err(Error::Runner(format!("Witness namespace in schema {} roles is invalid", schema_id)));
                     }
 
                     if !members.contains(&witness.name) {
-                        return Err(Error::Runner("Witness name in schema roles is not a governance member".to_owned()));
+                        return Err(Error::Runner(format!("Witness name in schema {} roles is not a governance member", schema_id)));
                     }
 
                     if !roles_schema.witness.insert(witness.clone()) {
@@ -455,13 +460,15 @@ impl SchemaRoleEvent {
                     return Err(Error::Runner("Creators vec in schema roles add can not be empty".to_owned()));
                 }
 
-                for creator in creators {
+                for mut creator in creators {
+                    creator.name = creator.name.trim().to_owned();
+
                     if creator.name.is_empty() {
-                        return Err(Error::Runner("Creator name in schema roles can not empty".to_owned()));
+                        return Err(Error::Runner(format!("Creator name in schema {} roles can not be empty", schema_id)));
                     }
 
-                    if creator.name.contains(" ") {
-                        return Err(Error::Runner("Creator name in schema roles can not contains blank spaces".to_owned()));
+                    if creator.name.len() > 50 {
+                        return Err(Error::Runner(format!("Creator name len in schema {} roles must be less than or equal to 50",schema_id)));
                     }
 
                     if let CreatorQuantity::Quantity(quantity) = creator.quantity {
@@ -471,11 +478,11 @@ impl SchemaRoleEvent {
                     }
 
                     if !creator.namespace.check() {
-                        return Err(Error::Runner("Creator namespace in schema roles is invalid".to_owned()));
+                        return Err(Error::Runner(format!("Creator namespace in schema {} roles is invalid", schema_id)));
                     }
 
                     if !members.contains(&creator.name) {
-                        return Err(Error::Runner("Creator name in schema roles is not a governance member".to_owned()));
+                        return Err(Error::Runner(format!("Creator name in schema {} roles is not a governance member", schema_id)));
                     }
 
                     if !roles_schema.creator.insert(creator.clone()) {
@@ -489,30 +496,32 @@ impl SchemaRoleEvent {
                     return Err(Error::Runner("Issuers vec in schema roles add can not be empty".to_owned()));
                 }
 
-                for issuer in issuers {
+                for mut issuer in issuers {
+                    issuer.name = issuer.name.trim().to_owned();
+
                     if issuer.name.is_empty() {
-                        return Err(Error::Runner("Issuer name in schema roles can not empty".to_owned()));
+                        return Err(Error::Runner(format!("Issuer name in schema {} roles can not be empty", schema_id)));
                     }
 
-                    if issuer.name.contains(" ") {
-                        return Err(Error::Runner("Issuer name in schema roles can not contains blank spaces".to_owned()));
+                    if issuer.name.len() > 50 {
+                        return Err(Error::Runner(format!("Issuer name len in schema {} roles must be less than or equal to 50",schema_id)));
                     }
 
                     if issuer.name != "Any" {
                         if !issuer.namespace.check() {
-                            return Err(Error::Runner("Issuer namespace in schema roles is invalid".to_owned()));
+                            return Err(Error::Runner(format!("Issuer namespace in schema {} roles is invalid", schema_id)));
                         }
 
                         if !members.contains(&issuer.name) {
-                            return Err(Error::Runner("Issuer name in schema roles is not a governance member".to_owned()));
+                            return Err(Error::Runner(format!("Issuer name in schema {} roles is not a governance member", schema_id)));
                         }
 
                         if !roles_schema.issuer.users.insert(issuer.clone()) {
                             return Err(Error::Runner(format!("{} there is already a issuer in schema {} roles", issuer.name, schema_id)));
                         }; 
                     } else {
-                        if issuer.namespace.is_empty() {
-                            return Err(Error::Runner("Can not add issuer Any, Namespace must be empty".to_owned()));
+                        if !issuer.namespace.is_empty() {
+                            return Err(Error::Runner(format!("Can not add issuer Any in schema {}, Namespace must be empty", schema_id)));
                         }
 
                         roles_schema.issuer.any = true;
@@ -586,7 +595,7 @@ impl SchemaRoleEvent {
                             return Err(Error::Runner(format!("Can not remove issuer {} {} from {} schema, does not have this role", issuer.name, issuer.namespace, schema_id)));
                         }
                     } else {
-                        if issuer.namespace.is_empty() {
+                        if !issuer.namespace.is_empty() {
                             return Err(Error::Runner("Can not remove issuer Any, Namespace must be empty".to_owned()));
                         }
                         roles_schema.issuer.any = false;

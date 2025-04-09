@@ -62,7 +62,7 @@ smallvec = "1.14.0"
 tempfile = "3.19.1"
 time = "0.3.41"
 thiserror = "2.0.12"
-tokio = { version = "1.44.1" }
+tokio = { version = "1.44.2" }
 tokio-util = { version = "0.7.14" }
 tracing ={ version = "0.1.41" }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

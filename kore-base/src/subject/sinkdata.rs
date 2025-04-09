@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use crate::model::common::emit_fail;
+use crate::model::{common::emit_fail, request::FactRequest};
 
 use super::Metadata;
 
@@ -20,7 +20,11 @@ pub struct SinkData;
 
 #[derive(Debug, Clone)]
 pub enum SinkDataMessage {
-    SafeMetadata(Metadata),
+    UpdateState(Metadata),
+    PublishFact {
+        schema_id: String,
+        fact_req: FactRequest
+    }
 }
 
 impl Message for SinkDataMessage {}
@@ -33,8 +37,12 @@ pub enum SinkDataResponse {
 impl Response for SinkDataResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SinkDataEvent {
-    pub metadata: Metadata,
+pub enum SinkDataEvent {
+    UpdateState(Metadata),
+    PublishFact {
+        schema_id: String,
+        fact_req: FactRequest
+    },
 }
 
 impl Event for SinkDataEvent {}
@@ -69,8 +77,11 @@ impl Handler<SinkData> for SinkData {
         ctx: &mut actor::ActorContext<SinkData>,
     ) -> Result<SinkDataResponse, ActorError> {
         match msg {
-            SinkDataMessage::SafeMetadata(metadata) => {
-                self.on_event(SinkDataEvent { metadata }, ctx).await;
+            SinkDataMessage::UpdateState(metadata) => {
+                self.on_event(SinkDataEvent::UpdateState(metadata), ctx).await;
+            }
+            SinkDataMessage::PublishFact { schema_id, fact_req } => {
+                self.on_event(SinkDataEvent::PublishFact { fact_req, schema_id}, ctx).await;
             }
         };
 

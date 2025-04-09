@@ -1036,20 +1036,23 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
 #[async_trait]
 impl Subscriber<SinkDataEvent> for SqliteLocal {
     async fn notify(&self, event: SinkDataEvent) {
-        let name = event.metadata.name;
-        let description = event.metadata.description;
-        let subject_id = event.metadata.subject_id.to_string();
-        let governance_id = event.metadata.governance_id.to_string();
-        let genesis_gov_version = event.metadata.genesis_gov_version;
-        let namespace = event.metadata.namespace.to_string();
-        let schema_id = event.metadata.schema_id;
-        let owner = event.metadata.owner.to_string();
-        let creator = event.metadata.creator.to_string();
-        let active = event.metadata.active.to_string();
-        let sn = event.metadata.sn;
-        let properties = event.metadata.properties.0.to_string();
-        let new_owner = event
-            .metadata
+        let SinkDataEvent::UpdateState(metadata) = event else {
+            return ;
+        };
+
+        let name = metadata.name;
+        let description = metadata.description;
+        let subject_id = metadata.subject_id.to_string();
+        let governance_id = metadata.governance_id.to_string();
+        let genesis_gov_version = metadata.genesis_gov_version;
+        let namespace = metadata.namespace.to_string();
+        let schema_id = metadata.schema_id;
+        let owner = metadata.owner.to_string();
+        let creator = metadata.creator.to_string();
+        let active = metadata.active.to_string();
+        let sn = metadata.sn;
+        let properties = metadata.properties.0.to_string();
+        let new_owner = metadata
             .new_owner
             .map(|new_owner| new_owner.to_string());
 

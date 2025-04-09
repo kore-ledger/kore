@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DOCKER_USERNAME="koreadmin"
+DOCKER_USERNAME="koreledgerhub"
 DOCKER_REPO="kore-http"
 TAG_ARRAY=("0.7.0-rockdb-prometheus")
 DOCKERFILE_ARRAY=("./kore/kore-http/docker/Dockerfile.rockdb")

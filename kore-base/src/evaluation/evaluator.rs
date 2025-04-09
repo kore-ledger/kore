@@ -80,13 +80,16 @@ impl Evaluator {
         let runner_actor =
             ctx.create_child("runner", Runner::default()).await?;
 
-        runner_actor
+        let response = runner_actor
             .ask(RunnerMessage {
                 state: state.clone(),
                 evaluate_type,
                 is_owner,
             })
-            .await
+            .await;
+        runner_actor.ask_stop().await?;
+
+        response
     }
 
     async fn compile_contracts(

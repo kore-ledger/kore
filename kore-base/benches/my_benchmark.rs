@@ -12,6 +12,7 @@ use kore_base::{
 };
 use network::{Config as NetworkConfig, RoutingNode};
 use prometheus_client::registry::Registry;
+use std::collections::BTreeMap;
 use std::{fs, time::Duration};
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
@@ -61,7 +62,7 @@ pub async fn create_node(
         contracts_dir: create_temp_dir(),
         always_accept,
         garbage_collector: Duration::from_secs(500),
-        sink: "".to_owned(),
+        sink: BTreeMap::new(),
     };
 
     let mut registry = Registry::default();

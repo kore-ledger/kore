@@ -103,7 +103,7 @@ mod tests {
             std::env::set_var("KORE_BASE_KORE_DB", "./fake/db/path");
             std::env::set_var("KORE_BASE_EXTERNAL_DB", "./fake/db/path");
             std::env::set_var("KORE_BASE_GARBAGE_COLLECTOR", "1000");
-            std::env::set_var("KORE_BASE_SINK", "http");
+            std::env::set_var("KORE_BASE_SINK", "key1:https://www.kore-ledger.net/build/,key2:https://www.kore-ledger.net/community/");
 
             std::env::set_var("KORE_NETWORK_PORT_REUSE", "true");
             std::env::set_var("KORE_NETWORK_USER_AGENT", "Kore2.0");
@@ -193,10 +193,8 @@ mod tests {
             Duration::from_secs(1000)
         );
         assert_eq!(config.kore_config.contracts_dir, "./fake_route");
-        assert_eq!(config.kore_config.sink, "http");
-        // TODO Test
-        println!("{:?}", config.kore_config.external_db);
-        println!("{:?}", config.kore_config.kore_db);
+        assert_eq!(config.kore_config.sink.len(), 2);
+
         assert_eq!(
             config.kore_config.network.routing.boot_nodes()[0].peer_id,
             boot_nodes[0].peer_id

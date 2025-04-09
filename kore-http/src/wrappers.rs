@@ -570,6 +570,17 @@ pub struct KoreConfig {
 
 impl From<KoreConfigBridge> for KoreConfig {
     fn from(value: KoreConfigBridge) -> Self {
+        let mut sink = String::default();
+        for (key, val) in value.sink.iter() {
+            sink = format!("{},{}:{}", sink, key, val);
+        }
+
+        if !sink.is_empty() {
+            sink.remove(0);
+        }
+
+        sink = format!("{{{}}}", sink);
+
         Self {
             key_derivator: value.key_derivator.to_string(),
             digest_derivator: value.digest_derivator.to_string(),
@@ -579,7 +590,7 @@ impl From<KoreConfigBridge> for KoreConfig {
             contracts_dir: value.contracts_dir,
             always_accept: value.always_accept,
             garbage_collector: value.garbage_collector.as_secs(),
-            sink: value.sink,
+            sink,
         }
     }
 }

@@ -3,7 +3,7 @@
 
 //! # Configuration module
 
-use std::{fmt, time::Duration};
+use std::{collections::BTreeMap, fmt, time::Duration};
 
 use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
 use network::Config as NetworkConfig;
@@ -28,7 +28,7 @@ pub struct Config {
     pub always_accept: bool,
     /// Garbage collector acts
     pub garbage_collector: Duration,
-    pub sink: String,
+    pub sink: BTreeMap<String, String>,
 }
 
 impl Config {

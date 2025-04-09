@@ -207,16 +207,15 @@ impl Runner {
 
         governance.change_name_role(&vec![(new_owner_member, "Owner".to_owned())]);
 
-        if let Some(old_owner_name) = old_owner_name {
+        if let Some(mut old_owner_name) = old_owner_name {
+            old_owner_name = old_owner_name.trim().to_owned();
+
             if old_owner_name.is_empty() {
                 return Err(Error::Runner("New name to old owner can not be empty".to_owned()));
             }
 
-            if old_owner_name.contains(" ") {
-                return Err(Error::Runner(format!(
-                    "New name to old owner can not contains blank spaces, {}",
-                    old_owner_name
-                )));
+            if old_owner_name.len() > 50 {
+                return Err(Error::Runner(format!("The size of the new name of the old owner must be less than or equal to 50 characters: {}", old_owner_name)));
             }
 
             if governance.members.insert(old_owner_name.clone(), old_owner_key.clone()).is_some() {
@@ -630,10 +629,18 @@ impl Runner {
                 ));
             }
 
-            for new_schema in add {
+            for mut new_schema in add {
+                new_schema.id = new_schema.id.trim().to_owned();
+
                 if new_schema.id.is_empty() {
                     return Err(Error::Runner(
                         "Id of schema to add can not be empty".to_owned(),
+                    ));
+                }
+
+                if new_schema.id.len() > 50 {
+                    return Err(Error::Runner(
+                        format!("The size of the schema ID must be less than or equal to 50 characters: {}", new_schema.id),
                     ));
                 }
 
@@ -643,13 +650,6 @@ impl Runner {
 
                 if new_schema.id == "governance" {
                     return Err(Error::Runner("There can not be a schema whose id is governance, it is a reserved word".to_owned()));
-                }
-
-                if new_schema.id.contains(" ") {
-                    return Err(Error::Runner(format!(
-                        "Id of schema to add can not contains blank spaces, {}",
-                        new_schema.id
-                    )));
                 }
 
                 if new_schema.contract.is_empty() {
@@ -784,18 +784,19 @@ impl Runner {
                 ));
             }
 
-            for new_member in add {
+            for mut new_member in add {
+                new_member.name = new_member.name.trim().to_owned();
+
                 if new_member.name.is_empty() {
                     return Err(Error::Runner(
                         "Name of member to add can not be empty".to_owned(),
                     ));
                 }
 
-                if new_member.name.contains(" ") {
-                    return Err(Error::Runner(format!(
-                        "Name of member to add can not contains blank spaces, {}",
-                        new_member.name
-                    )));
+                if new_member.name.len() > 50 {
+                    return Err(Error::Runner(
+                        format!("The size of the member name be less than or equal to 50 characters: {}", new_member.name),
+                    ));
                 }
 
                 if new_member.name == "Any" {
@@ -888,7 +889,9 @@ impl Runner {
                     )));
                 };
 
-                if let Some(new_name) = change_member.new_name.clone() {
+                if let Some(mut new_name) = change_member.new_name.clone() {
+                    new_name = new_name.trim().to_owned();
+
                     if new_name.is_empty() {
                         return Err(Error::Runner(format!(
                             "New name of {} can not be empty",
@@ -896,9 +899,9 @@ impl Runner {
                         )));
                     }
 
-                    if new_name.contains(" ") {
+                    if new_name.len() > 50 {
                         return Err(Error::Runner(format!(
-                            "New name of {} can not contains blank spaces",
+                            "The size of the new name must be less than or equal to 50 characters: {}",
                             actual_member_name
                         )));
                     }

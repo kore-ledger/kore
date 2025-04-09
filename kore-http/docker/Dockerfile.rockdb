@@ -1,5 +1,5 @@
-#docker build --platform linux/arm64 -t koreadmin/kore-http:arm64-rockdb-prometheus --target arm64 -f ./kore-http/docker/Dockerfile.rockdb .
-#docker build --platform linux/amd64 -t koreadmin/kore-http:amd64-rockdb-prometheus --target amd64 -f ./kore-http/docker/Dockerfile.rockdb .
+#docker build --platform linux/arm64 -t koreledgerhub/kore-http:arm64-rockdb-prometheus --target arm64 -f ./kore-http/docker/Dockerfile.rockdb .
+#docker build --platform linux/amd64 -t koreledgerhub/kore-http:amd64-rockdb-prometheus --target amd64 -f ./kore-http/docker/Dockerfile.rockdb .
 
 # Etapa de compilación para AMD64
 FROM rust:1.85-slim-bullseye AS builder-amd64

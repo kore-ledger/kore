@@ -7,7 +7,7 @@ use identity::{
 };
 use kore_base::{
     approval::approver::ApprovalStateRes,
-    config::{Config, ExternalDbConfig, KoreDbConfig}, helpers::db::common::SubjectInfo, model::{
+    config::{Config, ExternalDbConfig, KoreDbConfig}, helpers::db::common::{SignaturesInfo, SubjectInfo}, model::{
         request::{
             ConfirmRequest, CreateRequest, EventRequest, FactRequest,
             RejectRequest, TransferRequest,
@@ -16,7 +16,7 @@ use kore_base::{
 };
 use network::{Config as NetworkConfig, MonitorNetworkState, RoutingNode};
 use prometheus_client::registry::Registry;
-use std::{fs, str::FromStr, time::Duration};
+use std::{collections::BTreeMap, fs, str::FromStr, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 pub fn create_temp_dir() -> String {
@@ -64,7 +64,7 @@ pub async fn create_node(
         contracts_dir: create_temp_dir(),
         always_accept,
         garbage_collector: Duration::from_secs(500),
-        sink: "".to_owned(),
+        sink: BTreeMap::new(),
     };
 
     let mut registry = Registry::default();
@@ -355,6 +355,27 @@ pub async fn get_subject(
     loop {
         if let Ok(state) =  node
             .get_subject(subject_id.clone())
+            .await {
+                if let Some(sn) = sn {
+                    if sn == state.sn {
+                        return Ok(state);        
+                    }
+                } else {
+                    return Ok(state);
+                }
+            }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+pub async fn get_signatures(
+    node: &Api,
+    subject_id: DigestIdentifier,
+    sn: Option<u64>
+) -> Result<SignaturesInfo, Box<dyn std::error::Error>> {
+    loop {
+        if let Ok(state) =  node
+            .get_signatures(subject_id.clone())
             .await {
                 if let Some(sn) = sn {
                     if sn == state.sn {
