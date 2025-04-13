@@ -96,10 +96,10 @@ impl RequestHandler {
 
         let data = if create_req.schema_id == "governance" {
             let gov = Governance::new(request.signature.signer.clone());
-            let value = gov.to_value_wrapper().map_err(|e| {
-                ActorError::FunctionalFail(e.to_string())
-            })?;
-            
+            let value = gov
+                .to_value_wrapper()
+                .map_err(|e| ActorError::FunctionalFail(e.to_string()))?;
+
             CreateSubjectData {
                 create_req,
                 subject_id,
@@ -196,11 +196,9 @@ impl RequestHandler {
         namespace: Namespace,
         gov: Governance,
     ) -> Result<(), ActorError> {
-        if let Some(max_quantity) = gov.max_creations(
-            &self.node_key,
-            schema_id,
-            namespace.clone(),
-        ) {
+        if let Some(max_quantity) =
+            gov.max_creations(&self.node_key, schema_id, namespace.clone())
+        {
             if let CreatorQuantity::Quantity(max_quantity) = max_quantity {
                 let quantity = match get_quantity(
                     ctx,
@@ -487,18 +485,25 @@ impl Handler<RequestHandler> for RequestHandler {
                             if name.is_empty() || name.len() > 100 {
                                 let e = "The subject name must be less than 100 characters or not be empty.";
                                 error!(TARGET_REQUEST, "NewRequest, {}", e);
-                                return Err(ActorError::Functional(e.to_owned()));
-                            }    
-                        }
-
-                        if let Some(description) = create_request.description.clone() {
-                            if description.is_empty() || description.len() > 200 {
-                                let e = "The subject description must be less than 200 characters or not be empty.";
-                                error!(TARGET_REQUEST, "NewRequest, {}", e);
-                                return Err(ActorError::Functional(e.to_owned()));
+                                return Err(ActorError::Functional(
+                                    e.to_owned(),
+                                ));
                             }
                         }
-                        
+
+                        if let Some(description) =
+                            create_request.description.clone()
+                        {
+                            if description.is_empty() || description.len() > 200
+                            {
+                                let e = "The subject description must be less than 200 characters or not be empty.";
+                                error!(TARGET_REQUEST, "NewRequest, {}", e);
+                                return Err(ActorError::Functional(
+                                    e.to_owned(),
+                                ));
+                            }
+                        }
+
                         // verificar que el firmante sea el nodo.
                         if request.signature.signer != self.node_key {
                             let e = "Only the node can sign creation events.";

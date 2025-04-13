@@ -151,7 +151,7 @@ impl Handler<Updater> for Updater {
                         reciver_actor: format!(
                             "/user/node/{}/distributor",
                             subject_id
-                        )
+                        ),
                     },
                     message: ActorMessage::Transfer { subject_id },
                 };

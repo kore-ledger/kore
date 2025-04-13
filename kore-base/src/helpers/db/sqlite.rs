@@ -1037,7 +1037,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
 impl Subscriber<SinkDataEvent> for SqliteLocal {
     async fn notify(&self, event: SinkDataEvent) {
         let SinkDataEvent::UpdateState(metadata) = event else {
-            return ;
+            return;
         };
 
         let name = metadata.name;
@@ -1052,9 +1052,8 @@ impl Subscriber<SinkDataEvent> for SqliteLocal {
         let active = metadata.active.to_string();
         let sn = metadata.sn;
         let properties = metadata.properties.0.to_string();
-        let new_owner = metadata
-            .new_owner
-            .map(|new_owner| new_owner.to_string());
+        let new_owner =
+            metadata.new_owner.map(|new_owner| new_owner.to_string());
 
         if let Ok(conn) = self.conn.lock() {
             let sql = "INSERT OR REPLACE INTO subjects (name, description, subject_id, governance_id, genesis_gov_version, namespace, schema_id, owner, creator, active, sn, properties, new_owner) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)";

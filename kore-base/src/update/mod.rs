@@ -296,7 +296,7 @@ impl Handler<Update> for Update {
                                 reciver_actor: format!(
                                     "/user/node/{}/distributor",
                                     self.subject_id
-                                )
+                                ),
                             };
 
                             let helper: Option<Intermediary> =

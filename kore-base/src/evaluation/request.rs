@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    model::{request::EventRequest, signature::Signed, HashId, Namespace, ValueWrapper}, Error
+    Error,
+    model::{
+        HashId, Namespace, ValueWrapper, request::EventRequest,
+        signature::Signed,
+    },
 };
 use identity::identifier::{
     DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,

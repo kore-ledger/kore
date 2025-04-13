@@ -694,9 +694,7 @@ struct BaseParams {
     kore_db: KoreDbConfig,
     #[serde(default, deserialize_with = "ExternalDbConfig::deserialize_db")]
     external_db: ExternalDbConfig,
-    #[serde(
-        default,
-        deserialize_with = "deserialize_sinks")]
+    #[serde(default, deserialize_with = "deserialize_sinks")]
     sink: BTreeMap<String, String>,
 }
 
@@ -805,7 +803,6 @@ impl Default for BaseParams {
     }
 }
 
-
 fn deserialize_sinks<'de, D>(
     deserializer: D,
 ) -> Result<BTreeMap<String, String>, D::Error>
@@ -814,12 +811,13 @@ where
 {
     let u: String = String::deserialize(deserializer)?;
     let elements = u.split(",").collect::<Vec<&str>>();
-    let vec = elements.iter().map(|x| {
-        match x.split_once(":") {
+    let vec = elements
+        .iter()
+        .map(|x| match x.split_once(":") {
             Some((k, v)) => (k.to_owned(), v.to_owned()),
             None => (String::default(), String::default()),
-        }
-    }).collect::<Vec<(String, String)>>();
+        })
+        .collect::<Vec<(String, String)>>();
 
     let mut btreemap = BTreeMap::from_iter(vec.iter().cloned());
     btreemap.remove("");

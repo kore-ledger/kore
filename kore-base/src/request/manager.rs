@@ -16,17 +16,32 @@ use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, info, warn};
 
 use crate::{
-    approval::{Approval, ApprovalMessage}, auth::{Auth, AuthMessage, AuthResponse, AuthWitness}, db::Storable, distribution::{Distribution, DistributionMessage, DistributionType}, error::Error, evaluation::{
-        request::EvaluationReq, response::EvalLedgerResponse, Evaluation, EvaluationMessage
-    }, intermediary::Intermediary, model::{
+    ActorMessage, DIGEST_DERIVATOR, Event as KoreEvent, EventRequest, HashId,
+    NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse,
+    Validation, ValidationInfo, ValidationMessage, ValueWrapper,
+    approval::{Approval, ApprovalMessage},
+    auth::{Auth, AuthMessage, AuthResponse, AuthWitness},
+    db::Storable,
+    distribution::{Distribution, DistributionMessage, DistributionType},
+    error::Error,
+    evaluation::{
+        Evaluation, EvaluationMessage, request::EvaluationReq,
+        response::EvalLedgerResponse,
+    },
+    intermediary::Intermediary,
+    model::{
+        SignTypesNode,
         common::{
             emit_fail, get_gov, get_metadata, get_sign, get_vali_data,
             update_event, update_vali_data,
-        }, event::{
+        },
+        event::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
             ProtocolsSignatures,
-        }, SignTypesNode
-    }, update::{Update, UpdateMessage, UpdateNew, UpdateRes, UpdateType}, validation::proof::{EventProof, ValidationProof}, ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
+        },
+    },
+    update::{Update, UpdateMessage, UpdateNew, UpdateRes, UpdateType},
+    validation::proof::{EventProof, ValidationProof},
 };
 
 const TARGET_MANAGER: &str = "Kore-Request-Manager";
@@ -270,10 +285,12 @@ impl RequestManager {
             DigestDerivator::Blake3_256
         };
 
-
         let (value, state_hash) = {
             if result {
-                (val_info.event_proof.content.value, val_info.event_proof.content.state_hash)
+                (
+                    val_info.event_proof.content.value,
+                    val_info.event_proof.content.state_hash,
+                )
             } else if let LedgerValue::Error(mut e) =
                 val_info.event_proof.content.value
             {
@@ -283,13 +300,19 @@ impl RequestManager {
                     Some(errors.to_owned())
                 };
 
-                (LedgerValue::Error(e), val_info.event_proof.content.state_hash)
+                (
+                    LedgerValue::Error(e),
+                    val_info.event_proof.content.state_hash,
+                )
             } else {
                 let e = ProtocolsError {
                     evaluation: None,
                     validation: Some(errors.to_owned()),
                 };
-                (LedgerValue::Error(e), val_info.metadata.properties.hash_id(derivator)?)
+                (
+                    LedgerValue::Error(e),
+                    val_info.metadata.properties.hash_id(derivator)?,
+                )
             }
         };
 
@@ -353,9 +376,12 @@ impl RequestManager {
             signature: signature_ledger,
         };
 
-        if let Err(e) = RequestManager::update_ledger(ctx, signed_ledger.clone()).await {
+        if let Err(e) =
+            RequestManager::update_ledger(ctx, signed_ledger.clone()).await
+        {
             if let ActorError::Functional(_) = e {
-                self.abort_request_manager(ctx, &e.to_string(), false).await?;
+                self.abort_request_manager(ctx, &e.to_string(), false)
+                    .await?;
             }
             return Err(e);
         };
@@ -370,7 +396,8 @@ impl RequestManager {
 
         if let Err(e) = update_event(ctx, signed_event.clone()).await {
             if let ActorError::Functional(_) = e {
-                self.abort_request_manager(ctx, &e.to_string(), true).await?;
+                self.abort_request_manager(ctx, &e.to_string(), true)
+                    .await?;
             }
             return Err(e);
         };
@@ -383,7 +410,8 @@ impl RequestManager {
         .await
         {
             if let ActorError::Functional(_) = e {
-                self.abort_request_manager(ctx, &e.to_string(), true).await?;
+                self.abort_request_manager(ctx, &e.to_string(), true)
+                    .await?;
             }
             return Err(e);
         };
@@ -721,7 +749,7 @@ impl RequestManager {
         &self,
         ctx: &mut ActorContext<RequestManager>,
         error: &str,
-        delete_subj: bool
+        delete_subj: bool,
     ) -> Result<(), ActorError> {
         error!(TARGET_MANAGER, "Aborting request {}", self.id);
 
@@ -940,7 +968,7 @@ impl Handler<RequestManager> for RequestManager {
                                         .abort_request_manager(
                                             ctx,
                                             &e.to_string(),
-                                            true
+                                            true,
                                         )
                                         .await
                                     {
@@ -1019,7 +1047,7 @@ impl Handler<RequestManager> for RequestManager {
                                                 .abort_request_manager(
                                                     ctx,
                                                     &e.to_string(),
-                                                    true
+                                                    true,
                                                 )
                                                 .await
                                             {
@@ -1163,8 +1191,13 @@ impl Handler<RequestManager> for RequestManager {
                         return Err(emit_fail(ctx, e).await);
                     };
 
-                let (state_hash, value)= if !result {
-                    (None, LedgerValue::Patch(ValueWrapper(serde_json::Value::Array(vec![]))))
+                let (state_hash, value) = if !result {
+                    (
+                        None,
+                        LedgerValue::Patch(ValueWrapper(
+                            serde_json::Value::Array(vec![]),
+                        )),
+                    )
                 } else {
                     (Some(eval_res.state_hash), eval_res.value)
                 };
@@ -1337,9 +1370,14 @@ impl Handler<RequestManager> for RequestManager {
                     Err(e) => {
                         error!(
                             TARGET_MANAGER,
-                            "ValidationRes, can not generate Ledger data: {}", e
+                            "ValidationRes, can not generate Ledger data: {}",
+                            e
                         );
-                        return Err(emit_fail(ctx, ActorError::FunctionalFail(e.to_string())).await);
+                        return Err(emit_fail(
+                            ctx,
+                            ActorError::FunctionalFail(e.to_string()),
+                        )
+                        .await);
                     }
                 };
 
@@ -1420,7 +1458,11 @@ impl Handler<RequestManager> for RequestManager {
                     Err(e) => {
                         if let ActorError::Functional(_) = e {
                             if let Err(e) = self
-                                .abort_request_manager(ctx, &e.to_string(), true)
+                                .abort_request_manager(
+                                    ctx,
+                                    &e.to_string(),
+                                    true,
+                                )
                                 .await
                             {
                                 error!(TARGET_MANAGER, "Validate, {}", e);

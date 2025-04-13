@@ -11,12 +11,19 @@ pub mod schema;
 pub mod validator;
 
 use crate::{
-    auth::WitnessesAuth, governance::{model::ProtocolTypes, Quorum}, model::{
+    auth::WitnessesAuth,
+    governance::{Quorum, model::ProtocolTypes},
+    model::{
+        SignTypesNode,
         common::{
             emit_fail, get_sign, get_signers_quorum_gov_version,
             send_reboot_to_req, try_to_update,
-        }, event::{ProofEvent, ProtocolsSignatures}, signature::Signed, SignTypesNode
-    }, request::manager::{RequestManager, RequestManagerMessage}, subject::Metadata
+        },
+        event::{ProofEvent, ProtocolsSignatures},
+        signature::Signed,
+    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::Metadata,
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
@@ -77,7 +84,10 @@ impl Validation {
         }
     }
 
-    async fn end_validators(&self, ctx: &mut ActorContext<Validation>) -> Result<(), ActorError> {
+    async fn end_validators(
+        &self,
+        ctx: &mut ActorContext<Validation>,
+    ) -> Result<(), ActorError> {
         for validator in self.validators.clone() {
             let child: Option<ActorRef<Validator>> =
                 ctx.get_child(&validator.to_string()).await;
@@ -193,9 +203,9 @@ impl Validation {
             ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
-            let mut signatures =  self.validators_response.clone();
+            let mut signatures = self.validators_response.clone();
             signatures.append(&mut self.validators_timeout.clone());
-            
+
             req_actor
                 .tell(RequestManagerMessage::ValidationRes {
                     result,
@@ -340,16 +350,15 @@ impl Handler<Validation> for Validation {
                     signature,
                 };
 
-
                 for signer in signers {
-                    if let Err(e) =
-                        self.create_validators(
-                        ctx,
-                        signed_validation_req.clone(),
-                        &info.metadata.schema_id,
-                        signer.clone(),
-                    )
-                    .await
+                    if let Err(e) = self
+                        .create_validators(
+                            ctx,
+                            signed_validation_req.clone(),
+                            &info.metadata.schema_id,
+                            signer.clone(),
+                        )
+                        .await
                     {
                         error!(
                             TARGET_VALIDATION,

@@ -15,7 +15,7 @@ use crate::{
 use actor::Error as ActorError;
 use model::{
     CreatorQuantity, PolicyGov, PolicySchema, ProtocolTypes, RoleGovIssuer,
-    RoleSchemaIssuer, RoleTypes, RolesGov, RolesAllSchemas, RolesSchema,
+    RoleSchemaIssuer, RoleTypes, RolesAllSchemas, RolesGov, RolesSchema,
     SchemaKeyCreators,
 };
 
@@ -72,8 +72,7 @@ impl Governance {
         chang_name_members: &Vec<(String, String)>,
     ) {
         self.roles_gov.change_name_role(chang_name_members);
-        self.roles_all_schemas
-            .change_name_role(chang_name_members);
+        self.roles_all_schemas.change_name_role(chang_name_members);
 
         for (_, roles) in self.roles_schema.iter_mut() {
             roles.change_name_role(chang_name_members);

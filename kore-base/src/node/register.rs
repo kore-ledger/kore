@@ -21,14 +21,14 @@ pub struct RegisterDataSubj {
     pub schema: String,
     pub active: bool,
     pub name: Option<String>,
-    pub description: Option<String>
+    pub description: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RegisterDataGov {
     pub active: bool,
     pub name: Option<String>,
-    pub description: Option<String>
+    pub description: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -36,7 +36,7 @@ pub struct GovsData {
     pub governance_id: String,
     pub active: bool,
     pub name: Option<String>,
-    pub description: Option<String>
+    pub description: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -78,8 +78,14 @@ impl Response for RegisterResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RegisterEvent {
-    RegisterGov { gov_id: String, data: RegisterDataGov },
-    RegisterSubj { gov_id: String, data: RegisterDataSubj },
+    RegisterGov {
+        gov_id: String,
+        data: RegisterDataGov,
+    },
+    RegisterSubj {
+        gov_id: String,
+        data: RegisterDataSubj,
+    },
 }
 
 impl Event for RegisterEvent {}
@@ -125,7 +131,7 @@ impl Handler<Register> for Register {
                                 active: x.1.active,
                                 governance_id: x.0.clone(),
                                 description: x.1.description.clone(),
-                                name: x.1.name.clone()
+                                name: x.1.name.clone(),
                             })
                             .collect(),
                     });
@@ -138,7 +144,7 @@ impl Handler<Register> for Register {
                                 active: x.1.active,
                                 governance_id: x.0.clone(),
                                 description: x.1.description.clone(),
-                                name: x.1.name.clone()
+                                name: x.1.name.clone(),
                             })
                             .collect(),
                     });
@@ -176,11 +182,8 @@ impl Handler<Register> for Register {
                 }
             }
             RegisterMessage::RegisterGov { gov_id, data } => {
-                self.on_event(
-                    RegisterEvent::RegisterGov { gov_id, data },
-                    ctx,
-                )
-                .await
+                self.on_event(RegisterEvent::RegisterGov { gov_id, data }, ctx)
+                    .await
             }
             RegisterMessage::RegisterSubj { gov_id, data } => {
                 self.on_event(RegisterEvent::RegisterSubj { gov_id, data }, ctx)

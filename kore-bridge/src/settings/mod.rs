@@ -103,7 +103,10 @@ mod tests {
             std::env::set_var("KORE_BASE_KORE_DB", "./fake/db/path");
             std::env::set_var("KORE_BASE_EXTERNAL_DB", "./fake/db/path");
             std::env::set_var("KORE_BASE_GARBAGE_COLLECTOR", "1000");
-            std::env::set_var("KORE_BASE_SINK", "key1:https://www.kore-ledger.net/build/,key2:https://www.kore-ledger.net/community/");
+            std::env::set_var(
+                "KORE_BASE_SINK",
+                "key1:https://www.kore-ledger.net/build/,key2:https://www.kore-ledger.net/community/",
+            );
 
             std::env::set_var("KORE_NETWORK_PORT_REUSE", "true");
             std::env::set_var("KORE_NETWORK_USER_AGENT", "Kore2.0");

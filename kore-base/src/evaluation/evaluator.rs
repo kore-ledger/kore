@@ -220,7 +220,11 @@ impl Evaluator {
                     (
                         EvaluateType::AllSchemasTransfer {
                             new_owner: transfer_event.new_owner,
-                            old_owner: evaluation_req.event_request.signature.signer.clone(),
+                            old_owner: evaluation_req
+                                .event_request
+                                .signature
+                                .signer
+                                .clone(),
                             namespace: evaluation_req.context.namespace.clone(),
                             schema_id: evaluation_req.context.schema_id.clone(),
                         },
@@ -581,11 +585,11 @@ impl Handler<Evaluator> for Evaluator {
                         version: self.version,
                         sender: our_key,
                         reciver: node_key,
-                        reciver_actor
+                        reciver_actor,
                     },
                     message: ActorMessage::EvaluationReq {
                         req: evaluation_req,
-                        schema
+                        schema,
                     },
                 };
 
@@ -708,7 +712,7 @@ impl Handler<Evaluator> for Evaluator {
             EvaluatorMessage::NetworkRequest {
                 evaluation_req,
                 info,
-                schema
+                schema,
             } => {
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
@@ -835,7 +839,7 @@ impl Handler<Evaluator> for Evaluator {
                         "/user/node/{}/evaluation/{}",
                         evaluation_req.content.context.subject_id,
                         info.reciver.clone()
-                    )
+                    ),
                 };
 
                 let signed_response: Signed<EvaluationRes> = Signed {

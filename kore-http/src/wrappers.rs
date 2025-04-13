@@ -1,5 +1,26 @@
 use kore_bridge::{
-    config::Config as ConfigBridge, ApprovalReqInfo as ApprovalReqInfoBridge, ApproveInfo as ApproveInfoBridge, ConfirmRequestInfo as ConfirmRequestInfoBridge, ControlListConfig as ControlListConfigBridge, CreateRequestInfo as CreateRequestInfoBridge, EOLRequestInfo as EOLRequestInfoBridge, EventInfo as EventInfoBridge, EventRequestInfo as EventRequestInfoBridge, FactInfo as FactInfoBridge, FactRequestInfo as FactRequestInfoBridge, GovsData as GovsDataBridge, KoreConfig as KoreConfigBridge, Namespace as NamespaceBridge, NetworkConfig as NetworkConfigBridge, Paginator as PaginatorBridge, PaginatorEvents as PaginatorEventsBridge, ProtocolsError as ProtocolsErrorBridge, ProtocolsSignaturesInfo as ProtocolsSignaturesInfoBridge, RegisterDataSubj as RegisterDataSubjBridge, RejectRequestInfo as RejectRequestInfoBridge, RequestData as RequestDataBridge, RequestInfo as RequestInfoBridge, RoutingConfig as RoutingConfigBridge, RoutingNode as RoutingNodeBridge, SignatureInfo as SignatureInfoBridge, SignaturesInfo as SignaturesInfoBridge, SignedInfo as SignedInfoBridge, SubjectInfo as SubjectInfoBridge, TellConfig as TellConfigBridge, TimeOutResponseInfo as TimeOutResponseInfoBridge, TransferRequestInfo as TransferRequestInfoBridge, TransferSubject as TransferSubjectBridge
+    ApprovalReqInfo as ApprovalReqInfoBridge, ApproveInfo as ApproveInfoBridge,
+    ConfirmRequestInfo as ConfirmRequestInfoBridge,
+    ControlListConfig as ControlListConfigBridge,
+    CreateRequestInfo as CreateRequestInfoBridge,
+    EOLRequestInfo as EOLRequestInfoBridge, EventInfo as EventInfoBridge,
+    EventRequestInfo as EventRequestInfoBridge, FactInfo as FactInfoBridge,
+    FactRequestInfo as FactRequestInfoBridge, GovsData as GovsDataBridge,
+    KoreConfig as KoreConfigBridge, Namespace as NamespaceBridge,
+    NetworkConfig as NetworkConfigBridge, Paginator as PaginatorBridge,
+    PaginatorEvents as PaginatorEventsBridge,
+    ProtocolsError as ProtocolsErrorBridge,
+    ProtocolsSignaturesInfo as ProtocolsSignaturesInfoBridge,
+    RegisterDataSubj as RegisterDataSubjBridge,
+    RejectRequestInfo as RejectRequestInfoBridge,
+    RequestData as RequestDataBridge, RequestInfo as RequestInfoBridge,
+    RoutingConfig as RoutingConfigBridge, RoutingNode as RoutingNodeBridge,
+    SignatureInfo as SignatureInfoBridge,
+    SignaturesInfo as SignaturesInfoBridge, SignedInfo as SignedInfoBridge,
+    SubjectInfo as SubjectInfoBridge, TellConfig as TellConfigBridge,
+    TimeOutResponseInfo as TimeOutResponseInfoBridge,
+    TransferRequestInfo as TransferRequestInfoBridge,
+    TransferSubject as TransferSubjectBridge, config::Config as ConfigBridge,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -143,7 +164,7 @@ pub struct CreateRequestInfo {
     pub schema_id: String,
     pub namespace: Namespace,
     pub name: Option<String>,
-    pub description: Option<String>
+    pub description: Option<String>,
 }
 
 impl From<CreateRequestInfoBridge> for CreateRequestInfo {
@@ -153,7 +174,7 @@ impl From<CreateRequestInfoBridge> for CreateRequestInfo {
             schema_id: value.schema_id,
             namespace: Namespace::from(value.namespace),
             description: value.description,
-            name: value.name
+            name: value.name,
         }
     }
 }
@@ -285,7 +306,7 @@ impl From<GovsDataBridge> for GovsData {
             governance_id: value.governance_id,
             active: value.active,
             description: value.description,
-            name: value.name
+            name: value.name,
         }
     }
 }
@@ -306,7 +327,7 @@ impl From<RegisterDataSubjBridge> for RegisterDataSubj {
             schema: value.schema,
             active: value.active,
             name: value.name,
-            description: value.description
+            description: value.description,
         }
     }
 }
@@ -408,7 +429,9 @@ impl From<FactInfoBridge> for FactInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash,
+)]
 pub struct SignatureInfo {
     pub signer: String,
     pub timestamp: u64,
@@ -441,7 +464,7 @@ pub struct SubjectInfo {
     pub properties: Value,
     pub new_owner: Option<String>,
     pub name: String,
-    pub description: String
+    pub description: String,
 }
 
 impl From<SubjectInfoBridge> for SubjectInfo {
@@ -459,7 +482,7 @@ impl From<SubjectInfoBridge> for SubjectInfo {
             properties: value.properties,
             new_owner: value.new_owner,
             description: value.description,
-            name: value.name
+            name: value.name,
         }
     }
 }
@@ -503,7 +526,9 @@ impl From<SignaturesInfoBridge> for SignaturesInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash,
+)]
 pub enum ProtocolsSignaturesInfo {
     Signature(SignatureInfo),
     TimeOut(TimeOutResponseInfo),
@@ -522,7 +547,9 @@ impl From<ProtocolsSignaturesInfoBridge> for ProtocolsSignaturesInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash,
+)]
 pub struct TimeOutResponseInfo {
     pub who: String,
     pub re_trys: u32,
@@ -685,8 +712,11 @@ impl From<RoutingConfigBridge> for RoutingConfig {
             allow_non_globals_in_dht: value.get_allow_non_globals_in_dht(),
             allow_private_ip: value.get_allow_private_ip(),
             enable_mdns: value.get_mdns(),
-            kademlia_disjoint_query_paths: value.get_kademlia_disjoint_query_paths(),
-            kademlia_replication_factor: value.get_kademlia_replication_factor().map(|nz| nz.get()),
+            kademlia_disjoint_query_paths: value
+                .get_kademlia_disjoint_query_paths(),
+            kademlia_replication_factor: value
+                .get_kademlia_replication_factor()
+                .map(|nz| nz.get()),
         }
     }
 }

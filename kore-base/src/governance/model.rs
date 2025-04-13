@@ -106,41 +106,24 @@ impl RolesGov {
     pub fn get_signers(&self, role: RoleTypes) -> (Vec<String>, bool) {
         match role {
             RoleTypes::Evaluator => (
-                self.evaluator
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<String>>(),
+                self.evaluator.iter().cloned().collect::<Vec<String>>(),
                 false,
             ),
             RoleTypes::Validator => (
-                self.validator
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<String>>(),
+                self.validator.iter().cloned().collect::<Vec<String>>(),
                 false,
             ),
             RoleTypes::Approver => (
-                self.approver
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<String>>(),
+                self.approver.iter().cloned().collect::<Vec<String>>(),
                 false,
             ),
             RoleTypes::Issuer => (
-                self.issuer
-                    .users
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<String>>(),
+                self.issuer.users.iter().cloned().collect::<Vec<String>>(),
                 self.issuer.any,
             ),
-            RoleTypes::Witness => (
-                self.witness
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<String>>(),
-                false,
-            ),
+            RoleTypes::Witness => {
+                (self.witness.iter().cloned().collect::<Vec<String>>(), false)
+            }
             RoleTypes::Creator => (vec![], false),
         }
     }
@@ -833,9 +816,7 @@ pub struct RoleSchemaIssuer {
     pub any: bool,
 }
 
-#[derive(
-    Debug, Clone, Eq, PartialEq, Hash, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub enum CreatorQuantity {
     Quantity(u32),
     Infinity,
@@ -849,11 +830,19 @@ impl<'de> Deserialize<'de> for CreatorQuantity {
         let value = serde_json::Value::deserialize(deserializer)?;
 
         match value {
-            serde_json::Value::String(s) if s == "infinity" => Ok(CreatorQuantity::Infinity),
-            serde_json::Value::Number(n) if n.is_u64() => {
-                Ok(CreatorQuantity::Quantity(n.as_u64().ok_or_else(|| serde::de::Error::custom("Quantity must be a number or 'infinity'"))? as u32))
+            serde_json::Value::String(s) if s == "infinity" => {
+                Ok(CreatorQuantity::Infinity)
             }
-            _ => Err(serde::de::Error::custom("Quantity must be a number or 'infinity'")),
+            serde_json::Value::Number(n) if n.is_u64() => {
+                Ok(CreatorQuantity::Quantity(n.as_u64().ok_or_else(|| {
+                    serde::de::Error::custom(
+                        "Quantity must be a number or 'infinity'",
+                    )
+                })? as u32))
+            }
+            _ => Err(serde::de::Error::custom(
+                "Quantity must be a number or 'infinity'",
+            )),
         }
     }
 }
@@ -869,7 +858,6 @@ impl Serialize for CreatorQuantity {
         }
     }
 }
-
 
 /// Governance member.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]

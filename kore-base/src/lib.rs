@@ -46,9 +46,12 @@ use model::ValueWrapper;
 use model::event::Event;
 use model::signature::*;
 use model::{SignTypesNode, request::*};
-use network::{Monitor, MonitorMessage, MonitorNetworkState, MonitorResponse, NetworkWorker};
+use network::{
+    Monitor, MonitorMessage, MonitorNetworkState, MonitorResponse,
+    NetworkWorker,
+};
 use node::register::{
-    GovsData, Register, RegisterDataSubj, RegisterMessage, RegisterResponse
+    GovsData, Register, RegisterDataSubj, RegisterMessage, RegisterResponse,
 };
 use node::{Node, NodeMessage, NodeResponse, TransferSubject};
 use prometheus_client::registry::Registry;
@@ -239,12 +242,15 @@ impl Api {
         self.controller_id.clone()
     }
 
-    pub async fn get_network_state(&self) -> Result<MonitorNetworkState, Error> {
-        let response = self.monitor.ask(MonitorMessage::State).await.map_err(|e| {
-            let e = format!("Can not get network state {}", e);
-            warn!(TARGET_API, e);
-            Error::Api(e)
-        })?;
+    pub async fn get_network_state(
+        &self,
+    ) -> Result<MonitorNetworkState, Error> {
+        let response =
+            self.monitor.ask(MonitorMessage::State).await.map_err(|e| {
+                let e = format!("Can not get network state {}", e);
+                warn!(TARGET_API, e);
+                Error::Api(e)
+            })?;
 
         match response {
             MonitorResponse::State(state) => Ok(state),
@@ -568,7 +574,10 @@ impl Api {
     ) -> Result<String, Error> {
         let response = self
             .auth
-            .ask(AuthMessage::Update { subject_id, more_info: auth::WitnessesAuth::None })
+            .ask(AuthMessage::Update {
+                subject_id,
+                more_info: auth::WitnessesAuth::None,
+            })
             .await
             .map_err(|e| {
                 let e = format!("Can not update subject: {}", e);

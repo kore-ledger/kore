@@ -4,11 +4,18 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::model::RoleTypes, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
+    Signed,
+    governance::model::RoleTypes,
+    helpers::network::{NetworkMessage, intermediary::Intermediary},
+    model::{
+        SignTypesNode, TimeStamp,
         common::{
-            emit_fail, get_gov, get_metadata, get_sign, update_ledger_network, UpdateData
-        }, event::ProtocolsSignatures, network::{RetryNetwork, TimeOutResponse}, SignTypesNode, TimeStamp
-    }, Signed
+            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
+            update_ledger_network,
+        },
+        event::ProtocolsSignatures,
+        network::{RetryNetwork, TimeOutResponse},
+    },
 };
 
 use super::{
@@ -174,12 +181,11 @@ impl Validator {
             }
         // Genesis event, it is first proof
         } else if new_proof.error_create() {
-                return Err(ActorError::Functional(
-                    "There are incorrect fields in the validation test"
-                        .to_owned(),
-                ));
-            }
-        
+            return Err(ActorError::Functional(
+                "There are incorrect fields in the validation test".to_owned(),
+            ));
+        }
+
         Ok(None)
     }
 }
@@ -313,7 +319,7 @@ impl Handler<Validator> for Validator {
                     },
                     message: ActorMessage::ValidationReq {
                         req: Box::new(validation_req),
-                        schema
+                        schema,
                     },
                 };
 
@@ -442,7 +448,7 @@ impl Handler<Validator> for Validator {
             ValidatorMessage::NetworkRequest {
                 validation_req,
                 info,
-                schema
+                schema,
             } => {
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
@@ -540,7 +546,7 @@ impl Handler<Validator> for Validator {
                         "/user/node/{}/validation/{}",
                         validation_req.content.proof.subject_id,
                         info.reciver.clone()
-                    )
+                    ),
                 };
 
                 let signature = match get_sign(

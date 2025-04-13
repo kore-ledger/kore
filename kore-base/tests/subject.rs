@@ -2,6 +2,11 @@ use std::{str::FromStr, time::Duration};
 
 mod common;
 
+use common::{
+    check_transfer, create_and_authorize_governance,
+    create_nodes_and_connections, create_subject, emit_approve, emit_confirm,
+    emit_fact, emit_reject, emit_transfer, get_signatures, get_subject,
+};
 use identity::{
     identifier::KeyIdentifier,
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
@@ -10,9 +15,6 @@ use kore_base::{
     approval::approver::ApprovalStateRes,
     auth::AuthWitness,
     model::request::{ConfirmRequest, EventRequest},
-};
-use common::{
-    check_transfer, create_and_authorize_governance, create_nodes_and_connections, create_subject, emit_approve, emit_confirm, emit_fact, emit_reject, emit_transfer, get_signatures, get_subject
 };
 use serde_json::json;
 use test_log::test;
@@ -141,7 +143,7 @@ async fn test_limits_in_subjects() {
             ]
         }
     });
-    
+
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
         .unwrap();
@@ -406,7 +408,6 @@ async fn test_namespace_in_role_1() {
         .await
         .unwrap();
 
-
     // create subject
     let subject_id = create_subject(
         emit_events,
@@ -428,7 +429,6 @@ async fn test_namespace_in_role_1() {
     .await;
     assert!(subject_id.is_err());
 
-
     let subject_id = create_subject(
         emit_events,
         governance_id.clone(),
@@ -449,7 +449,9 @@ async fn test_namespace_in_role_1() {
         .await
         .unwrap();
 
-    let state = get_signatures(emit_events, subject_id.clone(), None).await.unwrap();
+    let state = get_signatures(emit_events, subject_id.clone(), None)
+        .await
+        .unwrap();
 
     assert!(state.signatures_eval.unwrap().len() == 2);
 
@@ -473,7 +475,9 @@ async fn test_namespace_in_role_1() {
         })
     );
 
-    let state = get_subject(emit_events, subject_id.clone(), None).await.unwrap();
+    let state = get_subject(emit_events, subject_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -640,7 +644,7 @@ async fn test_namespace_in_role_2() {
             ]
         }
     });
-   
+
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
         .unwrap();
@@ -687,7 +691,9 @@ async fn test_namespace_in_role_2() {
         .await
         .unwrap();
 
-    let state = get_signatures(emit_events,subject_id.clone(), None).await.unwrap();
+    let state = get_signatures(emit_events, subject_id.clone(), None)
+        .await
+        .unwrap();
     assert!(state.signatures_eval.unwrap().len() == 2);
 
     let state = get_subject(owner_governance, subject_id.clone(), None)
@@ -710,7 +716,9 @@ async fn test_namespace_in_role_2() {
         })
     );
 
-    let state = get_subject(emit_events, subject_id.clone(), None).await.unwrap();
+    let state = get_subject(emit_events, subject_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -755,7 +763,6 @@ async fn test_namespace_in_role_2() {
             .is_err()
     );
 }
-
 
 #[test(tokio::test)]
 // Testear la transferencia de sujeto
@@ -893,7 +900,9 @@ async fn test_subject_transfer_event_1() {
         .await
         .unwrap();
 
-    let _ = get_subject(future_owner, subject_id.clone(), None).await.unwrap();
+    let _ = get_subject(future_owner, subject_id.clone(), None)
+        .await
+        .unwrap();
 
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(
@@ -936,7 +945,9 @@ async fn test_subject_transfer_event_1() {
         .await
         .unwrap();
 
-    let state = get_subject(future_owner, subject_id.clone(), None).await.unwrap();
+    let state = get_subject(future_owner, subject_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1111,7 +1122,9 @@ async fn test_subject_transfer_event_2() {
         .update_subject(subject_id.clone())
         .await
         .unwrap();
-    let _ = get_subject(future_owner, subject_id.clone(), None).await.unwrap();
+    let _ = get_subject(future_owner, subject_id.clone(), None)
+        .await
+        .unwrap();
 
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert_eq!(transfer_data[0].actual_owner, old_owner.controller_id());
@@ -1187,7 +1200,9 @@ async fn test_subject_transfer_event_2() {
         .await
         .unwrap();
 
-    let state = get_subject(future_owner, subject_id.clone(), None).await.unwrap();
+    let state = get_subject(future_owner, subject_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1225,7 +1240,9 @@ async fn test_subject_transfer_event_2() {
         })
     );
 
-    let state = get_subject(old_owner, subject_id_2.clone(), None).await.unwrap();
+    let state = get_subject(old_owner, subject_id_2.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id_2.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1353,7 +1370,7 @@ async fn test_subject_transfer_event_3() {
             ]
         },
     });
-    
+
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
         .unwrap();
@@ -1501,7 +1518,9 @@ async fn test_subject_transfer_event_3() {
         .await
         .unwrap();
 
-    let state = get_subject(old_owner, subject_id_1.clone(), None).await.unwrap();
+    let state = get_subject(old_owner, subject_id_1.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1559,8 +1578,6 @@ async fn test_subject_transfer_event_3() {
         })
     );
 }
-
-
 
 #[test(tokio::test)]
 // Un testigo nuevo reciba las copias de un sujeto que ya va por un sn != 0.
@@ -1656,31 +1673,31 @@ async fn test_dynamic_witnesses_1() {
         .unwrap();
 
     let json = json!({
-        "members": {
-            "add": [
-                {
-                    "name": "KoreNode2",
-                    "key": witness.controller_id()
-                }
-            ]
-        },
-        "roles": {
-            "schema": [
-                {
-                    "schema_id": "Example",
-                    "roles": {
-                        "add": {
-                            "witness": [
-                                {
-                                    "name": "KoreNode2",
-                                    "namespace": []
-                                }
-                            ]
-                        }
+    "members": {
+        "add": [
+            {
+                "name": "KoreNode2",
+                "key": witness.controller_id()
+            }
+        ]
+    },
+    "roles": {
+        "schema": [
+            {
+                "schema_id": "Example",
+                "roles": {
+                    "add": {
+                        "witness": [
+                            {
+                                "name": "KoreNode2",
+                                "namespace": []
+                            }
+                        ]
                     }
                 }
-            ]
-        }});
+            }
+        ]
+    }});
 
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
@@ -1699,7 +1716,7 @@ async fn test_dynamic_witnesses_1() {
     });
 
     tokio::time::sleep(Duration::from_secs(10)).await;
-        emit_fact(creator, subject_id.clone(), json.clone(), true)
+    emit_fact(creator, subject_id.clone(), json.clone(), true)
         .await
         .unwrap();
 
@@ -1723,8 +1740,8 @@ async fn test_dynamic_witnesses_1() {
         })
     );
     let state = get_subject(witness, subject_id.clone(), None)
-    .await
-    .unwrap();
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1743,8 +1760,8 @@ async fn test_dynamic_witnesses_1() {
     );
 
     let state = get_subject(creator, subject_id.clone(), None)
-    .await
-    .unwrap();
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1756,13 +1773,12 @@ async fn test_dynamic_witnesses_1() {
     assert_eq!(state.active, true);
     assert_eq!(state.sn, 2);
     assert_eq!(
-    state.properties,
-    json!({
-        "one": 200, "three": 0, "two": 0
-    })
+        state.properties,
+        json!({
+            "one": 200, "three": 0, "two": 0
+        })
     );
 }
-
 
 #[test(tokio::test)]
 // Un testigo nuevo le pide la copia a otro testigo viejo.
@@ -1781,9 +1797,12 @@ async fn test_dynamic_witnesses_2() {
     let witness = &nodes[2];
     let new_witness = &nodes[3];
 
-    let governance_id =
-        create_and_authorize_governance(owner_governance, vec![creator, witness], "")
-            .await;
+    let governance_id = create_and_authorize_governance(
+        owner_governance,
+        vec![creator, witness],
+        "",
+    )
+    .await;
 
     // add member to governance
     let json = json!({
@@ -1869,55 +1888,73 @@ async fn test_dynamic_witnesses_2() {
         .await
         .unwrap();
 
-        let json = json!({
-            "members": {
-                "add": [
-                    {
-                        "name": "KoreNode3",
-                        "key": new_witness.controller_id()
-                    }
-                ]
-            },
-            "roles": {
-                "schema": [
-                    {
-                        "schema_id": "Example",
-                        "roles": {
-                            "add": {
-                                "witness": [
-                                    {
-                                        "name": "KoreNode3",
-                                        "namespace": []
-                                    }
-                                ]
+    let json = json!({
+    "members": {
+        "add": [
+            {
+                "name": "KoreNode3",
+                "key": new_witness.controller_id()
+            }
+        ]
+    },
+    "roles": {
+        "schema": [
+            {
+                "schema_id": "Example",
+                "roles": {
+                    "add": {
+                        "witness": [
+                            {
+                                "name": "KoreNode3",
+                                "namespace": []
                             }
-                        }
+                        ]
                     }
-                ]
-            }});
+                }
+            }
+        ]
+    }});
 
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
         .unwrap();
 
     new_witness
-        .auth_subject(governance_id.clone(), AuthWitness::One(KeyIdentifier::from_str(&witness.controller_id()).unwrap()))
+        .auth_subject(
+            governance_id.clone(),
+            AuthWitness::One(
+                KeyIdentifier::from_str(&witness.controller_id()).unwrap(),
+            ),
+        )
         .await
         .unwrap();
 
     new_witness
-        .auth_subject(subject_id.clone(), AuthWitness::One(KeyIdentifier::from_str(&witness.controller_id()).unwrap()))
+        .auth_subject(
+            subject_id.clone(),
+            AuthWitness::One(
+                KeyIdentifier::from_str(&witness.controller_id()).unwrap(),
+            ),
+        )
         .await
         .unwrap();
 
-    new_witness.update_subject(governance_id.clone()).await.unwrap();
-    let _ = get_subject(new_witness, governance_id.clone(), None).await.unwrap();
+    new_witness
+        .update_subject(governance_id.clone())
+        .await
+        .unwrap();
+    let _ = get_subject(new_witness, governance_id.clone(), None)
+        .await
+        .unwrap();
 
-    new_witness.update_subject(subject_id.clone()).await.unwrap();
+    new_witness
+        .update_subject(subject_id.clone())
+        .await
+        .unwrap();
 
     let state = get_subject(witness, subject_id.clone(), None)
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
@@ -1936,8 +1973,8 @@ async fn test_dynamic_witnesses_2() {
         })
     );
     let state = get_subject(new_witness, subject_id.clone(), Some(1))
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
@@ -1956,8 +1993,8 @@ async fn test_dynamic_witnesses_2() {
         })
     );
     let state = get_subject(creator, subject_id.clone(), None)
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
@@ -1976,8 +2013,8 @@ async fn test_dynamic_witnesses_2() {
         })
     );
     let state = get_subject(owner_governance, subject_id.clone(), None)
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());

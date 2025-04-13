@@ -9,7 +9,8 @@ use axum::{
 use axum_extra::extract::Host;
 use axum_server::{Handle, tls_rustls::RustlsConfig};
 use enviroment::{
-    build_address_http, build_address_https, build_https_cert, build_https_private_key,
+    build_address_http, build_address_https, build_https_cert,
+    build_https_private_key,
 };
 use kore_bridge::{
     Bridge,
@@ -61,7 +62,13 @@ async fn main() {
         .unwrap();
 
     let cors = CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
         .allow_headers([header::CONTENT_TYPE])
         .allow_origin(Any);
 
@@ -72,7 +79,10 @@ async fn main() {
     if !https_address.is_empty() {
         let https_address = https_address.parse::<SocketAddr>().unwrap();
 
-        tokio::spawn(redirect_http_to_https(https_address.port(), listener_http));
+        tokio::spawn(redirect_http_to_https(
+            https_address.port(),
+            listener_http,
+        ));
         rustls::crypto::ring::default_provider()
             .install_default()
             .unwrap();
@@ -123,7 +133,11 @@ async fn main() {
 }
 
 async fn redirect_http_to_https(https: u16, listener_http: TcpListener) {
-    fn make_https(host: String, uri: Uri, ports: Ports) -> Result<Uri, BoxError> {
+    fn make_https(
+        host: String,
+        uri: Uri,
+        ports: Ports,
+    ) -> Result<Uri, BoxError> {
         let mut parts = uri.into_parts();
 
         parts.scheme = Some(axum::http::uri::Scheme::HTTPS);
@@ -132,7 +146,8 @@ async fn redirect_http_to_https(https: u16, listener_http: TcpListener) {
             parts.path_and_query = Some("/".parse().unwrap());
         }
 
-        let https_host = host.replace(&ports.http.to_string(), &ports.https.to_string());
+        let https_host =
+            host.replace(&ports.http.to_string(), &ports.https.to_string());
         parts.authority = Some(https_host.parse()?);
 
         Ok(Uri::from_parts(parts)?)

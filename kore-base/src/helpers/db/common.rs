@@ -72,13 +72,13 @@ impl<'de> Deserialize<'de> for EventRequestInfo {
 
             return Ok(Self::Create(CreateRequestInfo {
                 name: create
-                .get("name")
-                .and_then(Value::as_str)
-                .map(|x| x.to_owned()),
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(|x| x.to_owned()),
                 description: create
-                .get("description")
-                .and_then(Value::as_str)
-                .map(|x| x.to_owned()),
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(|x| x.to_owned()),
                 governance_id: create
                     .get("governance_id")
                     .and_then(Value::as_str)

@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 
 use crate::{
-    auth::WitnessesAuth, model::common::{emit_fail, try_to_update}, Signed
+    Signed,
+    auth::WitnessesAuth,
+    model::common::{emit_fail, try_to_update},
 };
 
 use super::{
@@ -69,7 +71,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
             ValidationSchemaMessage::NetworkRequest {
                 validation_req,
                 info,
-                schema
+                schema,
             } => {
                 if self.gov_version
                     < validation_req.content.proof.governance_version
@@ -77,7 +79,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     if let Err(e) = try_to_update(
                         ctx,
                         validation_req.content.proof.governance_id.clone(),
-                        WitnessesAuth::Witnesses
+                        WitnessesAuth::Witnesses,
                     )
                     .await
                     {
@@ -145,7 +147,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     .tell(ValidatorMessage::NetworkRequest {
                         validation_req,
                         info,
-                        schema
+                        schema,
                     })
                     .await
                 {

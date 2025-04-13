@@ -94,7 +94,6 @@ impl Handler<LedgerEvent> for LedgerEvent {
             LedgerEventMessage::UpdateLastEvent { event } => {
                 if let Some(last_event) = self.last_event.clone() {
                     if last_event.content.sn >= event.content.sn {
-                        
                         let e = "An attempt was made to update the event ledger with an event prior to the one already saved.";
                         warn!(TARGET_EVENT, "UpdateLastEvent, {}", e);
                         return Err(ActorError::Functional(e.to_owned()));

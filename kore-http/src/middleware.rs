@@ -1,6 +1,6 @@
 use std::time::Duration;
 use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
-use tracing::{debug, error, info_span, warn, Span};
+use tracing::{Span, debug, info_span, warn};
 
 use axum::{
     Router,
@@ -27,21 +27,31 @@ pub fn tower_trace(routes: Router) -> Router {
                 )
             })
             .on_request(|request: &Request<_>, _span: &Span| {
-                debug!("New request: {} {}", request.method(), request.uri().path())
+                debug!(
+                    "New request: {} {}",
+                    request.method(),
+                    request.uri().path()
+                )
             })
-            .on_response(|_response: &Response, latency: Duration, _span: &Span| {
-                debug!("Response generated in {:?}", latency)
-            })
+            .on_response(
+                |_response: &Response, latency: Duration, _span: &Span| {
+                    debug!("Response generated in {:?}", latency)
+                },
+            )
             .on_body_chunk(|chunk: &Bytes, _latency: Duration, _span: &Span| {
                 debug!("Sending {} bytes", chunk.len())
             })
             .on_eos(
-                |_trailers: Option<&HeaderMap>, stream_duration: Duration, _span: &Span| {
+                |_trailers: Option<&HeaderMap>,
+                 stream_duration: Duration,
+                 _span: &Span| {
                     debug!("Stream closed after {:?}", stream_duration)
                 },
             )
             .on_failure(
-                |error: ServerErrorsFailureClass, latency: Duration, _span: &Span| {
+                |error: ServerErrorsFailureClass,
+                 latency: Duration,
+                 _span: &Span| {
                     warn!(
                         "Something went wrong {} in {:?}",
                         error.to_string(),

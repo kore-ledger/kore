@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message, Response,
+    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
+    Response,
 };
 
 use crate::Event as NetworkEvent;
@@ -13,13 +14,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 /// Actor in charge of monitoring the network, allows communication between the actor system and the network.
 pub struct Monitor {
-    state: MonitorNetworkState
+    state: MonitorNetworkState,
 }
 
 impl Monitor {
     /// Monitor new
     pub fn new() -> Self {
-        Self { state: MonitorNetworkState::default() }
+        Self {
+            state: MonitorNetworkState::default(),
+        }
     }
 }
 
@@ -34,18 +37,16 @@ pub enum MonitorNetworkState {
     #[default]
     Connecting,
     Running,
-    Down
+    Down,
 }
 
 #[derive(Debug, Clone)]
 pub enum MonitorMessage {
     Network(NetworkEvent),
-    State
+    State,
 }
 
 impl Message for MonitorMessage {}
-
-
 
 #[derive(Debug, Clone)]
 pub enum MonitorResponse {
@@ -84,14 +85,16 @@ impl Handler<Monitor> for Monitor {
         msg: MonitorMessage,
         _ctx: &mut actor::ActorContext<Monitor>,
     ) -> Result<MonitorResponse, ActorError> {
-        match msg {            
+        match msg {
             MonitorMessage::Network(event) => {
                 if let NetworkEvent::Running = event {
                     self.state = MonitorNetworkState::Running
                 }
                 Ok(MonitorResponse::Ok)
-            },
-            MonitorMessage::State => Ok(MonitorResponse::State(self.state.clone())),
+            }
+            MonitorMessage::State => {
+                Ok(MonitorResponse::State(self.state.clone()))
+            }
         }
     }
 }

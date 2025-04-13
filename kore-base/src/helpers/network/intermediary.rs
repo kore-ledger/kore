@@ -2,13 +2,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use crate::{
-    approval::approver::{Approver, ApproverMessage}, distribution::distributor::{Distributor, DistributorMessage}, evaluation::{
+    Error,
+    approval::approver::{Approver, ApproverMessage},
+    distribution::distributor::{Distributor, DistributorMessage},
+    evaluation::{
         evaluator::{Evaluator, EvaluatorMessage},
         schema::{EvaluationSchema, EvaluationSchemaMessage},
-    }, model::Namespace, update::updater::{Updater, UpdaterMessage}, validation::{
+    },
+    model::Namespace,
+    update::updater::{Updater, UpdaterMessage},
+    validation::{
         schema::{ValidationSchema, ValidationSchemaMessage},
         validator::{Validator, ValidatorMessage},
-    }, Error
+    },
 };
 
 use super::ActorMessage;
@@ -251,7 +257,7 @@ impl Intermediary {
                                     .tell(ValidatorMessage::NetworkRequest {
                                         validation_req: req,
                                         info: message.info,
-                                        schema
+                                        schema,
                                     })
                                     .await
                                 {
@@ -307,7 +313,7 @@ impl Intermediary {
                                     .tell(EvaluatorMessage::NetworkRequest {
                                         evaluation_req: req,
                                         info: message.info,
-                                        schema
+                                        schema,
                                     })
                                     .await
                                 {
@@ -564,7 +570,7 @@ impl Intermediary {
                         prev_event_validation_response,
                         namespace,
                         schema,
-                        governance_id
+                        governance_id,
                     } => {
                         // Distributor path.
                         let distributor_path =
@@ -611,7 +617,7 @@ impl Intermediary {
                                 prev_event_validation_response,
                                 schema,
                                 namespace,
-                                governance_id
+                                governance_id,
                             })
                             .await
                         {

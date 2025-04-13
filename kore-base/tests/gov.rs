@@ -13,7 +13,9 @@ use kore_base::{
 };
 
 use common::{
-    check_transfer, create_and_authorize_governance, create_nodes_and_connections, create_subject, emit_approve, emit_confirm, emit_fact, emit_reject, emit_transfer, get_signatures, get_subject
+    check_transfer, create_and_authorize_governance,
+    create_nodes_and_connections, create_subject, emit_approve, emit_confirm,
+    emit_fact, emit_reject, emit_transfer, get_signatures, get_subject,
 };
 use serde_json::json;
 use test_log::test;
@@ -211,17 +213,17 @@ async fn test_basic_use_case_1b_1e_1a() {
 
     // add node bootstrap and ephemeral to governance
     let json = json!({"members": {
-            "add": [
-                {
-                    "name": "KoreNode2",
-                    "key": intermediary.controller_id()
-                },
-                {
-                    "name": "KoreNode3",
-                    "key": emit_events.controller_id()
-                }
-            ]
-        }});
+        "add": [
+            {
+                "name": "KoreNode2",
+                "key": intermediary.controller_id()
+            },
+            {
+                "name": "KoreNode3",
+                "key": emit_events.controller_id()
+            }
+        ]
+    }});
 
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
@@ -283,7 +285,6 @@ async fn test_basic_use_case_1b_1e_1a() {
         json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":1})
     );
 }
-
 
 #[test(tokio::test)]
 async fn test_many_schema_in_one_governance() {
@@ -374,14 +375,14 @@ async fn test_transfer_event_governance_1() {
     .await;
     // add member to governance
     let json = json!({
-        "members": {
-            "add": [
-                {
-                    "name": "KoreNode1",
-                    "key": future_owner.controller_id()
-                }
-            ]
-        }});
+    "members": {
+        "add": [
+            {
+                "name": "KoreNode1",
+                "key": future_owner.controller_id()
+            }
+        ]
+    }});
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
         .unwrap();
@@ -405,14 +406,14 @@ async fn test_transfer_event_governance_1() {
         .to_string();
     // add new fake member to governance
     let json = json!({
-        "members": {
-            "add": [
-                {
-                    "name": "KoreNode2",
-                    "key": fake_node
-                }
-            ]
-        }});
+    "members": {
+        "add": [
+            {
+                "name": "KoreNode2",
+                "key": fake_node
+            }
+        ]
+    }});
 
     emit_fact(future_owner, governance_id.clone(), json, true)
         .await
@@ -483,14 +484,14 @@ async fn test_transfer_event_governance_2() {
         .unwrap();
     // add member to governance
     let json = json!({
-        "members": {
-            "add": [
-                {
-                    "name": "KoreNode1",
-                    "key": future_owner.controller_id()
-                }
-            ]
-        }});
+    "members": {
+        "add": [
+            {
+                "name": "KoreNode1",
+                "key": future_owner.controller_id()
+            }
+        ]
+    }});
 
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
@@ -536,14 +537,14 @@ async fn test_transfer_event_governance_2() {
         .to_string();
     // add new fake member to governance
     let json = json!({
-        "members": {
-            "add": [
-                {
-                    "name": "KoreNode2",
-                    "key": fake_node
-                }
-            ]
-        }});
+    "members": {
+        "add": [
+            {
+                "name": "KoreNode2",
+                "key": fake_node
+            }
+        ]
+    }});
 
     let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
     assert!(transfer_data.is_empty());
@@ -608,11 +609,10 @@ async fn test_governance_fail_approve() {
     let governance_id =
         create_and_authorize_governance(node1, vec![], "").await;
 
-    
     let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
         .key_identifier()
         .to_string();
-    
+
     let json = json!({
         "members": {
             "add": [
@@ -668,12 +668,16 @@ async fn test_governance_manual_many_approvers() {
     )
     .await;
     let owner = &nodes[0];
-    let approver_1 =  &nodes[1];
-    let approver_2 =  &nodes[2];
+    let approver_1 = &nodes[1];
+    let approver_2 = &nodes[2];
 
-    let governance_id =
-        create_and_authorize_governance(owner, vec![approver_1, approver_2], "").await;
-    
+    let governance_id = create_and_authorize_governance(
+        owner,
+        vec![approver_1, approver_2],
+        "",
+    )
+    .await;
+
     let json = json!({
         "policies": {
             "governance": {
@@ -720,8 +724,8 @@ async fn test_governance_manual_many_approvers() {
     .unwrap();
 
     let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
-    .key_identifier()
-    .to_string();
+        .key_identifier()
+        .to_string();
 
     let json = json!({
         "members": {
@@ -738,44 +742,52 @@ async fn test_governance_manual_many_approvers() {
         .await
         .unwrap();
 
-        emit_approve(
-            owner,
-            governance_id.clone(),
-            ApprovalStateRes::RespondedAccepted,
-            request_id.clone(),
-            true,
-        )
+    emit_approve(
+        owner,
+        governance_id.clone(),
+        ApprovalStateRes::RespondedAccepted,
+        request_id.clone(),
+        true,
+    )
+    .await
+    .unwrap();
+
+    emit_approve(
+        approver_1,
+        governance_id.clone(),
+        ApprovalStateRes::RespondedAccepted,
+        request_id.clone(),
+        false,
+    )
+    .await
+    .unwrap();
+
+    emit_approve(
+        approver_2,
+        governance_id.clone(),
+        ApprovalStateRes::RespondedAccepted,
+        request_id.clone(),
+        false,
+    )
+    .await
+    .unwrap();
+
+    let state = get_signatures(owner, governance_id.clone(), Some(2))
         .await
         .unwrap();
-
-        emit_approve(
-            approver_1,
-            governance_id.clone(),
-            ApprovalStateRes::RespondedAccepted,
-            request_id.clone(),
-            false,
-        )
+    assert_eq!(state.signatures_appr.unwrap().len(), 3);
+    let state = get_signatures(approver_1, governance_id.clone(), Some(2))
         .await
         .unwrap();
-
-        emit_approve(
-            approver_2,
-            governance_id.clone(),
-            ApprovalStateRes::RespondedAccepted,
-            request_id.clone(),
-            false,
-        )
+    assert_eq!(state.signatures_appr.unwrap().len(), 3);
+    let state = get_signatures(approver_2, governance_id.clone(), Some(2))
         .await
         .unwrap();
-
-    let state = get_signatures(owner, governance_id.clone(), Some(2)).await.unwrap();
-    assert_eq!(state.signatures_appr.unwrap().len(), 3);
-    let state = get_signatures(approver_1, governance_id.clone(), Some(2)).await.unwrap();
-    assert_eq!(state.signatures_appr.unwrap().len(), 3);
-    let state = get_signatures(approver_2, governance_id.clone(), Some(2)).await.unwrap();
     assert_eq!(state.signatures_appr.unwrap().len(), 3);
 
-    let state = get_subject(owner, governance_id.clone(), None).await.unwrap();
+    let state = get_subject(owner, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, String::default());
     assert_eq!(state.genesis_gov_version, 0);
@@ -790,7 +802,9 @@ async fn test_governance_manual_many_approvers() {
         state.properties,
         json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
     );
-    let state = get_subject(approver_1, governance_id.clone(), None).await.unwrap();
+    let state = get_subject(approver_1, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, String::default());
     assert_eq!(state.genesis_gov_version, 0);
@@ -805,7 +819,9 @@ async fn test_governance_manual_many_approvers() {
         state.properties,
         json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
     );
-    let state = get_subject(approver_2, governance_id.clone(), None).await.unwrap();
+    let state = get_subject(approver_2, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, String::default());
     assert_eq!(state.genesis_gov_version, 0);
@@ -835,12 +851,16 @@ async fn test_governance_auto_many_approvers() {
     )
     .await;
     let owner = &nodes[0];
-    let approver_1 =  &nodes[1];
-    let approver_2 =  &nodes[2];
+    let approver_1 = &nodes[1];
+    let approver_2 = &nodes[2];
 
-    let governance_id =
-        create_and_authorize_governance(owner, vec![approver_1, approver_2], "").await;
-    
+    let governance_id = create_and_authorize_governance(
+        owner,
+        vec![approver_1, approver_2],
+        "",
+    )
+    .await;
+
     let json = json!({
         "policies": {
             "governance": {
@@ -887,8 +907,8 @@ async fn test_governance_auto_many_approvers() {
     .unwrap();
 
     let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
-    .key_identifier()
-    .to_string();
+        .key_identifier()
+        .to_string();
 
     let json = json!({
         "members": {
@@ -905,44 +925,52 @@ async fn test_governance_auto_many_approvers() {
         .await
         .unwrap();
 
-        emit_approve(
-            owner,
-            governance_id.clone(),
-            ApprovalStateRes::RespondedAccepted,
-            request_id.clone(),
-            true,
-        )
+    emit_approve(
+        owner,
+        governance_id.clone(),
+        ApprovalStateRes::RespondedAccepted,
+        request_id.clone(),
+        true,
+    )
+    .await
+    .unwrap();
+
+    emit_approve(
+        approver_1,
+        governance_id.clone(),
+        ApprovalStateRes::RespondedAccepted,
+        request_id.clone(),
+        false,
+    )
+    .await
+    .unwrap();
+
+    emit_approve(
+        approver_2,
+        governance_id.clone(),
+        ApprovalStateRes::RespondedAccepted,
+        request_id.clone(),
+        false,
+    )
+    .await
+    .unwrap();
+
+    let state = get_signatures(owner, governance_id.clone(), Some(2))
         .await
         .unwrap();
-
-        emit_approve(
-            approver_1,
-            governance_id.clone(),
-            ApprovalStateRes::RespondedAccepted,
-            request_id.clone(),
-            false,
-        )
+    assert_eq!(state.signatures_appr.unwrap().len(), 3);
+    let state = get_signatures(approver_1, governance_id.clone(), Some(2))
         .await
         .unwrap();
-
-        emit_approve(
-            approver_2,
-            governance_id.clone(),
-            ApprovalStateRes::RespondedAccepted,
-            request_id.clone(),
-            false,
-        )
+    assert_eq!(state.signatures_appr.unwrap().len(), 3);
+    let state = get_signatures(approver_2, governance_id.clone(), Some(2))
         .await
         .unwrap();
-
-    let state = get_signatures(owner, governance_id.clone(), Some(2)).await.unwrap();
-    assert_eq!(state.signatures_appr.unwrap().len(), 3);
-    let state = get_signatures(approver_1, governance_id.clone(), Some(2)).await.unwrap();
-    assert_eq!(state.signatures_appr.unwrap().len(), 3);
-    let state = get_signatures(approver_2, governance_id.clone(), Some(2)).await.unwrap();
     assert_eq!(state.signatures_appr.unwrap().len(), 3);
 
-    let state = get_subject(owner, governance_id.clone(), None).await.unwrap();
+    let state = get_subject(owner, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, String::default());
     assert_eq!(state.genesis_gov_version, 0);
@@ -957,7 +985,9 @@ async fn test_governance_auto_many_approvers() {
         state.properties,
         json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
     );
-    let state = get_subject(approver_1, governance_id.clone(), None).await.unwrap();
+    let state = get_subject(approver_1, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, String::default());
     assert_eq!(state.genesis_gov_version, 0);
@@ -972,7 +1002,9 @@ async fn test_governance_auto_many_approvers() {
         state.properties,
         json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
     );
-    let state = get_subject(approver_2, governance_id.clone(), None).await.unwrap();
+    let state = get_subject(approver_2, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, String::default());
     assert_eq!(state.genesis_gov_version, 0);
@@ -988,7 +1020,6 @@ async fn test_governance_auto_many_approvers() {
         json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
     );
 }
-
 
 #[test(tokio::test)]
 // Varios approvers pero uno dice que no y el quorum no se cumple.
@@ -1003,12 +1034,16 @@ async fn test_governance_not_quorum_many_approvers() {
     )
     .await;
     let owner = &nodes[0];
-    let approver_1 =  &nodes[1];
-    let approver_2 =  &nodes[2];
+    let approver_1 = &nodes[1];
+    let approver_2 = &nodes[2];
 
-    let governance_id =
-        create_and_authorize_governance(owner, vec![approver_1, approver_2], "").await;
-    
+    let governance_id = create_and_authorize_governance(
+        owner,
+        vec![approver_1, approver_2],
+        "",
+    )
+    .await;
+
     let json = json!({
         "policies": {
             "governance": {
@@ -1055,8 +1090,8 @@ async fn test_governance_not_quorum_many_approvers() {
     .unwrap();
 
     let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
-    .key_identifier()
-    .to_string();
+        .key_identifier()
+        .to_string();
 
     let json = json!({
         "members": {
@@ -1073,44 +1108,52 @@ async fn test_governance_not_quorum_many_approvers() {
         .await
         .unwrap();
 
-        emit_approve(
-            owner,
-            governance_id.clone(),
-            ApprovalStateRes::RespondedAccepted,
-            request_id.clone(),
-            true,
-        )
+    emit_approve(
+        owner,
+        governance_id.clone(),
+        ApprovalStateRes::RespondedAccepted,
+        request_id.clone(),
+        true,
+    )
+    .await
+    .unwrap();
+
+    emit_approve(
+        approver_1,
+        governance_id.clone(),
+        ApprovalStateRes::RespondedAccepted,
+        request_id.clone(),
+        false,
+    )
+    .await
+    .unwrap();
+
+    emit_approve(
+        approver_2,
+        governance_id.clone(),
+        ApprovalStateRes::RespondedRejected,
+        request_id.clone(),
+        false,
+    )
+    .await
+    .unwrap();
+
+    let state = get_signatures(owner, governance_id.clone(), Some(2))
         .await
         .unwrap();
-
-        emit_approve(
-            approver_1,
-            governance_id.clone(),
-            ApprovalStateRes::RespondedAccepted,
-            request_id.clone(),
-            false,
-        )
+    assert_eq!(state.signatures_appr.unwrap().len(), 2);
+    let state = get_signatures(approver_1, governance_id.clone(), Some(2))
         .await
         .unwrap();
-
-        emit_approve(
-            approver_2,
-            governance_id.clone(),
-            ApprovalStateRes::RespondedRejected,
-            request_id.clone(),
-            false,
-        )
+    assert_eq!(state.signatures_appr.unwrap().len(), 2);
+    let state = get_signatures(approver_2, governance_id.clone(), Some(2))
         .await
         .unwrap();
-
-    let state = get_signatures(owner, governance_id.clone(), Some(2)).await.unwrap();
-    assert_eq!(state.signatures_appr.unwrap().len(), 2);
-    let state = get_signatures(approver_1, governance_id.clone(), Some(2)).await.unwrap();
-    assert_eq!(state.signatures_appr.unwrap().len(), 2);
-    let state = get_signatures(approver_2, governance_id.clone(), Some(2)).await.unwrap();
     assert_eq!(state.signatures_appr.unwrap().len(), 2);
 
-    let state = get_subject(owner, governance_id.clone(), None).await.unwrap();
+    let state = get_subject(owner, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, String::default());
     assert_eq!(state.genesis_gov_version, 0);
@@ -1125,7 +1168,9 @@ async fn test_governance_not_quorum_many_approvers() {
         state.properties,
         json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":1})
     );
-    let state = get_subject(approver_1, governance_id.clone(), None).await.unwrap();
+    let state = get_subject(approver_1, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, String::default());
     assert_eq!(state.genesis_gov_version, 0);
@@ -1140,7 +1185,9 @@ async fn test_governance_not_quorum_many_approvers() {
         state.properties,
         json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":1})
     );
-    let state = get_subject(approver_2, governance_id.clone(), None).await.unwrap();
+    let state = get_subject(approver_2, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());
     assert_eq!(state.governance_id, String::default());
     assert_eq!(state.genesis_gov_version, 0);
@@ -1156,7 +1203,6 @@ async fn test_governance_not_quorum_many_approvers() {
         json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":1})
     );
 }
-
 
 #[test(tokio::test)]
 // Se añade un evaluador, se evalua, se le elimina y se vuelve a evaluar.
@@ -1172,81 +1218,83 @@ async fn test_change_roles_gov() {
     let eval_node = &nodes[0];
     let owner_governance = &nodes[1];
 
-    let governance_id = create_and_authorize_governance(
-        owner_governance,
-        vec![eval_node],
-        "",
-    )
-    .await;
+    let governance_id =
+        create_and_authorize_governance(owner_governance, vec![eval_node], "")
+            .await;
     // add member to governance
     let json: serde_json::Value = json!({
-        "roles": {
-            "governance": {
-                "add": {
-                    "evaluator": ["KoreNode1"]
-                }
+    "roles": {
+        "governance": {
+            "add": {
+                "evaluator": ["KoreNode1"]
             }
-        },
-        "members": {
-            "add": [
-                {
-                    "name": "KoreNode1",
-                    "key": eval_node.controller_id()
-                }
-            ]
-        }});
+        }
+    },
+    "members": {
+        "add": [
+            {
+                "name": "KoreNode1",
+                "key": eval_node.controller_id()
+            }
+        ]
+    }});
 
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
         .unwrap();
 
-        let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
+    let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
         .key_identifier()
         .to_string();
 
-        let json = json!({
-            "members": {
-                "add": [
-                    {
-                        "name": "KoreNode2",
-                        "key": fake_node
-                    }
-                ]
-            }});
+    let json = json!({
+    "members": {
+        "add": [
+            {
+                "name": "KoreNode2",
+                "key": fake_node
+            }
+        ]
+    }});
 
-
-    emit_fact(owner_governance, governance_id.clone(), json, true)
-            .await
-            .unwrap();
-
-    let state = get_signatures(owner_governance, governance_id.clone(), None).await.unwrap();
-    assert_eq!(state.signatures_eval.unwrap().len(), 2);
-    assert_eq!(state.sn, 2);
-    let state = get_signatures(eval_node, governance_id.clone(), Some(2)).await.unwrap();
-    assert_eq!(state.signatures_eval.unwrap().len(), 2);
-    assert_eq!(state.sn, 2);
-
-
-            let json = json!({
-                "roles": {
-                    "governance": {
-                        "remove": {
-                            "evaluator": ["KoreNode1"]
-                        }
-                    }
-                }});
-        
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
         .unwrap();
 
-    let state = get_signatures(owner_governance, governance_id.clone(), None).await.unwrap();
+    let state = get_signatures(owner_governance, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 2);
-    assert_eq!(state.sn, 3);
-    let state = get_signatures(eval_node, governance_id.clone(), Some(3)).await.unwrap();
+    assert_eq!(state.sn, 2);
+    let state = get_signatures(eval_node, governance_id.clone(), Some(2))
+        .await
+        .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 2);
-    assert_eq!(state.sn, 3);
+    assert_eq!(state.sn, 2);
 
+    let json = json!({
+    "roles": {
+        "governance": {
+            "remove": {
+                "evaluator": ["KoreNode1"]
+            }
+        }
+    }});
+
+    emit_fact(owner_governance, governance_id.clone(), json, true)
+        .await
+        .unwrap();
+
+    let state = get_signatures(owner_governance, governance_id.clone(), None)
+        .await
+        .unwrap();
+    assert_eq!(state.signatures_eval.unwrap().len(), 2);
+    assert_eq!(state.sn, 3);
+    let state = get_signatures(eval_node, governance_id.clone(), Some(3))
+        .await
+        .unwrap();
+    assert_eq!(state.signatures_eval.unwrap().len(), 2);
+    assert_eq!(state.sn, 3);
 
     let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
         .key_identifier()
@@ -1263,15 +1311,18 @@ async fn test_change_roles_gov() {
     }});
 
     emit_fact(owner_governance, governance_id.clone(), json, true)
-    .await
-    .unwrap();
+        .await
+        .unwrap();
 
-    let state = get_signatures(owner_governance, governance_id.clone(), None).await.unwrap();
+    let state = get_signatures(owner_governance, governance_id.clone(), None)
+        .await
+        .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 1);
     assert_eq!(state.sn, 4);
 
-    let state = get_signatures(eval_node, governance_id.clone(), Some(4)).await.unwrap();
+    let state = get_signatures(eval_node, governance_id.clone(), Some(4))
+        .await
+        .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 1);
     assert_eq!(state.sn, 4);
 }
-

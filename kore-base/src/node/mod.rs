@@ -13,9 +13,21 @@ use relationship::RelationShip;
 use tracing::{error, warn};
 
 use crate::{
-    auth::{Auth, AuthMessage, AuthResponse}, config::Config, db::Storable, distribution::distributor::Distributor, governance::Governance, helpers::db::ExternalDB, manual_distribution::ManualDistribution, model::{
-        event::{Ledger, LedgerValue}, signature::{Signature, Signed}, HashId, SignTypesNode
-    }, subject::CreateSubjectData, Error, EventRequest, Subject, SubjectMessage, SubjectResponse, DIGEST_DERIVATOR
+    DIGEST_DERIVATOR, Error, EventRequest, Subject, SubjectMessage,
+    SubjectResponse,
+    auth::{Auth, AuthMessage, AuthResponse},
+    config::Config,
+    db::Storable,
+    distribution::distributor::Distributor,
+    governance::Governance,
+    helpers::db::ExternalDB,
+    manual_distribution::ManualDistribution,
+    model::{
+        HashId, SignTypesNode,
+        event::{Ledger, LedgerValue},
+        signature::{Signature, Signed},
+    },
+    subject::CreateSubjectData,
 };
 
 use identity::{
@@ -241,11 +253,7 @@ pub enum NodeResponse {
     IOwnerPending((bool, bool)),
     IOld(bool),
     Contract(Vec<u8>),
-    IsAuthorized {
-        owned: bool,
-        auth: bool,
-        know: bool
-    },
+    IsAuthorized { owned: bool, auth: bool, know: bool },
     KnowSubject(bool),
     None,
 }
@@ -446,13 +454,19 @@ impl Handler<Node> for Node {
                     ledger.content.event_request.content.clone()
                 {
                     let properties = if create_event.schema_id == "governance" {
-                        let gov = Governance::new(ledger
-                            .content
-                            .event_request
-                            .signature
-                            .signer.clone());
+                        let gov = Governance::new(
+                            ledger
+                                .content
+                                .event_request
+                                .signature
+                                .signer
+                                .clone(),
+                        );
                         gov.to_value_wrapper().map_err(|e| {
-                            error!(TARGET_NODE, "CreateNewSubjectLedger, {}", e);
+                            error!(
+                                TARGET_NODE,
+                                "CreateNewSubjectLedger, {}", e
+                            );
                             ActorError::FunctionalFail(e.to_string())
                         })?
                     } else if let LedgerValue::Patch(init_state) =
@@ -645,7 +659,7 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::IsAuthorized {
                     auth: auth_subj,
                     owned: owned_subj,
-                    know: know_subj
+                    know: know_subj,
                 })
             }
         }

@@ -18,19 +18,26 @@ use types::{ContractResult, EvaluateType, RunnerResult};
 use wasmtime::{Config, Engine, Module, Store};
 
 use crate::{
+    Error, ValueWrapper,
     governance::{
+        Governance, Schema,
         events::{
             GovernanceEvent, MemberEvent, PoliciesEvent, RolesEvent,
             SchemasEvent,
-        }, model::RoleTypes, Governance, Schema
-    }, model::{
-        common::{generate_linker, MemoryManager}, patch::apply_patch, Namespace
-    }, Error, ValueWrapper
+        },
+        model::RoleTypes,
+    },
+    model::{
+        Namespace,
+        common::{MemoryManager, generate_linker},
+        patch::apply_patch,
+    },
 };
 
 const TARGET_RUNNER: &str = "Kore-Evaluation-Runner";
 type ChangeRemoveMembers = (Vec<(String, String)>, Vec<String>);
-type AddRemoveChangeSchema = (HashSet<String>, HashSet<String>, HashSet<String>);
+type AddRemoveChangeSchema =
+    (HashSet<String>, HashSet<String>, HashSet<String>);
 
 pub mod types;
 
@@ -142,7 +149,9 @@ impl Runner {
             })?;
 
         let Some(owner_key) = governance.members.get("Owner") else {
-            return Err(Error::Runner("Can not get Owner into members".to_owned()));
+            return Err(Error::Runner(
+                "Can not get Owner into members".to_owned(),
+            ));
         };
 
         if owner_key == new_owner {
@@ -174,7 +183,9 @@ impl Runner {
         new_owner: &KeyIdentifier,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
         if new_owner.is_empty() {
-            return Err(Error::Runner("New owner KeyIdentifier can not be empty".to_owned()))
+            return Err(Error::Runner(
+                "New owner KeyIdentifier can not be empty".to_owned(),
+            ));
         }
 
         let mut governance = serde_json::from_value::<Governance>(
@@ -184,7 +195,8 @@ impl Runner {
             Error::Runner(format!("Can deserialice governance patch {}", e))
         })?;
 
-        let Some(old_owner_key) = governance.members.get("Owner").cloned() else {
+        let Some(old_owner_key) = governance.members.get("Owner").cloned()
+        else {
             return Err(Error::Runner(
                 "Cannot find 'Owner' member in governance".to_owned(),
             ));
@@ -202,23 +214,35 @@ impl Runner {
             ));
         };
 
-        governance.members.insert("Owner".to_owned(), new_owner.clone());
+        governance
+            .members
+            .insert("Owner".to_owned(), new_owner.clone());
         governance.members.remove(&new_owner_member);
 
-        governance.change_name_role(&vec![(new_owner_member, "Owner".to_owned())]);
+        governance
+            .change_name_role(&vec![(new_owner_member, "Owner".to_owned())]);
 
         if let Some(mut old_owner_name) = old_owner_name {
             old_owner_name = old_owner_name.trim().to_owned();
 
             if old_owner_name.is_empty() {
-                return Err(Error::Runner("New name to old owner can not be empty".to_owned()));
+                return Err(Error::Runner(
+                    "New name to old owner can not be empty".to_owned(),
+                ));
             }
 
             if old_owner_name.len() > 50 {
-                return Err(Error::Runner(format!("The size of the new name of the old owner must be less than or equal to 50 characters: {}", old_owner_name)));
+                return Err(Error::Runner(format!(
+                    "The size of the new name of the old owner must be less than or equal to 50 characters: {}",
+                    old_owner_name
+                )));
             }
 
-            if governance.members.insert(old_owner_name.clone(), old_owner_key.clone()).is_some() {
+            if governance
+                .members
+                .insert(old_owner_name.clone(), old_owner_key.clone())
+                .is_some()
+            {
                 return Err(Error::Runner(format!(
                     "Can not add old owner as member: '{}' already exists",
                     old_owner_name
@@ -227,7 +251,10 @@ impl Runner {
         }
 
         let mod_state = to_value(governance).map_err(|e| {
-            Error::Runner(format!("Can not serialice Governance into Value {}", e))
+            Error::Runner(format!(
+                "Can not serialice Governance into Value {}",
+                e
+            ))
         })?;
 
         let patch = diff(&state.0, &mod_state);
@@ -383,11 +410,17 @@ impl Runner {
         }
 
         if !governance.check_basic_gov() {
-            return Err(Error::Runner("The basic roles of the governance owner have been modified".to_owned()));
+            return Err(Error::Runner(
+                "The basic roles of the governance owner have been modified"
+                    .to_owned(),
+            ));
         }
 
         let mod_state = to_value(governance).map_err(|e| {
-            Error::Runner(format!("Can not serialice Governance into Value {}", e))
+            Error::Runner(format!(
+                "Can not serialice Governance into Value {}",
+                e
+            ))
         })?;
 
         let patch = diff(&state.0, &mod_state);
@@ -539,7 +572,9 @@ impl Runner {
         governance: &mut Governance,
     ) -> Result<(), Error> {
         if roles_event.is_empty() {
-            return Err(Error::Runner("RolesEvent can not be empty".to_owned()));
+            return Err(Error::Runner(
+                "RolesEvent can not be empty".to_owned(),
+            ));
         }
 
         if let Some(gov) = roles_event.governance {
@@ -593,11 +628,8 @@ impl Runner {
         if let Some(all_schemas) = roles_event.all_schemas {
             let new_roles = governance.roles_all_schemas.clone();
 
-            let new_roles = all_schemas.check_data(
-                governance,
-                new_roles,
-                "all_schemas",
-            )?;
+            let new_roles =
+                all_schemas.check_data(governance, new_roles, "all_schemas")?;
 
             governance.roles_all_schemas = new_roles;
         }
@@ -608,8 +640,7 @@ impl Runner {
     fn check_schemas(
         schema_event: &SchemasEvent,
         governance: &mut Governance,
-    ) -> Result<AddRemoveChangeSchema, Error>
-    {
+    ) -> Result<AddRemoveChangeSchema, Error> {
         if schema_event.is_empty() {
             return Err(Error::Runner(
                 "SchemasEvent can not be empty".to_owned(),
@@ -639,9 +670,10 @@ impl Runner {
                 }
 
                 if new_schema.id.len() > 50 {
-                    return Err(Error::Runner(
-                        format!("The size of the schema ID must be less than or equal to 50 characters: {}", new_schema.id),
-                    ));
+                    return Err(Error::Runner(format!(
+                        "The size of the schema ID must be less than or equal to 50 characters: {}",
+                        new_schema.id
+                    )));
                 }
 
                 if new_schema.id == "all_schemas" {
@@ -794,9 +826,10 @@ impl Runner {
                 }
 
                 if new_member.name.len() > 50 {
-                    return Err(Error::Runner(
-                        format!("The size of the member name be less than or equal to 50 characters: {}", new_member.name),
-                    ));
+                    return Err(Error::Runner(format!(
+                        "The size of the member name be less than or equal to 50 characters: {}",
+                        new_member.name
+                    )));
                 }
 
                 if new_member.name == "Any" {

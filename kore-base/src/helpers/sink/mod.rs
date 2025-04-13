@@ -25,33 +25,36 @@ impl KoreSink {
 #[async_trait]
 impl Subscriber<SinkDataEvent> for KoreSink {
     async fn notify(&self, event: SinkDataEvent) {
-        let SinkDataEvent::PublishFact {schema_id,fact_req  } = event else {
-            return ;
+        let SinkDataEvent::PublishFact {
+            schema_id,
+            fact_req,
+        } = event
+        else {
+            return;
         };
 
         let Some(sink) = self.sinks.get(&schema_id).cloned() else {
-            return ;
+            return;
         };
 
         if sink.is_empty() {
-            return ;
+            return;
         }
 
-        let sink = sink.replace("{{subject-id}}", &fact_req.subject_id.to_string());
+        let sink =
+            sink.replace("{{subject-id}}", &fact_req.subject_id.to_string());
         let sink = sink.replace("{{schema-id}}", &schema_id);
 
         let client = reqwest::Client::new();
-        match client
-            .post(sink)
-            .json(&fact_req.payload.0)
-            .send()
-            .await
-        {
+        match client.post(sink).json(&fact_req.payload.0).send().await {
             Ok(res) => {
                 if let Err(e) = res.error_for_status() {
                     if let Some(status) = e.status() {
                         if status.as_u16() == 422 {
-                            warn!(TARGET_SINK, "The sink was expecting another type of data");
+                            warn!(
+                                TARGET_SINK,
+                                "The sink was expecting another type of data"
+                            );
                             return;
                         }
                     }

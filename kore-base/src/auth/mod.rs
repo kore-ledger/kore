@@ -14,7 +14,15 @@ use store::store::PersistentActor;
 use tracing::{error, warn};
 
 use crate::{
-    db::Storable, governance::model::RoleTypes, intermediary::Intermediary, model::{common::{emit_fail, get_gov, get_metadata, subject_old}, Namespace}, update::{Update, UpdateMessage, UpdateNew, UpdateRes}, ActorMessage, NetworkMessage
+    ActorMessage, NetworkMessage,
+    db::Storable,
+    governance::model::RoleTypes,
+    intermediary::Intermediary,
+    model::{
+        Namespace,
+        common::{emit_fail, get_gov, get_metadata, subject_old},
+    },
+    update::{Update, UpdateMessage, UpdateNew, UpdateRes},
 };
 
 const TARGET_AUTH: &str = "Kore-Auth";
@@ -30,7 +38,9 @@ impl AuthWitness {
     fn merge(self, other: AuthWitness) -> AuthWitness {
         match (self, other) {
             (AuthWitness::None, w) | (w, AuthWitness::None) => w,
-            (AuthWitness::One(x), AuthWitness::One(y)) => AuthWitness::Many(vec![x, y]),
+            (AuthWitness::One(x), AuthWitness::One(y)) => {
+                AuthWitness::Many(vec![x, y])
+            }
             (AuthWitness::One(x), AuthWitness::Many(mut y)) => {
                 y.push(x);
                 AuthWitness::Many(y)
@@ -47,7 +57,10 @@ impl AuthWitness {
     }
 }
 
-fn merge_options(opt1: Option<AuthWitness>, opt2: Option<AuthWitness>) -> Option<AuthWitness> {
+fn merge_options(
+    opt1: Option<AuthWitness>,
+    opt2: Option<AuthWitness>,
+) -> Option<AuthWitness> {
     match (opt1, opt2) {
         (Some(w1), Some(w2)) => Some(w1.merge(w2)),
         (Some(w), None) | (None, Some(w)) => Some(w),
@@ -118,7 +131,7 @@ pub enum AuthMessage {
     },
     Update {
         subject_id: DigestIdentifier,
-        more_info: WitnessesAuth
+        more_info: WitnessesAuth,
     },
 }
 
@@ -126,7 +139,7 @@ pub enum AuthMessage {
 pub enum WitnessesAuth {
     None,
     Owner(KeyIdentifier),
-    Witnesses
+    Witnesses,
 }
 
 impl Message for AuthMessage {}
@@ -287,42 +300,60 @@ impl Handler<Auth> for Auth {
                     subjects: self.auth.keys().cloned().collect(),
                 });
             }
-            AuthMessage::Update { subject_id, more_info } => {
+            AuthMessage::Update {
+                subject_id,
+                more_info,
+            } => {
                 let more_witness = match more_info {
                     WitnessesAuth::None => None,
-                    WitnessesAuth::Owner(key_identifier) => Some(AuthWitness::One(key_identifier)),
+                    WitnessesAuth::Owner(key_identifier) => {
+                        Some(AuthWitness::One(key_identifier))
+                    }
                     WitnessesAuth::Witnesses => {
                         match get_gov(ctx, &subject_id.to_string()).await {
                             Ok(gov) => {
-                                let (witnesses, _) = gov.get_signers(RoleTypes::Witness, "governance", Namespace::new());
-                                Some(AuthWitness::Many(Vec::from_iter(witnesses.iter().cloned())))
-                            },
+                                let (witnesses, _) = gov.get_signers(
+                                    RoleTypes::Witness,
+                                    "governance",
+                                    Namespace::new(),
+                                );
+                                Some(AuthWitness::Many(Vec::from_iter(
+                                    witnesses.iter().cloned(),
+                                )))
+                            }
                             Err(e) => {
-                                warn!(TARGET_AUTH, "Update, When attempting to update governance, the use of explicit witnesses within governance has been indicated, but no governance has been found: {}", e);
+                                warn!(
+                                    TARGET_AUTH,
+                                    "Update, When attempting to update governance, the use of explicit witnesses within governance has been indicated, but no governance has been found: {}",
+                                    e
+                                );
                                 Some(AuthWitness::None)
-                            },
+                            }
                         }
-                    },
+                    }
                 };
 
-                let auth_witness = self.auth.get(&subject_id.to_string()).cloned();
+                let auth_witness =
+                    self.auth.get(&subject_id.to_string()).cloned();
                 let witness = merge_options(more_witness, auth_witness);
 
                 if let Some(witness) = witness {
-                    let (sn, request) =
-                        match Auth::create_req_schema(ctx, subject_id.clone())
-                            .await
-                        {
-                            Ok(data) => data,
-                            Err(e) => {
-                                error!(
-                                    TARGET_AUTH,
-                                    "Update, can not obtain request, sn, schema_id: {}",
-                                    e
-                                );
-                                return Err(emit_fail(ctx, e).await);
-                            }
-                        };
+                    let (sn, request) = match Auth::create_req_schema(
+                        ctx,
+                        subject_id.clone(),
+                    )
+                    .await
+                    {
+                        Ok(data) => data,
+                        Err(e) => {
+                            error!(
+                                TARGET_AUTH,
+                                "Update, can not obtain request, sn, schema_id: {}",
+                                e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    };
 
                     match witness {
                         AuthWitness::One(key_identifier) => {
@@ -334,7 +365,7 @@ impl Handler<Auth> for Auth {
                                 reciver_actor: format!(
                                     "/user/node/{}/distributor",
                                     subject_id
-                                )
+                                ),
                             };
 
                             let helper: Option<Intermediary> =

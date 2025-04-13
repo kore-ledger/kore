@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 
 use crate::{
-    auth::WitnessesAuth, model::common::{emit_fail, try_to_update}, Signed
+    Signed,
+    auth::WitnessesAuth,
+    model::common::{emit_fail, try_to_update},
 };
 
 use super::{
@@ -43,7 +45,7 @@ pub enum EvaluationSchemaMessage {
     NetworkRequest {
         evaluation_req: Signed<EvaluationReq>,
         info: ComunicateInfo,
-        schema: String
+        schema: String,
     },
     UpdateEvaluators(HashSet<KeyIdentifier>, u64),
 }
@@ -69,13 +71,13 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
             EvaluationSchemaMessage::NetworkRequest {
                 evaluation_req,
                 info,
-                schema
+                schema,
             } => {
                 if self.gov_version < evaluation_req.content.gov_version {
                     if let Err(e) = try_to_update(
                         ctx,
                         evaluation_req.content.context.governance_id.clone(),
-                        WitnessesAuth::Witnesses
+                        WitnessesAuth::Witnesses,
                     )
                     .await
                     {
@@ -143,7 +145,7 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     .tell(EvaluatorMessage::NetworkRequest {
                         evaluation_req,
                         info,
-                        schema
+                        schema,
                     })
                     .await
                 {

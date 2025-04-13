@@ -5,24 +5,50 @@
 //!
 
 use crate::{
+    CreateRequest, Error, EventRequestType, Governance, Node,
     approval::{
-        approver::{Approver, VotationType}, Approval
-    }, auth::WitnessesAuth, config::Config, db::Storable, distribution::{distributor::Distributor, Distribution, DistributionType}, evaluation::{
-        compiler::{Compiler, CompilerMessage}, evaluator::Evaluator, schema::{EvaluationSchema, EvaluationSchemaMessage}, Evaluation
-    }, governance::{
-        model::{CreatorQuantity, ProtocolTypes, RoleTypes}, Schema
-    }, helpers::{db::ExternalDB, sink::KoreSink}, model::{
+        Approval,
+        approver::{Approver, VotationType},
+    },
+    auth::WitnessesAuth,
+    config::Config,
+    db::Storable,
+    distribution::{Distribution, DistributionType, distributor::Distributor},
+    evaluation::{
+        Evaluation,
+        compiler::{Compiler, CompilerMessage},
+        evaluator::Evaluator,
+        schema::{EvaluationSchema, EvaluationSchemaMessage},
+    },
+    governance::{
+        Schema,
+        model::{CreatorQuantity, ProtocolTypes, RoleTypes},
+    },
+    helpers::{db::ExternalDB, sink::KoreSink},
+    model::{
+        HashId, Namespace, ValueWrapper,
         common::{
             delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
             register_relation, try_to_update, verify_protocols_state,
-        }, event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures}, request::EventRequest, signature::Signed, HashId, Namespace, ValueWrapper
-    }, node::{
-        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse}, register::{
+        },
+        event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
+        request::EventRequest,
+        signature::Signed,
+    },
+    node::{
+        NodeMessage, TransferSubject,
+        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
+        register::{
             Register, RegisterDataGov, RegisterDataSubj, RegisterMessage,
-        }, NodeMessage, TransferSubject
-    }, update::TransferResponse, validation::{
-        proof::ValidationProof, schema::{ValidationSchema, ValidationSchemaMessage}, validator::Validator, Validation
-    }, CreateRequest, Error, EventRequestType, Governance, Node
+        },
+    },
+    update::TransferResponse,
+    validation::{
+        Validation,
+        proof::ValidationProof,
+        schema::{ValidationSchema, ValidationSchemaMessage},
+        validator::Validator,
+    },
 };
 
 use actor::{
@@ -254,7 +280,6 @@ impl Subject {
         } else if owner {
             Self::up_owner_not_gov(ctx, &our_key).await?;
         }
-        
 
         Ok(())
     }
@@ -470,31 +495,32 @@ impl Subject {
             &our_key,
             RoleTypes::Validator,
             "governance",
-            Namespace::new());
+            Namespace::new(),
+        );
 
         let new_val = new_gov.has_this_role(
             &our_key,
             RoleTypes::Validator,
             "governance",
-            Namespace::new());
+            Namespace::new(),
+        );
 
         match (old_val, new_val) {
             (true, false) => {
                 let actor: Option<ActorRef<Validator>> =
-                ctx.get_child("validator").await;
+                    ctx.get_child("validator").await;
                 if let Some(actor) = actor {
                     actor.ask_stop().await?;
                 } else {
-                    return Err(ActorError::NotFound(ActorPath::from(format!(
-                        "{}/validator",
-                        ctx.path()
-                    ))));
+                    return Err(ActorError::NotFound(ActorPath::from(
+                        format!("{}/validator", ctx.path()),
+                    )));
                 }
-            },
+            }
             (false, true) => {
                 let validator = Validator::default();
                 ctx.create_child("validator", validator).await?;
-            },
+            }
             _ => {}
         };
 
@@ -502,83 +528,87 @@ impl Subject {
             &our_key,
             RoleTypes::Evaluator,
             "governance",
-            Namespace::new());
+            Namespace::new(),
+        );
 
         let new_eval = new_gov.has_this_role(
             &our_key,
             RoleTypes::Evaluator,
             "governance",
-            Namespace::new());
+            Namespace::new(),
+        );
 
         match (old_eval, new_eval) {
             (true, false) => {
                 let actor: Option<ActorRef<Evaluator>> =
-                ctx.get_child("evaluator").await;
+                    ctx.get_child("evaluator").await;
                 if let Some(actor) = actor {
                     actor.ask_stop().await?;
                 } else {
-                    return Err(ActorError::NotFound(ActorPath::from(format!(
-                        "{}/evaluator",
-                        ctx.path()
-                    ))));
+                    return Err(ActorError::NotFound(ActorPath::from(
+                        format!("{}/evaluator", ctx.path()),
+                    )));
                 }
-            },
+            }
             (false, true) => {
                 let evaluator = Evaluator::default();
                 ctx.create_child("evaluator", evaluator).await?;
-            },
+            }
             _ => {}
         };
-        
 
         let old_appr = old_gov.has_this_role(
             &our_key,
             RoleTypes::Approver,
             "governance",
-            Namespace::new());
+            Namespace::new(),
+        );
 
         let new_appr = new_gov.has_this_role(
             &our_key,
             RoleTypes::Approver,
             "governance",
-            Namespace::new());
+            Namespace::new(),
+        );
 
-            match (old_appr, new_appr) {
-                (true, false) => {
-                    let actor: Option<ActorRef<Approver>> =
+        match (old_appr, new_appr) {
+            (true, false) => {
+                let actor: Option<ActorRef<Approver>> =
                     ctx.get_child("approver").await;
-                    if let Some(actor) = actor {
-                        actor.ask_stop().await?;
-                    } else {
-                        return Err(ActorError::NotFound(ActorPath::from(format!(
-                            "{}/approver",
-                            ctx.path()
-                        ))));
-                    }
-                },
-                (false, true) => {
-                    let Some(config): Option<Config> =
+                if let Some(actor) = actor {
+                    actor.ask_stop().await?;
+                } else {
+                    return Err(ActorError::NotFound(ActorPath::from(
+                        format!("{}/approver", ctx.path()),
+                    )));
+                }
+            }
+            (false, true) => {
+                let Some(config): Option<Config> =
                     ctx.system().get_helper("config").await
-                    else {
-                        return Err(ActorError::NotHelper("config".to_owned()));
-                    };
-        
-                    // If we are a approver
-                    let approver = Approver::new(
-                        String::default(),
-                        0,
-                        our_key.clone(),
-                        subject_id.to_string(),
-                        VotationType::from(config.always_accept),
-                    );
-                    let approver_actor = ctx.create_child("approver", approver).await?;
-        
-                    let sink =
-                        Sink::new(approver_actor.subscribe(), ext_db.get_approver());
-                    ctx.system().run_sink(sink).await;
-                },
-                _ => {}
-            };
+                else {
+                    return Err(ActorError::NotHelper("config".to_owned()));
+                };
+
+                // If we are a approver
+                let approver = Approver::new(
+                    String::default(),
+                    0,
+                    our_key.clone(),
+                    subject_id.to_string(),
+                    VotationType::from(config.always_accept),
+                );
+                let approver_actor =
+                    ctx.create_child("approver", approver).await?;
+
+                let sink = Sink::new(
+                    approver_actor.subscribe(),
+                    ext_db.get_approver(),
+                );
+                ctx.system().run_sink(sink).await;
+            }
+            _ => {}
+        };
 
         Ok(())
     }
@@ -592,7 +622,7 @@ impl Subject {
             &our_key,
             RoleTypes::Validator,
             "governance",
-            Namespace::new()
+            Namespace::new(),
         ) {
             let actor: Option<ActorRef<Validator>> =
                 ctx.get_child("validator").await;
@@ -610,7 +640,7 @@ impl Subject {
             &our_key,
             RoleTypes::Evaluator,
             "governance",
-            Namespace::new()
+            Namespace::new(),
         ) {
             let actor: Option<ActorRef<Evaluator>> =
                 ctx.get_child("evaluator").await;
@@ -628,7 +658,7 @@ impl Subject {
             &our_key,
             RoleTypes::Approver,
             "governance",
-            Namespace::new()
+            Namespace::new(),
         ) {
             let actor: Option<ActorRef<Approver>> =
                 ctx.get_child("approver").await;
@@ -1380,9 +1410,18 @@ impl Subject {
 
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
-            if let EventRequest::Fact(fact_req) = event.content.event_request.content.clone() {
+            if let EventRequest::Fact(fact_req) =
+                event.content.event_request.content.clone()
+            {
                 if last_event_is_ok {
-                    Self::publish_sink(ctx, SinkDataMessage::PublishFact { schema_id: self.schema_id.clone(), fact_req }).await?;
+                    Self::publish_sink(
+                        ctx,
+                        SinkDataMessage::PublishFact {
+                            schema_id: self.schema_id.clone(),
+                            fact_req,
+                        },
+                    )
+                    .await?;
                 }
             };
 
@@ -1620,9 +1659,18 @@ impl Subject {
 
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
-            if let EventRequest::Fact(fact_req) = event.content.event_request.content.clone() {
+            if let EventRequest::Fact(fact_req) =
+                event.content.event_request.content.clone()
+            {
                 if last_event_is_ok {
-                    Self::publish_sink(ctx, SinkDataMessage::PublishFact { schema_id: self.schema_id.clone(), fact_req }).await?;
+                    Self::publish_sink(
+                        ctx,
+                        SinkDataMessage::PublishFact {
+                            schema_id: self.schema_id.clone(),
+                            fact_req,
+                        },
+                    )
+                    .await?;
                 }
             };
 
@@ -2006,14 +2054,22 @@ impl Subject {
         }
 
         if current_sn < self.sn || current_sn == 0 {
-            Self::publish_sink(ctx, SinkDataMessage::UpdateState(self.get_metadata())).await?;
+            Self::publish_sink(
+                ctx,
+                SinkDataMessage::UpdateState(self.get_metadata()),
+            )
+            .await?;
         }
 
         Ok(())
     }
 
-    async fn publish_sink(ctx: &mut ActorContext<Subject>, message: SinkDataMessage) -> Result<(), ActorError> {
-        let sink_data: Option<ActorRef<SinkData>> = ctx.get_child("sink_data").await;
+    async fn publish_sink(
+        ctx: &mut ActorContext<Subject>,
+        message: SinkDataMessage,
+    ) -> Result<(), ActorError> {
+        let sink_data: Option<ActorRef<SinkData>> =
+            ctx.get_child("sink_data").await;
         if let Some(sink_data) = sink_data {
             sink_data.tell(message).await
         } else {
@@ -2289,8 +2345,7 @@ impl Actor for Subject {
                 )
                 .await?;
             } else {
-                self.build_childs_all_schemas(ctx, our_key.clone())
-                    .await?;
+                self.build_childs_all_schemas(ctx, our_key.clone()).await?;
             }
         }
 

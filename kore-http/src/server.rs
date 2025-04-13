@@ -7,8 +7,9 @@ use crate::{
     enviroment::build_doc,
     error::Error,
     wrappers::{
-        ApproveInfo, Config as ConfigKoreHttp, EventInfo, GovsData, PaginatorEvents, RegisterDataSubj,
-        RequestData, RequestInfo, SignaturesInfo, SubjectInfo, TransferSubject,
+        ApproveInfo, Config as ConfigKoreHttp, EventInfo, GovsData,
+        PaginatorEvents, RegisterDataSubj, RequestData, RequestInfo,
+        SignaturesInfo, SubjectInfo, TransferSubject,
     },
 };
 use axum::{
@@ -862,7 +863,9 @@ async fn get_signatures(
         (status = 500, description = "Internal Server Error"),
     )
 )]
-async fn get_controller_id(Extension(bridge): Extension<Arc<Bridge>>) -> Json<String> {
+async fn get_controller_id(
+    Extension(bridge): Extension<Arc<Bridge>>,
+) -> Json<String> {
     Json(bridge.controller_id())
 }
 
@@ -890,7 +893,9 @@ async fn get_controller_id(Extension(bridge): Extension<Arc<Bridge>>) -> Json<St
         (status = 500, description = "Internal Server Error"),
     )
 )]
-async fn get_peer_id(Extension(bridge): Extension<Arc<Bridge>>) -> Json<String> {
+async fn get_peer_id(
+    Extension(bridge): Extension<Arc<Bridge>>,
+) -> Json<String> {
     Json(bridge.peer_id())
 }
 
@@ -965,7 +970,9 @@ async fn get_peer_id(Extension(bridge): Extension<Arc<Bridge>>) -> Json<String> 
         (status = 500, description = "Internal Server Error"),
     )
 )]
-async fn get_config(Extension(bridge): Extension<Arc<Bridge>>) -> Json<ConfigKoreHttp> {
+async fn get_config(
+    Extension(bridge): Extension<Arc<Bridge>>,
+) -> Json<ConfigKoreHttp> {
     Json(ConfigKoreHttp::from(bridge.config()))
 }
 
@@ -990,7 +997,9 @@ async fn get_config(Extension(bridge): Extension<Arc<Bridge>>) -> Json<ConfigKor
         (status = 500, description = "Internal Server Error"),
     )
 )]
-async fn get_keys(Extension(bridge): Extension<Arc<Bridge>>) -> impl IntoResponse {
+async fn get_keys(
+    Extension(bridge): Extension<Arc<Bridge>>,
+) -> impl IntoResponse {
     let keys_path = format!("{}/node_private.der", bridge.config().keys_path);
 
     // Lee el archivo como bytes en lugar de String
@@ -1008,8 +1017,8 @@ async fn get_keys(Extension(bridge): Extension<Arc<Bridge>>) -> impl IntoRespons
     let mut buf = Vec::new();
     {
         let mut zip = ZipWriter::new(Cursor::new(&mut buf));
-        let options: FileOptions<()> =
-            FileOptions::default().compression_method(CompressionMethod::Deflated);
+        let options: FileOptions<()> = FileOptions::default()
+            .compression_method(CompressionMethod::Deflated);
 
         if let Err(e) = zip.start_file("private_key.der", options) {
             return (
@@ -1259,9 +1268,10 @@ pub fn build_routes(bridge: Bridge) -> Router {
         .layer(ServiceBuilder::new().layer(Extension(bridge)));
 
     if build_doc() {
-        Router::new()
-            .merge(routes)
-            .merge(RapiDoc::with_openapi("/doc/koreapi.json", ApiDoc::openapi()).path("/doc"))
+        Router::new().merge(routes).merge(
+            RapiDoc::with_openapi("/doc/koreapi.json", ApiDoc::openapi())
+                .path("/doc"),
+        )
     } else {
         Router::new().merge(routes)
     }

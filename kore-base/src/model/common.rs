@@ -13,15 +13,29 @@ use network::ComunicateInfo;
 use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
-    auth::{Auth, AuthMessage, WitnessesAuth}, governance::{
-        model::{CreatorQuantity, ProtocolTypes}, Quorum
-    }, intermediary::Intermediary, model::SignTypesNode, node::relationship::{
+    ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
+    NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
+    Subject, SubjectMessage, SubjectResponse,
+    auth::{Auth, AuthMessage, WitnessesAuth},
+    governance::{
+        Quorum,
+        model::{CreatorQuantity, ProtocolTypes},
+    },
+    intermediary::Intermediary,
+    model::SignTypesNode,
+    node::relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
-    }, request::manager::{RequestManager, RequestManagerMessage}, subject::{
-        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, transfer::{
+    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::{
+        Metadata,
+        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
+        transfer::{
             TransferRegister, TransferRegisterMessage, TransferRegisterResponse,
-        }, validata::{ValiData, ValiDataMessage, ValiDataResponse}, Metadata
-    }, validation::proof::ValidationProof, ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance, NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse
+        },
+        validata::{ValiData, ValiDataMessage, ValiDataResponse},
+    },
+    validation::proof::ValidationProof,
 };
 use tracing::error;
 
@@ -518,7 +532,7 @@ where
 pub async fn try_to_update<A>(
     ctx: &mut ActorContext<A>,
     subject_id: DigestIdentifier,
-    more_info: WitnessesAuth
+    more_info: WitnessesAuth,
 ) -> Result<(), ActorError>
 where
     A: Actor + Handler<A>,
@@ -528,14 +542,18 @@ where
         ctx.system().get_actor(&auth_path).await;
 
     if let Some(auth_actor) = auth_actor {
-        auth_actor.tell(AuthMessage::Update { subject_id, more_info }).await?;
+        auth_actor
+            .tell(AuthMessage::Update {
+                subject_id,
+                more_info,
+            })
+            .await?;
     } else {
         return Err(ActorError::NotFound(auth_path));
     }
 
     Ok(())
 }
-
 
 pub fn generate_linker(
     engine: &Engine,
@@ -709,7 +727,7 @@ where
         sender: data.our_node,
         request_id: String::default(),
         version: 0,
-        reciver_actor: format!("/user/node/{}/distributor", subject_string)
+        reciver_actor: format!("/user/node/{}/distributor", subject_string),
     };
 
     let helper: Option<Intermediary> = ctx.system().get_helper("network").await;

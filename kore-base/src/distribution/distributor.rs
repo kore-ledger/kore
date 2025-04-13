@@ -13,16 +13,26 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
-    auth::WitnessesAuth, governance::{
-        model::{CreatorQuantity, RoleTypes}, Governance
-    }, intermediary::Intermediary, model::{
+    ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,
+    NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
+    SubjectResponse,
+    auth::WitnessesAuth,
+    governance::{
+        Governance,
+        model::{CreatorQuantity, RoleTypes},
+    },
+    intermediary::Intermediary,
+    model::{
+        Namespace,
         common::{
             emit_fail, get_gov, get_metadata, get_quantity, subject_old_owner,
             try_to_update, update_event, update_vali_data,
         },
         event::{Ledger, ProtocolsSignatures},
-        network::RetryNetwork, Namespace,
-    }, update::TransferResponse, validation::proof::ValidationProof, ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
+        network::RetryNetwork,
+    },
+    update::TransferResponse,
+    validation::proof::ValidationProof,
 };
 
 use tracing::{error, warn};
@@ -35,7 +45,7 @@ pub struct AuthGovData {
     pub gov_version: Option<u64>,
     pub schema: String,
     pub namespace: Namespace,
-    pub governance_id: DigestIdentifier
+    pub governance_id: DigestIdentifier,
 }
 
 pub struct Distributor {
@@ -184,7 +194,9 @@ impl Distributor {
             return Err(ActorError::NotFound(node_path));
         };
         match response {
-            NodeResponse::IsAuthorized { owned, auth, know } => Ok((owned, auth, know)),
+            NodeResponse::IsAuthorized { owned, auth, know } => {
+                Ok((owned, auth, know))
+            }
             _ => Err(ActorError::UnexpectedResponse(
                 node_path,
                 "NodeResponse::IsAuthorized".to_owned(),
@@ -198,12 +210,13 @@ impl Distributor {
         signer: KeyIdentifier,
         info: ComunicateInfo,
         ledger: Ledger,
-        auth_data: AuthGovData
+        auth_data: AuthGovData,
     ) -> Result<(), ActorError> {
         let our_key = info.reciver.clone();
         let subject_id = ledger.subject_id.clone();
         // Si está auth o si soy el dueño del sujeto.
-        let (owned, auth, know) = self.authorized_subj(ctx, &subject_id.to_string()).await?;
+        let (owned, auth, know) =
+            self.authorized_subj(ctx, &subject_id.to_string()).await?;
 
         // Si es una gov
         let is_gov = auth_data.schema == "governance";
@@ -214,27 +227,30 @@ impl Distributor {
             if !auth {
                 return Err(ActorError::Functional(
                     "Governance is not authorized".to_owned(),
-                ))
+                ));
             // está auth y tengo la copia
-            } else if owned || know  {
+            } else if owned || know {
                 return Ok(());
             // está auth pero no tengo la copia
-            } else if let EventRequest::Create(_) = ledger.event_request.content.clone()
-                {
-                    return Ok(());
-                } else {
-                    try_to_update(ctx, subject_id, WitnessesAuth::Owner(signer)).await?;
-                    return Err(ActorError::Functional(
-                        "Updating governance".to_owned(),
-                    ));
-                }
-            
+            } else if let EventRequest::Create(_) =
+                ledger.event_request.content.clone()
+            {
+                return Ok(());
+            } else {
+                try_to_update(ctx, subject_id, WitnessesAuth::Owner(signer))
+                    .await?;
+                return Err(ActorError::Functional(
+                    "Updating governance".to_owned(),
+                ));
+            }
         }
 
         // no es gov.
         let (namespace, governance_id, update) =
             match get_metadata(ctx, &subject_id.to_string()).await {
-                Ok(metadata) => (metadata.namespace, metadata.governance_id, false),
+                Ok(metadata) => {
+                    (metadata.namespace, metadata.governance_id, false)
+                }
                 Err(e) => {
                     if let ActorError::NotFound(_) = e {
                         if let EventRequest::Create(request) =
@@ -250,69 +266,67 @@ impl Distributor {
                 }
             };
 
-            // obtenemos la gov.
-            let gov = match get_gov(ctx, &governance_id.to_string()).await {
-                Ok(gov) => gov,
-                Err(e) => {
-                    if let ActorError::NotFound(_) = e {
-                        try_to_update(ctx, governance_id, WitnessesAuth::Witnesses)
-                            .await?;
-                        return Err(ActorError::Functional(
-                            "Updating governance".to_owned(),
-                        ));
-                    }
-                    return Err(e);
-                }
-            };
-
-            // Comparamos las govs, puede ser que ya no seamos testigo o que de repente seamos testigos.
-            if let Some(gov_version) = auth_data.gov_version {
-                Self::cmp_govs(
-                    ctx,
-                    gov.clone(),
-                    gov_version,
-                    governance_id,
-                    info,
-                    &auth_data.schema
-                )
-                .await?;
-            }
-
-            // Si no está autorizado explicitamente.
-            if !auth {
-                // Miramos que tengamos el rol.
-                if !gov.has_this_role(
-                    &signer,
-                    RoleTypes::Creator,
-                    &auth_data.schema,
-                    namespace.clone(),
-                ) {
+        // obtenemos la gov.
+        let gov = match get_gov(ctx, &governance_id.to_string()).await {
+            Ok(gov) => gov,
+            Err(e) => {
+                if let ActorError::NotFound(_) = e {
+                    try_to_update(ctx, governance_id, WitnessesAuth::Witnesses)
+                        .await?;
                     return Err(ActorError::Functional(
-                        "Signer is not a creator".to_string(),
+                        "Updating governance".to_owned(),
                     ));
                 }
-
-                if !gov.has_this_role(
-                    &our_key,
-                    RoleTypes::Witness,
-                    &auth_data.schema,
-                    namespace,
-                ) {
-                    return Err(ActorError::Functional(
-                        "We are not witness".to_string(),
-                    ));
-                }
+                return Err(e);
             }
+        };
 
-            if update {
-                try_to_update(ctx, subject_id, WitnessesAuth::Owner(signer))
-                .await?;
+        // Comparamos las govs, puede ser que ya no seamos testigo o que de repente seamos testigos.
+        if let Some(gov_version) = auth_data.gov_version {
+            Self::cmp_govs(
+                ctx,
+                gov.clone(),
+                gov_version,
+                governance_id,
+                info,
+                &auth_data.schema,
+            )
+            .await?;
+        }
+
+        // Si no está autorizado explicitamente.
+        if !auth {
+            // Miramos que tengamos el rol.
+            if !gov.has_this_role(
+                &signer,
+                RoleTypes::Creator,
+                &auth_data.schema,
+                namespace.clone(),
+            ) {
                 return Err(ActorError::Functional(
-                    "Updating subject".to_owned(),
+                    "Signer is not a creator".to_string(),
                 ));
             }
 
-            Ok(())
+            if !gov.has_this_role(
+                &our_key,
+                RoleTypes::Witness,
+                &auth_data.schema,
+                namespace,
+            ) {
+                return Err(ActorError::Functional(
+                    "We are not witness".to_string(),
+                ));
+            }
+        }
+
+        if update {
+            try_to_update(ctx, subject_id, WitnessesAuth::Owner(signer))
+                .await?;
+            return Err(ActorError::Functional("Updating subject".to_owned()));
+        }
+
+        Ok(())
     }
 
     async fn cmp_govs(
@@ -321,7 +335,7 @@ impl Distributor {
         gov_version: u64,
         governance_id: DigestIdentifier,
         info: ComunicateInfo,
-        schema: &str
+        schema: &str,
     ) -> Result<(), ActorError> {
         let governance_id_string = governance_id.to_string();
 
@@ -337,7 +351,7 @@ impl Distributor {
                     reciver_actor: format!(
                         "/user/node/{}/distributor",
                         governance_id_string
-                    )
+                    ),
                 };
 
                 let helper: Option<Intermediary> =
@@ -400,7 +414,10 @@ impl Distributor {
                             info: new_info,
                         })
                         .await?;
-                    warn!(TARGET_DISTRIBUTOR, "His gov version is less than my gov version");
+                    warn!(
+                        TARGET_DISTRIBUTOR,
+                        "His gov version is less than my gov version"
+                    );
                 }
             }
         }
@@ -454,7 +471,7 @@ impl Distributor {
                 gov_version,
                 governance_id,
                 info.clone(),
-                &metadata.schema_id
+                &metadata.schema_id,
             )
             .await?;
         }
@@ -700,7 +717,7 @@ impl Handler<Distributor> for Distributor {
                     reciver_actor: format!(
                         "/user/node/auth/{}/{}",
                         subject_id, info.reciver
-                    )
+                    ),
                 };
 
                 let helper: Option<Intermediary> =
@@ -819,7 +836,7 @@ impl Handler<Distributor> for Distributor {
                                 prev_event_validation_response,
                                 schema: metadata.schema_id,
                                 namespace: metadata.namespace.to_string(),
-                                governance_id: metadata.governance_id
+                                governance_id: metadata.governance_id,
                             },
                         },
                     })
@@ -958,11 +975,11 @@ impl Handler<Distributor> for Distributor {
                 last_proof,
                 prev_event_validation_response,
             } => {
-                let auth_data = AuthGovData { 
+                let auth_data = AuthGovData {
                     gov_version: Some(ledger.content.gov_version),
                     schema: last_proof.schema_id.clone(),
                     namespace: last_proof.namespace.clone(),
-                    governance_id: last_proof.governance_id.clone()
+                    governance_id: last_proof.governance_id.clone(),
                 };
 
                 if let Err(e) = self
@@ -971,7 +988,7 @@ impl Handler<Distributor> for Distributor {
                         event.signature.signer.clone(),
                         info.clone(),
                         ledger.content.clone(),
-                        auth_data
+                        auth_data,
                     )
                     .await
                 {
@@ -1216,7 +1233,7 @@ impl Handler<Distributor> for Distributor {
                 prev_event_validation_response,
                 namespace,
                 schema,
-                governance_id
+                governance_id,
             } => {
                 // TODO REFACTORIZAR.
                 if events.is_empty() {
@@ -1228,12 +1245,12 @@ impl Handler<Distributor> for Distributor {
                         "Events is empty".to_owned(),
                     ));
                 }
-                
-                let auth_data = AuthGovData { 
+
+                let auth_data = AuthGovData {
                     gov_version: None,
                     schema: schema.clone(),
                     namespace: namespace.clone(),
-                    governance_id: governance_id.clone()
+                    governance_id: governance_id.clone(),
                 };
 
                 if let Err(e) = self
@@ -1242,7 +1259,7 @@ impl Handler<Distributor> for Distributor {
                         events[0].signature.signer.clone(),
                         info.clone(),
                         events[0].content.clone(),
-                        auth_data
+                        auth_data,
                     )
                     .await
                 {

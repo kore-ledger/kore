@@ -13,10 +13,14 @@ use identity::identifier::KeyIdentifier;
 use tracing::error;
 
 use crate::{
-    governance::model::RoleTypes, model::{
+    Event as KoreEvent, Signed,
+    governance::model::RoleTypes,
+    model::{
         common::{emit_fail, get_gov},
         event::{Ledger, ProtocolsSignatures},
-    }, request::manager::{RequestManager, RequestManagerMessage}, validation::proof::ValidationProof, Event as KoreEvent, Signed
+    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    validation::proof::ValidationProof,
 };
 
 pub mod distributor;

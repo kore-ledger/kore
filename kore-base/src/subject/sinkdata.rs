@@ -23,8 +23,8 @@ pub enum SinkDataMessage {
     UpdateState(Metadata),
     PublishFact {
         schema_id: String,
-        fact_req: FactRequest
-    }
+        fact_req: FactRequest,
+    },
 }
 
 impl Message for SinkDataMessage {}
@@ -41,7 +41,7 @@ pub enum SinkDataEvent {
     UpdateState(Metadata),
     PublishFact {
         schema_id: String,
-        fact_req: FactRequest
+        fact_req: FactRequest,
     },
 }
 
@@ -78,10 +78,21 @@ impl Handler<SinkData> for SinkData {
     ) -> Result<SinkDataResponse, ActorError> {
         match msg {
             SinkDataMessage::UpdateState(metadata) => {
-                self.on_event(SinkDataEvent::UpdateState(metadata), ctx).await;
+                self.on_event(SinkDataEvent::UpdateState(metadata), ctx)
+                    .await;
             }
-            SinkDataMessage::PublishFact { schema_id, fact_req } => {
-                self.on_event(SinkDataEvent::PublishFact { fact_req, schema_id}, ctx).await;
+            SinkDataMessage::PublishFact {
+                schema_id,
+                fact_req,
+            } => {
+                self.on_event(
+                    SinkDataEvent::PublishFact {
+                        fact_req,
+                        schema_id,
+                    },
+                    ctx,
+                )
+                .await;
             }
         };
 

@@ -12,7 +12,9 @@ pub enum Error {
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
         match self {
-            Error::Kore(error) => (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response(),
+            Error::Kore(error) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(error)).into_response()
+            }
         }
     }
 }

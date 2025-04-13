@@ -6,7 +6,12 @@ use serde_json::Value;
 
 use crate::{error::Error, model::Namespace};
 
-use super::{model::{CreatorQuantity, RoleCreator, RolesGov, RolesAllSchemas, RolesSchema}, Governance, Quorum, Role};
+use super::{
+    Governance, Quorum, Role,
+    model::{
+        CreatorQuantity, RoleCreator, RolesAllSchemas, RolesGov, RolesSchema,
+    },
+};
 pub type MemberName = String;
 pub type SchemaId = String;
 
@@ -20,7 +25,10 @@ pub struct GovernanceEvent {
 
 impl GovernanceEvent {
     pub fn is_empty(&self) -> bool {
-        self.members.is_none() && self.roles.is_none() && self.schemas.is_none() && self.policies.is_none()
+        self.members.is_none()
+            && self.roles.is_none()
+            && self.schemas.is_none()
+            && self.policies.is_none()
     }
 }
 
@@ -29,7 +37,7 @@ impl GovernanceEvent {
 pub struct MemberEvent {
     pub add: Option<HashSet<NewMember>>,
     pub remove: Option<HashSet<MemberName>>,
-    pub change: Option<HashSet<ChangeMember>>
+    pub change: Option<HashSet<ChangeMember>>,
 }
 
 impl MemberEvent {
@@ -41,19 +49,20 @@ impl MemberEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct NewMember {
     pub name: MemberName,
-    pub key: KeyIdentifier
+    pub key: KeyIdentifier,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct ChangeMember {
     pub actual_name: MemberName,
     pub new_key: Option<KeyIdentifier>,
-    pub new_name: Option<MemberName>
+    pub new_name: Option<MemberName>,
 }
 
 impl ChangeMember {
     pub fn is_empty(&self) -> bool {
-        self.actual_name.is_empty() || self.new_key.is_none() && self.new_name.is_none()
+        self.actual_name.is_empty()
+            || self.new_key.is_none() && self.new_name.is_none()
     }
 }
 
@@ -62,12 +71,14 @@ impl ChangeMember {
 pub struct RolesEvent {
     pub governance: Option<GovRoleEvent>,
     pub all_schemas: Option<AllSchemasRoleEvent>,
-    pub schema: Option<HashSet<SchemaIdRole>>
+    pub schema: Option<HashSet<SchemaIdRole>>,
 }
 
 impl RolesEvent {
     pub fn is_empty(&self) -> bool {
-        self.governance.is_none() && self.schema.is_none() && self.all_schemas.is_none()
+        self.governance.is_none()
+            && self.schema.is_none()
+            && self.all_schemas.is_none()
     }
 }
 
@@ -82,13 +93,20 @@ impl GovRoleEvent {
         self.add.is_none() && self.remove.is_none()
     }
 
-    pub fn check_data(&self, governance: &Governance, new_roles: &mut RolesGov) -> Result<(), Error>{
+    pub fn check_data(
+        &self,
+        governance: &Governance,
+        new_roles: &mut RolesGov,
+    ) -> Result<(), Error> {
         if let Some(add) = self.add.clone() {
             if add.is_empty() {
-                return Err(Error::Runner("Add in GovRoleEvent can not be empty".to_owned()))
+                return Err(Error::Runner(
+                    "Add in GovRoleEvent can not be empty".to_owned(),
+                ));
             }
 
-            let members: HashSet<String> = governance.members.keys().cloned().collect();
+            let members: HashSet<String> =
+                governance.members.keys().cloned().collect();
 
             // Approvers
             if let Some(approvers) = add.approver {
@@ -100,7 +118,10 @@ impl GovRoleEvent {
                     approver = approver.trim().to_owned();
 
                     if approver.is_empty() {
-                        return Err(Error::Runner("Approver name in governance roles can not empty".to_owned()));
+                        return Err(Error::Runner(
+                            "Approver name in governance roles can not empty"
+                                .to_owned(),
+                        ));
                     }
 
                     if approver.len() > 50 {
@@ -112,8 +133,11 @@ impl GovRoleEvent {
                     }
 
                     if !new_roles.approver.insert(approver.clone()) {
-                        return Err(Error::Runner(format!("{} there is already a approver in governance roles", approver)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "{} there is already a approver in governance roles",
+                            approver
+                        )));
+                    };
                 }
             }
 
@@ -127,7 +151,10 @@ impl GovRoleEvent {
                     evaluator = evaluator.trim().to_owned();
 
                     if evaluator.is_empty() {
-                        return Err(Error::Runner("Evaluator name in governance roles can not empty".to_owned()));
+                        return Err(Error::Runner(
+                            "Evaluator name in governance roles can not empty"
+                                .to_owned(),
+                        ));
                     }
 
                     if evaluator.len() > 50 {
@@ -139,11 +166,13 @@ impl GovRoleEvent {
                     }
 
                     if !new_roles.evaluator.insert(evaluator.clone()) {
-                        return Err(Error::Runner(format!("{} there is already a evaluator in governance roles", evaluator)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "{} there is already a evaluator in governance roles",
+                            evaluator
+                        )));
+                    };
                 }
             }
-
 
             // Evaluators
             if let Some(validators) = add.validator {
@@ -155,7 +184,10 @@ impl GovRoleEvent {
                     validator = validator.trim().to_owned();
 
                     if validator.is_empty() {
-                        return Err(Error::Runner("Validator name in governance roles can not empty".to_owned()));
+                        return Err(Error::Runner(
+                            "Validator name in governance roles can not empty"
+                                .to_owned(),
+                        ));
                     }
 
                     if validator.len() > 50 {
@@ -167,8 +199,11 @@ impl GovRoleEvent {
                     }
 
                     if !new_roles.validator.insert(validator.clone()) {
-                        return Err(Error::Runner(format!("{} there is already a validator in governance roles", validator)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "{} there is already a validator in governance roles",
+                            validator
+                        )));
+                    };
                 }
             }
 
@@ -182,7 +217,10 @@ impl GovRoleEvent {
                     witness = witness.trim().to_owned();
 
                     if witness.is_empty() {
-                        return Err(Error::Runner("Witness name in governance roles can not empty".to_owned()));
+                        return Err(Error::Runner(
+                            "Witness name in governance roles can not empty"
+                                .to_owned(),
+                        ));
                     }
 
                     if witness.len() > 50 {
@@ -194,22 +232,31 @@ impl GovRoleEvent {
                     }
 
                     if !new_roles.witness.insert(witness.clone()) {
-                        return Err(Error::Runner(format!("{} there is already a witness in governance roles", witness)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "{} there is already a witness in governance roles",
+                            witness
+                        )));
+                    };
                 }
             }
 
             // Issuers
             if let Some(issuers) = add.issuer {
                 if issuers.is_empty() {
-                    return Err(Error::Runner("Issuers vec in governance roles can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Issuers vec in governance roles can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for mut issuer in issuers {
                     issuer = issuer.trim().to_owned();
 
                     if issuer.is_empty() {
-                        return Err(Error::Runner("Issuer name in governance roles can not empty".to_owned()));
+                        return Err(Error::Runner(
+                            "Issuer name in governance roles can not empty"
+                                .to_owned(),
+                        ));
                     }
 
                     if issuer.len() > 50 {
@@ -222,8 +269,11 @@ impl GovRoleEvent {
                         }
 
                         if !new_roles.issuer.users.insert(issuer.clone()) {
-                            return Err(Error::Runner(format!("{} there is already a issuer in governance roles", issuer)));
-                        }; 
+                            return Err(Error::Runner(format!(
+                                "{} there is already a issuer in governance roles",
+                                issuer
+                            )));
+                        };
                     } else {
                         new_roles.issuer.any = true;
                     }
@@ -233,7 +283,9 @@ impl GovRoleEvent {
 
         if let Some(remove) = self.remove.clone() {
             if remove.is_empty() {
-                return Err(Error::Runner("Add in GovRoleEvent can not be empty".to_owned()))
+                return Err(Error::Runner(
+                    "Add in GovRoleEvent can not be empty".to_owned(),
+                ));
             }
 
             // Approvers
@@ -244,8 +296,11 @@ impl GovRoleEvent {
 
                 for approver in approvers {
                     if !new_roles.approver.remove(&approver) {
-                        return Err(Error::Runner(format!("Can not remove approver {}, does not have this role", approver)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "Can not remove approver {}, does not have this role",
+                            approver
+                        )));
+                    };
                 }
             }
 
@@ -257,11 +312,13 @@ impl GovRoleEvent {
 
                 for evaluator in evaluators {
                     if !new_roles.evaluator.remove(&evaluator) {
-                        return Err(Error::Runner(format!("Can not remove evaluator {}, does not have this role", evaluator)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "Can not remove evaluator {}, does not have this role",
+                            evaluator
+                        )));
+                    };
                 }
             }
-
 
             // Evaluators
             if let Some(validators) = remove.validator {
@@ -270,8 +327,11 @@ impl GovRoleEvent {
                 }
                 for validator in validators {
                     if !new_roles.validator.remove(&validator) {
-                        return Err(Error::Runner(format!("Can not remove validator {}, does not have this role", validator)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "Can not remove validator {}, does not have this role",
+                            validator
+                        )));
+                    };
                 }
             }
 
@@ -282,8 +342,11 @@ impl GovRoleEvent {
                 }
                 for witness in witnesses {
                     if !new_roles.witness.remove(&witness) {
-                        return Err(Error::Runner(format!("Can not remove witness {}, does not have this role", witness)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "Can not remove witness {}, does not have this role",
+                            witness
+                        )));
+                    };
                 }
             }
 
@@ -295,8 +358,11 @@ impl GovRoleEvent {
                 for issuer in issuers {
                     if issuer != "Any" {
                         if !new_roles.issuer.users.remove(&issuer) {
-                            return Err(Error::Runner(format!("Can not remove issuer {}, does not have this role", issuer)));
-                        };  
+                            return Err(Error::Runner(format!(
+                                "Can not remove issuer {}, does not have this role",
+                                issuer
+                            )));
+                        };
                     } else {
                         new_roles.issuer.any = false;
                     }
@@ -311,13 +377,15 @@ impl GovRoleEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct SchemaIdRole {
     pub schema_id: SchemaId,
-    pub roles: SchemaRoleEvent
+    pub roles: SchemaRoleEvent,
 }
-
 
 impl SchemaIdRole {
     pub fn is_empty(&self) -> bool {
-        self.schema_id.is_empty() || self.roles.add.is_none() && self.roles.change.is_none() && self.roles.remove.is_none()
+        self.schema_id.is_empty()
+            || self.roles.add.is_none()
+                && self.roles.change.is_none()
+                && self.roles.remove.is_none()
     }
 }
 
@@ -325,20 +393,25 @@ impl SchemaIdRole {
 pub struct AllSchemasRoleEvent {
     pub add: Option<AllSchemasRolesAddEvent>,
     pub remove: Option<AllSchemasRolesRemoveEvent>,
-    pub change: Option<AllSchemasRolesChangeEvent>
+    pub change: Option<AllSchemasRolesChangeEvent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct SchemaRoleEvent {
     pub add: Option<SchemaRolesAddEvent>,
     pub remove: Option<SchemaRolesRemoveEvent>,
-    pub change: Option<SchemaRolesChangeEvent>
+    pub change: Option<SchemaRolesChangeEvent>,
 }
 
 impl AllSchemasRoleEvent {
-    pub fn check_data(&self, governance: &Governance, roles_not_gov: RolesAllSchemas, schema_id: &str) -> Result<RolesAllSchemas, Error> {
+    pub fn check_data(
+        &self,
+        governance: &Governance,
+        roles_not_gov: RolesAllSchemas,
+        schema_id: &str,
+    ) -> Result<RolesAllSchemas, Error> {
         let schema = SchemaRoleEvent::from(self.clone());
-        
+
         let mut roles_schema = RolesSchema::from(roles_not_gov);
         schema.check_data(governance, &mut roles_schema, schema_id)?;
         let roles_not_gov = RolesAllSchemas::from(roles_schema.clone());
@@ -348,191 +421,299 @@ impl AllSchemasRoleEvent {
 
 impl From<AllSchemasRoleEvent> for SchemaRoleEvent {
     fn from(value: AllSchemasRoleEvent) -> Self {
-
-        Self { 
+        Self {
             add: value.add.map(SchemaRolesAddEvent::from),
             remove: value.remove.map(SchemaRolesRemoveEvent::from),
-            change: value.change.map(SchemaRolesChangeEvent::from) }
+            change: value.change.map(SchemaRolesChangeEvent::from),
+        }
     }
 }
 
 impl SchemaRoleEvent {
-    pub fn check_data(&self, governance: &Governance, roles_schema: &mut RolesSchema, schema_id: &str) -> Result<(), Error> {
+    pub fn check_data(
+        &self,
+        governance: &Governance,
+        roles_schema: &mut RolesSchema,
+        schema_id: &str,
+    ) -> Result<(), Error> {
         if let Some(add) = self.add.clone() {
             if add.is_empty() {
-                return Err(Error::Runner("Add in SchemaRolesEvent can not be empty".to_owned()))
+                return Err(Error::Runner(
+                    "Add in SchemaRolesEvent can not be empty".to_owned(),
+                ));
             }
 
-            let members: HashSet<String> = governance.members.keys().cloned().collect();
+            let members: HashSet<String> =
+                governance.members.keys().cloned().collect();
 
             if let Some(evaluators) = add.evaluator {
                 if evaluators.is_empty() {
-                    return Err(Error::Runner("Evaluators vec in schema roles add can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Evaluators vec in schema roles add can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for mut evaluator in evaluators {
                     evaluator.name = evaluator.name.trim().to_owned();
 
                     if evaluator.name.is_empty() {
-                        return Err(Error::Runner(format!("Evaluator name in schema {} roles can not be empty", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Evaluator name in schema {} roles can not be empty",
+                            schema_id
+                        )));
                     }
 
                     if evaluator.name.len() > 50 {
-                        return Err(Error::Runner(format!("Evaluator name len in schema {} roles must be less than or equal to 50",schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Evaluator name len in schema {} roles must be less than or equal to 50",
+                            schema_id
+                        )));
                     }
 
                     if !evaluator.namespace.check() {
-                        return Err(Error::Runner(format!("Evaluator namespace in schema {} roles is invalid", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Evaluator namespace in schema {} roles is invalid",
+                            schema_id
+                        )));
                     }
 
                     if !members.contains(&evaluator.name) {
-                        return Err(Error::Runner(format!("Evaluator name in schema {} roles is not a governance member", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Evaluator name in schema {} roles is not a governance member",
+                            schema_id
+                        )));
                     }
 
                     if !roles_schema.evaluator.insert(evaluator.clone()) {
-                        return Err(Error::Runner(format!("{} there is already a evaluator in schema {} roles", evaluator.name, schema_id)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "{} there is already a evaluator in schema {} roles",
+                            evaluator.name, schema_id
+                        )));
+                    };
                 }
             }
 
             if let Some(validators) = add.validator {
                 if validators.is_empty() {
-                    return Err(Error::Runner("Validators vec in schema roles add can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Validators vec in schema roles add can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for mut validator in validators {
                     validator.name = validator.name.trim().to_owned();
 
                     if validator.name.is_empty() {
-                        return Err(Error::Runner(format!("Validator name in schema {} roles can not be empty", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Validator name in schema {} roles can not be empty",
+                            schema_id
+                        )));
                     }
 
                     if validator.name.len() > 50 {
-                        return Err(Error::Runner(format!("Validator name len in schema {} roles must be less than or equal to 50",schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Validator name len in schema {} roles must be less than or equal to 50",
+                            schema_id
+                        )));
                     }
 
                     if !validator.namespace.check() {
-                        return Err(Error::Runner(format!("Validator namespace in schema {} roles is invalid", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Validator namespace in schema {} roles is invalid",
+                            schema_id
+                        )));
                     }
 
                     if !members.contains(&validator.name) {
-                        return Err(Error::Runner(format!("Validator name in schema {} roles is not a governance member", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Validator name in schema {} roles is not a governance member",
+                            schema_id
+                        )));
                     }
 
                     if !roles_schema.validator.insert(validator.clone()) {
-                        return Err(Error::Runner(format!("{} there is already a validator in schema {} roles", validator.name, schema_id)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "{} there is already a validator in schema {} roles",
+                            validator.name, schema_id
+                        )));
+                    };
                 }
             }
 
             if let Some(witnesses) = add.witness {
                 if witnesses.is_empty() {
-                    return Err(Error::Runner("Witnesses vec in schema roles add can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Witnesses vec in schema roles add can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for mut witness in witnesses {
-                    witness.name =  witness.name.trim().to_owned();
+                    witness.name = witness.name.trim().to_owned();
 
                     if witness.name.is_empty() {
-                        return Err(Error::Runner(format!("Witness name in schema {} roles can not be empty", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Witness name in schema {} roles can not be empty",
+                            schema_id
+                        )));
                     }
 
                     if witness.name.len() > 50 {
-                        return Err(Error::Runner(format!("Witness name len in schema {} roles must be less than or equal to 50",schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Witness name len in schema {} roles must be less than or equal to 50",
+                            schema_id
+                        )));
                     }
 
                     if !witness.namespace.check() {
-                        return Err(Error::Runner(format!("Witness namespace in schema {} roles is invalid", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Witness namespace in schema {} roles is invalid",
+                            schema_id
+                        )));
                     }
 
                     if !members.contains(&witness.name) {
-                        return Err(Error::Runner(format!("Witness name in schema {} roles is not a governance member", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Witness name in schema {} roles is not a governance member",
+                            schema_id
+                        )));
                     }
 
                     if !roles_schema.witness.insert(witness.clone()) {
-                        return Err(Error::Runner(format!("{} there is already a witness in schema {} roles", witness.name, schema_id)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "{} there is already a witness in schema {} roles",
+                            witness.name, schema_id
+                        )));
+                    };
                 }
             }
 
             if let Some(creators) = add.creator {
                 if creators.is_empty() {
-                    return Err(Error::Runner("Creators vec in schema roles add can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Creators vec in schema roles add can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for mut creator in creators {
                     creator.name = creator.name.trim().to_owned();
 
                     if creator.name.is_empty() {
-                        return Err(Error::Runner(format!("Creator name in schema {} roles can not be empty", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Creator name in schema {} roles can not be empty",
+                            schema_id
+                        )));
                     }
 
                     if creator.name.len() > 50 {
-                        return Err(Error::Runner(format!("Creator name len in schema {} roles must be less than or equal to 50",schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Creator name len in schema {} roles must be less than or equal to 50",
+                            schema_id
+                        )));
                     }
 
-                    if let CreatorQuantity::Quantity(quantity) = creator.quantity {
+                    if let CreatorQuantity::Quantity(quantity) =
+                        creator.quantity
+                    {
                         if quantity == 0 {
-                            return Err(Error::Runner("Creator quantity in schema roles can not be 0".to_owned()));
+                            return Err(Error::Runner(
+                                "Creator quantity in schema roles can not be 0"
+                                    .to_owned(),
+                            ));
                         }
                     }
 
                     if !creator.namespace.check() {
-                        return Err(Error::Runner(format!("Creator namespace in schema {} roles is invalid", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Creator namespace in schema {} roles is invalid",
+                            schema_id
+                        )));
                     }
 
                     if !members.contains(&creator.name) {
-                        return Err(Error::Runner(format!("Creator name in schema {} roles is not a governance member", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Creator name in schema {} roles is not a governance member",
+                            schema_id
+                        )));
                     }
 
                     if !roles_schema.creator.insert(creator.clone()) {
-                        return Err(Error::Runner(format!("{} there is already a creator in schema {} roles", creator.name, schema_id)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "{} there is already a creator in schema {} roles",
+                            creator.name, schema_id
+                        )));
+                    };
                 }
             }
 
             if let Some(issuers) = add.issuer {
                 if issuers.is_empty() {
-                    return Err(Error::Runner("Issuers vec in schema roles add can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Issuers vec in schema roles add can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for mut issuer in issuers {
                     issuer.name = issuer.name.trim().to_owned();
 
                     if issuer.name.is_empty() {
-                        return Err(Error::Runner(format!("Issuer name in schema {} roles can not be empty", schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Issuer name in schema {} roles can not be empty",
+                            schema_id
+                        )));
                     }
 
                     if issuer.name.len() > 50 {
-                        return Err(Error::Runner(format!("Issuer name len in schema {} roles must be less than or equal to 50",schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Issuer name len in schema {} roles must be less than or equal to 50",
+                            schema_id
+                        )));
                     }
 
                     if issuer.name != "Any" {
                         if !issuer.namespace.check() {
-                            return Err(Error::Runner(format!("Issuer namespace in schema {} roles is invalid", schema_id)));
+                            return Err(Error::Runner(format!(
+                                "Issuer namespace in schema {} roles is invalid",
+                                schema_id
+                            )));
                         }
 
                         if !members.contains(&issuer.name) {
-                            return Err(Error::Runner(format!("Issuer name in schema {} roles is not a governance member", schema_id)));
+                            return Err(Error::Runner(format!(
+                                "Issuer name in schema {} roles is not a governance member",
+                                schema_id
+                            )));
                         }
 
                         if !roles_schema.issuer.users.insert(issuer.clone()) {
-                            return Err(Error::Runner(format!("{} there is already a issuer in schema {} roles", issuer.name, schema_id)));
-                        }; 
+                            return Err(Error::Runner(format!(
+                                "{} there is already a issuer in schema {} roles",
+                                issuer.name, schema_id
+                            )));
+                        };
                     } else {
                         if !issuer.namespace.is_empty() {
-                            return Err(Error::Runner(format!("Can not add issuer Any in schema {}, Namespace must be empty", schema_id)));
+                            return Err(Error::Runner(format!(
+                                "Can not add issuer Any in schema {}, Namespace must be empty",
+                                schema_id
+                            )));
                         }
 
                         roles_schema.issuer.any = true;
-                    } 
+                    }
                 }
             }
         }
 
         if let Some(remove) = self.remove.clone() {
             if remove.is_empty() {
-                return Err(Error::Runner("Remove in SchemaRolesEvent can not be empty".to_owned()))
+                return Err(Error::Runner(
+                    "Remove in SchemaRolesEvent can not be empty".to_owned(),
+                ));
             }
 
             if let Some(evaluators) = remove.evaluator {
@@ -542,11 +723,13 @@ impl SchemaRoleEvent {
 
                 for evaluator in evaluators {
                     if !roles_schema.evaluator.remove(&evaluator) {
-                        return Err(Error::Runner(format!("Can not remove evaluator {} {} from {} schema, does not have this role", evaluator.name, evaluator.namespace, schema_id)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "Can not remove evaluator {} {} from {} schema, does not have this role",
+                            evaluator.name, evaluator.namespace, schema_id
+                        )));
+                    };
                 }
             }
-
 
             if let Some(validators) = remove.validator {
                 if validators.is_empty() {
@@ -555,44 +738,69 @@ impl SchemaRoleEvent {
 
                 for validator in validators {
                     if !roles_schema.validator.remove(&validator) {
-                        return Err(Error::Runner(format!("Can not remove validator {} {} from {} schema, does not have this role", validator.name, validator.namespace, schema_id)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "Can not remove validator {} {} from {} schema, does not have this role",
+                            validator.name, validator.namespace, schema_id
+                        )));
+                    };
                 }
             }
 
             if let Some(witnesses) = remove.witness {
                 if witnesses.is_empty() {
-                    return Err(Error::Runner("Witnesses vec in schema roles remove can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Witnesses vec in schema roles remove can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for witness in witnesses {
                     if !roles_schema.witness.remove(&witness) {
-                        return Err(Error::Runner(format!("Can not remove witness {} {} from {} schema, does not have this role", witness.name, witness.namespace, schema_id)));
-                    }; 
+                        return Err(Error::Runner(format!(
+                            "Can not remove witness {} {} from {} schema, does not have this role",
+                            witness.name, witness.namespace, schema_id
+                        )));
+                    };
                 }
             }
 
             if let Some(creators) = remove.creator {
                 if creators.is_empty() {
-                    return Err(Error::Runner("Creators vec in schema roles remove can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Creators vec in schema roles remove can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for creator in creators {
-                    if !roles_schema.creator.remove(&RoleCreator {name: creator.name.clone(), namespace: creator.namespace.clone(), quantity: CreatorQuantity::Infinity}) {
-                        return Err(Error::Runner(format!("Can not remove creator {} {} from {} schema, does not have this role", creator.name, creator.namespace, schema_id)));
+                    if !roles_schema.creator.remove(&RoleCreator {
+                        name: creator.name.clone(),
+                        namespace: creator.namespace.clone(),
+                        quantity: CreatorQuantity::Infinity,
+                    }) {
+                        return Err(Error::Runner(format!(
+                            "Can not remove creator {} {} from {} schema, does not have this role",
+                            creator.name, creator.namespace, schema_id
+                        )));
                     }
                 }
             }
 
             if let Some(issuers) = remove.issuer {
                 if issuers.is_empty() {
-                    return Err(Error::Runner("Issuers vec in schema roles remove can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Issuers vec in schema roles remove can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for issuer in issuers {
                     if issuer.name != "Any" {
                         if !roles_schema.issuer.users.remove(&issuer) {
-                            return Err(Error::Runner(format!("Can not remove issuer {} {} from {} schema, does not have this role", issuer.name, issuer.namespace, schema_id)));
+                            return Err(Error::Runner(format!(
+                                "Can not remove issuer {} {} from {} schema, does not have this role",
+                                issuer.name, issuer.namespace, schema_id
+                            )));
                         }
                     } else {
                         if !issuer.namespace.is_empty() {
@@ -606,9 +814,11 @@ impl SchemaRoleEvent {
 
         if let Some(change) = self.change.clone() {
             if change.is_empty() {
-                return Err(Error::Runner("Change in SchemaRolesEvent can not be empty".to_owned()))
+                return Err(Error::Runner(
+                    "Change in SchemaRolesEvent can not be empty".to_owned(),
+                ));
             }
-             
+
             if let Some(evaluators) = change.evaluator {
                 if evaluators.is_empty() {
                     return Err(Error::Runner("Evaluators vec in schema roles change can not be empty".to_owned()));
@@ -616,19 +826,39 @@ impl SchemaRoleEvent {
 
                 for evaluator in evaluators {
                     if !evaluator.new_namespace.check() {
-                        return Err(Error::Runner(format!("Can not change evaluator {} {} from {} schema, invalid new namespace", evaluator.actual_name, evaluator.actual_namespace, schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Can not change evaluator {} {} from {} schema, invalid new namespace",
+                            evaluator.actual_name,
+                            evaluator.actual_namespace,
+                            schema_id
+                        )));
                     }
 
-                    if !roles_schema.evaluator.remove(&Role { name: evaluator.actual_name.clone(), namespace: evaluator.actual_namespace.clone() }) {
-                        return Err(Error::Runner(format!("Can not change evaluator {} {} from {} schema, does not have this role", evaluator.actual_name, evaluator.actual_namespace, schema_id)));
-                    }; 
+                    if !roles_schema.evaluator.remove(&Role {
+                        name: evaluator.actual_name.clone(),
+                        namespace: evaluator.actual_namespace.clone(),
+                    }) {
+                        return Err(Error::Runner(format!(
+                            "Can not change evaluator {} {} from {} schema, does not have this role",
+                            evaluator.actual_name,
+                            evaluator.actual_namespace,
+                            schema_id
+                        )));
+                    };
 
-                    if !roles_schema.evaluator.insert(Role { name: evaluator.actual_name.clone(), namespace: evaluator.new_namespace.clone() }) {
-                        return Err(Error::Runner(format!("Can not change evaluator {} {} from {} schema, evaluator whith this namespace already exist", evaluator.actual_name, evaluator.actual_namespace, schema_id)));
+                    if !roles_schema.evaluator.insert(Role {
+                        name: evaluator.actual_name.clone(),
+                        namespace: evaluator.new_namespace.clone(),
+                    }) {
+                        return Err(Error::Runner(format!(
+                            "Can not change evaluator {} {} from {} schema, evaluator whith this namespace already exist",
+                            evaluator.actual_name,
+                            evaluator.actual_namespace,
+                            schema_id
+                        )));
                     }
                 }
             }
-
 
             if let Some(validators) = change.validator {
                 if validators.is_empty() {
@@ -637,90 +867,208 @@ impl SchemaRoleEvent {
 
                 for validator in validators {
                     if !validator.new_namespace.check() {
-                        return Err(Error::Runner(format!("Can not change validator {} {} from {} schema, invalid new namespace", validator.actual_name, validator.actual_namespace, schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Can not change validator {} {} from {} schema, invalid new namespace",
+                            validator.actual_name,
+                            validator.actual_namespace,
+                            schema_id
+                        )));
                     }
 
-                    if !roles_schema.validator.remove(&Role { name: validator.actual_name.clone(), namespace: validator.actual_namespace.clone() }) {
-                        return Err(Error::Runner(format!("Can not change validator {} {} from {} schema, does not have this role", validator.actual_name, validator.actual_namespace, schema_id)));
-                    }; 
+                    if !roles_schema.validator.remove(&Role {
+                        name: validator.actual_name.clone(),
+                        namespace: validator.actual_namespace.clone(),
+                    }) {
+                        return Err(Error::Runner(format!(
+                            "Can not change validator {} {} from {} schema, does not have this role",
+                            validator.actual_name,
+                            validator.actual_namespace,
+                            schema_id
+                        )));
+                    };
 
-                    if !roles_schema.validator.insert(Role { name: validator.actual_name.clone(), namespace: validator.new_namespace.clone() }) {
-                        return Err(Error::Runner(format!("Can not change validator {} {} from {} schema, validator whith this namespace already exist", validator.actual_name, validator.actual_namespace, schema_id)));
-                    } 
+                    if !roles_schema.validator.insert(Role {
+                        name: validator.actual_name.clone(),
+                        namespace: validator.new_namespace.clone(),
+                    }) {
+                        return Err(Error::Runner(format!(
+                            "Can not change validator {} {} from {} schema, validator whith this namespace already exist",
+                            validator.actual_name,
+                            validator.actual_namespace,
+                            schema_id
+                        )));
+                    }
                 }
             }
 
             if let Some(witnesses) = change.witness {
                 if witnesses.is_empty() {
-                    return Err(Error::Runner("Witnesses vec in schema roles change can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Witnesses vec in schema roles change can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for witness in witnesses {
                     if !witness.new_namespace.check() {
-                        return Err(Error::Runner(format!("Can not change witness {} {} from {} schema, invalid new namespace", witness.actual_name, witness.actual_namespace, schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Can not change witness {} {} from {} schema, invalid new namespace",
+                            witness.actual_name,
+                            witness.actual_namespace,
+                            schema_id
+                        )));
                     }
 
-                    if !roles_schema.witness.remove(&Role { name: witness.actual_name.clone(), namespace: witness.actual_namespace.clone() }) {
-                        return Err(Error::Runner(format!("Can not change witness {} {} from {} schema, does not have this role", witness.actual_name, witness.actual_namespace, schema_id)));
-                    }; 
+                    if !roles_schema.witness.remove(&Role {
+                        name: witness.actual_name.clone(),
+                        namespace: witness.actual_namespace.clone(),
+                    }) {
+                        return Err(Error::Runner(format!(
+                            "Can not change witness {} {} from {} schema, does not have this role",
+                            witness.actual_name,
+                            witness.actual_namespace,
+                            schema_id
+                        )));
+                    };
 
-                    if !roles_schema.witness.insert(Role { name: witness.actual_name.clone(), namespace: witness.new_namespace.clone() }) {
-                        return Err(Error::Runner(format!("Can not change witness {} {} from {} schema, witness whith this namespace already exist", witness.actual_name, witness.actual_namespace, schema_id)));
-                    } 
+                    if !roles_schema.witness.insert(Role {
+                        name: witness.actual_name.clone(),
+                        namespace: witness.new_namespace.clone(),
+                    }) {
+                        return Err(Error::Runner(format!(
+                            "Can not change witness {} {} from {} schema, witness whith this namespace already exist",
+                            witness.actual_name,
+                            witness.actual_namespace,
+                            schema_id
+                        )));
+                    }
                 }
             }
 
             if let Some(creators) = change.creator {
                 if creators.is_empty() {
-                    return Err(Error::Runner("Creators vec in schema roles change can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Creators vec in schema roles change can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for creator in creators {
                     if creator.is_empty() {
-                        return Err(Error::Runner(format!("Can not change creator {} {} from {} schema, has no new namespace or new quantity", creator.actual_name, creator.actual_namespace, schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Can not change creator {} {} from {} schema, has no new namespace or new quantity",
+                            creator.actual_name,
+                            creator.actual_namespace,
+                            schema_id
+                        )));
                     }
 
-                    let Some(old_creator) = roles_schema.creator.get(&RoleCreator { name: creator.actual_name.clone(), namespace: creator.actual_namespace.clone(), quantity: CreatorQuantity::Infinity }).cloned() else {
-                        return Err(Error::Runner(format!("Can not change creator {} {} from {} schema, does not have this role", creator.actual_name, creator.actual_namespace, schema_id)));
+                    let Some(old_creator) = roles_schema
+                        .creator
+                        .get(&RoleCreator {
+                            name: creator.actual_name.clone(),
+                            namespace: creator.actual_namespace.clone(),
+                            quantity: CreatorQuantity::Infinity,
+                        })
+                        .cloned()
+                    else {
+                        return Err(Error::Runner(format!(
+                            "Can not change creator {} {} from {} schema, does not have this role",
+                            creator.actual_name,
+                            creator.actual_namespace,
+                            schema_id
+                        )));
                     };
 
-                    if !roles_schema.creator.remove(&RoleCreator { name: creator.actual_name.clone(), namespace: creator.actual_namespace.clone(), quantity: CreatorQuantity::Infinity }) {
-                        return Err(Error::Runner(format!("Can not change creator {} {} from {} schema, does not have this role", creator.actual_name, creator.actual_namespace, schema_id)));
-                    }; 
+                    if !roles_schema.creator.remove(&RoleCreator {
+                        name: creator.actual_name.clone(),
+                        namespace: creator.actual_namespace.clone(),
+                        quantity: CreatorQuantity::Infinity,
+                    }) {
+                        return Err(Error::Runner(format!(
+                            "Can not change creator {} {} from {} schema, does not have this role",
+                            creator.actual_name,
+                            creator.actual_namespace,
+                            schema_id
+                        )));
+                    };
 
-                    let new_namespace = creator.new_namespace.unwrap_or(creator.actual_namespace.clone());
+                    let new_namespace = creator
+                        .new_namespace
+                        .unwrap_or(creator.actual_namespace.clone());
 
                     if !new_namespace.check() {
-                        return Err(Error::Runner(format!("Can not change creator {} {} from {} schema, invalid new namespace", creator.actual_name, creator.actual_namespace, schema_id)));
+                        return Err(Error::Runner(format!(
+                            "Can not change creator {} {} from {} schema, invalid new namespace",
+                            creator.actual_name,
+                            creator.actual_namespace,
+                            schema_id
+                        )));
                     }
 
-
-                    if !roles_schema.creator.insert(RoleCreator { name: creator.actual_name.clone(), namespace: new_namespace, quantity: creator.new_quantity.unwrap_or(old_creator.quantity)}) {
-                        return Err(Error::Runner(format!("Can not change creator {} {} from {} schema, creator whith this namespace already exist", creator.actual_name, creator.actual_namespace, schema_id)));
-                    } 
+                    if !roles_schema.creator.insert(RoleCreator {
+                        name: creator.actual_name.clone(),
+                        namespace: new_namespace,
+                        quantity: creator
+                            .new_quantity
+                            .unwrap_or(old_creator.quantity),
+                    }) {
+                        return Err(Error::Runner(format!(
+                            "Can not change creator {} {} from {} schema, creator whith this namespace already exist",
+                            creator.actual_name,
+                            creator.actual_namespace,
+                            schema_id
+                        )));
+                    }
                 }
             }
 
             if let Some(issuers) = change.issuer {
                 if issuers.is_empty() {
-                    return Err(Error::Runner("Issuers vec in schema roles change can not be empty".to_owned()));
+                    return Err(Error::Runner(
+                        "Issuers vec in schema roles change can not be empty"
+                            .to_owned(),
+                    ));
                 }
 
                 for issuer in issuers {
                     if issuer.actual_name != "Any" {
                         if !issuer.new_namespace.check() {
-                            return Err(Error::Runner(format!("Can not change issuer {} {} from {} schema, invalid new namespace", issuer.actual_name, issuer.actual_namespace, schema_id)));
+                            return Err(Error::Runner(format!(
+                                "Can not change issuer {} {} from {} schema, invalid new namespace",
+                                issuer.actual_name,
+                                issuer.actual_namespace,
+                                schema_id
+                            )));
                         }
 
-                        if !roles_schema.issuer.users.remove(&Role { name: issuer.actual_name.clone(), namespace: issuer.actual_namespace.clone() }) {
-                            return Err(Error::Runner(format!("Can not change issuer {} {} from {} schema, does not have this role", issuer.actual_name, issuer.actual_namespace, schema_id)));
-                        }; 
+                        if !roles_schema.issuer.users.remove(&Role {
+                            name: issuer.actual_name.clone(),
+                            namespace: issuer.actual_namespace.clone(),
+                        }) {
+                            return Err(Error::Runner(format!(
+                                "Can not change issuer {} {} from {} schema, does not have this role",
+                                issuer.actual_name,
+                                issuer.actual_namespace,
+                                schema_id
+                            )));
+                        };
 
-                        if !roles_schema.issuer.users.insert(Role { name: issuer.actual_name.clone(), namespace: issuer.new_namespace.clone() }) {
-                            return Err(Error::Runner(format!("Can not change issuer {} {} from {} schema, issuer whith this namespace already exist", issuer.actual_name, issuer.actual_namespace, schema_id)));
-                        } 
+                        if !roles_schema.issuer.users.insert(Role {
+                            name: issuer.actual_name.clone(),
+                            namespace: issuer.new_namespace.clone(),
+                        }) {
+                            return Err(Error::Runner(format!(
+                                "Can not change issuer {} {} from {} schema, issuer whith this namespace already exist",
+                                issuer.actual_name,
+                                issuer.actual_namespace,
+                                schema_id
+                            )));
+                        }
                     } else {
-                        return Err(Error::Runner("Can not change issuer Any".to_owned()));
+                        return Err(Error::Runner(
+                            "Can not change issuer Any".to_owned(),
+                        ));
                     }
                 }
             }
@@ -741,7 +1089,11 @@ pub struct GovRolesEvent {
 
 impl GovRolesEvent {
     pub fn is_empty(&self) -> bool {
-        self.approver.is_none() && self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+        self.approver.is_none()
+            && self.evaluator.is_none()
+            && self.validator.is_none()
+            && self.witness.is_none()
+            && self.issuer.is_none()
     }
 }
 
@@ -750,18 +1102,27 @@ pub struct AllSchemasRolesAddEvent {
     pub evaluator: Option<BTreeSet<Role>>,
     pub validator: Option<BTreeSet<Role>>,
     pub witness: Option<BTreeSet<Role>>,
-    pub issuer: Option<BTreeSet<Role>>
+    pub issuer: Option<BTreeSet<Role>>,
 }
 
 impl AllSchemasRolesAddEvent {
     pub fn is_empty(&self) -> bool {
-        self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+        self.evaluator.is_none()
+            && self.validator.is_none()
+            && self.witness.is_none()
+            && self.issuer.is_none()
     }
 }
 
 impl From<AllSchemasRolesAddEvent> for SchemaRolesAddEvent {
     fn from(value: AllSchemasRolesAddEvent) -> Self {
-        Self { evaluator: value.evaluator, validator: value.validator, witness: value.witness, creator: None, issuer: value.issuer }
+        Self {
+            evaluator: value.evaluator,
+            validator: value.validator,
+            witness: value.witness,
+            creator: None,
+            issuer: value.issuer,
+        }
     }
 }
 
@@ -771,12 +1132,16 @@ pub struct SchemaRolesAddEvent {
     pub validator: Option<BTreeSet<Role>>,
     pub witness: Option<BTreeSet<Role>>,
     pub creator: Option<BTreeSet<RoleCreator>>,
-    pub issuer: Option<BTreeSet<Role>>
+    pub issuer: Option<BTreeSet<Role>>,
 }
 
 impl SchemaRolesAddEvent {
     pub fn is_empty(&self) -> bool {
-        self.creator.is_none() && self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+        self.creator.is_none()
+            && self.evaluator.is_none()
+            && self.validator.is_none()
+            && self.witness.is_none()
+            && self.issuer.is_none()
     }
 }
 
@@ -785,18 +1150,27 @@ pub struct AllSchemasRolesRemoveEvent {
     pub evaluator: Option<BTreeSet<Role>>,
     pub validator: Option<BTreeSet<Role>>,
     pub witness: Option<BTreeSet<Role>>,
-    pub issuer: Option<BTreeSet<Role>>
+    pub issuer: Option<BTreeSet<Role>>,
 }
 
 impl AllSchemasRolesRemoveEvent {
     pub fn is_empty(&self) -> bool {
-        self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+        self.evaluator.is_none()
+            && self.validator.is_none()
+            && self.witness.is_none()
+            && self.issuer.is_none()
     }
 }
 
 impl From<AllSchemasRolesRemoveEvent> for SchemaRolesRemoveEvent {
     fn from(value: AllSchemasRolesRemoveEvent) -> Self {
-        Self { evaluator: value.evaluator, validator: value.validator, witness: value.witness, creator: None, issuer: value.issuer }
+        Self {
+            evaluator: value.evaluator,
+            validator: value.validator,
+            witness: value.witness,
+            creator: None,
+            issuer: value.issuer,
+        }
     }
 }
 
@@ -806,16 +1180,22 @@ pub struct SchemaRolesRemoveEvent {
     pub validator: Option<BTreeSet<Role>>,
     pub witness: Option<BTreeSet<Role>>,
     pub creator: Option<BTreeSet<Role>>,
-    pub issuer: Option<BTreeSet<Role>>
+    pub issuer: Option<BTreeSet<Role>>,
 }
 
 impl SchemaRolesRemoveEvent {
     pub fn is_empty(&self) -> bool {
-        self.creator.is_none() && self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+        self.creator.is_none()
+            && self.evaluator.is_none()
+            && self.validator.is_none()
+            && self.witness.is_none()
+            && self.issuer.is_none()
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub struct AllSchemasRolesChangeEvent {
     pub evaluator: Option<BTreeSet<RoleChange>>,
     pub validator: Option<BTreeSet<RoleChange>>,
@@ -825,18 +1205,28 @@ pub struct AllSchemasRolesChangeEvent {
 
 impl AllSchemasRolesChangeEvent {
     pub fn is_empty(&self) -> bool {
-        self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+        self.evaluator.is_none()
+            && self.validator.is_none()
+            && self.witness.is_none()
+            && self.issuer.is_none()
     }
 }
 
 impl From<AllSchemasRolesChangeEvent> for SchemaRolesChangeEvent {
     fn from(value: AllSchemasRolesChangeEvent) -> Self {
-        Self { evaluator: value.evaluator, validator: value.validator, witness: value.witness, creator: None, issuer: value.issuer }
+        Self {
+            evaluator: value.evaluator,
+            validator: value.validator,
+            witness: value.witness,
+            creator: None,
+            issuer: value.issuer,
+        }
     }
 }
 
-
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub struct SchemaRolesChangeEvent {
     pub evaluator: Option<BTreeSet<RoleChange>>,
     pub validator: Option<BTreeSet<RoleChange>>,
@@ -847,11 +1237,17 @@ pub struct SchemaRolesChangeEvent {
 
 impl SchemaRolesChangeEvent {
     pub fn is_empty(&self) -> bool {
-        self.creator.is_none() && self.evaluator.is_none() && self.validator.is_none() && self.witness.is_none() && self.issuer.is_none()
+        self.creator.is_none()
+            && self.evaluator.is_none()
+            && self.validator.is_none()
+            && self.witness.is_none()
+            && self.issuer.is_none()
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub struct RoleCreatorChange {
     pub actual_name: MemberName,
     pub actual_namespace: Namespace,
@@ -865,11 +1261,13 @@ impl RoleCreatorChange {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub struct RoleChange {
     pub actual_name: MemberName,
     pub actual_namespace: Namespace,
-    pub new_namespace: Namespace
+    pub new_namespace: Namespace,
 }
 
 ///// Schemas /////
@@ -877,7 +1275,7 @@ pub struct RoleChange {
 pub struct SchemasEvent {
     pub add: Option<HashSet<SchemaAdd>>,
     pub remove: Option<HashSet<SchemaId>>,
-    pub change: Option<HashSet<SchemaChange>>
+    pub change: Option<HashSet<SchemaChange>>,
 }
 
 impl SchemasEvent {
@@ -886,24 +1284,24 @@ impl SchemasEvent {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct SchemaAdd {
     pub id: SchemaId,
     pub contract: String,
-    pub initial_value: Value
+    pub initial_value: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct SchemaChange {
     pub actual_id: SchemaId,
     pub new_contract: Option<String>,
-    pub new_initial_value: Option<Value>
+    pub new_initial_value: Option<Value>,
 }
 
 impl SchemaChange {
     pub fn is_empty(&self) -> bool {
-        self.actual_id.is_empty() || self.new_contract.is_none() && self.new_initial_value.is_none()
+        self.actual_id.is_empty()
+            || self.new_contract.is_none() && self.new_initial_value.is_none()
     }
 }
 
@@ -911,7 +1309,7 @@ impl SchemaChange {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PoliciesEvent {
     pub governance: Option<GovPolicieEvent>,
-    pub schema: Option<HashSet<SchemaIdPolicie>>
+    pub schema: Option<HashSet<SchemaIdPolicie>>,
 }
 
 impl PoliciesEvent {
@@ -923,7 +1321,7 @@ impl PoliciesEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct SchemaIdPolicie {
     pub schema_id: SchemaId,
-    pub policies: SchemaPolicieEvent
+    pub policies: SchemaPolicieEvent,
 }
 
 impl SchemaIdPolicie {
@@ -934,12 +1332,12 @@ impl SchemaIdPolicie {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct SchemaPolicieEvent {
-    pub change: Option<SchemaPolicieChange>
+    pub change: Option<SchemaPolicieChange>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GovPolicieEvent {
-    pub change: GovPolicieChange
+    pub change: GovPolicieChange,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -951,7 +1349,9 @@ pub struct GovPolicieChange {
 
 impl GovPolicieChange {
     pub fn is_empty(&self) -> bool {
-        self.approve.is_none() && self.evaluate.is_none() && self.validate.is_none()
+        self.approve.is_none()
+            && self.evaluate.is_none()
+            && self.validate.is_none()
     }
 }
 
