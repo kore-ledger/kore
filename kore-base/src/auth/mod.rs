@@ -256,7 +256,7 @@ impl Handler<Auth> for Auth {
                     return Ok(AuthResponse::Witnesses(witnesses.clone()));
                 } else {
                     let e = "The subject has not been authorized";
-                    error!(TARGET_AUTH, "GetAuth, {}", e);
+                    warn!(TARGET_AUTH, "GetAuth, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
                 }
             }

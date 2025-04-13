@@ -67,7 +67,7 @@ pub mod tests {
     use crate::config::{ExternalDbConfig, KoreDbConfig};
     use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
     use network::Config as NetworkConfig;
-    use std::{collections::{BTreeMap, HashMap}, fs, time::Duration};
+    use std::{collections::BTreeMap, fs, time::Duration};
     use test_log::test;
 
     use super::*;

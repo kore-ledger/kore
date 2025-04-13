@@ -1,3 +1,6 @@
+// Copyright 2025 Kore Ledger, SL
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 use identity::{
     identifier::{
         DigestIdentifier, KeyIdentifier,
@@ -452,7 +455,6 @@ pub async fn emit_transfer(
     });
     
     let response = node.own_request(request).await?;
-    println!("emit_fact - response: {:?}", response);
     // state of request
     if !wait_request_state {
         return Ok(());
@@ -528,7 +530,6 @@ pub async fn emit_reject(
 ) -> Result<(), Box<dyn std::error::Error>>{
     let request = EventRequest::Reject(RejectRequest { subject_id });
     let response = node.own_request(request).await?;
-    println!("emit_fact - response: {:?}", response);
     // state of request
     if !wait_request_state {
         return Ok(());
@@ -539,3 +540,11 @@ pub async fn emit_reject(
 
     Ok(())
 }
+
+
+
+
+
+
+
+

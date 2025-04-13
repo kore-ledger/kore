@@ -337,6 +337,7 @@ impl Handler<Approval> for Approval {
                                 return Err(emit_fail(ctx, e).await);
                             }
                         };
+
                     let signature = match get_sign(
                         ctx,
                         SignTypesNode::ApprovalReq(approval_req.clone()),

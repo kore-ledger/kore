@@ -485,9 +485,11 @@ impl Handler<Evaluation> for Evaluation {
                                         ),
                                     );
                                 } else {
-                                    // TODO MIRAR ESTO
-                                    unreachable!();
+                                    let e = "Evaluation solver whitout signature".to_owned();
+                                    error!(TARGET_EVALUATION, "Response, {}", e);
+                                    return Err(ActorError::Functional(e));
                                 }
+                                
                                 self.evaluators_response.push(response);
                             }
                             EvaluationRes::TimeOut(timeout) => self

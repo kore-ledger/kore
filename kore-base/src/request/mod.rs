@@ -407,6 +407,13 @@ impl Handler<RequestHandler> for RequestHandler {
                 subject_id,
                 state,
             } => {
+                info!(
+                    TARGET_REQUEST,
+                    "ChangeApprovalState, new approval for {}, approval response: {}",
+                    subject_id,
+                    state
+                );
+
                 match state.to_string().as_str() {
                     "RespondedAccepted" | "RespondedRejected" => {}
                     _ => {

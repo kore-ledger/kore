@@ -1,6 +1,6 @@
 use std::time::Duration;
 use tower_http::{classify::ServerErrorsFailureClass, trace::TraceLayer};
-use tracing::{Span, debug, error, info_span};
+use tracing::{debug, error, info_span, warn, Span};
 
 use axum::{
     Router,
@@ -42,7 +42,7 @@ pub fn tower_trace(routes: Router) -> Router {
             )
             .on_failure(
                 |error: ServerErrorsFailureClass, latency: Duration, _span: &Span| {
-                    error!(
+                    warn!(
                         "Something went wrong {} in {:?}",
                         error.to_string(),
                         latency

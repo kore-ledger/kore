@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::fmt::Display;
+use std::{collections::VecDeque, fmt::Display, time::Duration};
 
 use crate::{
     ActorMessage, EventRequest, NetworkMessage, Signed,
@@ -18,9 +18,7 @@ use crate::{
     subject::Subject,
 };
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, ExponentialBackoffStrategy, Handler, Message, RetryActor,
-    RetryMessage, Strategy,
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, CustomIntervalStrategy, Error as ActorError, Event, Handler, Message, RetryActor, RetryMessage, Strategy
 };
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
@@ -176,6 +174,7 @@ impl Approver {
         ctx: &mut ActorContext<Approver>,
         request: ApprovalReq,
         response: bool,
+        info: Option<ComunicateInfo>
     ) -> Result<(), ActorError> {
         let sign_type = SignTypesNode::ApprovalSignature(ApprovalSignature {
             request: request.clone(),
@@ -184,7 +183,7 @@ impl Approver {
 
         let signature = get_sign(ctx, sign_type).await?;
 
-        if let Some(info) = self.info.clone() {
+        if let Some(info) = info {
             let res = ApprovalRes::Response(signature, response);
 
             let signature = get_sign(
@@ -405,7 +404,7 @@ impl Handler<Approver> for Approver {
                         };
 
                         if let Err(e) = self
-                            .send_response(ctx, approval_req, response)
+                            .send_response(ctx, approval_req, response, self.info.clone())
                             .await
                         {
                             error!(
@@ -556,8 +555,8 @@ impl Handler<Approver> for Approver {
                 let target = RetryNetwork::default();
 
                 // Estrategia exponencial
-                let strategy = Strategy::ExponentialBackoff(
-                    ExponentialBackoffStrategy::new(6),
+                let strategy = Strategy::CustomIntervalStrategy(
+                    CustomIntervalStrategy::new(VecDeque::from([Duration::from_secs(14400), Duration::from_secs(28800), Duration::from_secs(57600)])),
                 );
 
                 let retry_actor = RetryActor::new(target, message, strategy);
@@ -733,6 +732,7 @@ impl Handler<Approver> for Approver {
                                 ctx,
                                 approval_req.content.clone(),
                                 true,
+                                Some(info.clone())
                             )
                             .await
                         {
@@ -799,7 +799,7 @@ impl Handler<Approver> for Approver {
                     };
 
                     if let Err(e) = self
-                        .send_response(ctx, approval_req.clone(), response)
+                        .send_response(ctx, approval_req.clone(), response, Some(info))
                         .await
                     {
                         error!(

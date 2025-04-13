@@ -526,7 +526,7 @@ impl From<ProtocolsSignaturesInfoBridge> for ProtocolsSignaturesInfo {
 pub struct TimeOutResponseInfo {
     pub who: String,
     pub re_trys: u32,
-    pub timestamp: String,
+    pub timestamp: u64,
 }
 
 impl From<TimeOutResponseInfoBridge> for TimeOutResponseInfo {

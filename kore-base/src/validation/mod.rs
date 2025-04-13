@@ -52,6 +52,8 @@ pub struct Validation {
     validators: HashSet<KeyIdentifier>,
     // Actual responses
     validators_response: Vec<ProtocolsSignatures>,
+
+    validators_timeout: Vec<ProtocolsSignatures>,
     // Validators quantity
     validators_quantity: u32,
 
@@ -180,12 +182,7 @@ impl Validation {
             "who: ALL, error: No validator was able to validate the event."
                 .clone_into(&mut error);
 
-            let all_time_out = self
-                .validators_response
-                .iter()
-                .all(|x| matches!(x, ProtocolsSignatures::TimeOut(_)));
-
-            if all_time_out {
+            if self.validators_response.is_empty() {
                 try_to_update(ctx, gov_id, WitnessesAuth::Witnesses).await?
             }
         }
@@ -196,11 +193,14 @@ impl Validation {
             ctx.system().get_actor(&req_path).await;
 
         if let Some(req_actor) = req_actor {
+            let mut signatures =  self.validators_response.clone();
+            signatures.append(&mut self.validators_timeout.clone());
+            
             req_actor
                 .tell(RequestManagerMessage::ValidationRes {
                     result,
                     last_proof: Box::new(self.actual_proof.clone()),
-                    signatures: self.validators_response.clone(),
+                    signatures,
                     errors: error,
                 })
                 .await?
@@ -373,7 +373,7 @@ impl Handler<Validation> for Validation {
                                 )
                             }
                             ValidationRes::TimeOut(timeout) => self
-                                .validators_response
+                                .validators_timeout
                                 .push(ProtocolsSignatures::TimeOut(timeout)),
                             ValidationRes::Error(error) => {
                                 self.errors = format!(

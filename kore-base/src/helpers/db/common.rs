@@ -74,13 +74,11 @@ impl<'de> Deserialize<'de> for EventRequestInfo {
                 name: create
                 .get("name")
                 .and_then(Value::as_str)
-                .map(|x| x.to_owned())
-                .to_owned(),
+                .map(|x| x.to_owned()),
                 description: create
                 .get("description")
                 .and_then(Value::as_str)
-                .map(|x| x.to_owned())
-                .to_owned(),
+                .map(|x| x.to_owned()),
                 governance_id: create
                     .get("governance_id")
                     .and_then(Value::as_str)
@@ -220,7 +218,7 @@ pub enum ProtocolsSignaturesInfo {
 pub struct TimeOutResponseInfo {
     pub who: String,
     pub re_trys: u32,
-    pub timestamp: String,
+    pub timestamp: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
