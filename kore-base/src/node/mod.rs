@@ -4,7 +4,7 @@
 //! Node module
 //!
 
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use async_std::fs;
 use nodekey::NodeKey;
@@ -23,7 +23,7 @@ use crate::{
     helpers::db::ExternalDB,
     manual_distribution::ManualDistribution,
     model::{
-        HashId, SignTypesNode,
+        HashId, Namespace, SignTypesNode,
         event::{Ledger, LedgerValue},
         signature::{Signature, Signed},
     },
@@ -59,19 +59,35 @@ pub struct TransferSubject {
     pub actual_owner: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TransferData {
+    pub name: String,
+    pub new_owner: String,
+    pub actual_owner: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubjectData {
+    pub owner: String,
+    pub governance_id: Option<String>,
+    pub sn: u64,
+    pub schema_id: String,
+    pub namespace: Namespace,
+}
+
 /// Node struct.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
     /// Owner of the node.
     owner: KeyPair,
     /// The node's owned subjects.
-    owned_subjects: Vec<String>,
+    owned_subjects: HashMap<String, SubjectData>,
     /// The node's known subjects.
-    known_subjects: Vec<String>,
+    known_subjects: HashMap<String, SubjectData>,
     /// The node's temporal subjects.
-    temporal_subjects: Vec<String>,
+    temporal_subjects: HashMap<String, SubjectData>,
 
-    transfer_subjects: Vec<TransferSubject>,
+    transfer_subjects: HashMap<String, TransferData>,
 }
 
 impl Node {
@@ -79,10 +95,10 @@ impl Node {
     pub fn new(id: &KeyPair) -> Result<Self, Error> {
         Ok(Self {
             owner: id.clone(),
-            owned_subjects: Vec::new(),
-            known_subjects: Vec::new(),
-            transfer_subjects: Vec::new(),
-            temporal_subjects: Vec::new(),
+            owned_subjects: HashMap::new(),
+            known_subjects: HashMap::new(),
+            transfer_subjects: HashMap::new(),
+            temporal_subjects: HashMap::new(),
         })
     }
 
@@ -96,59 +112,74 @@ impl Node {
         self.owner.key_identifier()
     }
 
-    /// Adds a subject to the node's known subjects.
-    pub fn add_known_subject(&mut self, subject_id: String) {
-        self.known_subjects.push(subject_id);
-    }
-
-    /// Adds a subject to the node's owned subjects.
-    pub fn add_owned_subject(&mut self, subject_id: String) {
-        self.owned_subjects.push(subject_id);
-    }
-
-    pub fn add_temporal_subject(&mut self, subject_id: String) {
-        self.temporal_subjects.push(subject_id);
+    pub fn add_temporal_subject(
+        &mut self,
+        subject_id: String,
+        data: SubjectData,
+    ) {
+        self.temporal_subjects.insert(subject_id, data);
     }
 
     /// Adds a subject to the node's owned subjects.
     pub fn transfer_subject(&mut self, data: TransferSubject) {
-        self.transfer_subjects.push(data);
+        self.transfer_subjects.insert(
+            data.subject_id,
+            TransferData {
+                name: data.name,
+                new_owner: data.new_owner,
+                actual_owner: data.actual_owner,
+            },
+        );
     }
 
-    pub fn delete_subject(&mut self, subject_id: String) {
-        self.temporal_subjects.retain(|x| x.clone() != subject_id);
+    pub fn delete_subject(&mut self, subject_id: &str) {
+        self.temporal_subjects.remove(subject_id);
+    }
+
+    pub fn update_subject(&mut self, subject_id: String, sn: u64) {
+        if let Some(mut data) = self.owned_subjects.get(&subject_id).cloned() {
+            data.sn = sn;
+            self.owned_subjects.insert(subject_id, data.clone());
+        } else if let Some(mut data) =
+            self.temporal_subjects.get(&subject_id).cloned()
+        {
+            data.sn = sn;
+            self.temporal_subjects.insert(subject_id, data.clone());
+        }
     }
 
     pub fn delete_transfer(&mut self, subject_id: String) {
-        self.transfer_subjects
-            .retain(|x| *x.subject_id != subject_id);
+        self.transfer_subjects.remove(&subject_id);
     }
 
     pub fn change_subject_owner(
         &mut self,
         subject_id: String,
-        iam_owner: bool,
+        new_owner: Option<String>,
     ) {
-        self.transfer_subjects
-            .retain(|x| *x.subject_id != subject_id);
+        self.transfer_subjects.remove(&subject_id);
 
-        if iam_owner {
-            self.known_subjects.retain(|x| *x != subject_id);
-            self.owned_subjects.push(subject_id);
+        if let Some(new_owner) = new_owner {
+            if let Some(mut data) = self.owned_subjects.remove(&subject_id) {
+                data.owner = new_owner;
+                self.known_subjects.insert(subject_id, data);
+            };
         } else {
-            self.owned_subjects.retain(|x| *x != subject_id);
-            self.known_subjects.push(subject_id);
+            if let Some(mut data) = self.known_subjects.remove(&subject_id) {
+                data.owner = self.owner.key_identifier().to_string();
+                self.owned_subjects.insert(subject_id, data);
+            };
         }
     }
 
     pub fn register_subject(&mut self, subject_id: String, iam_owner: bool) {
-        self.temporal_subjects.retain(|x| *x != subject_id);
-
-        if iam_owner {
-            self.owned_subjects.push(subject_id);
-        } else {
-            self.known_subjects.push(subject_id);
-        }
+        if let Some(data) = self.temporal_subjects.remove(&subject_id) {
+            if iam_owner {
+                self.owned_subjects.insert(subject_id, data);
+            } else {
+                self.known_subjects.insert(subject_id, data);
+            }
+        };
     }
 
     fn sign<T: HashId>(&self, content: &T) -> Result<Signature, Error> {
@@ -194,7 +225,7 @@ impl Node {
             return Err(ActorError::NotHelper("ext_db".to_owned()));
         };
 
-        for subject in self.owned_subjects.clone() {
+        for (subject, _) in self.owned_subjects.clone() {
             let subject_actor =
                 ctx.create_child(&subject, Subject::default()).await?;
             let sink =
@@ -202,7 +233,7 @@ impl Node {
             ctx.system().run_sink(sink).await;
         }
 
-        for subject in self.known_subjects.clone() {
+        for (subject, _) in self.known_subjects.clone() {
             let subject_actor =
                 ctx.create_child(&subject, Subject::default()).await?;
             let sink =
@@ -221,6 +252,11 @@ pub enum NodeMessage {
     SignRequest(SignTypesNode),
     PendingTransfers,
     // System actor
+    GetSubjectData(String),
+    UpdateSubject {
+        subject_id: String,
+        sn: u64,
+    },
     RejectTransfer(String),
     TransferSubject(TransferSubject),
     DeleteSubject(String),
@@ -245,6 +281,10 @@ impl Message for NodeMessage {}
 /// Node response.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeResponse {
+    SubjectData {
+        data: SubjectData,
+        new_owner: Option<String>,
+    },
     PendingTransfers(Vec<TransferSubject>),
     RequestIdentifier(DigestIdentifier),
     SignRequest(Signature),
@@ -253,7 +293,11 @@ pub enum NodeResponse {
     IOwnerPending((bool, bool)),
     IOld(bool),
     Contract(Vec<u8>),
-    IsAuthorized { owned: bool, auth: bool, know: bool },
+    IsAuthorized {
+        owned: bool,
+        auth: bool,
+        know: bool,
+    },
     KnowSubject(bool),
     None,
 }
@@ -263,14 +307,25 @@ impl Response for NodeResponse {}
 /// Node event.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NodeEvent {
+    UpdateSubject {
+        subject_id: String,
+        sn: u64,
+    },
     RejectTransfer(String),
-    OwnedSubject(String),
-    TemporalSubject(String),
-    KnownSubject(String),
-    RegisterSubject { iam_owner: bool, subject_id: String },
-    ChangeSubjectOwner { iam_owner: bool, subject_id: String },
+    TemporalSubject {
+        subject_id: String,
+        data: SubjectData,
+    },
+    RegisterSubject {
+        iam_owner: bool,
+        subject_id: String,
+    },
+    ChangeSubjectOwner {
+        new_owner: Option<String>,
+        subject_id: String,
+    },
     ConfirmTransfer(String),
-    TransferSubjerct(TransferSubject),
+    TransferSubject(TransferSubject),
     DeleteSubject(String),
 }
 
@@ -328,6 +383,9 @@ impl PersistentActor for Node {
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
+            NodeEvent::UpdateSubject { subject_id, sn } => {
+                self.update_subject(subject_id.clone(), *sn);
+            }
             NodeEvent::ConfirmTransfer(subject_id) => {
                 self.delete_transfer(subject_id.clone());
             }
@@ -337,29 +395,26 @@ impl PersistentActor for Node {
             } => {
                 self.register_subject(subject_id.clone(), *iam_owner);
             }
-            NodeEvent::TemporalSubject(subject_id) => {
-                self.add_temporal_subject(subject_id.clone());
+            NodeEvent::TemporalSubject { subject_id, data } => {
+                self.add_temporal_subject(subject_id.clone(), data.clone());
             }
             NodeEvent::RejectTransfer(subject_id) => {
                 self.delete_transfer(subject_id.clone());
             }
-            NodeEvent::TransferSubjerct(transfer) => {
+            NodeEvent::TransferSubject(transfer) => {
                 self.transfer_subject(transfer.clone());
             }
-            NodeEvent::OwnedSubject(subject_id) => {
-                self.add_owned_subject(subject_id.clone());
-            }
-            NodeEvent::KnownSubject(subject_id) => {
-                self.add_known_subject(subject_id.clone());
-            }
             NodeEvent::ChangeSubjectOwner {
-                iam_owner,
+                new_owner,
                 subject_id,
             } => {
-                self.change_subject_owner(subject_id.clone(), *iam_owner);
+                self.change_subject_owner(
+                    subject_id.clone(),
+                    new_owner.clone(),
+                );
             }
             NodeEvent::DeleteSubject(subject_id) => {
-                self.delete_subject(subject_id.clone());
+                self.delete_subject(subject_id);
             }
         };
 
@@ -376,9 +431,44 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
-            NodeMessage::PendingTransfers => Ok(
-                NodeResponse::PendingTransfers(self.transfer_subjects.clone()),
-            ),
+            NodeMessage::GetSubjectData(subject_id) => {
+                let data = if let Some(data) =
+                    self.owned_subjects.get(&subject_id)
+                {
+                    data.clone()
+                } else if let Some(data) = self.known_subjects.get(&subject_id)
+                {
+                    data.clone()
+                } else {
+                    return Ok(NodeResponse::None);
+                };
+
+                let new_owner = self
+                    .transfer_subjects
+                    .get(&subject_id)
+                    .map(|x| x.new_owner.clone());
+
+                Ok(NodeResponse::SubjectData { data, new_owner })
+            }
+            NodeMessage::UpdateSubject { subject_id, sn } => {
+                self.on_event(NodeEvent::UpdateSubject { subject_id, sn }, ctx)
+                    .await;
+
+                Ok(NodeResponse::None)
+            }
+            NodeMessage::PendingTransfers => {
+                Ok(NodeResponse::PendingTransfers(
+                    self.transfer_subjects
+                        .iter()
+                        .map(|x| TransferSubject {
+                            name: x.1.name.clone(),
+                            subject_id: x.0.clone(),
+                            new_owner: x.1.new_owner.clone(),
+                            actual_owner: x.1.actual_owner.clone(),
+                        })
+                        .collect(),
+                ))
+            }
             NodeMessage::RegisterSubject { owner, subject_id } => {
                 let iam_owner =
                     owner == self.owner.key_identifier().to_string();
@@ -399,7 +489,7 @@ impl Handler<Node> for Node {
                 Ok(NodeResponse::None)
             }
             NodeMessage::TransferSubject(data) => {
-                self.on_event(NodeEvent::TransferSubjerct(data), ctx).await;
+                self.on_event(NodeEvent::TransferSubject(data), ctx).await;
                 Ok(NodeResponse::None)
             }
             NodeMessage::DeleteSubject(subject_id) => {
@@ -413,19 +503,20 @@ impl Handler<Node> for Node {
                 old_owner,
                 new_owner,
             } => {
-                if old_owner == self.owner.key_identifier().to_string() {
+                let our_key = self.owner.key_identifier().to_string();
+                if old_owner == our_key {
                     self.on_event(
                         NodeEvent::ChangeSubjectOwner {
-                            iam_owner: false,
                             subject_id,
+                            new_owner: Some(new_owner),
                         },
                         ctx,
                     )
                     .await;
-                } else if new_owner == self.owner.key_identifier().to_string() {
+                } else if new_owner == our_key {
                     self.on_event(
                         NodeEvent::ChangeSubjectOwner {
-                            iam_owner: true,
+                            new_owner: None,
                             subject_id,
                         },
                         ctx,
@@ -493,7 +584,7 @@ impl Handler<Node> for Node {
                 let subject_actor = ctx
                     .create_child(
                         &format!("{}", ledger.content.subject_id),
-                        subject,
+                        subject.clone(),
                     )
                     .await
                     .map_err(|e| ActorError::Functional(e.to_string()))?;
@@ -507,6 +598,28 @@ impl Handler<Node> for Node {
                         events: vec![ledger.clone()],
                     })
                     .await?;
+
+                let governance_id = if subject.governance_id.is_empty()
+                {
+                    None
+                } else {
+                    Some(subject.governance_id.to_string())
+                };
+
+                self.on_event(
+                    NodeEvent::TemporalSubject {
+                        subject_id: subject.subject_id.to_string(),
+                        data: SubjectData {
+                            owner: subject.creator.to_string(),
+                            governance_id,
+                            sn: 0,
+                            schema_id: subject.schema_id,
+                            namespace: subject.namespace,
+                        },
+                    },
+                    ctx,
+                )
+                .await;
 
                 match response {
                     SubjectResponse::LastSn(_) => {
@@ -543,8 +656,24 @@ impl Handler<Node> for Node {
                 let sink = Sink::new(child.subscribe(), ext_db.get_subject());
                 ctx.system().run_sink(sink).await;
 
+                let governance_id = if data.create_req.governance_id.is_empty()
+                {
+                    None
+                } else {
+                    Some(data.create_req.governance_id.to_string())
+                };
+
                 self.on_event(
-                    NodeEvent::TemporalSubject(data.subject_id.to_string()),
+                    NodeEvent::TemporalSubject {
+                        subject_id: data.subject_id.to_string(),
+                        data: SubjectData {
+                            owner: data.creator.to_string(),
+                            governance_id,
+                            sn: 0,
+                            schema_id: data.create_req.schema_id,
+                            namespace: data.create_req.namespace,
+                        },
+                    },
                     ctx,
                 )
                 .await;
@@ -603,18 +732,26 @@ impl Handler<Node> for Node {
                 let our_key = self.owner.key_identifier().to_string();
 
                 Ok(NodeResponse::IOwnerPending((
-                    self.owned_subjects.iter().any(|x| **x == subject_id),
-                    self.transfer_subjects.iter().any(|x| {
-                        x.subject_id == subject_id && x.new_owner == our_key
-                    }),
+                    self.owned_subjects.keys().any(|x| **x == subject_id),
+                    if let Some(data) = self.transfer_subjects.get(&subject_id)
+                    {
+                        data.new_owner == our_key
+                    } else {
+                        false
+                    },
                 )))
             }
             NodeMessage::OldSubject(subject_id) => {
                 let our_key = self.owner.key_identifier().to_string();
 
-                Ok(NodeResponse::IOld(self.transfer_subjects.iter().any(|x| {
-                    x.subject_id == subject_id && x.actual_owner == our_key
-                })))
+                Ok(NodeResponse::IOld(
+                    if let Some(data) = self.transfer_subjects.get(&subject_id)
+                    {
+                        data.actual_owner == our_key
+                    } else {
+                        false
+                    },
+                ))
             }
             NodeMessage::IsAuthorized(subject_id) => {
                 let auth: Option<actor::ActorRef<Auth>> =
@@ -651,10 +788,10 @@ impl Handler<Node> for Node {
                     authorized_subjects.iter().any(|x| x.clone() == subject_id);
 
                 let owned_subj =
-                    self.owned_subjects.iter().any(|x| x.clone() == subject_id);
+                    self.owned_subjects.keys().any(|x| x.clone() == subject_id);
 
                 let know_subj =
-                    self.known_subjects.iter().any(|x| x.clone() == subject_id);
+                    self.known_subjects.keys().any(|x| x.clone() == subject_id);
 
                 Ok(NodeResponse::IsAuthorized {
                     auth: auth_subj,

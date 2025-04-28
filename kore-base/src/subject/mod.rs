@@ -2059,6 +2059,8 @@ impl Subject {
                 SinkDataMessage::UpdateState(self.get_metadata()),
             )
             .await?;
+
+            Self::update_subject_node(ctx, &self.subject_id.to_string(), self.sn).await?;
         }
 
         Ok(())
@@ -2077,6 +2079,22 @@ impl Subject {
                 "{}/sink_data",
                 ctx.path()
             ))))
+        }
+    }
+
+    async fn update_subject_node(
+        ctx: &mut ActorContext<Subject>,
+        subject_id: &str,
+        sn: u64
+    ) -> Result<(), ActorError> {
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+    
+        if let Some(node_actor) = node_actor {
+            node_actor.tell(NodeMessage::UpdateSubject { subject_id: subject_id.to_owned(), sn }).await
+        } else {
+            Err(ActorError::NotFound(node_path))
         }
     }
 

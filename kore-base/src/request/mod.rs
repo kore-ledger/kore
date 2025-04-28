@@ -740,7 +740,7 @@ impl Handler<RequestHandler> for RequestHandler {
                         .await?;
 
                         let Some(new_owner) = metadata.new_owner.clone() else {
-                            let e = "Confirm event need Transfer event before";
+                            let e = "Reject event need Transfer event before";
                             error!(TARGET_REQUEST, "NewRequest, {}", e);
                             return Err(ActorError::Functional(e.to_owned()));
                         };

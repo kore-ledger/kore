@@ -13,29 +13,15 @@ use network::ComunicateInfo;
 use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
-    ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
-    NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
-    Subject, SubjectMessage, SubjectResponse,
-    auth::{Auth, AuthMessage, WitnessesAuth},
-    governance::{
-        Quorum,
-        model::{CreatorQuantity, ProtocolTypes},
-    },
-    intermediary::Intermediary,
-    model::SignTypesNode,
-    node::relationship::{
+    auth::{Auth, AuthMessage, WitnessesAuth}, governance::{
+        model::{CreatorQuantity, ProtocolTypes}, Quorum
+    }, intermediary::Intermediary, model::SignTypesNode, node::{relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
-    },
-    request::manager::{RequestManager, RequestManagerMessage},
-    subject::{
-        Metadata,
-        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
-        transfer::{
+    }, SubjectData}, request::manager::{RequestManager, RequestManagerMessage}, subject::{
+        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, transfer::{
             TransferRegister, TransferRegisterMessage, TransferRegisterResponse,
-        },
-        validata::{ValiData, ValiDataMessage, ValiDataResponse},
-    },
-    validation::proof::ValidationProof,
+        }, validata::{ValiData, ValiDataMessage, ValiDataResponse}, Metadata
+    }, validation::proof::ValidationProof, ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance, NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse
 };
 use tracing::error;
 
@@ -257,6 +243,34 @@ where
         _ => Err(ActorError::UnexpectedResponse(
             node_path,
             "NodeResponse::SignRequest".to_owned(),
+        )),
+    }
+}
+
+pub async fn get_node_subject_data<A>(
+    ctx: &mut ActorContext<A>,
+    subject_id: &str
+) -> Result<Option<(SubjectData, Option<String>)>, ActorError>
+where
+    A: Actor + Handler<A>,
+{
+    let node_path = ActorPath::from("/user/node");
+    let node_actor: Option<ActorRef<Node>> =
+        ctx.system().get_actor(&node_path).await;
+
+    // We obtain the validator
+    let node_response = if let Some(node_actor) = node_actor {
+        node_actor.ask(NodeMessage::GetSubjectData(subject_id.to_owned())).await?
+    } else {
+        return Err(ActorError::NotFound(node_path));
+    };
+
+    match node_response {
+        NodeResponse::None => Ok(None),
+        NodeResponse::SubjectData { data, new_owner } => Ok(Some((data, new_owner))),
+        _ => Err(ActorError::UnexpectedResponse(
+            node_path,
+            "NodeResponse::SubjectData || NodeResponse::None".to_owned(),
         )),
     }
 }

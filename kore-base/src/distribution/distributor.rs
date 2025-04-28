@@ -13,26 +13,13 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
-    ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,
-    NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
-    SubjectResponse,
-    auth::WitnessesAuth,
-    governance::{
-        Governance,
-        model::{CreatorQuantity, RoleTypes},
-    },
-    intermediary::Intermediary,
-    model::{
-        Namespace,
+    auth::WitnessesAuth, governance::{
+        model::{CreatorQuantity, RoleTypes}, Governance
+    }, intermediary::Intermediary, model::{
         common::{
-            emit_fail, get_gov, get_metadata, get_quantity, subject_old_owner,
-            try_to_update, update_event, update_vali_data,
-        },
-        event::{Ledger, ProtocolsSignatures},
-        network::RetryNetwork,
-    },
-    update::TransferResponse,
-    validation::proof::ValidationProof,
+            emit_fail, get_gov, get_metadata, get_node_subject_data, get_quantity, subject_old_owner, try_to_update, update_event, update_vali_data
+        }, event::{Ledger, ProtocolsSignatures}, network::RetryNetwork, Namespace
+    }, update::TransferResponse, validation::proof::ValidationProof, ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
 };
 
 use tracing::{error, warn};
@@ -570,23 +557,31 @@ impl Handler<Distributor> for Distributor {
     ) -> Result<(), ActorError> {
         match msg {
             DistributorMessage::Transfer { subject_id, info } => {
-                let metadata = match get_metadata(ctx, &subject_id).await {
-                    Ok(metadata) => metadata,
+                let (subject_data, new_owner) = match get_node_subject_data(ctx, &subject_id).await {
+                    Ok(data) => if let Some(data) = data {
+                        data
+                    } else {
+                        let e = "The subject is not registered by the node".to_owned();
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "GetLastSn, Can not get node subject data: {}", e
+                        );
+                        return Err(ActorError::Functional(e));
+                    },
                     Err(e) => {
                         error!(
                             TARGET_DISTRIBUTOR,
-                            "Transfer, Can not get metadata: {}", e
+                            "GetLastSn, Can not get node subject data: {}", e
                         );
-                        if let ActorError::NotFound(_) = e {
-                            return Err(e);
-                        } else {
-                            return Err(emit_fail(ctx, e).await);
-                        }
+
+                        return Err(emit_fail(ctx, e).await);
                     }
                 };
 
-                if let Some(_new_owner) = metadata.new_owner {
-                    if metadata.owner == info.sender {
+                let sender = info.sender.to_string();
+
+                if let Some(_new_owner) = new_owner {
+                    if subject_data.owner == sender {
                         // Todavía no se ha emitido evento de confirm ni de reject
                         return Ok(());
                     }
@@ -615,7 +610,7 @@ impl Handler<Distributor> for Distributor {
 
                 let res = if is_old_owner {
                     TransferResponse::Confirm
-                } else if !is_old_owner && metadata.owner == info.sender.clone()
+                } else if !is_old_owner && subject_data.owner == sender
                 {
                     TransferResponse::Reject
                 } else {
@@ -665,22 +660,35 @@ impl Handler<Distributor> for Distributor {
                 };
             }
             DistributorMessage::GetLastSn { subject_id, info } => {
-                let metadata = match get_metadata(ctx, &subject_id).await {
-                    Ok(metadata) => metadata,
+                let (subject_data, new_owner) = match get_node_subject_data(ctx, &subject_id).await {
+                    Ok(data) => if let Some(data) = data {
+                        data
+                    } else {
+                        let e = "The subject is not registered by the node".to_owned();
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "GetLastSn, Can not get node subject data: {}", e
+                        );
+                        return Err(ActorError::Functional(e));
+                    },
                     Err(e) => {
                         error!(
                             TARGET_DISTRIBUTOR,
-                            "GetLastSn, Can not get metadata: {}", e
+                            "GetLastSn, Can not get node subject data: {}", e
                         );
-                        if let ActorError::NotFound(_) = e {
-                            return Err(e);
-                        } else {
-                            return Err(emit_fail(ctx, e).await);
-                        }
+
+                        return Err(emit_fail(ctx, e).await);
                     }
                 };
 
-                let gov = match get_gov(ctx, &subject_id).await {
+                let governance_id = if let Some(gov_id) = subject_data.governance_id {
+                    gov_id
+                } else {
+                    subject_id.clone()
+                };
+
+
+                let gov = match get_gov(ctx, &governance_id).await {
                     Ok(gov) => gov,
                     Err(e) => {
                         error!(
@@ -690,18 +698,20 @@ impl Handler<Distributor> for Distributor {
                         return Err(emit_fail(ctx, e).await);
                     }
                 };
-                let is_owner = if let Some(new_owner) = metadata.new_owner {
-                    metadata.owner == info.sender || new_owner == info.sender
+                let sender = info.sender.to_string();
+
+                let is_owner = if let Some(new_owner) = new_owner {
+                    subject_data.owner == sender || new_owner == sender
                 } else {
-                    metadata.owner == info.sender
+                    subject_data.owner == sender
                 };
 
                 if !is_owner
                     && !gov.has_this_role(
                         &info.sender,
                         RoleTypes::Witness,
-                        &metadata.schema_id.clone(),
-                        metadata.namespace.clone(),
+                        &subject_data.schema_id,
+                        subject_data.namespace.clone(),
                     )
                 {
                     let e = "Sender neither the owned nor a witness";
@@ -737,7 +747,7 @@ impl Handler<Distributor> for Distributor {
                         message: NetworkMessage {
                             info: new_info,
                             message: ActorMessage::AuthLastSn {
-                                sn: metadata.sn,
+                                sn: subject_data.sn,
                             },
                         },
                     })
