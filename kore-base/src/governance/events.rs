@@ -410,10 +410,10 @@ impl AllSchemasRoleEvent {
         roles_not_gov: RolesAllSchemas,
         schema_id: &str,
     ) -> Result<RolesAllSchemas, Error> {
-        let schema = SchemaRoleEvent::from(self.clone());
+        let schema_role = SchemaRoleEvent::from(self.clone());
 
         let mut roles_schema = RolesSchema::from(roles_not_gov);
-        schema.check_data(governance, &mut roles_schema, schema_id)?;
+        schema_role.check_data(governance, &mut roles_schema, schema_id)?;
         let roles_not_gov = RolesAllSchemas::from(roles_schema.clone());
         Ok(roles_not_gov)
     }

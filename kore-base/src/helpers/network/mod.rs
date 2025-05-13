@@ -24,14 +24,14 @@ pub mod service;
 pub enum ActorMessage {
     ValidationReq {
         req: Box<Signed<ValidationReq>>,
-        schema: String,
+        schema_id: String,
     },
     ValidationRes {
         res: Signed<ValidationRes>,
     },
     EvaluationReq {
         req: Signed<EvaluationReq>,
-        schema: String,
+        schema_id: String,
     },
     EvaluationRes {
         res: Signed<EvaluationRes>,
@@ -61,7 +61,7 @@ pub enum ActorMessage {
         last_event: Option<Signed<KoreEvent>>,
         last_proof: Option<ValidationProof>,
         namespace: String,
-        schema: String,
+        schema_id: String,
         governance_id: DigestIdentifier,
         prev_event_validation_response: Option<Vec<ProtocolsSignatures>>,
     },

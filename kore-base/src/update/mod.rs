@@ -294,7 +294,7 @@ impl Handler<Update> for Update {
                                 request_id: String::default(),
                                 version: 0,
                                 reciver_actor: format!(
-                                    "/user/node/{}/distributor",
+                                    "/user/node/distributor_{}",
                                     self.subject_id
                                 ),
                             };

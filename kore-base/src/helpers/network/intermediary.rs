@@ -242,12 +242,12 @@ impl Intermediary {
                             )));
                         };
                     }
-                    ActorMessage::ValidationReq { req, schema } => {
+                    ActorMessage::ValidationReq { req, schema_id } => {
                         // Validator path.
                         let validator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
                         // Validator actor.
-                        if schema == "governance" {
+                        if schema_id == "governance" {
                             let validator_actor: Option<ActorRef<Validator>> =
                                 self.system.get_actor(&validator_path).await;
 
@@ -257,7 +257,7 @@ impl Intermediary {
                                     .tell(ValidatorMessage::NetworkRequest {
                                         validation_req: req,
                                         info: message.info,
-                                        schema,
+                                        schema_id,
                                     })
                                     .await
                                 {
@@ -283,7 +283,7 @@ impl Intermediary {
                                     .tell(ValidationSchemaMessage::NetworkRequest {
                                         validation_req: req,
                                         info: message.info,
-                                        schema
+                                        schema_id
                                     })
                                     .await
                                     {
@@ -297,12 +297,12 @@ impl Intermediary {
                             };
                         }
                     }
-                    ActorMessage::EvaluationReq { req, schema } => {
+                    ActorMessage::EvaluationReq { req, schema_id } => {
                         // Evaluator path.
                         let evaluator_path =
                             ActorPath::from(message.info.reciver_actor.clone());
 
-                        if schema == "governance" {
+                        if schema_id == "governance" {
                             // Evaluator actor.
                             let evaluator_actor: Option<ActorRef<Evaluator>> =
                                 self.system.get_actor(&evaluator_path).await;
@@ -313,7 +313,7 @@ impl Intermediary {
                                     .tell(EvaluatorMessage::NetworkRequest {
                                         evaluation_req: req,
                                         info: message.info,
-                                        schema,
+                                        schema_id,
                                     })
                                     .await
                                 {
@@ -340,7 +340,7 @@ impl Intermediary {
                             .tell(EvaluationSchemaMessage::NetworkRequest {
                                 evaluation_req: req,
                                 info: message.info,
-                                schema
+                                schema_id
                             })
                             .await
                             {
@@ -569,7 +569,7 @@ impl Intermediary {
                         last_proof,
                         prev_event_validation_response,
                         namespace,
-                        schema,
+                        schema_id,
                         governance_id,
                     } => {
                         // Distributor path.
@@ -615,7 +615,7 @@ impl Intermediary {
                                 info: message.info,
                                 last_proof,
                                 prev_event_validation_response,
-                                schema,
+                                schema_id,
                                 namespace,
                                 governance_id,
                             })

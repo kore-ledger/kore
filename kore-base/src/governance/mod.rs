@@ -44,17 +44,17 @@ pub struct Governance {
 
 impl Governance {
     pub fn remove_schema(&mut self, remove_schemas: HashSet<SchemaId>) {
-        for schema in remove_schemas {
-            self.roles_schema.remove(&schema);
-            self.policies_schema.remove(&schema);
+        for schema_id in remove_schemas {
+            self.roles_schema.remove(&schema_id);
+            self.policies_schema.remove(&schema_id);
         }
     }
 
     pub fn add_schema(&mut self, add_schema: HashSet<SchemaId>) {
-        for schema in add_schema {
+        for schema_id in add_schema {
             self.roles_schema
-                .insert(schema.clone(), RolesSchema::default());
-            self.policies_schema.insert(schema, PolicySchema::default());
+                .insert(schema_id.clone(), RolesSchema::default());
+            self.policies_schema.insert(schema_id, PolicySchema::default());
         }
     }
 
@@ -177,7 +177,7 @@ impl Governance {
         &self,
         key: &KeyIdentifier,
         role: RoleTypes,
-        schema: &str,
+        schema_id: &str,
         namespace: Namespace,
     ) -> bool {
         let Some(name) = self
@@ -190,7 +190,7 @@ impl Governance {
             return false;
         };
 
-        if schema == "governance" {
+        if schema_id == "governance" {
             if let RoleTypes::Witness = role {
                 return true;
             }
@@ -205,7 +205,7 @@ impl Governance {
                 return true;
             }
 
-            let Some(roles) = self.roles_schema.get(schema) else {
+            let Some(roles) = self.roles_schema.get(schema_id) else {
                 return false;
             };
 
@@ -216,14 +216,14 @@ impl Governance {
     /// Get the maximum creations for the user.
     /// # Arguments
     /// * `user` - The user id.
-    /// * `schema` - The schema id from [`Schema`].
+    /// * `schema_id` - The schema id from [`Schema`].
     /// * [`Namespace`] - The namespace.
     /// # Returns
     /// * Option<[`CreatorQuantity`]> - The maximum creations.
     pub fn max_creations(
         &self,
         key: &KeyIdentifier,
-        schema: &str,
+        schema_id: &str,
         namespace: Namespace,
     ) -> Option<CreatorQuantity> {
         let name = self
@@ -233,7 +233,7 @@ impl Governance {
             .map(|x| x.0)
             .cloned()?;
 
-        let roles = self.roles_schema.get(schema)?;
+        let roles = self.roles_schema.get(schema_id)?;
 
         roles.max_creations(namespace, &name)
     }
@@ -241,24 +241,24 @@ impl Governance {
     /// Gets the signers for the request stage.
     /// # Arguments
     /// * [`Roles`] - The role.
-    /// * `schema` - The schema id from [`Schema`].
+    /// * `schema_id` - The schema id from [`Schema`].
     /// * [`Namespace`] - The namespace.
     /// # Returns
     /// * (HashSet<[`KeyIdentifier`]>, bool) - The set of key identifiers and a flag indicating if the user is not a member.
     pub fn get_signers(
         &self,
         role: RoleTypes,
-        schema: &str,
+        schema_id: &str,
         namespace: Namespace,
     ) -> (HashSet<KeyIdentifier>, bool) {
-        let (names, any) = if schema == "governance" {
+        let (names, any) = if schema_id == "governance" {
             self.roles_gov.get_signers(role)
         } else {
             let (mut not_gov_signers, not_gov_any) = self
                 .roles_all_schemas
                 .get_signers(role.clone(), namespace.clone());
             let (mut schema_signers, schema_any) =
-                if let Some(roles) = self.roles_schema.get(schema) {
+                if let Some(roles) = self.roles_schema.get(schema_id) {
                     roles.get_signers(role, namespace)
                 } else {
                     (vec![], false)
@@ -282,14 +282,14 @@ impl Governance {
     /// Get the quorum for the role and schema.
     /// # Arguments
     /// * [`Roles`] - The role.
-    /// * `schema` - The schema id from [`Schema`].
+    /// * `schema_id` - The schema id from [`Schema`].
     /// # Returns
     /// * Option<[`Quorum`]> - The quorum.
-    fn get_quorum(&self, role: ProtocolTypes, schema: &str) -> Option<Quorum> {
-        if schema == "governance" {
+    fn get_quorum(&self, role: ProtocolTypes, schema_id: &str) -> Option<Quorum> {
+        if schema_id == "governance" {
             self.policies_gov.get_quorum(role)
         } else {
-            let policie = self.policies_schema.get(schema)?;
+            let policie = self.policies_schema.get(schema_id)?;
 
             policie.get_quorum(role)
         }
@@ -298,23 +298,23 @@ impl Governance {
     /// Get the quorum and signers for the role and schema.
     /// # Arguments
     /// * [`Roles`] - The role.
-    /// * `schema` - The schema id from [`Schema`].
+    /// * `schema_id` - The schema id from [`Schema`].
     /// * [`Namespace`] - The namespace.
     /// # Returns
     /// * (HashSet<[`KeyIdentifier`]>, [`Quorum`]) - The set of key identifiers and the quorum.
     pub fn get_quorum_and_signers(
         &self,
         role: ProtocolTypes,
-        schema: &str,
+        schema_id: &str,
         namespace: Namespace,
     ) -> Result<(HashSet<KeyIdentifier>, Quorum), ActorError> {
         let (signers, _not_members) =
-            self.get_signers(RoleTypes::from(role.clone()), schema, namespace);
+            self.get_signers(RoleTypes::from(role.clone()), schema_id, namespace);
 
-        let Some(quorum) = self.get_quorum(role.clone(), schema) else {
+        let Some(quorum) = self.get_quorum(role.clone(), schema_id) else {
             return Err(ActorError::Functional(format!(
                 "No quorum found for role {} and schema {}",
-                role, schema
+                role, schema_id
             )));
         };
 
@@ -346,15 +346,15 @@ impl Governance {
 
         let mut not_schemas: Vec<String> = vec![];
 
-        for (schema, roles) in self.roles_schema.iter() {
+        for (schema_id, roles) in self.roles_schema.iter() {
             if !roles.hash_this_rol_not_namespace(role.clone(), &name) {
-                not_schemas.push(schema.clone());
+                not_schemas.push(schema_id.clone());
             }
         }
 
         let mut copy_schemas = self.schemas.clone();
-        for schema in not_schemas {
-            copy_schemas.remove(&schema);
+        for schema_id in not_schemas {
+            copy_schemas.remove(&schema_id);
         }
 
         copy_schemas
@@ -379,7 +379,7 @@ impl Governance {
 
         let mut schema_key_creators: Vec<SchemaKeyCreators> = vec![];
 
-        for (schema, roles) in self.roles_schema.iter() {
+        for (schema_id, roles) in self.roles_schema.iter() {
             let schema_creators = roles.roles_creators(
                 &name,
                 not_gov_val.clone(),
@@ -388,7 +388,7 @@ impl Governance {
 
             if !schema_creators.is_empty() {
                 let mut schema_key = SchemaKeyCreators {
-                    schema: schema.clone(),
+                    schema_id: schema_id.clone(),
                     validation: None,
                     evaluation: None,
                 };

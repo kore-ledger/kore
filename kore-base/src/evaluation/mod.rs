@@ -128,7 +128,7 @@ impl Evaluation {
         &self,
         ctx: &mut ActorContext<Evaluation>,
         evaluation_req: Signed<EvaluationReq>,
-        schema: &str,
+        schema_id: &str,
         signer: KeyIdentifier,
     ) -> Result<(), ActorError> {
         // Create Evaluator child
@@ -165,7 +165,7 @@ impl Evaluation {
                     evaluation_req,
                     node_key: signer,
                     our_key,
-                    schema: schema.to_owned(),
+                    schema_id: schema_id.to_owned(),
                 })
                 .await?
         }

@@ -227,13 +227,13 @@ impl RequestHandler {
                 if quantity >= max_quantity as usize {
                     error!(
                         TARGET_REQUEST,
-                        "{}, The maximum number of subjects you can create for schema {} in governance {} has been reached.",
+                        "{}, The maximum number of subjects you can create for schema_id {} in governance {} has been reached.",
                         message,
                         schema_id,
                         governance_id
                     );
                     return Err(ActorError::Functional(format!(
-                        "The maximum number of subjects you can create for schema {} in governance {} has been reached.",
+                        "The maximum number of subjects you can create for schema_id {} in governance {} has been reached.",
                         schema_id, governance_id
                     )));
                 }
@@ -478,6 +478,31 @@ impl Handler<RequestHandler> for RequestHandler {
                     error!(TARGET_REQUEST, "Error getting derivator");
                     DigestDerivator::Blake3_256
                 };
+
+                let subject_id = request.content.get_subject_id();
+
+                let (is_owner,is_pending) = subject_owner(
+                    ctx,
+                    &subject_id.to_string(),
+                ).await.map_err(|e| {
+                    error!(TARGET_REQUEST, "NewRequest, Could not determine if the node is the owner of the subject: {}", e);
+                    ActorError::Functional(format!(
+                        "An error has occurred: {}",
+                        e
+                    ))
+                })?;
+
+                if !is_owner && !is_pending && !request.content.is_create_event(){
+                    let e = "An event is being sent to a subject that does not belong to us or its creation is pending completion, and the subject is not pending event confirmation.";
+                    error!(TARGET_REQUEST, "NewRequest, {}", e);
+                    return Err(ActorError::Functional(e.to_owned()));
+                }
+
+                if is_owner && is_pending {
+                    let e = "We are the owner of the subject but this subject is pending transfer";
+                    error!(TARGET_REQUEST, "NewRequest, {}", e);
+                    return Err(ActorError::Functional(e.to_owned()));
+                }
 
                 let metadata = match request.content.clone() {
                     EventRequest::Create(create_request) => {
@@ -776,31 +801,6 @@ impl Handler<RequestHandler> for RequestHandler {
                     }
                 };
 
-                // Primero check que seamos el owner.
-                let (is_owner, is_pending) = subject_owner(
-                    ctx,
-                    &metadata.subject_id.to_string(),
-                )
-                .await.map_err(|e| {
-                    error!(TARGET_REQUEST, "NewRequest, Could not determine if the node is the owner of the subject: {}", e);
-                    ActorError::Functional(format!(
-                        "An error has occurred: {}",
-                        e
-                    ))
-                })?;
-
-                if !is_owner && !is_pending {
-                    let e = "An event is being sent to a subject that does not belong to us or its creation is pending completion, and the subject is not pending event confirmation.";
-                    error!(TARGET_REQUEST, "NewRequest, {}", e);
-                    return Err(ActorError::Functional(e.to_owned()));
-                }
-
-                if is_owner && is_pending {
-                    let e = "We are the owner of the subject but this subject is pending transfer";
-                    error!(TARGET_REQUEST, "NewRequest, {}", e);
-                    return Err(ActorError::Functional(e.to_owned()));
-                }
-
                 if !metadata.active {
                     let e = "The subject is no longer active.";
                     error!(TARGET_REQUEST, "NewRequest, {}", e);
@@ -898,7 +898,6 @@ impl Handler<RequestHandler> for RequestHandler {
                 {
                     Ok(metadata) => metadata,
                     Err(e) => {
-                        // YA previamente se ha obtenido la metadata, por lo que no debería haber problema
                         error!(
                             TARGET_REQUEST,
                             "PopQueue, Can not obtain subject metadata: {}", e

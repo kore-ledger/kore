@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::model::common::emit_fail;
 use actor::{
@@ -13,20 +13,24 @@ use tracing::error;
 
 use crate::db::Storable;
 
-const TARGET_VALIDATA: &str = "Kore-Subject-TransferRegister";
+const TARGET_TRANSFER: &str = "Kore-Node-TransferRegister";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TransferRegister {
-    old_owners: HashSet<KeyIdentifier>,
+    old_owners: HashMap<String, HashSet<KeyIdentifier>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum TransferRegisterMessage {
     RegisterNewOldOwner {
+        subject_id: String,
         old: KeyIdentifier,
         new: KeyIdentifier,
     },
-    IsOldOwner(KeyIdentifier),
+    IsOldOwner{
+        subject_id: String,
+        old: KeyIdentifier,
+    },
 }
 
 impl Message for TransferRegisterMessage {}
@@ -34,6 +38,7 @@ impl Message for TransferRegisterMessage {}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TransferRegisterEvent {
     RegisterNewOldOwner {
+        subject_id: String,
         old: KeyIdentifier,
         new: KeyIdentifier,
     },
@@ -80,16 +85,20 @@ impl Handler<TransferRegister> for TransferRegister {
         ctx: &mut ActorContext<TransferRegister>,
     ) -> Result<TransferRegisterResponse, ActorError> {
         match msg {
-            TransferRegisterMessage::RegisterNewOldOwner { old, new } => {
+            TransferRegisterMessage::RegisterNewOldOwner {old,new, subject_id } => {
                 self.on_event(
-                    TransferRegisterEvent::RegisterNewOldOwner { old, new },
+                    TransferRegisterEvent::RegisterNewOldOwner { old, new, subject_id },
                     ctx,
                 )
                 .await
             }
-            TransferRegisterMessage::IsOldOwner(old) => {
+            TransferRegisterMessage::IsOldOwner { subject_id, old } => {
                 return Ok(TransferRegisterResponse::IsOwner(
-                    self.old_owners.contains(&old),
+                    if let Some(old_owners) = self.old_owners.get(&subject_id) {
+                        old_owners.contains(&old)
+                    } else {
+                        false
+                    },
                 ));
             }
         };
@@ -104,7 +113,7 @@ impl Handler<TransferRegister> for TransferRegister {
     ) {
         if let Err(e) = self.persist_light(&event, ctx).await {
             error!(
-                TARGET_VALIDATA,
+                TARGET_TRANSFER,
                 "OnEvent, can not persist information: {}", e
             );
             emit_fail(ctx, e).await;
@@ -116,9 +125,13 @@ impl Handler<TransferRegister> for TransferRegister {
 impl PersistentActor for TransferRegister {
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
-            TransferRegisterEvent::RegisterNewOldOwner { old, new } => {
-                self.old_owners.remove(new);
-                self.old_owners.insert(old.clone());
+            TransferRegisterEvent::RegisterNewOldOwner { old, new, subject_id } => {
+                if let Some(old_owners) = self.old_owners.get_mut(subject_id) {
+                    old_owners.remove(new);
+                    old_owners.insert(old.clone());
+                } else {
+                    self.old_owners.insert(subject_id.clone(), HashSet::from([old.clone()]));
+                };
             }
         };
 

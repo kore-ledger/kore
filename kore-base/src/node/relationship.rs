@@ -22,7 +22,7 @@ const TARGET_RELATIONSHIP: &str = "Kore-Node-RelationShip";
 pub struct OwnerSchema {
     pub owner: String,
     pub gov: String,
-    pub schema: String,
+    pub schema_id: String,
     pub namespace: String,
 }
 

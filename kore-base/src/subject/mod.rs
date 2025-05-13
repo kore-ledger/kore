@@ -5,50 +5,23 @@
 //!
 
 use crate::{
-    CreateRequest, Error, EventRequestType, Governance, Node,
     approval::{
-        Approval,
-        approver::{Approver, VotationType},
-    },
-    auth::WitnessesAuth,
-    config::Config,
-    db::Storable,
-    distribution::{Distribution, DistributionType, distributor::Distributor},
-    evaluation::{
-        Evaluation,
-        compiler::{Compiler, CompilerMessage},
-        evaluator::Evaluator,
-        schema::{EvaluationSchema, EvaluationSchemaMessage},
-    },
-    governance::{
-        Schema,
-        model::{CreatorQuantity, ProtocolTypes, RoleTypes},
-    },
-    helpers::{db::ExternalDB, sink::KoreSink},
-    model::{
-        HashId, Namespace, ValueWrapper,
+        approver::{Approver, VotationType}, Approval
+    }, auth::WitnessesAuth, config::Config, db::Storable, distribution::{Distribution, DistributionType}, evaluation::{
+        compiler::{Compiler, CompilerMessage}, evaluator::Evaluator, schema::{EvaluationSchema, EvaluationSchemaMessage}, Evaluation
+    }, governance::{
+        model::{CreatorQuantity, ProtocolTypes, RoleTypes}, Schema
+    }, helpers::{db::ExternalDB, sink::KoreSink}, model::{
         common::{
-            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
-            register_relation, try_to_update, verify_protocols_state,
-        },
-        event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
-        request::EventRequest,
-        signature::Signed,
-    },
-    node::{
-        NodeMessage, TransferSubject,
-        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
-        register::{
+            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data, register_relation, try_to_update,  verify_protocols_state
+        }, event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures}, request::EventRequest, signature::Signed, HashId, Namespace, ValueWrapper
+    }, node::{
+        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse}, register::{
             Register, RegisterDataGov, RegisterDataSubj, RegisterMessage,
-        },
-    },
-    update::TransferResponse,
-    validation::{
-        Validation,
-        proof::ValidationProof,
-        schema::{ValidationSchema, ValidationSchemaMessage},
-        validator::Validator,
-    },
+        }, transfer, NodeMessage, TransferSubject
+    }, update::TransferResponse, validation::{
+        proof::ValidationProof, schema::{ValidationSchema, ValidationSchemaMessage}, validator::Validator, Validation
+    }, CreateRequest, Error, EventRequestType, Governance, Node
 };
 
 use actor::{
@@ -75,7 +48,6 @@ use std::collections::{BTreeMap, HashMap};
 
 pub mod event;
 pub mod sinkdata;
-pub mod transfer;
 pub mod validata;
 
 const TARGET_SUBJECT: &str = "Kore-Subject";
@@ -102,7 +74,7 @@ pub struct Metadata {
     pub governance_id: DigestIdentifier,
     pub genesis_gov_version: u64,
     pub last_event_hash: DigestIdentifier,
-    /// The identifier of the schema used to validate the event.
+    /// The identifier of the schema_id used to validate the event.
     pub schema_id: String,
     /// The namespace of the subject.
     pub namespace: Namespace,
@@ -134,7 +106,7 @@ pub struct Subject {
     pub genesis_gov_version: u64,
     /// The namespace of the subject.
     pub namespace: Namespace,
-    /// The identifier of the schema used to validate the subject.
+    /// The identifier of the schema_id used to validate the subject.
     pub schema_id: String,
     /// The identifier of the public key of the subject owner.
     pub owner: KeyIdentifier,
@@ -215,7 +187,7 @@ impl Subject {
             Err(Error::Subject("Invalid create event request".to_string()))
         }
     }
-
+    
     async fn get_node_key(
         &self,
         ctx: &mut ActorContext<Subject>,
@@ -404,7 +376,7 @@ impl Subject {
             if let Some(eval_user) = creators.evaluation {
                 let eval_actor = EvaluationSchema::new(eval_user, gov.version);
                 ctx.create_child(
-                    &format!("{}_evaluation", creators.schema),
+                    &format!("{}_evaluation", creators.schema_id),
                     eval_actor,
                 )
                 .await?;
@@ -413,7 +385,7 @@ impl Subject {
             if let Some(val_user) = creators.validation {
                 let actor = ValidationSchema::new(val_user, gov.version);
                 ctx.create_child(
-                    &format!("{}_validation", creators.schema),
+                    &format!("{}_validation", creators.schema_id),
                     actor,
                 )
                 .await?;
@@ -851,16 +823,16 @@ impl Subject {
             }
         }
 
-        for schema in old_schemas_val {
+        for schema_id in old_schemas_val {
             let actor: Option<ActorRef<ValidationSchema>> =
-                ctx.get_child(&format!("{}_validation", schema)).await;
+                ctx.get_child(&format!("{}_validation", schema_id)).await;
             if let Some(actor) = actor {
                 actor.ask_stop().await?;
             } else {
                 return Err(ActorError::NotFound(ActorPath::from(format!(
                     "{}/{}_validation",
                     ctx.path(),
-                    schema
+                    schema_id
                 ))));
             }
         }
@@ -966,9 +938,10 @@ impl Subject {
         let node_actor: Option<ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
 
+
         if let Some(node_actor) = node_actor {
             node_actor
-                .tell(NodeMessage::ChangeSubjectOwner {
+                .ask(NodeMessage::ChangeSubjectOwner {
                     new_owner: new_owner.to_owned(),
                     old_owner: old_owner.to_owned(),
                     subject_id: subject_id.to_owned(),
@@ -977,6 +950,7 @@ impl Subject {
         } else {
             return Err(ActorError::NotFound(node_path));
         }
+
         Ok(())
     }
 
@@ -1317,7 +1291,7 @@ impl Subject {
                     gov_id: self.governance_id.to_string(),
                     data: RegisterDataSubj {
                         subject_id: self.subject_id.to_string(),
-                        schema: self.schema_id.clone(),
+                        schema_id: self.schema_id.clone(),
                         active,
                         name: self.name.clone(),
                         description: self.description.clone(),
@@ -1353,7 +1327,6 @@ impl Subject {
 
             self.on_event(events[0].clone(), ctx).await;
             self.register(ctx, true).await?;
-            self.change_node_subject_state(ctx).await?;
 
             events.remove(0)
         };
@@ -1491,27 +1464,6 @@ impl Subject {
             .await
     }
 
-    pub async fn change_node_subject_state(
-        &self,
-        ctx: &mut ActorContext<Subject>,
-    ) -> Result<(), ActorError> {
-        let node_path = ActorPath::from("/user/node");
-        let node_actor: Option<ActorRef<Node>> =
-            ctx.system().get_actor(&node_path).await;
-
-        // We obtain the validator
-        let Some(node_actor) = node_actor else {
-            return Err(ActorError::NotFound(node_path));
-        };
-
-        node_actor
-            .tell(NodeMessage::RegisterSubject {
-                owner: self.owner.to_string(),
-                subject_id: self.subject_id.to_string(),
-            })
-            .await
-    }
-
     async fn delete_subject(
         &self,
         ctx: &mut ActorContext<Subject>,
@@ -1577,7 +1529,6 @@ impl Subject {
 
             self.on_event(events[0].clone(), ctx).await;
             self.register(ctx, true).await?;
-            self.change_node_subject_state(ctx).await?;
 
             events.remove(0)
         };
@@ -1645,8 +1596,9 @@ impl Subject {
 
                         Subject::transfer_register(
                             ctx,
+                            &self.subject_id.to_string(),
                             event.signature.signer.clone(),
-                            self.owner.clone(),
+                            self.owner.clone()
                         )
                         .await?;
                     }
@@ -1683,20 +1635,20 @@ impl Subject {
 
     async fn transfer_register(
         ctx: &mut ActorContext<Subject>,
+        subject_id: &str,
         new: KeyIdentifier,
         old: KeyIdentifier,
     ) -> Result<(), ActorError> {
-        let actor: Option<ActorRef<TransferRegister>> =
-            ctx.get_child("transfer_register").await;
-        let Some(actor) = actor else {
-            return Err(ActorError::NotFound(ActorPath::from(format!(
-                "{}/transfer_register",
-                ctx.path()
-            ))));
+        let tranfer_register_path = ActorPath::from("/user/node/transfer_register");
+        let transfer_register_actor: Option<actor::ActorRef<TransferRegister>> =
+            ctx.system().get_actor(&tranfer_register_path).await;
+
+        let Some(transfer_register_actor) = transfer_register_actor else {
+            return Err(ActorError::NotFound(tranfer_register_path));
         };
 
-        actor
-            .tell(TransferRegisterMessage::RegisterNewOldOwner { old, new })
+        transfer_register_actor
+            .tell(TransferRegisterMessage::RegisterNewOldOwner { old, new, subject_id: subject_id.to_owned() })
             .await?;
 
         Ok(())
@@ -1922,14 +1874,14 @@ impl Subject {
                         if let Some(eval_users) = creators.evaluation {
                             let pos = old_schemas_eval
                                 .iter()
-                                .position(|x| *x == creators.schema);
+                                .position(|x| *x == creators.schema_id);
 
                             if let Some(pos) = pos {
                                 old_schemas_eval.remove(pos);
                                 let actor: Option<ActorRef<EvaluationSchema>> =
                                     ctx.get_child(&format!(
                                         "{}_evaluation",
-                                        creators.schema
+                                        creators.schema_id
                                     ))
                                     .await;
                                 if let Some(actor) = actor {
@@ -1941,7 +1893,7 @@ impl Subject {
                                         ActorPath::from(format!(
                                             "{}/{}_evaluation",
                                             ctx.path(),
-                                            creators.schema
+                                            creators.schema_id
                                         )),
                                     );
                                     return Err(emit_fail(ctx, e).await);
@@ -1952,7 +1904,7 @@ impl Subject {
                                     new_gov.version,
                                 );
                                 ctx.create_child(
-                                    &format!("{}_evaluation", creators.schema),
+                                    &format!("{}_evaluation", creators.schema_id),
                                     eval_actor,
                                 )
                                 .await?;
@@ -1962,13 +1914,13 @@ impl Subject {
                         if let Some(val_user) = creators.validation {
                             let pos = old_schemas_val
                                 .iter()
-                                .position(|x| *x == creators.schema);
+                                .position(|x| *x == creators.schema_id);
                             if let Some(pos) = pos {
                                 old_schemas_val.remove(pos);
                                 let actor: Option<ActorRef<ValidationSchema>> =
                                     ctx.get_child(&format!(
                                         "{}_validation",
-                                        creators.schema
+                                        creators.schema_id
                                     ))
                                     .await;
                                 if let Some(actor) = actor {
@@ -1980,7 +1932,7 @@ impl Subject {
                                         ActorPath::from(format!(
                                             "{}/{}_validation",
                                             ctx.path(),
-                                            creators.schema
+                                            creators.schema_id
                                         )),
                                     );
                                     return Err(emit_fail(ctx, e).await);
@@ -1991,7 +1943,7 @@ impl Subject {
                                     new_gov.version,
                                 );
                                 ctx.create_child(
-                                    &format!("{}_validation", creators.schema),
+                                    &format!("{}_validation", creators.schema_id),
                                     actor,
                                 )
                                 .await?;
@@ -2287,7 +2239,7 @@ impl Message for SubjectMessage {}
 pub enum SubjectResponse {
     /// The subject metadata.
     Metadata(Metadata),
-    LastSn(u64),
+    UpdateResult(u64, KeyIdentifier, Option<KeyIdentifier>),
     Ledger {
         ledger: Vec<Signed<Ledger>>,
         last_event: Option<Signed<KoreEvent>>,
@@ -2347,13 +2299,6 @@ impl Actor for Subject {
             Sink::new(vali_data_actor.subscribe(), ext_db.get_vali_data());
         ctx.system().run_sink(sink).await;
 
-        if !self.governance_id.is_empty() {
-            let transfer_register = TransferRegister::default();
-            let _transfer_register_actor = ctx
-                .create_child("transfer_register", transfer_register)
-                .await?;
-        }
-
         if self.active {
             if self.governance_id.is_empty() {
                 self.build_childs_governance(
@@ -2373,9 +2318,6 @@ impl Actor for Subject {
 
         let sink = Sink::new(sink_actor.subscribe(), kore_sink.clone());
         ctx.system().run_sink(sink).await;
-
-        let distributor = Distributor { node: our_key };
-        ctx.create_child("distributor", distributor).await?;
 
         Ok(())
     }
@@ -2482,7 +2424,7 @@ impl Handler<Subject> for Subject {
                     );
                     return Err(e);
                 };
-                Ok(SubjectResponse::LastSn(self.sn))
+                Ok(SubjectResponse::UpdateResult(self.sn, self.owner.clone(), self.new_owner.clone()))
             }
             SubjectMessage::GetGovernance => {
                 // If is a governance
@@ -2781,7 +2723,7 @@ mod tests {
             .await
             .unwrap();
 
-        if let SubjectResponse::LastSn(last_sn) = response {
+        if let SubjectResponse::UpdateResult(last_sn, _ , _) = response {
             assert_eq!(last_sn, 0);
         } else {
             panic!("Invalid response");
@@ -3097,7 +3039,7 @@ mod tests {
         let duracion = inicio.elapsed();
         println!("El método tardó: {:.2?}", duracion);
 
-        if let SubjectResponse::LastSn(last_sn) = response {
+        if let SubjectResponse::UpdateResult(last_sn, _ , _) = response {
             assert_eq!(last_sn, 1000);
         } else {
             panic!("Invalid response");

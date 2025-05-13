@@ -45,7 +45,7 @@ pub enum EvaluationSchemaMessage {
     NetworkRequest {
         evaluation_req: Signed<EvaluationReq>,
         info: ComunicateInfo,
-        schema: String,
+        schema_id: String,
     },
     UpdateEvaluators(HashSet<KeyIdentifier>, u64),
 }
@@ -71,7 +71,7 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
             EvaluationSchemaMessage::NetworkRequest {
                 evaluation_req,
                 info,
-                schema,
+                schema_id,
             } => {
                 if self.gov_version < evaluation_req.content.gov_version {
                     if let Err(e) = try_to_update(
@@ -145,7 +145,7 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                     .tell(EvaluatorMessage::NetworkRequest {
                         evaluation_req,
                         info,
-                        schema,
+                        schema_id,
                     })
                     .await
                 {

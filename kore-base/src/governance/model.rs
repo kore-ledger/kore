@@ -35,7 +35,7 @@ impl NameCreators {
 }
 
 pub struct SchemaKeyCreators {
-    pub schema: String,
+    pub schema_id: String,
     pub validation: Option<HashSet<KeyIdentifier>>,
     pub evaluation: Option<HashSet<KeyIdentifier>>,
 }

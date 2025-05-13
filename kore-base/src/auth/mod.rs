@@ -14,15 +14,9 @@ use store::store::PersistentActor;
 use tracing::{error, warn};
 
 use crate::{
-    ActorMessage, NetworkMessage,
-    db::Storable,
-    governance::model::RoleTypes,
-    intermediary::Intermediary,
-    model::{
-        Namespace,
-        common::{emit_fail, get_gov, get_metadata, subject_old},
-    },
-    update::{Update, UpdateMessage, UpdateNew, UpdateRes},
+    db::Storable, governance::model::RoleTypes, intermediary::Intermediary, model::{
+        common::{emit_fail, get_gov, get_node_subject_data, subject_old}, Namespace
+    }, update::{Update, UpdateMessage, UpdateNew, UpdateRes}, ActorMessage, NetworkMessage
 };
 
 const TARGET_AUTH: &str = "Kore-Auth";
@@ -86,18 +80,25 @@ impl Auth {
         ctx: &mut ActorContext<Auth>,
         subject_id: DigestIdentifier,
     ) -> Result<(u64, ActorMessage), ActorError> {
+        let subject_id_string = subject_id.to_string();
         'req: {
-            let Ok(metadata) = get_metadata(ctx, &subject_id.to_string()).await
-            else {
+            let Ok(Some((subject_data, _))) =  get_node_subject_data(ctx, &subject_id_string).await else {
                 break 'req;
             };
-            let gov = get_gov(ctx, &subject_id.to_string()).await?;
+
+            let gov_id = if let Some(gov_id) = subject_data.governance_id {
+                gov_id
+            } else {
+                subject_id_string.clone()
+            };
+
+            let gov = get_gov(ctx, &gov_id).await?;
 
             return Ok((
-                metadata.sn,
+                subject_data.sn,
                 ActorMessage::DistributionLedgerReq {
                     gov_version: Some(gov.version),
-                    actual_sn: Some(metadata.sn),
+                    actual_sn: Some(subject_data.sn),
                     subject_id,
                 },
             ));
@@ -363,7 +364,7 @@ impl Handler<Auth> for Auth {
                                 request_id: String::default(),
                                 version: 0,
                                 reciver_actor: format!(
-                                    "/user/node/{}/distributor",
+                                    "/user/node/distributor_{}",
                                     subject_id
                                 ),
                             };

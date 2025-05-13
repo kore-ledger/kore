@@ -13,7 +13,7 @@ use crate::{
     model::{
         HashId, SignTypesNode, TimeStamp,
         common::{
-            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
+            UpdateData, emit_fail, get_metadata, get_sign,
             update_ledger_network,
         },
         network::{RetryNetwork, TimeOutResponse},
@@ -144,8 +144,16 @@ impl Evaluator {
         our_node: KeyIdentifier,
     ) -> Result<bool, ActorError> {
         let governance_string = governance_id.to_string();
-        let governance = get_gov(ctx, &governance_string).await?;
         let metadata = get_metadata(ctx, &governance_string).await?;
+        let governance = match Governance::try_from(metadata.properties.clone()) {
+            Ok(gov) => gov,
+            Err(e) => {
+                let e = format!("can not convert governance from properties: {}",e);
+                return Err(ActorError::FunctionalFail(
+                    e,
+                ));
+            }
+        };
 
         match gov_version.cmp(&governance.version) {
             std::cmp::Ordering::Equal => {
@@ -439,7 +447,7 @@ pub enum EvaluatorMessage {
     },
     NetworkEvaluation {
         evaluation_req: Signed<EvaluationReq>,
-        schema: String,
+        schema_id: String,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
@@ -450,7 +458,7 @@ pub enum EvaluatorMessage {
     },
     NetworkRequest {
         evaluation_req: Signed<EvaluationReq>,
-        schema: String,
+        schema_id: String,
         info: ComunicateInfo,
     },
 }
@@ -562,11 +570,11 @@ impl Handler<Evaluator> for Evaluator {
             }
             EvaluatorMessage::NetworkEvaluation {
                 evaluation_req,
-                schema,
+                schema_id,
                 node_key,
                 our_key,
             } => {
-                let reciver_actor = if schema == "governance" {
+                let reciver_actor = if schema_id == "governance" {
                     format!(
                         "/user/node/{}/evaluator",
                         evaluation_req.content.context.subject_id
@@ -574,7 +582,7 @@ impl Handler<Evaluator> for Evaluator {
                 } else {
                     format!(
                         "/user/node/{}/{}_evaluation",
-                        evaluation_req.content.context.governance_id, schema
+                        evaluation_req.content.context.governance_id, schema_id
                     )
                 };
 
@@ -589,7 +597,7 @@ impl Handler<Evaluator> for Evaluator {
                     },
                     message: ActorMessage::EvaluationReq {
                         req: evaluation_req,
-                        schema,
+                        schema_id,
                     },
                 };
 
@@ -712,7 +720,7 @@ impl Handler<Evaluator> for Evaluator {
             EvaluatorMessage::NetworkRequest {
                 evaluation_req,
                 info,
-                schema,
+                schema_id,
             } => {
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
@@ -865,7 +873,7 @@ impl Handler<Evaluator> for Evaluator {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                if schema != "governance" {
+                if schema_id != "governance" {
                     ctx.stop(None).await;
                 }
             }

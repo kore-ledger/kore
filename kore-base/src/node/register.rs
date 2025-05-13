@@ -18,7 +18,7 @@ const TARGET_REGISTER: &str = "Kore-Node-Register";
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RegisterDataSubj {
     pub subject_id: String,
-    pub schema: String,
+    pub schema_id: String,
     pub active: bool,
     pub name: Option<String>,
     pub description: Option<String>,
@@ -53,7 +53,7 @@ pub enum RegisterMessage {
     GetSubj {
         gov_id: String,
         active: Option<bool>,
-        schema: Option<String>,
+        schema_id: Option<String>,
     },
     RegisterGov {
         gov_id: String,
@@ -153,7 +153,7 @@ impl Handler<Register> for Register {
             RegisterMessage::GetSubj {
                 gov_id,
                 active,
-                schema,
+                schema_id,
             } => {
                 let subjects = self.register_subj.get(&gov_id.to_string());
                 if let Some(subjects) = subjects {
@@ -165,8 +165,8 @@ impl Handler<Register> for Register {
                             };
                         };
 
-                        if let Some(schema) = schema.clone() {
-                            if subject.schema != schema {
+                        if let Some(schema_id) = schema_id.clone() {
+                            if subject.schema_id != schema_id {
                                 continue;
                             }
                         }

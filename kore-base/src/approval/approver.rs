@@ -4,18 +4,11 @@
 use std::{collections::VecDeque, fmt::Display, time::Duration};
 
 use crate::{
-    ActorMessage, EventRequest, NetworkMessage, Signed,
-    db::Storable,
-    intermediary::Intermediary,
-    model::{
-        SignTypesNode, TimeStamp,
+    db::Storable, governance::Governance, intermediary::Intermediary, model::{
         common::{
-            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
-            update_ledger_network,
-        },
-        network::{RetryNetwork, TimeOutResponse},
-    },
-    subject::Subject,
+            emit_fail, get_metadata, get_sign, update_ledger_network, UpdateData
+        }, network::{RetryNetwork, TimeOutResponse}, SignTypesNode, TimeStamp
+    }, subject::Subject, ActorMessage, EventRequest, NetworkMessage, Signed
 };
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction,
@@ -143,8 +136,16 @@ impl Approver {
         our_node: KeyIdentifier,
     ) -> Result<(), ActorError> {
         let governance_string = governance_id.to_string();
-        let governance = get_gov(ctx, &governance_string).await?;
         let metadata = get_metadata(ctx, &governance_string).await?;
+        let governance = match Governance::try_from(metadata.properties.clone()) {
+            Ok(gov) => gov,
+            Err(e) => {
+                let e = format!("can not convert governance from properties: {}",e);
+                return Err(ActorError::FunctionalFail(
+                    e,
+                ));
+            }
+        };
 
         match gov_version.cmp(&governance.version) {
             std::cmp::Ordering::Equal => {

@@ -1,4 +1,4 @@
-use std::{str::FromStr, time::Duration};
+use std::str::FromStr;
 
 mod common;
 
@@ -8,14 +8,13 @@ use identity::{
 };
 use kore_base::{
     approval::approver::ApprovalStateRes,
-    auth::AuthWitness,
-    model::request::{ConfirmRequest, EventRequest},
+    auth::AuthWitness
 };
 
 use common::{
-    check_transfer, create_and_authorize_governance,
+    create_and_authorize_governance,
     create_nodes_and_connections, create_subject, emit_approve, emit_confirm,
-    emit_fact, emit_reject, emit_transfer, get_signatures, get_subject,
+    emit_fact, emit_transfer, get_signatures, get_subject,
 };
 use serde_json::json;
 use test_log::test;

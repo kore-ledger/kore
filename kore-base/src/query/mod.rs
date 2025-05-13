@@ -43,6 +43,7 @@ pub enum QueryMessage {
         subject_id: String,
         quantity: Option<u64>,
         page: Option<u64>,
+        reverese: Option<bool>
     },
     GetEventSn {
         subject_id: String,
@@ -143,9 +144,10 @@ impl Handler<Query> for Query {
                 subject_id,
                 quantity,
                 page,
+                reverese
             } => {
                 let data = helper
-                    .get_events(&subject_id, quantity, page)
+                    .get_events(&subject_id, quantity, page, reverese)
                     .await
                     .map_err(|e| {
                         warn!(

@@ -155,6 +155,7 @@ impl Querys for SqliteLocal {
         subject_id: &str,
         quantity: Option<u64>,
         page: Option<u64>,
+        reverse: Option<bool>,
     ) -> Result<PaginatorEvents, Error> {
         let mut quantity = quantity.unwrap_or(50);
         let mut page = page.unwrap_or(1);
@@ -198,10 +199,16 @@ impl Querys for SqliteLocal {
             let offset = (page - 1) * quantity;
             let subject_id = subject_id.to_owned();
 
+            let order_clause = if reverse.unwrap_or_default() {
+                "sn DESC"
+            } else {
+                "sn ASC"
+            };
+
             let sql =
-                "SELECT * FROM events WHERE subject_id = ?1 LIMIT ?2 OFFSET ?3";
+                format!("SELECT * FROM events WHERE subject_id = ?1 ORDER BY {} LIMIT ?2 OFFSET ?3", order_clause);
             let mut stmt =
-                conn.prepare(sql).map_err(|e| Error::ExtDB(e.to_string()))?;
+                conn.prepare(&sql).map_err(|e| Error::ExtDB(e.to_string()))?;
 
             let events = stmt.query_map(params![subject_id, quantity, offset], |row| {
                     Ok(EventDB {

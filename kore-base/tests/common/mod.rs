@@ -106,8 +106,6 @@ pub async fn create_nodes_and_connections(
             })
             .collect();
 
-        println!("Bootstrap know: {:?}", peers);
-
         let node = create_node(
             network::NodeType::Bootstrap,
             &listen_address,
@@ -132,8 +130,6 @@ pub async fn create_nodes_and_connections(
             })
             .collect();
 
-        println!("Addressable know: {:?}", peers);
-
         let node = create_node(
             network::NodeType::Addressable,
             &listen_address,
@@ -156,8 +152,6 @@ pub async fn create_nodes_and_connections(
                 address: vec![get_node_address(peer_idx)],
             })
             .collect();
-
-        println!("Ephemeral know: {:?}", peers);
 
         let node = create_node(
             network::NodeType::Ephemeral,
@@ -344,7 +338,6 @@ pub async fn emit_fact(
     });
 
     let response = node.own_request(request).await?;
-    println!("emit_fact - response: {:?}", response);
     // state of request
     let request_id = DigestIdentifier::from_str(&response.request_id).unwrap();
 
@@ -514,7 +507,6 @@ pub async fn emit_confirm(
         name_old_owner: new_name,
     });
     let response = node.own_request(request).await?;
-    println!("emit_fact - response: {:?}", response);
     // state of request
     if !wait_request_state {
         return Ok(());

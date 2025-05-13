@@ -11,6 +11,7 @@ use nodekey::NodeKey;
 use register::Register;
 use relationship::RelationShip;
 use tracing::{error, warn};
+use transfer::TransferRegister;
 
 use crate::{
     DIGEST_DERIVATOR, Error, EventRequest, Subject, SubjectMessage,
@@ -48,6 +49,7 @@ use store::store::PersistentActor;
 pub mod nodekey;
 pub mod register;
 pub mod relationship;
+pub mod transfer;
 
 const TARGET_NODE: &str = "Kore-Node";
 
@@ -141,10 +143,10 @@ impl Node {
             data.sn = sn;
             self.owned_subjects.insert(subject_id, data.clone());
         } else if let Some(mut data) =
-            self.temporal_subjects.get(&subject_id).cloned()
+            self.known_subjects.get(&subject_id).cloned()
         {
             data.sn = sn;
-            self.temporal_subjects.insert(subject_id, data.clone());
+            self.known_subjects.insert(subject_id, data.clone());
         }
     }
 
@@ -164,12 +166,11 @@ impl Node {
                 data.owner = new_owner;
                 self.known_subjects.insert(subject_id, data);
             };
-        } else {
-            if let Some(mut data) = self.known_subjects.remove(&subject_id) {
-                data.owner = self.owner.key_identifier().to_string();
-                self.owned_subjects.insert(subject_id, data);
-            };
-        }
+        } else if let Some(mut data) = self.known_subjects.remove(&subject_id) {
+            data.owner = self.owner.key_identifier().to_string();
+            self.owned_subjects.insert(subject_id, data);
+        };
+        
     }
 
     pub fn register_subject(&mut self, subject_id: String, iam_owner: bool) {
@@ -225,20 +226,48 @@ impl Node {
             return Err(ActorError::NotHelper("ext_db".to_owned()));
         };
 
+        let our_key = self.owner.key_identifier();
+        let our_key_string = our_key.to_string();
+
         for (subject, _) in self.owned_subjects.clone() {
             let subject_actor =
                 ctx.create_child(&subject, Subject::default()).await?;
             let sink =
                 Sink::new(subject_actor.subscribe(), ext_db.get_subject());
             ctx.system().run_sink(sink).await;
+
+            ctx.create_child(
+                &format!("distributor_{}", subject),
+                Distributor {
+                    node: our_key.clone(),
+                },
+            )
+            .await?;
         }
 
-        for (subject, _) in self.known_subjects.clone() {
-            let subject_actor =
-                ctx.create_child(&subject, Subject::default()).await?;
-            let sink =
-                Sink::new(subject_actor.subscribe(), ext_db.get_subject());
-            ctx.system().run_sink(sink).await;
+        for (subject, data) in self.known_subjects.clone() {
+            let i_new_owner =
+                if let Some(transfer) = self.transfer_subjects.get(&subject) {
+                    transfer.new_owner == our_key_string
+                } else {
+                    false
+                };
+
+            if data.governance_id.is_none() || i_new_owner {
+                let subject_actor =
+                    ctx.create_child(&subject, Subject::default()).await?;
+                let sink =
+                    Sink::new(subject_actor.subscribe(), ext_db.get_subject());
+                ctx.system().run_sink(sink).await;
+            } 
+
+            ctx.create_child(
+                &format!("distributor_{}", subject),
+                Distributor {
+                    node: our_key.clone(),
+                },
+            )
+            .await?;
         }
 
         Ok(())
@@ -252,6 +281,8 @@ pub enum NodeMessage {
     SignRequest(SignTypesNode),
     PendingTransfers,
     // System actor
+    UpDistributor(String),
+    UpSubject(String, bool),
     GetSubjectData(String),
     UpdateSubject {
         subject_id: String,
@@ -345,26 +376,31 @@ impl Actor for Node {
         // Start store
         self.init_store("node", None, true, ctx).await?;
 
-        let register = Register::default();
-        ctx.create_child("register", register).await?;
+        ctx.create_child("register", Register::default()).await?;
 
-        let node_key = NodeKey::new(self.owner());
-        ctx.create_child("key", node_key).await?;
+        ctx.create_child("key", NodeKey::new(self.owner())).await?;
 
-        let manual_dis = ManualDistribution::new(self.owner());
-        ctx.create_child("manual_distribution", manual_dis).await?;
+        ctx.create_child(
+            "manual_distribution",
+            ManualDistribution::new(self.owner()),
+        )
+        .await?;
 
         self.create_subjects(ctx).await?;
 
-        let distributor = Distributor {
-            node: self.owner.key_identifier(),
-        };
+        ctx.create_child("auth", Auth::new(self.owner())).await?;
 
-        let auth = Auth::new(self.owner());
-        ctx.create_child("auth", auth).await?;
-
-        ctx.create_child("distributor", distributor).await?;
+        ctx.create_child(
+            "distributor",
+            Distributor {
+                node: self.owner.key_identifier(),
+            },
+        )
+        .await?;
         ctx.create_child("relation_ship", RelationShip::default())
+            .await?;
+
+        ctx.create_child("transfer_register", TransferRegister::default())
             .await?;
 
         Ok(())
@@ -431,6 +467,46 @@ impl Handler<Node> for Node {
         ctx: &mut actor::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
+            NodeMessage::UpDistributor(subject_id) => {
+                if let Err(e) = ctx
+                    .create_child(
+                        &format!("distributor_{}", subject_id),
+                        Distributor {
+                            node: self.owner.key_identifier(),
+                        },
+                    )
+                    .await
+                {
+                    let e =
+                        format!("Can not create distributor for subject {}", e);
+                    error!("UpDistributor, {}", e);
+
+                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    let e = ActorError::FunctionalFail(e);
+                    return Err(e);
+                };
+
+                Ok(NodeResponse::None)
+            }
+            NodeMessage::UpSubject(subject_id, light) => {
+                let Some(ext_db): Option<ExternalDB> =
+                    ctx.system().get_helper("ext_db").await
+                else {
+                    return Err(ActorError::NotHelper("ext_db".to_owned()));
+                };
+
+                let subject_actor =
+                    ctx.create_child(&subject_id, Subject::default()).await?;
+                if !light {
+                    let sink = Sink::new(
+                        subject_actor.subscribe(),
+                        ext_db.get_subject(),
+                    );
+                    ctx.system().run_sink(sink).await;
+                }
+
+                Ok(NodeResponse::None)
+            }
             NodeMessage::GetSubjectData(subject_id) => {
                 let data = if let Some(data) =
                     self.owned_subjects.get(&subject_id)
@@ -581,6 +657,27 @@ impl Handler<Node> for Node {
                     return Err(ActorError::Functional(e.to_owned()));
                 };
 
+                let governance_id = if subject.governance_id.is_empty() {
+                    None
+                } else {
+                    Some(subject.governance_id.to_string())
+                };
+
+                self.on_event(
+                    NodeEvent::TemporalSubject {
+                        subject_id: subject.subject_id.to_string(),
+                        data: SubjectData {
+                            owner: subject.creator.to_string(),
+                            governance_id,
+                            sn: 0,
+                            schema_id: subject.schema_id.clone(),
+                            namespace: subject.namespace.clone(),
+                        },
+                    },
+                    ctx,
+                )
+                .await;
+
                 let subject_actor = ctx
                     .create_child(
                         &format!("{}", ledger.content.subject_id),
@@ -599,37 +696,32 @@ impl Handler<Node> for Node {
                     })
                     .await?;
 
-                let governance_id = if subject.governance_id.is_empty()
-                {
-                    None
-                } else {
-                    Some(subject.governance_id.to_string())
-                };
-
                 self.on_event(
-                    NodeEvent::TemporalSubject {
+                    NodeEvent::RegisterSubject {
+                        iam_owner: self.owner.key_identifier() == subject.owner,
                         subject_id: subject.subject_id.to_string(),
-                        data: SubjectData {
-                            owner: subject.creator.to_string(),
-                            governance_id,
-                            sn: 0,
-                            schema_id: subject.schema_id,
-                            namespace: subject.namespace,
-                        },
                     },
                     ctx,
                 )
                 .await;
 
+                ctx.create_child(
+                    &format!("distributor_{}", ledger.content.subject_id),
+                    Distributor {
+                        node: self.owner(),
+                    },
+                )
+                .await.map_err(|e| ActorError::Functional(e.to_string()))?;
+
                 match response {
-                    SubjectResponse::LastSn(_) => {
+                    SubjectResponse::UpdateResult(_, _, _) => {
                         Ok(NodeResponse::SonWasCreated)
                     }
                     _ => {
                         ctx.system().send_event(SystemEvent::StopSystem).await;
                         let e = ActorError::UnexpectedResponse(
                             subject_actor.path(),
-                            "SubjectResponse::LastSn".to_owned(),
+                            "SubjectResponse::UpdateResult".to_owned(),
                         );
                         return Err(e);
                     }
@@ -677,6 +769,14 @@ impl Handler<Node> for Node {
                     ctx,
                 )
                 .await;
+
+                ctx.create_child(
+                    &format!("distributor_{}", data.subject_id),
+                    Distributor {
+                        node: self.owner(),
+                    },
+                )
+                .await?;
 
                 Ok(NodeResponse::SonWasCreated)
             }

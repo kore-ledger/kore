@@ -23,12 +23,9 @@ pub enum Error {
     /// Network error.
     #[error("Network error: {0}")]
     Network(String),
-    /// Ext_db schema error.
+    /// Ext_db error.
     #[error("Ext DB error: {0}")]
     ExtDB(String),
-    /// JSON schema error.
-    #[error("JSON schema error: {0}")]
-    JSONSChema(String),
     /// System error.
     #[error("System error: {0}")]
     System(String),

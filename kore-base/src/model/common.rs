@@ -17,10 +17,8 @@ use crate::{
         model::{CreatorQuantity, ProtocolTypes}, Quorum
     }, intermediary::Intermediary, model::SignTypesNode, node::{relationship::{
         OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
-    }, SubjectData}, request::manager::{RequestManager, RequestManagerMessage}, subject::{
-        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, transfer::{
-            TransferRegister, TransferRegisterMessage, TransferRegisterResponse,
-        }, validata::{ValiData, ValiDataMessage, ValiDataResponse}, Metadata
+    }, transfer::{TransferRegister, TransferRegisterMessage, TransferRegisterResponse}, SubjectData}, request::manager::{RequestManager, RequestManagerMessage}, subject::{
+        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, validata::{ValiData, ValiDataMessage, ValiDataResponse}, Metadata
     }, validation::proof::ValidationProof, ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance, NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse
 };
 use tracing::error;
@@ -164,22 +162,19 @@ where
 pub async fn subject_old_owner<A>(
     ctx: &mut ActorContext<A>,
     subject_id: &str,
-    owner: KeyIdentifier,
+    old: KeyIdentifier,
 ) -> Result<bool, ActorError>
 where
     A: Actor + Handler<A>,
 {
-    let tranfer_register_path = ActorPath::from(&format!(
-        "/user/node/{}/transfer_register",
-        subject_id
-    ));
+    let tranfer_register_path = ActorPath::from("/user/node/transfer_register");
     let transfer_register_actor: Option<actor::ActorRef<TransferRegister>> =
         ctx.system().get_actor(&tranfer_register_path).await;
 
     let response =
         if let Some(transfer_register_actor) = transfer_register_actor {
             transfer_register_actor
-                .ask(TransferRegisterMessage::IsOldOwner(owner))
+                .ask(TransferRegisterMessage::IsOldOwner { subject_id: subject_id.to_owned(), old })
                 .await?
         } else {
             return Err(ActorError::NotFound(tranfer_register_path));
@@ -310,7 +305,7 @@ where
 pub async fn get_quantity<A>(
     ctx: &mut ActorContext<A>,
     gov: String,
-    schema: String,
+    schema_id: String,
     owner: String,
     namespace: String,
 ) -> Result<usize, ActorError>
@@ -326,7 +321,7 @@ where
             .ask(RelationShipMessage::GetSubjectsCount(OwnerSchema {
                 owner,
                 gov,
-                schema,
+                schema_id,
                 namespace,
             }))
             .await?
@@ -347,7 +342,7 @@ where
 pub async fn register_relation<A>(
     ctx: &mut ActorContext<A>,
     gov: String,
-    schema: String,
+    schema_id: String,
     owner: String,
     subject: String,
     namespace: String,
@@ -366,7 +361,7 @@ where
                 data: OwnerSchema {
                     owner,
                     gov,
-                    schema,
+                    schema_id,
                     namespace,
                 },
                 subject,
@@ -389,7 +384,7 @@ where
 pub async fn delete_relation<A>(
     ctx: &mut ActorContext<A>,
     gov: String,
-    schema: String,
+    schema_id: String,
     owner: String,
     subject: String,
     namespace: String,
@@ -407,7 +402,7 @@ where
                 data: OwnerSchema {
                     owner,
                     gov,
-                    schema,
+                    schema_id,
                     namespace,
                 },
                 subject,
@@ -702,7 +697,7 @@ where
         sender: data.our_node,
         request_id: String::default(),
         version: 0,
-        reciver_actor: format!("/user/node/{}/distributor", subject_string),
+        reciver_actor: format!("/user/node/distributor_{}", subject_string),
     };
 
     let helper: Option<Intermediary> = ctx.system().get_helper("network").await;
@@ -722,44 +717,6 @@ where
         .await
 }
 
-pub async fn update_ledger_local<A>(
-    ctx: &mut ActorContext<A>,
-    data: UpdateData,
-) -> Result<(), ActorError>
-where
-    A: Actor + Handler<A>,
-{
-    let subject_string = data.subject_id.to_string();
-    let request = ActorMessage::DistributionLedgerReq {
-        gov_version: Some(data.gov_version),
-        actual_sn: Some(data.sn),
-        subject_id: data.subject_id,
-    };
-
-    let info = ComunicateInfo {
-        reciver: data.other_node,
-        sender: data.our_node,
-        request_id: String::default(),
-        version: 0,
-        reciver_actor: format!("/user/node/{}/distributor", subject_string),
-    };
-
-    let helper: Option<Intermediary> = ctx.system().get_helper("network").await;
-
-    let Some(mut helper) = helper else {
-        let e = ActorError::NotHelper("network".to_owned());
-        return Err(e);
-    };
-
-    helper
-        .send_command(network::CommandHelper::SendMessage {
-            message: NetworkMessage {
-                info,
-                message: request,
-            },
-        })
-        .await
-}
 
 pub async fn get_last_event<A>(
     ctx: &mut ActorContext<A>,

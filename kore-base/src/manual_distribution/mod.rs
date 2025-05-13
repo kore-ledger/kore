@@ -112,6 +112,15 @@ impl Handler<ManualDistribution> for ManualDistribution {
     ) -> Result<(), ActorError> {
         match msg {
             ManualDistributionMessage::Update(subject_id) => {
+                let (is_owner, _is_pending) =
+                    subject_owner(ctx, &subject_id.to_string()).await?;
+
+                if !is_owner {
+                    let e = "We are not subject owner";
+                    warn!(TARGET_MANUAL_DISTRIBUTION, "Update, {}", e);
+                    return Err(ActorError::Functional(e.to_owned()));
+                }
+
                 let distribution = Distribution::new(
                     self.our_key.clone(),
                     DistributionType::Manual,
@@ -153,15 +162,6 @@ impl Handler<ManualDistribution> for ManualDistribution {
                 } else {
                     ledger[0].clone()
                 };
-
-                let (is_owner, _is_pending) =
-                    subject_owner(ctx, &subject_id.to_string()).await?;
-
-                if !is_owner {
-                    let e = "We are not subject owner";
-                    warn!(TARGET_MANUAL_DISTRIBUTION, "Update, {}", e);
-                    return Err(ActorError::Functional(e.to_owned()));
-                }
 
                 let distribution_actor = ctx.create_child(&request_id, distribution).await.map_err(|e| {
                     warn!(TARGET_MANUAL_DISTRIBUTION, "Update, Can not create distribution child: {}", e);

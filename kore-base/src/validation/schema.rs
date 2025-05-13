@@ -45,7 +45,7 @@ pub enum ValidationSchemaMessage {
     NetworkRequest {
         validation_req: Box<Signed<ValidationReq>>,
         info: ComunicateInfo,
-        schema: String,
+        schema_id: String,
     },
     UpdateValidators(HashSet<KeyIdentifier>, u64),
 }
@@ -71,7 +71,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
             ValidationSchemaMessage::NetworkRequest {
                 validation_req,
                 info,
-                schema,
+                schema_id,
             } => {
                 if self.gov_version
                     < validation_req.content.proof.governance_version
@@ -147,7 +147,7 @@ impl Handler<ValidationSchema> for ValidationSchema {
                     .tell(ValidatorMessage::NetworkRequest {
                         validation_req,
                         info,
-                        schema,
+                        schema_id,
                     })
                     .await
                 {

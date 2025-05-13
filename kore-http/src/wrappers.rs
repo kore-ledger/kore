@@ -314,7 +314,7 @@ impl From<GovsDataBridge> for GovsData {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RegisterDataSubj {
     pub subject_id: String,
-    pub schema: String,
+    pub schema_id: String,
     pub active: bool,
     pub name: Option<String>,
     pub description: Option<String>,
@@ -324,7 +324,7 @@ impl From<RegisterDataSubjBridge> for RegisterDataSubj {
     fn from(value: RegisterDataSubjBridge) -> Self {
         Self {
             subject_id: value.subject_id,
-            schema: value.schema,
+            schema_id: value.schema_id,
             active: value.active,
             name: value.name,
             description: value.description,

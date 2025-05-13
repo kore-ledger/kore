@@ -4,18 +4,11 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    Signed,
-    governance::model::RoleTypes,
-    helpers::network::{NetworkMessage, intermediary::Intermediary},
-    model::{
-        SignTypesNode, TimeStamp,
+    governance::{model::RoleTypes, Governance}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
         common::{
-            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
-            update_ledger_network,
-        },
-        event::ProtocolsSignatures,
-        network::{RetryNetwork, TimeOutResponse},
-    },
+            emit_fail, get_gov, get_metadata, get_sign, update_ledger_network, UpdateData
+        }, event::ProtocolsSignatures, network::{RetryNetwork, TimeOutResponse}, SignTypesNode, TimeStamp
+    }, Signed
 };
 
 use super::{
@@ -65,8 +58,16 @@ impl Validator {
         our_node: KeyIdentifier,
     ) -> Result<bool, ActorError> {
         let governance_string = governance_id.to_string();
-        let governance = get_gov(ctx, &governance_string).await?;
         let metadata = get_metadata(ctx, &governance_string).await?;
+        let governance = match Governance::try_from(metadata.properties.clone()) {
+            Ok(gov) => gov,
+            Err(e) => {
+                let e = format!("can not convert governance from properties: {}",e);
+                return Err(ActorError::FunctionalFail(
+                    e,
+                ));
+            }
+        };
 
         match gov_version.cmp(&governance.version) {
             std::cmp::Ordering::Equal => {
@@ -198,7 +199,7 @@ pub enum ValidatorMessage {
     },
     NetworkValidation {
         validation_req: Signed<ValidationReq>,
-        schema: String,
+        schema_id: String,
         node_key: KeyIdentifier,
         our_key: KeyIdentifier,
     },
@@ -210,7 +211,7 @@ pub enum ValidatorMessage {
     NetworkRequest {
         validation_req: Box<Signed<ValidationReq>>,
         info: ComunicateInfo,
-        schema: String,
+        schema_id: String,
     },
 }
 
@@ -292,11 +293,11 @@ impl Handler<Validator> for Validator {
             }
             ValidatorMessage::NetworkValidation {
                 validation_req,
-                schema,
+                schema_id,
                 node_key,
                 our_key,
             } => {
-                let reciver_actor = if schema == "governance" {
+                let reciver_actor = if schema_id == "governance" {
                     format!(
                         "/user/node/{}/validator",
                         validation_req.content.proof.subject_id
@@ -304,7 +305,7 @@ impl Handler<Validator> for Validator {
                 } else {
                     format!(
                         "/user/node/{}/{}_validation",
-                        validation_req.content.proof.governance_id, schema
+                        validation_req.content.proof.governance_id, schema_id
                     )
                 };
 
@@ -319,7 +320,7 @@ impl Handler<Validator> for Validator {
                     },
                     message: ActorMessage::ValidationReq {
                         req: Box::new(validation_req),
-                        schema,
+                        schema_id,
                     },
                 };
 
@@ -448,7 +449,7 @@ impl Handler<Validator> for Validator {
             ValidatorMessage::NetworkRequest {
                 validation_req,
                 info,
-                schema,
+                schema_id,
             } => {
                 let info_subject_path =
                     ActorPath::from(info.reciver_actor.clone()).parent().key();
@@ -589,7 +590,7 @@ impl Handler<Validator> for Validator {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                if schema != "governance" {
+                if schema_id != "governance" {
                     ctx.stop(None).await;
                 }
             }

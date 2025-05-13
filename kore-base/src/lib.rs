@@ -623,14 +623,14 @@ impl Api {
         &self,
         gov_id: DigestIdentifier,
         active: Option<bool>,
-        schema: Option<String>,
+        schema_id: Option<String>,
     ) -> Result<Vec<RegisterDataSubj>, Error> {
         let response = self
             .register
             .ask(RegisterMessage::GetSubj {
                 gov_id: gov_id.to_string(),
                 active,
-                schema,
+                schema_id,
             })
             .await
             .map_err(|e| {
@@ -654,6 +654,7 @@ impl Api {
         subject_id: DigestIdentifier,
         quantity: Option<u64>,
         page: Option<u64>,
+        reverese: Option<bool>
     ) -> Result<PaginatorEvents, Error> {
         let response = self
             .query
@@ -661,6 +662,7 @@ impl Api {
                 subject_id: subject_id.to_string(),
                 quantity,
                 page,
+                reverese
             })
             .await
             .map_err(|e| {

@@ -16,32 +16,17 @@ use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, info, warn};
 
 use crate::{
-    ActorMessage, DIGEST_DERIVATOR, Event as KoreEvent, EventRequest, HashId,
-    NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse,
-    Validation, ValidationInfo, ValidationMessage, ValueWrapper,
-    approval::{Approval, ApprovalMessage},
-    auth::{Auth, AuthMessage, AuthResponse, AuthWitness},
-    db::Storable,
-    distribution::{Distribution, DistributionMessage, DistributionType},
-    error::Error,
-    evaluation::{
-        Evaluation, EvaluationMessage, request::EvaluationReq,
-        response::EvalLedgerResponse,
-    },
-    intermediary::Intermediary,
-    model::{
-        SignTypesNode,
+    approval::{Approval, ApprovalMessage}, auth::{Auth, AuthMessage, AuthResponse, AuthWitness}, db::Storable, distribution::{Distribution, DistributionMessage, DistributionType}, error::Error, evaluation::{
+        request::EvaluationReq, response::EvalLedgerResponse, Evaluation, EvaluationMessage
+    }, governance::Governance, intermediary::Intermediary, model::{
         common::{
             emit_fail, get_gov, get_metadata, get_sign, get_vali_data,
             update_event, update_vali_data,
-        },
-        event::{
+        }, event::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
             ProtocolsSignatures,
-        },
-    },
-    update::{Update, UpdateMessage, UpdateNew, UpdateRes, UpdateType},
-    validation::proof::{EventProof, ValidationProof},
+        }, SignTypesNode
+    }, node::{Node, NodeMessage}, update::{Update, UpdateMessage, UpdateNew, UpdateRes, UpdateType}, validation::proof::{EventProof, ValidationProof}, ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
 };
 
 const TARGET_MANAGER: &str = "Kore-Request-Manager";
@@ -480,13 +465,39 @@ impl RequestManager {
         }
     }
 
+        pub async fn change_node_subject_state(
+        ctx: &mut ActorContext<RequestManager>,
+        owner: &str,
+        subject_id: &str
+    ) -> Result<(), ActorError> {
+        let node_path = ActorPath::from("/user/node");
+        let node_actor: Option<ActorRef<Node>> =
+            ctx.system().get_actor(&node_path).await;
+
+        // We obtain the validator
+        let Some(node_actor) = node_actor else {
+            return Err(ActorError::NotFound(node_path));
+        };
+
+        node_actor
+            .ask(NodeMessage::RegisterSubject {
+                owner: owner.to_owned(),
+                subject_id: subject_id.to_owned(),
+            })
+            .await?;
+
+        Ok(())
+    }
+
     async fn update_ledger(
         ctx: &mut ActorContext<RequestManager>,
         ledger: Signed<Ledger>,
     ) -> Result<(), ActorError> {
+
+        let subject_id = ledger.content.subject_id.to_string();
         let subject_path = ActorPath::from(format!(
             "/user/node/{}",
-            ledger.content.subject_id
+            subject_id
         ));
         let subject_actor: Option<ActorRef<Subject>> =
             ctx.system().get_actor(&subject_path).await;
@@ -494,7 +505,7 @@ impl RequestManager {
         let response = if let Some(subject_actor) = subject_actor {
             subject_actor
                 .ask(SubjectMessage::UpdateLedger {
-                    events: vec![ledger],
+                    events: vec![ledger.clone()],
                 })
                 .await?
         } else {
@@ -502,10 +513,16 @@ impl RequestManager {
         };
 
         match response {
-            SubjectResponse::LastSn(_) => Ok(()),
+            SubjectResponse::UpdateResult(_, owner, _) => {
+                if ledger.content.event_request.content.is_create_event() {
+                    Self::change_node_subject_state(ctx, &owner.to_string(), &subject_id).await?;
+                }
+
+                Ok(())
+            },
             _ => Err(ActorError::UnexpectedResponse(
                 subject_path,
-                "SubjectResponse::LastSn".to_owned(),
+                "SubjectResponse::UpdateResult".to_owned(),
             )),
         }
     }
@@ -572,7 +589,6 @@ impl RequestManager {
         };
 
         let gov = get_gov(ctx, &self.subject_id).await?;
-
         let metadata = get_metadata(ctx, &self.subject_id).await?;
 
         let state_hash = if let Some(state_hash) = state_hash {
@@ -646,8 +662,17 @@ impl RequestManager {
     ) -> Result<(), ActorError> {
         let governance_string = governance_id.to_string();
         let witnesses = Self::get_witnesses(ctx, governance_id.clone()).await?;
+        
         let metadata = get_metadata(ctx, &governance_string).await?;
-        let gov = get_gov(ctx, &governance_string).await?;
+        let gov = match Governance::try_from(metadata.properties.clone()) {
+            Ok(gov) => gov,
+            Err(e) => {
+                let e = format!("can not convert governance from properties: {}",e);
+                return Err(ActorError::FunctionalFail(
+                    e,
+                ));
+            }
+        };
 
         let request = ActorMessage::DistributionLedgerReq {
             gov_version: Some(gov.version),
@@ -664,7 +689,7 @@ impl RequestManager {
                     version: 0,
                     request_id: String::default(),
                     reciver_actor: format!(
-                        "/user/node/{}/distributor",
+                        "/user/node/distributor_{}",
                         governance_string
                     )
                 };

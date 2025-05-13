@@ -4,15 +4,11 @@ mod common;
 
 use common::{
     check_transfer, create_and_authorize_governance,
-    create_nodes_and_connections, create_subject, emit_approve, emit_confirm,
+    create_nodes_and_connections, create_subject, emit_confirm,
     emit_fact, emit_reject, emit_transfer, get_signatures, get_subject,
 };
-use identity::{
-    identifier::KeyIdentifier,
-    keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
-};
+use identity::identifier::KeyIdentifier;
 use kore_base::{
-    approval::approver::ApprovalStateRes,
     auth::AuthWitness,
     model::request::{ConfirmRequest, EventRequest},
 };
@@ -547,7 +543,6 @@ async fn test_namespace_in_role_2() {
     )
     .await;
 
-    // Tiene sentido que el las politicas del schema se ponga el rol de aprovador???
     let json = json!({
         "roles": {
             "all_schemas": {
@@ -1518,7 +1513,7 @@ async fn test_subject_transfer_event_3() {
         .await
         .unwrap();
 
-    let state = get_subject(old_owner, subject_id_1.clone(), None)
+    let state = get_subject(old_owner, subject_id_1.clone(), Some(4))
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
@@ -1538,7 +1533,7 @@ async fn test_subject_transfer_event_3() {
         })
     );
 
-    let state = get_subject(owner_governance, subject_id_1.clone(), None)
+    let state = get_subject(owner_governance, subject_id_1.clone(), Some(4))
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());
@@ -1558,7 +1553,7 @@ async fn test_subject_transfer_event_3() {
         })
     );
 
-    let state = get_subject(future_owner, subject_id_1.clone(), None)
+    let state = get_subject(future_owner, subject_id_1.clone(), Some(3))
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id_1.to_string());

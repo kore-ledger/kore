@@ -150,7 +150,7 @@ pub trait Storable: PersistentActor {
             }
         };
         // Encrypted store?
-        let key = if encrypt {
+        let key: Option<[u8; 32]> = if encrypt {
             if let Some(enc) = ctx
                 .system()
                 .get_helper::<EncryptedPass>("encrypted_pass")
