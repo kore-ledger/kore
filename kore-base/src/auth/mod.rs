@@ -14,9 +14,15 @@ use store::store::PersistentActor;
 use tracing::{error, warn};
 
 use crate::{
-    db::Storable, governance::model::RoleTypes, intermediary::Intermediary, model::{
-        common::{emit_fail, get_gov, get_node_subject_data, subject_old}, Namespace
-    }, update::{Update, UpdateMessage, UpdateNew, UpdateRes}, ActorMessage, NetworkMessage
+    ActorMessage, NetworkMessage,
+    db::Storable,
+    governance::model::RoleTypes,
+    intermediary::Intermediary,
+    model::{
+        Namespace,
+        common::{emit_fail, get_gov, get_node_subject_data, subject_old},
+    },
+    update::{Update, UpdateMessage, UpdateNew, UpdateRes},
 };
 
 const TARGET_AUTH: &str = "Kore-Auth";
@@ -82,7 +88,9 @@ impl Auth {
     ) -> Result<(u64, ActorMessage), ActorError> {
         let subject_id_string = subject_id.to_string();
         'req: {
-            let Ok(Some((subject_data, _))) =  get_node_subject_data(ctx, &subject_id_string).await else {
+            let Ok(Some((subject_data, _))) =
+                get_node_subject_data(ctx, &subject_id_string).await
+            else {
                 break 'req;
             };
 

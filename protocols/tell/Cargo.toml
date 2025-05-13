@@ -17,7 +17,7 @@ async-trait = { workspace = true }
 borsh = { workspace = true, optional = true }
 cbor4ii = { version = "1.0.0", features = ["serde1", "use_std"], optional = true }
 futures = { workspace = true }
-futures-bounded = "0.2"
+futures-bounded = { version = "0.3.0", features = ["futures-timer"]}
 libp2p = { workspace = true, default_features = false, features = [
 	"identify",
 ]}
@@ -31,6 +31,7 @@ void = "1.0.2"
 
 [dev-dependencies]
 anyhow = "1.0.79"
+serial_test = { workspace = true }
 async-std = { workspace = true, features = ["attributes"] }
 futures_ringbuf = "0.4.0"
 libp2p-swarm-test = { workspace = true }

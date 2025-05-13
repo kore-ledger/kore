@@ -16,17 +16,34 @@ use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, info, warn};
 
 use crate::{
-    approval::{Approval, ApprovalMessage}, auth::{Auth, AuthMessage, AuthResponse, AuthWitness}, db::Storable, distribution::{Distribution, DistributionMessage, DistributionType}, error::Error, evaluation::{
-        request::EvaluationReq, response::EvalLedgerResponse, Evaluation, EvaluationMessage
-    }, governance::Governance, intermediary::Intermediary, model::{
+    ActorMessage, DIGEST_DERIVATOR, Event as KoreEvent, EventRequest, HashId,
+    NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse,
+    Validation, ValidationInfo, ValidationMessage, ValueWrapper,
+    approval::{Approval, ApprovalMessage},
+    auth::{Auth, AuthMessage, AuthResponse, AuthWitness},
+    db::Storable,
+    distribution::{Distribution, DistributionMessage, DistributionType},
+    error::Error,
+    evaluation::{
+        Evaluation, EvaluationMessage, request::EvaluationReq,
+        response::EvalLedgerResponse,
+    },
+    governance::Governance,
+    intermediary::Intermediary,
+    model::{
+        SignTypesNode,
         common::{
             emit_fail, get_gov, get_metadata, get_sign, get_vali_data,
             update_event, update_vali_data,
-        }, event::{
+        },
+        event::{
             DataProofEvent, Ledger, LedgerValue, ProofEvent, ProtocolsError,
             ProtocolsSignatures,
-        }, SignTypesNode
-    }, node::{Node, NodeMessage}, update::{Update, UpdateMessage, UpdateNew, UpdateRes, UpdateType}, validation::proof::{EventProof, ValidationProof}, ActorMessage, Event as KoreEvent, EventRequest, HashId, NetworkMessage, Signed, Subject, SubjectMessage, SubjectResponse, Validation, ValidationInfo, ValidationMessage, ValueWrapper, DIGEST_DERIVATOR
+        },
+    },
+    node::{Node, NodeMessage},
+    update::{Update, UpdateMessage, UpdateNew, UpdateRes, UpdateType},
+    validation::proof::{EventProof, ValidationProof},
 };
 
 const TARGET_MANAGER: &str = "Kore-Request-Manager";
@@ -465,10 +482,10 @@ impl RequestManager {
         }
     }
 
-        pub async fn change_node_subject_state(
+    pub async fn change_node_subject_state(
         ctx: &mut ActorContext<RequestManager>,
         owner: &str,
-        subject_id: &str
+        subject_id: &str,
     ) -> Result<(), ActorError> {
         let node_path = ActorPath::from("/user/node");
         let node_actor: Option<ActorRef<Node>> =
@@ -493,12 +510,9 @@ impl RequestManager {
         ctx: &mut ActorContext<RequestManager>,
         ledger: Signed<Ledger>,
     ) -> Result<(), ActorError> {
-
         let subject_id = ledger.content.subject_id.to_string();
-        let subject_path = ActorPath::from(format!(
-            "/user/node/{}",
-            subject_id
-        ));
+        let subject_path =
+            ActorPath::from(format!("/user/node/{}", subject_id));
         let subject_actor: Option<ActorRef<Subject>> =
             ctx.system().get_actor(&subject_path).await;
 
@@ -515,11 +529,16 @@ impl RequestManager {
         match response {
             SubjectResponse::UpdateResult(_, owner, _) => {
                 if ledger.content.event_request.content.is_create_event() {
-                    Self::change_node_subject_state(ctx, &owner.to_string(), &subject_id).await?;
+                    Self::change_node_subject_state(
+                        ctx,
+                        &owner.to_string(),
+                        &subject_id,
+                    )
+                    .await?;
                 }
 
                 Ok(())
-            },
+            }
             _ => Err(ActorError::UnexpectedResponse(
                 subject_path,
                 "SubjectResponse::UpdateResult".to_owned(),
@@ -662,15 +681,16 @@ impl RequestManager {
     ) -> Result<(), ActorError> {
         let governance_string = governance_id.to_string();
         let witnesses = Self::get_witnesses(ctx, governance_id.clone()).await?;
-        
+
         let metadata = get_metadata(ctx, &governance_string).await?;
         let gov = match Governance::try_from(metadata.properties.clone()) {
             Ok(gov) => gov,
             Err(e) => {
-                let e = format!("can not convert governance from properties: {}",e);
-                return Err(ActorError::FunctionalFail(
-                    e,
-                ));
+                let e = format!(
+                    "can not convert governance from properties: {}",
+                    e
+                );
+                return Err(ActorError::FunctionalFail(e));
             }
         };
 

@@ -205,10 +205,13 @@ impl Querys for SqliteLocal {
                 "sn ASC"
             };
 
-            let sql =
-                format!("SELECT * FROM events WHERE subject_id = ?1 ORDER BY {} LIMIT ?2 OFFSET ?3", order_clause);
-            let mut stmt =
-                conn.prepare(&sql).map_err(|e| Error::ExtDB(e.to_string()))?;
+            let sql = format!(
+                "SELECT * FROM events WHERE subject_id = ?1 ORDER BY {} LIMIT ?2 OFFSET ?3",
+                order_clause
+            );
+            let mut stmt = conn
+                .prepare(&sql)
+                .map_err(|e| Error::ExtDB(e.to_string()))?;
 
             let events = stmt.query_map(params![subject_id, quantity, offset], |row| {
                     Ok(EventDB {

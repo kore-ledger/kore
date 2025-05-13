@@ -4,8 +4,8 @@ mod common;
 
 use common::{
     check_transfer, create_and_authorize_governance,
-    create_nodes_and_connections, create_subject, emit_confirm,
-    emit_fact, emit_reject, emit_transfer, get_signatures, get_subject,
+    create_nodes_and_connections, create_subject, emit_confirm, emit_fact,
+    emit_reject, emit_transfer, get_signatures, get_subject,
 };
 use identity::identifier::KeyIdentifier;
 use kore_base::{

@@ -25,9 +25,8 @@ use crate::{
     model::{
         Namespace,
         common::{
-            emit_fail, get_gov, get_node_subject_data,
-            get_quantity, subject_old_owner, try_to_update, update_event,
-            update_vali_data,
+            emit_fail, get_gov, get_node_subject_data, get_quantity,
+            subject_old_owner, try_to_update, update_event, update_vali_data,
         },
         event::{Ledger, ProtocolsSignatures},
         network::RetryNetwork,
@@ -61,9 +60,14 @@ impl Distributor {
         subject_id: &str,
         owner: &str,
         new_owner: Option<String>,
-        schema_id: &str
+        schema_id: &str,
     ) -> Result<(), ActorError> {
-        let up = Self::is_up_subject(&self.node.to_string(), owner, new_owner, schema_id);
+        let up = Self::is_up_subject(
+            &self.node.to_string(),
+            owner,
+            new_owner,
+            schema_id,
+        );
 
         if !up {
             let subject_path =
@@ -84,7 +88,7 @@ impl Distributor {
         our_key: &str,
         owner: &str,
         new_owner: Option<String>,
-        schema_id: &str
+        schema_id: &str,
     ) -> bool {
         let i_new_owner = if let Some(new_owner) = new_owner.clone() {
             our_key == new_owner
@@ -319,19 +323,14 @@ impl Distributor {
                 )
             } else if let EventRequest::Create(request) =
                 ledger.event_request.content.clone()
-                {
-                    (
-                        request.namespace,
-                        request.governance_id.to_string(),
-                        false,
-                    )
-                } else {
-                    (
-                        auth_data.namespace,
-                        auth_data.governance_id.to_string(),
-                        true,
-                    )
-                
+            {
+                (request.namespace, request.governance_id.to_string(), false)
+            } else {
+                (
+                    auth_data.namespace,
+                    auth_data.governance_id.to_string(),
+                    true,
+                )
             };
 
         let gov_id_digest = DigestIdentifier::from_str(&governance_id)
@@ -1207,7 +1206,9 @@ impl Handler<Distributor> for Distributor {
                     .is_create_event()
                 {
                     // Creamos el sujeto.
-                    if let Err(e) = self.create_subject(ctx, ledger.clone()).await {
+                    if let Err(e) =
+                        self.create_subject(ctx, ledger.clone()).await
+                    {
                         error!(
                             TARGET_DISTRIBUTOR,
                             "LastEventDistribution, can not crate new subject: {}",
@@ -1261,7 +1262,7 @@ impl Handler<Distributor> for Distributor {
                         &self.node.to_string(),
                         &old_owner,
                         old_new_owner,
-                        &schema_id
+                        &schema_id,
                     ) {
                         if let Err(e) =
                             Self::up_subject(ctx, subject_id, false).await
@@ -1293,8 +1294,7 @@ impl Handler<Distributor> for Distributor {
                             // NO se aplicó el evento porque tendría un sn demasiado grande, no es el que toca o ya está aplicado.
                             // Si fue demasiado grande
                             if last_sn < ledger.content.sn {
-                                let gov = match get_gov(ctx, subject_id).await
-                                {
+                                let gov = match get_gov(ctx, subject_id).await {
                                     Ok(gov) => gov,
                                     Err(e) => {
                                         error!(
@@ -1350,7 +1350,8 @@ impl Handler<Distributor> for Distributor {
 
                                 if let Err(e) = self
                                     .down_subject(
-                                        ctx, subject_id, &owner, new_owner, &schema_id
+                                        ctx, subject_id, &owner, new_owner,
+                                        &schema_id,
                                     )
                                     .await
                                 {
@@ -1368,13 +1369,17 @@ impl Handler<Distributor> for Distributor {
                             (owner, new_owner)
                         }
                         Err(e) => {
-                            let error = format!("Can not update subject ledger: {}", e);
-                            error!(TARGET_DISTRIBUTOR, "LastEventDistribution, {}", error);
+                            let error =
+                                format!("Can not update subject ledger: {}", e);
+                            error!(
+                                TARGET_DISTRIBUTOR,
+                                "LastEventDistribution, {}", error
+                            );
 
                             if let ActorError::Functional(_) = e.clone() {
                                 return Err(e);
                             } else {
-                                return Err(emit_fail(ctx, e).await)
+                                return Err(emit_fail(ctx, e).await);
                             }
                         }
                     }
@@ -1478,7 +1483,9 @@ impl Handler<Distributor> for Distributor {
                 }
 
                 if let Err(e) = self
-                    .down_subject(ctx, subject_id, &owner, new_owner, &schema_id)
+                    .down_subject(
+                        ctx, subject_id, &owner, new_owner, &schema_id,
+                    )
                     .await
                 {
                     error!(
@@ -1603,7 +1610,7 @@ impl Handler<Distributor> for Distributor {
                         &self.node.to_string(),
                         &old_owner,
                         old_new_owner.clone(),
-                        &schema_id
+                        &schema_id,
                     ) {
                         if let Err(e) =
                             Self::up_subject(ctx, subject_id, false).await
@@ -1625,24 +1632,34 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 let (actual_sn, owner, new_owner) = if !events.is_empty() {
-                    let last_ledger_sn = events.last().map(|x| x.content.sn).unwrap_or_default();
+                    let last_ledger_sn =
+                        events.last().map(|x| x.content.sn).unwrap_or_default();
                     if last_ledger_sn > old_sn {
+                        match Self::update_ledger(ctx, subject_id, events).await
+                        {
+                            Ok((last_sn, owner, new_owner)) => (
+                                last_sn,
+                                owner.to_string(),
+                                new_owner.map(|x| x.to_string()),
+                            ),
+                            Err(e) => {
+                                let error = format!(
+                                    "Can not update subject ledger: {}",
+                                    e
+                                );
+                                error!(
+                                    TARGET_DISTRIBUTOR,
+                                    "LedgerDistribution, {}", error
+                                );
 
-                        match Self::update_ledger(ctx, subject_id, events).await {
-                        Ok((last_sn, owner, new_owner)) => (last_sn, owner.to_string(), new_owner.map(|x| x.to_string())),
-                        Err(e) => {
-                            let error = format!("Can not update subject ledger: {}", e);
-                            error!(TARGET_DISTRIBUTOR, "LedgerDistribution, {}", error);
-
-                            if let ActorError::Functional(_) = e.clone() {
-                                return Err(e);
-                            } else {
-                                return Err(emit_fail(ctx, e).await)
+                                if let ActorError::Functional(_) = e.clone() {
+                                    return Err(e);
+                                } else {
+                                    return Err(emit_fail(ctx, e).await);
+                                }
                             }
                         }
-                    }
-                    }
-                    else {
+                    } else {
                         (old_sn, old_owner, old_new_owner)
                     }
                 } else {
@@ -1653,9 +1670,8 @@ impl Handler<Distributor> for Distributor {
                     match actual_sn.cmp(&event.content.sn) {
                         std::cmp::Ordering::Less => {
                             // No quiero su Event.
-                        },
-                        std::cmp::Ordering::Equal => {
-                            'update: {
+                        }
+                        std::cmp::Ordering::Equal => 'update: {
                             if let Err(e) = update_event(ctx, event).await {
                                 if let ActorError::Functional(_) = e {
                                     warn!(
@@ -1724,8 +1740,7 @@ impl Handler<Distributor> for Distributor {
                                     return Err(emit_fail(ctx, e).await);
                                 }
                             };
-                            }   
-                        },
+                        }
                         std::cmp::Ordering::Greater => {
                             let our_path = ActorPath::from(format!(
                                 "/user/node/distributor_{}",
@@ -1753,83 +1768,84 @@ impl Handler<Distributor> for Distributor {
                                 let e = ActorError::NotFound(our_path);
                                 return Err(emit_fail(ctx, e).await);
                             }
-                        },
+                        }
                     };
                 } else {
                     let gov_id = if governance_id.is_empty() {
-                    subject_id.clone()
-                } else {
-                    governance_id.to_string()
-                };
+                        subject_id.clone()
+                    } else {
+                        governance_id.to_string()
+                    };
 
-                let gov_version = match get_gov(ctx, &gov_id.to_string()).await
-                {
-                    Ok(gov) => gov.version,
-                    Err(e) => {
+                    let gov_version = match get_gov(ctx, &gov_id.to_string())
+                        .await
+                    {
+                        Ok(gov) => gov.version,
+                        Err(e) => {
+                            error!(
+                                TARGET_DISTRIBUTOR,
+                                "LedgerDistribution, can not obtain governance: {}",
+                                e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    };
+
+                    let new_info = ComunicateInfo {
+                        reciver: info.sender,
+                        sender: info.reciver.clone(),
+                        request_id: info.request_id,
+                        version: info.version,
+                        reciver_actor: format!(
+                            "/user/node/distributor_{}",
+                            subject_id
+                        ),
+                    };
+
+                    let helper: Option<Intermediary> =
+                        ctx.system().get_helper("network").await;
+
+                    let Some(mut helper) = helper else {
                         error!(
                             TARGET_DISTRIBUTOR,
-                            "LedgerDistribution, can not obtain governance: {}",
+                            "LedgerDistribution, can not obtain netowrk helper"
+                        );
+                        let e = ActorError::NotHelper("network".to_owned());
+                        return Err(emit_fail(ctx, e).await);
+                    };
+
+                    if let Err(e) = helper
+                        .send_command(network::CommandHelper::SendMessage {
+                            message: NetworkMessage {
+                                info: new_info,
+                                message: ActorMessage::DistributionLedgerReq {
+                                    gov_version: Some(gov_version),
+                                    actual_sn: Some(actual_sn),
+                                    subject_id: subject_id_digest,
+                                },
+                            },
+                        })
+                        .await
+                    {
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "LedgerDistribution, can not send response to network: {}",
                             e
                         );
                         return Err(emit_fail(ctx, e).await);
-                    }
-                };
-
-                let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver.clone(),
-                    request_id: info.request_id,
-                    version: info.version,
-                    reciver_actor: format!(
-                        "/user/node/distributor_{}",
-                        subject_id
-                    ),
-                };
-
-                let helper: Option<Intermediary> =
-                    ctx.system().get_helper("network").await;
-
-                let Some(mut helper) = helper else {
-                    error!(
-                        TARGET_DISTRIBUTOR,
-                        "LedgerDistribution, can not obtain netowrk helper"
-                    );
-                    let e = ActorError::NotHelper("network".to_owned());
-                    return Err(emit_fail(ctx, e).await);
-                };
-
-                if let Err(e) = helper
-                    .send_command(network::CommandHelper::SendMessage {
-                        message: NetworkMessage {
-                            info: new_info,
-                            message: ActorMessage::DistributionLedgerReq {
-                                gov_version: Some(gov_version),
-                                actual_sn: Some(actual_sn),
-                                subject_id: subject_id_digest,
-                            },
-                        },
-                    })
-                    .await
-                {
-                    error!(
-                        TARGET_DISTRIBUTOR,
-                        "LedgerDistribution, can not send response to network: {}",
-                        e
-                    );
-                    return Err(emit_fail(ctx, e).await);
-                };
-
+                    };
                 }
 
                 // Bajar al sujeto.
                 if let Err(e) = self
-                    .down_subject(ctx, subject_id, &owner, new_owner, &schema_id)
+                    .down_subject(
+                        ctx, subject_id, &owner, new_owner, &schema_id,
+                    )
                     .await
                 {
                     error!(
                         TARGET_DISTRIBUTOR,
-                        "LedgerDistribution, can not down know subject: {}",
-                        e
+                        "LedgerDistribution, can not down know subject: {}", e
                     );
                 }
             }

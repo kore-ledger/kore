@@ -166,11 +166,19 @@ impl EventRequest {
 
     pub fn get_subject_id(&self) -> DigestIdentifier {
         match self {
-            EventRequest::Create(_create_request) => DigestIdentifier::default(),
+            EventRequest::Create(_create_request) => {
+                DigestIdentifier::default()
+            }
             EventRequest::Fact(fact_request) => fact_request.subject_id.clone(),
-            EventRequest::Transfer(transfer_request) => transfer_request.subject_id.clone(),
-            EventRequest::Confirm(confirm_request) => confirm_request.subject_id.clone(),
-            EventRequest::Reject(reject_request) => reject_request.subject_id.clone(),
+            EventRequest::Transfer(transfer_request) => {
+                transfer_request.subject_id.clone()
+            }
+            EventRequest::Confirm(confirm_request) => {
+                confirm_request.subject_id.clone()
+            }
+            EventRequest::Reject(reject_request) => {
+                reject_request.subject_id.clone()
+            }
             EventRequest::EOL(eolrequest) => eolrequest.subject_id.clone(),
         }
     }

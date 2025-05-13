@@ -6,15 +6,12 @@ use identity::{
     identifier::KeyIdentifier,
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
-use kore_base::{
-    approval::approver::ApprovalStateRes,
-    auth::AuthWitness
-};
+use kore_base::{approval::approver::ApprovalStateRes, auth::AuthWitness};
 
 use common::{
-    create_and_authorize_governance,
-    create_nodes_and_connections, create_subject, emit_approve, emit_confirm,
-    emit_fact, emit_transfer, get_signatures, get_subject,
+    create_and_authorize_governance, create_nodes_and_connections,
+    create_subject, emit_approve, emit_confirm, emit_fact, emit_transfer,
+    get_signatures, get_subject,
 };
 use serde_json::json;
 use test_log::test;
@@ -247,7 +244,7 @@ async fn test_basic_use_case_1b_1e_1a() {
         json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":1})
     );
 
-    let state = get_subject(intermediary, governance_id.clone(), None)
+    let state = get_subject(intermediary, governance_id.clone(), Some(1))
         .await
         .unwrap();
 
@@ -266,7 +263,7 @@ async fn test_basic_use_case_1b_1e_1a() {
         json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":1})
     );
 
-    let state = get_subject(emit_events, governance_id.clone(), None)
+    let state = get_subject(emit_events, governance_id.clone(), Some(1))
         .await
         .unwrap();
     assert_eq!(state.subject_id, governance_id.to_string());

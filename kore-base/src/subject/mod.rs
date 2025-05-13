@@ -5,23 +5,51 @@
 //!
 
 use crate::{
+    CreateRequest, Error, EventRequestType, Governance, Node,
     approval::{
-        approver::{Approver, VotationType}, Approval
-    }, auth::WitnessesAuth, config::Config, db::Storable, distribution::{Distribution, DistributionType}, evaluation::{
-        compiler::{Compiler, CompilerMessage}, evaluator::Evaluator, schema::{EvaluationSchema, EvaluationSchemaMessage}, Evaluation
-    }, governance::{
-        model::{CreatorQuantity, ProtocolTypes, RoleTypes}, Schema
-    }, helpers::{db::ExternalDB, sink::KoreSink}, model::{
+        Approval,
+        approver::{Approver, VotationType},
+    },
+    auth::WitnessesAuth,
+    config::Config,
+    db::Storable,
+    distribution::{Distribution, DistributionType},
+    evaluation::{
+        Evaluation,
+        compiler::{Compiler, CompilerMessage},
+        evaluator::Evaluator,
+        schema::{EvaluationSchema, EvaluationSchemaMessage},
+    },
+    governance::{
+        Schema,
+        model::{CreatorQuantity, ProtocolTypes, RoleTypes},
+    },
+    helpers::{db::ExternalDB, sink::KoreSink},
+    model::{
+        HashId, Namespace, ValueWrapper,
         common::{
-            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data, register_relation, try_to_update,  verify_protocols_state
-        }, event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures}, request::EventRequest, signature::Signed, HashId, Namespace, ValueWrapper
-    }, node::{
-        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse}, register::{
+            delete_relation, emit_fail, get_gov, get_last_event, get_vali_data,
+            register_relation, try_to_update, verify_protocols_state,
+        },
+        event::{Event as KoreEvent, Ledger, LedgerValue, ProtocolsSignatures},
+        request::EventRequest,
+        signature::Signed,
+    },
+    node::{
+        NodeMessage, TransferSubject,
+        nodekey::{NodeKey, NodeKeyMessage, NodeKeyResponse},
+        register::{
             Register, RegisterDataGov, RegisterDataSubj, RegisterMessage,
-        }, transfer, NodeMessage, TransferSubject
-    }, update::TransferResponse, validation::{
-        proof::ValidationProof, schema::{ValidationSchema, ValidationSchemaMessage}, validator::Validator, Validation
-    }, CreateRequest, Error, EventRequestType, Governance, Node
+        },
+        transfer,
+    },
+    update::TransferResponse,
+    validation::{
+        Validation,
+        proof::ValidationProof,
+        schema::{ValidationSchema, ValidationSchemaMessage},
+        validator::Validator,
+    },
 };
 
 use actor::{
@@ -187,7 +215,7 @@ impl Subject {
             Err(Error::Subject("Invalid create event request".to_string()))
         }
     }
-    
+
     async fn get_node_key(
         &self,
         ctx: &mut ActorContext<Subject>,
@@ -938,7 +966,6 @@ impl Subject {
         let node_actor: Option<ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
 
-
         if let Some(node_actor) = node_actor {
             node_actor
                 .ask(NodeMessage::ChangeSubjectOwner {
@@ -1598,7 +1625,7 @@ impl Subject {
                             ctx,
                             &self.subject_id.to_string(),
                             event.signature.signer.clone(),
-                            self.owner.clone()
+                            self.owner.clone(),
                         )
                         .await?;
                     }
@@ -1639,7 +1666,8 @@ impl Subject {
         new: KeyIdentifier,
         old: KeyIdentifier,
     ) -> Result<(), ActorError> {
-        let tranfer_register_path = ActorPath::from("/user/node/transfer_register");
+        let tranfer_register_path =
+            ActorPath::from("/user/node/transfer_register");
         let transfer_register_actor: Option<actor::ActorRef<TransferRegister>> =
             ctx.system().get_actor(&tranfer_register_path).await;
 
@@ -1648,7 +1676,11 @@ impl Subject {
         };
 
         transfer_register_actor
-            .tell(TransferRegisterMessage::RegisterNewOldOwner { old, new, subject_id: subject_id.to_owned() })
+            .tell(TransferRegisterMessage::RegisterNewOldOwner {
+                old,
+                new,
+                subject_id: subject_id.to_owned(),
+            })
             .await?;
 
         Ok(())
@@ -1904,7 +1936,10 @@ impl Subject {
                                     new_gov.version,
                                 );
                                 ctx.create_child(
-                                    &format!("{}_evaluation", creators.schema_id),
+                                    &format!(
+                                        "{}_evaluation",
+                                        creators.schema_id
+                                    ),
                                     eval_actor,
                                 )
                                 .await?;
@@ -1943,7 +1978,10 @@ impl Subject {
                                     new_gov.version,
                                 );
                                 ctx.create_child(
-                                    &format!("{}_validation", creators.schema_id),
+                                    &format!(
+                                        "{}_validation",
+                                        creators.schema_id
+                                    ),
                                     actor,
                                 )
                                 .await?;
@@ -2012,7 +2050,12 @@ impl Subject {
             )
             .await?;
 
-            Self::update_subject_node(ctx, &self.subject_id.to_string(), self.sn).await?;
+            Self::update_subject_node(
+                ctx,
+                &self.subject_id.to_string(),
+                self.sn,
+            )
+            .await?;
         }
 
         Ok(())
@@ -2037,14 +2080,19 @@ impl Subject {
     async fn update_subject_node(
         ctx: &mut ActorContext<Subject>,
         subject_id: &str,
-        sn: u64
+        sn: u64,
     ) -> Result<(), ActorError> {
         let node_path = ActorPath::from("/user/node");
         let node_actor: Option<ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
-    
+
         if let Some(node_actor) = node_actor {
-            node_actor.tell(NodeMessage::UpdateSubject { subject_id: subject_id.to_owned(), sn }).await
+            node_actor
+                .tell(NodeMessage::UpdateSubject {
+                    subject_id: subject_id.to_owned(),
+                    sn,
+                })
+                .await
         } else {
             Err(ActorError::NotFound(node_path))
         }
@@ -2424,7 +2472,11 @@ impl Handler<Subject> for Subject {
                     );
                     return Err(e);
                 };
-                Ok(SubjectResponse::UpdateResult(self.sn, self.owner.clone(), self.new_owner.clone()))
+                Ok(SubjectResponse::UpdateResult(
+                    self.sn,
+                    self.owner.clone(),
+                    self.new_owner.clone(),
+                ))
             }
             SubjectMessage::GetGovernance => {
                 // If is a governance
@@ -2723,7 +2775,7 @@ mod tests {
             .await
             .unwrap();
 
-        if let SubjectResponse::UpdateResult(last_sn, _ , _) = response {
+        if let SubjectResponse::UpdateResult(last_sn, _, _) = response {
             assert_eq!(last_sn, 0);
         } else {
             panic!("Invalid response");
@@ -3039,7 +3091,7 @@ mod tests {
         let duracion = inicio.elapsed();
         println!("El método tardó: {:.2?}", duracion);
 
-        if let SubjectResponse::UpdateResult(last_sn, _ , _) = response {
+        if let SubjectResponse::UpdateResult(last_sn, _, _) = response {
             assert_eq!(last_sn, 1000);
         } else {
             panic!("Invalid response");

@@ -54,7 +54,8 @@ impl Governance {
         for schema_id in add_schema {
             self.roles_schema
                 .insert(schema_id.clone(), RolesSchema::default());
-            self.policies_schema.insert(schema_id, PolicySchema::default());
+            self.policies_schema
+                .insert(schema_id, PolicySchema::default());
         }
     }
 
@@ -285,7 +286,11 @@ impl Governance {
     /// * `schema_id` - The schema id from [`Schema`].
     /// # Returns
     /// * Option<[`Quorum`]> - The quorum.
-    fn get_quorum(&self, role: ProtocolTypes, schema_id: &str) -> Option<Quorum> {
+    fn get_quorum(
+        &self,
+        role: ProtocolTypes,
+        schema_id: &str,
+    ) -> Option<Quorum> {
         if schema_id == "governance" {
             self.policies_gov.get_quorum(role)
         } else {
@@ -308,8 +313,11 @@ impl Governance {
         schema_id: &str,
         namespace: Namespace,
     ) -> Result<(HashSet<KeyIdentifier>, Quorum), ActorError> {
-        let (signers, _not_members) =
-            self.get_signers(RoleTypes::from(role.clone()), schema_id, namespace);
+        let (signers, _not_members) = self.get_signers(
+            RoleTypes::from(role.clone()),
+            schema_id,
+            namespace,
+        );
 
         let Some(quorum) = self.get_quorum(role.clone(), schema_id) else {
             return Err(ActorError::Functional(format!(

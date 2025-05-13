@@ -13,13 +13,33 @@ use network::ComunicateInfo;
 use wasmtime::{Caller, Engine, Linker};
 
 use crate::{
-    auth::{Auth, AuthMessage, WitnessesAuth}, governance::{
-        model::{CreatorQuantity, ProtocolTypes}, Quorum
-    }, intermediary::Intermediary, model::SignTypesNode, node::{relationship::{
-        OwnerSchema, RelationShip, RelationShipMessage, RelationShipResponse,
-    }, transfer::{TransferRegister, TransferRegisterMessage, TransferRegisterResponse}, SubjectData}, request::manager::{RequestManager, RequestManagerMessage}, subject::{
-        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse}, validata::{ValiData, ValiDataMessage, ValiDataResponse}, Metadata
-    }, validation::proof::ValidationProof, ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance, NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed, Subject, SubjectMessage, SubjectResponse
+    ActorMessage, Error, Event as KoreEvent, EventRequestType, Governance,
+    NetworkMessage, Node, NodeMessage, NodeResponse, Signature, Signed,
+    Subject, SubjectMessage, SubjectResponse,
+    auth::{Auth, AuthMessage, WitnessesAuth},
+    governance::{
+        Quorum,
+        model::{CreatorQuantity, ProtocolTypes},
+    },
+    intermediary::Intermediary,
+    model::SignTypesNode,
+    node::{
+        SubjectData,
+        relationship::{
+            OwnerSchema, RelationShip, RelationShipMessage,
+            RelationShipResponse,
+        },
+        transfer::{
+            TransferRegister, TransferRegisterMessage, TransferRegisterResponse,
+        },
+    },
+    request::manager::{RequestManager, RequestManagerMessage},
+    subject::{
+        Metadata,
+        event::{LedgerEvent, LedgerEventMessage, LedgerEventResponse},
+        validata::{ValiData, ValiDataMessage, ValiDataResponse},
+    },
+    validation::proof::ValidationProof,
 };
 use tracing::error;
 
@@ -174,7 +194,10 @@ where
     let response =
         if let Some(transfer_register_actor) = transfer_register_actor {
             transfer_register_actor
-                .ask(TransferRegisterMessage::IsOldOwner { subject_id: subject_id.to_owned(), old })
+                .ask(TransferRegisterMessage::IsOldOwner {
+                    subject_id: subject_id.to_owned(),
+                    old,
+                })
                 .await?
         } else {
             return Err(ActorError::NotFound(tranfer_register_path));
@@ -244,7 +267,7 @@ where
 
 pub async fn get_node_subject_data<A>(
     ctx: &mut ActorContext<A>,
-    subject_id: &str
+    subject_id: &str,
 ) -> Result<Option<(SubjectData, Option<String>)>, ActorError>
 where
     A: Actor + Handler<A>,
@@ -255,14 +278,18 @@ where
 
     // We obtain the validator
     let node_response = if let Some(node_actor) = node_actor {
-        node_actor.ask(NodeMessage::GetSubjectData(subject_id.to_owned())).await?
+        node_actor
+            .ask(NodeMessage::GetSubjectData(subject_id.to_owned()))
+            .await?
     } else {
         return Err(ActorError::NotFound(node_path));
     };
 
     match node_response {
         NodeResponse::None => Ok(None),
-        NodeResponse::SubjectData { data, new_owner } => Ok(Some((data, new_owner))),
+        NodeResponse::SubjectData { data, new_owner } => {
+            Ok(Some((data, new_owner)))
+        }
         _ => Err(ActorError::UnexpectedResponse(
             node_path,
             "NodeResponse::SubjectData || NodeResponse::None".to_owned(),
@@ -716,7 +743,6 @@ where
         })
         .await
 }
-
 
 pub async fn get_last_event<A>(
     ctx: &mut ActorContext<A>,

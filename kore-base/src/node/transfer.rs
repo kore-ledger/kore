@@ -27,7 +27,7 @@ pub enum TransferRegisterMessage {
         old: KeyIdentifier,
         new: KeyIdentifier,
     },
-    IsOldOwner{
+    IsOldOwner {
         subject_id: String,
         old: KeyIdentifier,
     },
@@ -85,9 +85,17 @@ impl Handler<TransferRegister> for TransferRegister {
         ctx: &mut ActorContext<TransferRegister>,
     ) -> Result<TransferRegisterResponse, ActorError> {
         match msg {
-            TransferRegisterMessage::RegisterNewOldOwner {old,new, subject_id } => {
+            TransferRegisterMessage::RegisterNewOldOwner {
+                old,
+                new,
+                subject_id,
+            } => {
                 self.on_event(
-                    TransferRegisterEvent::RegisterNewOldOwner { old, new, subject_id },
+                    TransferRegisterEvent::RegisterNewOldOwner {
+                        old,
+                        new,
+                        subject_id,
+                    },
                     ctx,
                 )
                 .await
@@ -125,12 +133,19 @@ impl Handler<TransferRegister> for TransferRegister {
 impl PersistentActor for TransferRegister {
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
-            TransferRegisterEvent::RegisterNewOldOwner { old, new, subject_id } => {
+            TransferRegisterEvent::RegisterNewOldOwner {
+                old,
+                new,
+                subject_id,
+            } => {
                 if let Some(old_owners) = self.old_owners.get_mut(subject_id) {
                     old_owners.remove(new);
                     old_owners.insert(old.clone());
                 } else {
-                    self.old_owners.insert(subject_id.clone(), HashSet::from([old.clone()]));
+                    self.old_owners.insert(
+                        subject_id.clone(),
+                        HashSet::from([old.clone()]),
+                    );
                 };
             }
         };

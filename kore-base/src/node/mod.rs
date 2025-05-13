@@ -170,7 +170,6 @@ impl Node {
             data.owner = self.owner.key_identifier().to_string();
             self.owned_subjects.insert(subject_id, data);
         };
-        
     }
 
     pub fn register_subject(&mut self, subject_id: String, iam_owner: bool) {
@@ -259,7 +258,7 @@ impl Node {
                 let sink =
                     Sink::new(subject_actor.subscribe(), ext_db.get_subject());
                 ctx.system().run_sink(sink).await;
-            } 
+            }
 
             ctx.create_child(
                 &format!("distributor_{}", subject),
@@ -707,11 +706,10 @@ impl Handler<Node> for Node {
 
                 ctx.create_child(
                     &format!("distributor_{}", ledger.content.subject_id),
-                    Distributor {
-                        node: self.owner(),
-                    },
+                    Distributor { node: self.owner() },
                 )
-                .await.map_err(|e| ActorError::Functional(e.to_string()))?;
+                .await
+                .map_err(|e| ActorError::Functional(e.to_string()))?;
 
                 match response {
                     SubjectResponse::UpdateResult(_, _, _) => {
@@ -772,9 +770,7 @@ impl Handler<Node> for Node {
 
                 ctx.create_child(
                     &format!("distributor_{}", data.subject_id),
-                    Distributor {
-                        node: self.owner(),
-                    },
+                    Distributor { node: self.owner() },
                 )
                 .await?;
 

@@ -4,11 +4,18 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{model::RoleTypes, Governance}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
+    Signed,
+    governance::{Governance, model::RoleTypes},
+    helpers::network::{NetworkMessage, intermediary::Intermediary},
+    model::{
+        SignTypesNode, TimeStamp,
         common::{
-            emit_fail, get_gov, get_metadata, get_sign, update_ledger_network, UpdateData
-        }, event::ProtocolsSignatures, network::{RetryNetwork, TimeOutResponse}, SignTypesNode, TimeStamp
-    }, Signed
+            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
+            update_ledger_network,
+        },
+        event::ProtocolsSignatures,
+        network::{RetryNetwork, TimeOutResponse},
+    },
 };
 
 use super::{
@@ -59,13 +66,15 @@ impl Validator {
     ) -> Result<bool, ActorError> {
         let governance_string = governance_id.to_string();
         let metadata = get_metadata(ctx, &governance_string).await?;
-        let governance = match Governance::try_from(metadata.properties.clone()) {
+        let governance = match Governance::try_from(metadata.properties.clone())
+        {
             Ok(gov) => gov,
             Err(e) => {
-                let e = format!("can not convert governance from properties: {}",e);
-                return Err(ActorError::FunctionalFail(
-                    e,
-                ));
+                let e = format!(
+                    "can not convert governance from properties: {}",
+                    e
+                );
+                return Err(ActorError::FunctionalFail(e));
             }
         };
 

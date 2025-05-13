@@ -32,9 +32,9 @@ tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
 tracing = { workspace = true }
 network = { path = "../network" }
 rmp-serde = { workspace = true }
-wasmtime = {version = "31.0.0"}
+wasmtime = {version = "32.0.0"}
 async-std = "1.13.1"
-rusqlite = { version = "0.34.0", features = ["bundled"], optional = true}
+rusqlite = { version = "0.35.0", features = ["bundled"], optional = true}
 once_cell = { workspace = true }
 base64 = { workspace = true }
 prometheus-client = { workspace = true }

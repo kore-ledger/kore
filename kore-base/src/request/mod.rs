@@ -492,7 +492,10 @@ impl Handler<RequestHandler> for RequestHandler {
                     ))
                 })?;
 
-                if !is_owner && !is_pending && !request.content.is_create_event(){
+                if !is_owner
+                    && !is_pending
+                    && !request.content.is_create_event()
+                {
                     let e = "An event is being sent to a subject that does not belong to us or its creation is pending completion, and the subject is not pending event confirmation.";
                     error!(TARGET_REQUEST, "NewRequest, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));

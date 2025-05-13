@@ -10,6 +10,7 @@ use crate::codec::Codec;
 use crate::protocol::TellProtocol;
 use crate::{EMPTY_QUEUE_SHRINK_THRESHOLD, InboundTellId, OutboundTellId};
 
+use futures_bounded::{Delay, FuturesMap};
 use libp2p::swarm::{
     ConnectionHandler,
     ConnectionHandlerEvent, //ConnectionHandlerUpgrErr, KeepAlive,
@@ -93,8 +94,8 @@ where
             inbound_receiver,
             inbound_sender,
             inbound_tell_id,
-            worker_streams: futures_bounded::FuturesMap::new(
-                substream_timeout,
+            worker_streams: FuturesMap::new(
+                move || Delay::futures_timer(substream_timeout),
                 max_concurrent_streams,
             ),
         }

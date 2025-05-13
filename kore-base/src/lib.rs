@@ -654,7 +654,7 @@ impl Api {
         subject_id: DigestIdentifier,
         quantity: Option<u64>,
         page: Option<u64>,
-        reverese: Option<bool>
+        reverese: Option<bool>,
     ) -> Result<PaginatorEvents, Error> {
         let response = self
             .query
@@ -662,7 +662,7 @@ impl Api {
                 subject_id: subject_id.to_string(),
                 quantity,
                 page,
-                reverese
+                reverese,
             })
             .await
             .map_err(|e| {

@@ -53,6 +53,7 @@ pub struct EventSnQuery {
 pub struct EventFirstLastQuery {
     quantity: Option<u64>,
     success: Option<bool>,
+    reverse: Option<bool>
 }
 
 use crate::doc::ApiDoc;

@@ -294,11 +294,13 @@ impl Bridge {
         subject_id: String,
         quantity: Option<u64>,
         page: Option<u64>,
-        reverse: Option<bool>
+        reverse: Option<bool>,
     ) -> Result<PaginatorEvents, Error> {
         let subject_id = DigestIdentifier::from_str(&subject_id)
             .map_err(|e| Error::Bridge(format!("Invalid subject id: {}", e)))?;
-        self.api.get_events(subject_id, quantity, page, reverse).await
+        self.api
+            .get_events(subject_id, quantity, page, reverse)
+            .await
     }
 
     pub async fn get_event_sn(

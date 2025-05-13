@@ -145,13 +145,15 @@ impl Evaluator {
     ) -> Result<bool, ActorError> {
         let governance_string = governance_id.to_string();
         let metadata = get_metadata(ctx, &governance_string).await?;
-        let governance = match Governance::try_from(metadata.properties.clone()) {
+        let governance = match Governance::try_from(metadata.properties.clone())
+        {
             Ok(gov) => gov,
             Err(e) => {
-                let e = format!("can not convert governance from properties: {}",e);
-                return Err(ActorError::FunctionalFail(
-                    e,
-                ));
+                let e = format!(
+                    "can not convert governance from properties: {}",
+                    e
+                );
+                return Err(ActorError::FunctionalFail(e));
             }
         };
 

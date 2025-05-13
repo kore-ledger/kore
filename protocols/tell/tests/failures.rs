@@ -6,6 +6,8 @@ use tell::{
     ProtocolSupport,
 };
 
+use serial_test::serial;
+
 use libp2p::{PeerId, StreamProtocol, swarm::Swarm};
 
 use anyhow::{Result, bail};
@@ -15,6 +17,7 @@ use libp2p_swarm_test::SwarmExt;
 use std::{io, iter, pin::pin, time::Duration};
 
 #[async_std::test]
+#[serial]
 async fn test_outbound_failure() {
     let (peer1_id, mut swarm1) = new_swarm();
     let (_peer2_id, mut swarm2) = new_swarm();
@@ -55,6 +58,7 @@ async fn test_outbound_failure() {
 }
 
 #[async_std::test]
+#[serial]
 async fn test_inbound_failure() {
     let (peer1_id, mut swarm1) = new_swarm();
     let (_peer2_id, mut swarm2) = new_swarm();

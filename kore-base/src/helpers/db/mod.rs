@@ -55,7 +55,7 @@ pub trait Querys {
         subject_id: &str,
         quantity: Option<u64>,
         page: Option<u64>,
-        reverse: Option<bool>
+        reverse: Option<bool>,
     ) -> Result<PaginatorEvents, Error>;
 
     // events sn
@@ -194,12 +194,14 @@ impl Querys for ExternalDB {
         subject_id: &str,
         quantity: Option<u64>,
         page: Option<u64>,
-        reverse: Option<bool>
+        reverse: Option<bool>,
     ) -> Result<PaginatorEvents, Error> {
         match self {
             #[cfg(feature = "ext-sqlite")]
             ExternalDB::SqliteLocal(sqlite_local) => {
-                sqlite_local.get_events(subject_id, quantity, page, reverse).await
+                sqlite_local
+                    .get_events(subject_id, quantity, page, reverse)
+                    .await
             }
         }
     }
