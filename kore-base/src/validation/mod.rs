@@ -327,6 +327,26 @@ impl Handler<Validation> for Validation {
                 self.version = version;
                 self.reboot = false;
 
+                if signers.is_empty() {
+                    let e = format!("There are no validators available for the {} scheme", info.metadata.schema_id);
+                    
+                    warn!(
+                        TARGET_VALIDATION,
+                        "Create, {}", e
+                    );
+
+                    if let Err(e) =
+                        self.send_validation_to_req(ctx, false).await
+                            {
+                                error!(
+                                    TARGET_VALIDATION,
+                                    "Create, can not send validation response to Request actor: {}",
+                                    e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        };
+                }
+
                 let signature = match get_sign(
                     ctx,
                     SignTypesNode::ValidationReq(Box::new(

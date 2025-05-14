@@ -91,7 +91,6 @@ impl Governance {
 
     pub fn check_basic_gov(&self) -> bool {
         self.roles_gov.check_basic_gov()
-            && self.roles_all_schemas.check_basic_gov()
     }
 
     pub fn new(owner_key: KeyIdentifier) -> Self {
@@ -101,10 +100,6 @@ impl Governance {
             validate: Quorum::Majority,
         };
 
-        let owner_users_schema: BTreeSet<Role> = BTreeSet::from([Role {
-            name: "Owner".to_owned(),
-            namespace: Namespace::new(),
-        }]);
         let owner_users_gov: BTreeSet<MemberName> =
             BTreeSet::from(["Owner".to_owned()]);
 
@@ -120,9 +115,9 @@ impl Governance {
         };
 
         let not_gov_role = RolesAllSchemas {
-            evaluator: owner_users_schema.clone(),
-            validator: owner_users_schema.clone(),
-            witness: owner_users_schema,
+            evaluator: BTreeSet::new(),
+            validator: BTreeSet::new(),
+            witness: BTreeSet::new(),
             issuer: RoleSchemaIssuer {
                 users: BTreeSet::new(),
                 any: false,

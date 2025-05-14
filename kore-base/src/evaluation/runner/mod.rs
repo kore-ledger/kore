@@ -248,6 +248,8 @@ impl Runner {
                     old_owner_name
                 )));
             }
+
+            governance.roles_gov.witness.insert(old_owner_name);
         }
 
         let mod_state = to_value(governance).map_err(|e| {

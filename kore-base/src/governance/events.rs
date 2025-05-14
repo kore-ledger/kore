@@ -300,7 +300,7 @@ impl GovRoleEvent {
                             "Can not remove approver {}, does not have this role",
                             approver
                         )));
-                    };
+                    }
                 }
             }
 
@@ -316,7 +316,7 @@ impl GovRoleEvent {
                             "Can not remove evaluator {}, does not have this role",
                             evaluator
                         )));
-                    };
+                    }
                 }
             }
 
@@ -331,7 +331,7 @@ impl GovRoleEvent {
                             "Can not remove validator {}, does not have this role",
                             validator
                         )));
-                    };
+                    }
                 }
             }
 

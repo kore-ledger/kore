@@ -161,16 +161,6 @@ impl From<RolesSchema> for RolesAllSchemas {
 }
 
 impl RolesAllSchemas {
-    pub fn check_basic_gov(&self) -> bool {
-        let owner = Role {
-            name: "Owner".to_string(),
-            namespace: Namespace::default(),
-        };
-        self.evaluator.contains(&owner)
-            && self.validator.contains(&owner)
-            && self.witness.contains(&owner)
-    }
-
     pub fn hash_this_rol_not_namespace(
         &self,
         role: RoleTypes,

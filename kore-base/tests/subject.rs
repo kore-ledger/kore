@@ -75,6 +75,24 @@ async fn test_limits_in_subjects() {
                     "schema_id": "Example",
                     "roles": {
                         "add": {
+                            "evaluator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "validator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "witness": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
                             "creator": [
                                 {
                                     "name": "KoreNode2",
@@ -350,6 +368,24 @@ async fn test_namespace_in_role_1() {
                     "schema_id": "Example",
                     "roles": {
                         "add": {
+                            "evaluator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "validator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "witness": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
                             "creator": [
                                 {
                                     "name": "KoreNode2",
@@ -597,6 +633,24 @@ async fn test_namespace_in_role_2() {
                     "schema_id": "Example",
                     "roles": {
                         "add": {
+                            "evaluator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "validator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "witness": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
                             "creator": [
                                 {
                                     "name": "KoreNode2",
@@ -851,6 +905,24 @@ async fn test_subject_transfer_event_1() {
                     "schema_id": "Example",
                     "roles": {
                         "add": {
+                            "evaluator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "validator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "witness": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
                             "creator": [
                                 {
                                     "name": "KoreNode1",
@@ -1069,6 +1141,24 @@ async fn test_subject_transfer_event_2() {
             },
             "all_schemas": {
                 "add": {
+                    "evaluator": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                            }
+                    ],
+                    "validator": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                        }
+                    ],
+                    "witness": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                        }
+                    ],
                     "issuer": [
                         {
                             "name": "KoreNode1",
@@ -1372,6 +1462,24 @@ async fn test_subject_transfer_event_3() {
             },
             "all_schemas": {
                 "add": {
+                    "evaluator": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                            }
+                    ],
+                    "validator": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                        }
+                    ],
+                    "witness": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                        }
+                    ],
                     "issuer": [
                         {
                             "name": "KoreNode1",
@@ -1669,6 +1777,24 @@ async fn test_dynamic_witnesses_1() {
             },
             "all_schemas": {
                 "add": {
+                    "evaluator": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                            }
+                    ],
+                    "validator": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                        }
+                    ],
+                    "witness": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                        }
+                    ],
                     "issuer": [
                         {
                             "name": "KoreNode1",
@@ -1892,6 +2018,18 @@ async fn test_dynamic_witnesses_2() {
             },
             "all_schemas": {
                 "add": {
+                    "evaluator": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                            }
+                    ],
+                    "validator": [
+                        {
+                            "name": "Owner",
+                            "namespace": []
+                        }
+                    ],
                     "issuer": [
                         {
                             "name": "KoreNode1",
@@ -1901,6 +2039,10 @@ async fn test_dynamic_witnesses_2() {
                     "witness": [
                         {
                             "name": "KoreNode2",
+                            "namespace": []
+                        },                         
+                        {
+                            "name": "Owner",
                             "namespace": []
                         }
                     ]
