@@ -174,7 +174,7 @@ impl GovRoleEvent {
                 }
             }
 
-            // Evaluators
+            // Validators
             if let Some(validators) = add.validator {
                 if validators.is_empty() {
                     return Err(Error::Runner("Validators vec in governance roles add can not be empty".to_owned()));
@@ -284,7 +284,7 @@ impl GovRoleEvent {
         if let Some(remove) = self.remove.clone() {
             if remove.is_empty() {
                 return Err(Error::Runner(
-                    "Add in GovRoleEvent can not be empty".to_owned(),
+                    "Remove in GovRoleEvent can not be empty".to_owned(),
                 ));
             }
 

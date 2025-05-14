@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 
 mod common;
 
@@ -57,6 +57,13 @@ async fn test_governance_and_subject_copy_with_approve() {
             ]
         },
         "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode2"
+                    ]
+                }
+            },
             "schema":
                 [
                 {
@@ -208,18 +215,27 @@ async fn test_basic_use_case_1b_1e_1a() {
     .await;
 
     // add node bootstrap and ephemeral to governance
-    let json = json!({"members": {
-        "add": [
-            {
-                "name": "KoreNode2",
-                "key": intermediary.controller_id()
-            },
-            {
-                "name": "KoreNode3",
-                "key": emit_events.controller_id()
+    let json = json!({
+        "members": {
+            "add": [
+                {
+                    "name": "KoreNode2",
+                    "key": intermediary.controller_id()
+                },
+                {
+                    "name": "KoreNode3",
+                    "key": emit_events.controller_id()
+                }
+            ]
+        },
+        "roles": {
+            "governance": {
+                "add": {
+                    "witness": ["KoreNode2", "KoreNode3"],
+                }
             }
-        ]
-    }});
+        }
+    });
 
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
@@ -241,7 +257,7 @@ async fn test_basic_use_case_1b_1e_1a() {
     assert_eq!(state.sn, 1);
     assert_eq!(
         state.properties,
-        json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":1})
+        json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["KoreNode2", "KoreNode3"]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":1})
     );
 
     let state = get_subject(intermediary, governance_id.clone(), Some(1))
@@ -260,7 +276,7 @@ async fn test_basic_use_case_1b_1e_1a() {
     assert_eq!(state.sn, 1);
     assert_eq!(
         state.properties,
-        json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":1})
+        json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["KoreNode2", "KoreNode3"]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":1})
     );
 
     let state = get_subject(emit_events, governance_id.clone(), Some(1))
@@ -278,7 +294,7 @@ async fn test_basic_use_case_1b_1e_1a() {
     assert_eq!(state.sn, 1);
     assert_eq!(
         state.properties,
-        json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":1})
+        json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["KoreNode2", "KoreNode3"]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":1})
     );
 }
 
@@ -378,7 +394,15 @@ async fn test_transfer_event_governance_1() {
                 "key": future_owner.controller_id()
             }
         ]
-    }});
+    },
+        "roles": {
+            "governance": {
+                "add": {
+                    "witness": ["KoreNode1"],
+                }
+            }
+        }
+});
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
         .unwrap();
@@ -430,7 +454,7 @@ async fn test_transfer_event_governance_1() {
     assert_eq!(state.sn, 4);
     assert_eq!(
         state.properties,
-        json!({"members":{"KoreNode2":fake_node, "Owner":future_owner.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":4})
+        json!({"members":{"KoreNode2":fake_node, "Owner":future_owner.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Owner"]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":4})
     );
 
     let state = get_subject(owner_governance, governance_id.clone(), None)
@@ -448,7 +472,7 @@ async fn test_transfer_event_governance_1() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"KoreNode1":future_owner.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":2})
+        json!({"members":{"KoreNode1":future_owner.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["KoreNode1"]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":2})
     );
 }
 
@@ -487,7 +511,15 @@ async fn test_transfer_event_governance_2() {
                 "key": future_owner.controller_id()
             }
         ]
-    }});
+    },
+        "roles": {
+            "governance": {
+                "add": {
+                    "witness": ["KoreNode1"],
+                }
+            }
+        }
+});
 
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
@@ -522,11 +554,22 @@ async fn test_transfer_event_governance_2() {
     emit_confirm(
         future_owner,
         governance_id.clone(),
-        Some("Korenode_22".to_owned()),
+        Some("KoreNode_Old".to_owned()),
         true,
     )
     .await
     .unwrap();
+
+    owner_governance.auth_subject(governance_id.clone(), AuthWitness::One(KeyIdentifier::from_str(&future_owner.controller_id()).unwrap())).await.unwrap();
+    owner_governance.update_subject(governance_id.clone()).await.unwrap();
+
+    let _ = get_subject(owner_governance, governance_id.clone(), Some(3)).await.unwrap();
+
+    let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
+    assert!(transfer_data.is_empty());
+
+    let transfer_data = future_owner.get_pending_transfers().await.unwrap();
+    assert!(transfer_data.is_empty());
 
     let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
         .key_identifier()
@@ -540,13 +583,15 @@ async fn test_transfer_event_governance_2() {
                 "key": fake_node
             }
         ]
-    }});
-
-    let transfer_data = owner_governance.get_pending_transfers().await.unwrap();
-    assert!(transfer_data.is_empty());
-
-    let transfer_data = future_owner.get_pending_transfers().await.unwrap();
-    assert!(transfer_data.is_empty());
+    },
+    "roles": {
+            "governance": {
+                "add": {
+                    "witness": ["KoreNode_Old"],
+                }
+            }
+        }
+});
 
     emit_fact(future_owner, governance_id.clone(), json, true)
         .await
@@ -567,7 +612,7 @@ async fn test_transfer_event_governance_2() {
     assert_eq!(state.sn, 4);
     assert_eq!(
         state.properties,
-        json!({"members":{"KoreNode2":fake_node,"Korenode_22":owner_governance.controller_id(),"Owner":future_owner.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":4})
+        json!({"members":{"KoreNode2":fake_node,"KoreNode_Old":owner_governance.controller_id(),"Owner":future_owner.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["KoreNode_Old", "Owner"]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":4})
     );
 
     let state = get_subject(owner_governance, governance_id.clone(), None)
@@ -585,7 +630,7 @@ async fn test_transfer_event_governance_2() {
     assert_eq!(state.sn, 4);
     assert_eq!(
         state.properties,
-        json!({"members":{"KoreNode2":fake_node,"Korenode_22":owner_governance.controller_id(),"Owner":future_owner.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":4})
+        json!({"members":{"KoreNode2":fake_node,"KoreNode_Old":owner_governance.controller_id(),"Owner":future_owner.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["KoreNode_Old", "Owner"]},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_schema":{},"schemas":{},"version":4})
     );
 }
 
@@ -617,6 +662,13 @@ async fn test_governance_fail_approve() {
                     "key": fake_node
                 }
             ]
+        },
+        "roles": {
+            "governance": {
+                "add": {
+                    "witness": ["KoreNode1"],
+                }
+            }
         }
     });
 
@@ -687,6 +739,7 @@ async fn test_governance_manual_many_approvers() {
         "roles": {
             "governance": {
                 "add": {
+                    "witness": ["Approver1", "Approver2"],
                     "approver": ["Approver1", "Approver2"]
                 }
             }
@@ -796,7 +849,7 @@ async fn test_governance_manual_many_approvers() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
+        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Approver1", "Approver2"]},"roles_schema":{},"schemas":{},"version":2})
     );
     let state = get_subject(approver_1, governance_id.clone(), None)
         .await
@@ -813,7 +866,7 @@ async fn test_governance_manual_many_approvers() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
+        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Approver1", "Approver2"]},"roles_schema":{},"schemas":{},"version":2})
     );
     let state = get_subject(approver_2, governance_id.clone(), None)
         .await
@@ -830,7 +883,7 @@ async fn test_governance_manual_many_approvers() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
+        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Approver1", "Approver2"]},"roles_schema":{},"schemas":{},"version":2})
     );
 }
 
@@ -870,6 +923,7 @@ async fn test_governance_auto_many_approvers() {
         "roles": {
             "governance": {
                 "add": {
+                    "witness": ["Approver1", "Approver2"],
                     "approver": ["Approver1", "Approver2"]
                 }
             }
@@ -979,7 +1033,7 @@ async fn test_governance_auto_many_approvers() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
+        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Approver1","Approver2"]},"roles_schema":{},"schemas":{},"version":2})
     );
     let state = get_subject(approver_1, governance_id.clone(), None)
         .await
@@ -996,7 +1050,7 @@ async fn test_governance_auto_many_approvers() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
+        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Approver1","Approver2"]},"roles_schema":{},"schemas":{},"version":2})
     );
     let state = get_subject(approver_2, governance_id.clone(), None)
         .await
@@ -1013,7 +1067,7 @@ async fn test_governance_auto_many_approvers() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":2})
+        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"KoreNode1":fake_node,"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Approver1","Approver2"]},"roles_schema":{},"schemas":{},"version":2})
     );
 }
 
@@ -1053,7 +1107,8 @@ async fn test_governance_not_quorum_many_approvers() {
         "roles": {
             "governance": {
                 "add": {
-                    "approver": ["Approver1", "Approver2"]
+                    "approver": ["Approver1", "Approver2"],
+                    "witness": ["Approver1", "Approver2"]
                 }
             }
         },
@@ -1162,7 +1217,7 @@ async fn test_governance_not_quorum_many_approvers() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":1})
+        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Approver1","Approver2"]},"roles_schema":{},"schemas":{},"version":1})
     );
     let state = get_subject(approver_1, governance_id.clone(), None)
         .await
@@ -1179,7 +1234,7 @@ async fn test_governance_not_quorum_many_approvers() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":1})
+        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Approver1","Approver2"]},"roles_schema":{},"schemas":{},"version":1})
     );
     let state = get_subject(approver_2, governance_id.clone(), None)
         .await
@@ -1196,7 +1251,7 @@ async fn test_governance_not_quorum_many_approvers() {
     assert_eq!(state.sn, 2);
     assert_eq!(
         state.properties,
-        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":[]},"roles_schema":{},"schemas":{},"version":1})
+        json!({"members":{"Approver1":approver_1.controller_id(),"Approver2":approver_2.controller_id(),"Owner":owner.controller_id()},"policies_gov":{"approve":{"fixed":100},"evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_all_schemas":{"evaluator":[{"name":"Owner","namespace":[]}],"issuer":{"any":false,"users":[]},"validator":[{"name":"Owner","namespace":[]}],"witness":[{"name":"Owner","namespace":[]}]},"roles_gov":{"approver":["Approver1","Approver2","Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["Approver1","Approver2"]},"roles_schema":{},"schemas":{},"version":1})
     );
 }
 
@@ -1222,6 +1277,7 @@ async fn test_change_roles_gov() {
     "roles": {
         "governance": {
             "add": {
+                "witness": ["KoreNode1"],
                 "evaluator": ["KoreNode1"]
             }
         }

@@ -62,6 +62,13 @@ async fn test_limits_in_subjects() {
             ]
         },
         "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode2"
+                    ]
+                }
+            },
             "schema":
                 [
                 {
@@ -305,6 +312,13 @@ async fn test_namespace_in_role_1() {
     // Tiene sentido que el las politicas del schema se ponga el rol de aprovador???
     let json = json!({
         "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode2", "KoreNode3", "KoreNode4", "KoreNode5"
+                    ]
+                }
+            },
             "all_schemas": {
                 "add": {
                     "evaluator": [
@@ -545,6 +559,13 @@ async fn test_namespace_in_role_2() {
 
     let json = json!({
         "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode2", "KoreNode3", "KoreNode4", "KoreNode5"
+                    ]
+                }
+            },
             "all_schemas": {
                 "add": {
                     "evaluator": [
@@ -804,6 +825,13 @@ async fn test_subject_transfer_event_1() {
             ]
         },
         "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode1"
+                    ]
+                }
+            },
             "all_schemas": {
                 "add": {
                     "issuer": [
@@ -1032,6 +1060,13 @@ async fn test_subject_transfer_event_2() {
             ]
         },
         "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode1", "KoreNode2"
+                    ]
+                }
+            },
             "all_schemas": {
                 "add": {
                     "issuer": [
@@ -1328,6 +1363,13 @@ async fn test_subject_transfer_event_3() {
             ]
         },
         "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode1", "KoreNode2"
+                    ]
+                }
+            },
             "all_schemas": {
                 "add": {
                     "issuer": [
@@ -1618,6 +1660,13 @@ async fn test_dynamic_witnesses_1() {
             ]
         },
         "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode1"
+                    ]
+                }
+            },
             "all_schemas": {
                 "add": {
                     "issuer": [
@@ -1677,6 +1726,13 @@ async fn test_dynamic_witnesses_1() {
         ]
     },
     "roles": {
+        "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode2"
+                    ]
+                }
+            },
         "schema": [
             {
                 "schema_id": "Example",
@@ -1810,7 +1866,7 @@ async fn test_dynamic_witnesses_2() {
                 {
                     "name": "KoreNode2",
                     "key": witness.controller_id()
-                }
+                },
             ]
         },
         "schemas": {
@@ -1827,6 +1883,13 @@ async fn test_dynamic_witnesses_2() {
             ]
         },
         "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode1", "KoreNode2"
+                    ]
+                }
+            },
             "all_schemas": {
                 "add": {
                     "issuer": [
@@ -1893,6 +1956,13 @@ async fn test_dynamic_witnesses_2() {
         ]
     },
     "roles": {
+        "governance": {
+            "add": {
+                "witness": [
+                    "KoreNode3"
+                ]
+            }
+        },
         "schema": [
             {
                 "schema_id": "Example",
