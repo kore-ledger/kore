@@ -898,6 +898,19 @@ impl Quorum {
         Ok(())
     }
 
+    pub fn get_signers(&self, total_members: u32, pending: u32) -> u32 {
+        let signers = match self {
+            Quorum::Fixed(fixed) => {
+                let min = std::cmp::min(fixed, &total_members);
+                *min
+            },
+            Quorum::Majority => total_members / 2 + 1,
+            Quorum::Percentage(percentage) => total_members * (percentage / 100) as u32
+        };
+
+        std::cmp::min(signers, pending)
+    }
+
     pub fn check_quorum(&self, total_members: u32, signers: u32) -> bool {
         match self {
             Quorum::Fixed(fixed) => {

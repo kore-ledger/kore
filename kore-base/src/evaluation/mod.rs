@@ -20,7 +20,7 @@ use crate::{
         HashId, SignTypesNode, ValueWrapper,
         common::{
             emit_fail, get_metadata, get_sign, get_signers_quorum_gov_version,
-            send_reboot_to_req, try_to_update,
+            send_reboot_to_req, take_random_signers, try_to_update,
         },
         event::{LedgerValue, ProtocolsError, ProtocolsSignatures},
         request::EventRequest,
@@ -52,8 +52,6 @@ pub struct Evaluation {
     node_key: KeyIdentifier,
     // Quorum
     quorum: Quorum,
-    // Evaluators
-    evaluators: HashSet<KeyIdentifier>,
     // Actual responses
     evaluators_response: Vec<EvalRes>,
     // Evaluators quantity
@@ -67,9 +65,13 @@ pub struct Evaluation {
 
     errors: String,
 
-    eval_req: Option<EvaluationReq>,
+    signed_eval_req: Option<Signed<EvaluationReq>>,
 
     reboot: bool,
+
+    current_evaluators: HashSet<KeyIdentifier>,
+
+    pending_evaluators: HashSet<KeyIdentifier>,
 }
 
 impl Evaluation {
@@ -84,7 +86,7 @@ impl Evaluation {
         &self,
         ctx: &mut ActorContext<Evaluation>,
     ) -> Result<(), ActorError> {
-        for evaluator in self.evaluators.clone() {
+        for evaluator in self.current_evaluators.clone() {
             let child: Option<ActorRef<Evaluator>> =
                 ctx.get_child(&evaluator.to_string()).await;
             if let Some(child) = child {
@@ -96,7 +98,7 @@ impl Evaluation {
     }
 
     fn check_evaluator(&mut self, evaluator: KeyIdentifier) -> bool {
-        self.evaluators.remove(&evaluator)
+        self.current_evaluators.remove(&evaluator)
     }
 
     fn create_evaluation_req(
@@ -190,13 +192,13 @@ impl Evaluation {
             error!(TARGET_EVALUATION, "Error getting derivator");
             DigestDerivator::Blake3_256
         };
-        let (state, gov_id) = if let Some(req) = self.eval_req.clone() {
-            let gov_id = if req.context.governance_id.is_empty() {
-                req.context.subject_id
+        let (state, gov_id) = if let Some(req) = self.signed_eval_req.clone() {
+            let gov_id = if req.content.context.governance_id.is_empty() {
+                req.content.context.subject_id
             } else {
-                req.context.governance_id
+                req.content.context.governance_id
             };
-            (req.state, gov_id)
+            (req.content.state, gov_id)
         } else {
             return Err(ActorError::FunctionalFail(
                 "Can not get eval request".to_owned(),
@@ -249,8 +251,8 @@ impl Evaluation {
         let req_actor: Option<ActorRef<RequestManager>> =
             ctx.system().get_actor(&req_path).await;
 
-        let request = if let Some(req) = self.eval_req.clone() {
-            req
+        let request = if let Some(req) = self.signed_eval_req.clone() {
+            req.content
         } else {
             return Err(ActorError::FunctionalFail(
                 "Can not get eval request".to_owned(),
@@ -418,50 +420,6 @@ impl Handler<Evaluation> for Evaluation {
                     gov_version,
                 );
 
-                self.evaluators_response = vec![];
-                self.eval_req = Some(eval_req.clone());
-                self.quorum = quorum;
-                self.evaluators.clone_from(&signers);
-                self.evaluators_quantity = signers.len() as u32;
-                self.request_id = request_id.to_string();
-                self.version = version;
-                self.evaluators_signatures = vec![];
-                self.errors = String::default();
-                self.reboot = false;
-
-                if signers.is_empty() {
-                    let e = format!("There are no evaluators available for the {} scheme", metadata.schema_id);
-
-                    warn!(
-                        TARGET_EVALUATION,
-                        "Create, {}", e
-                    );
-
-                    self.errors = e;
-                    let response = match self.fail_evaluation(ctx).await
-                            {
-                                Ok(res) => res,
-                                Err(e) => {
-                                    error!(
-                                        TARGET_EVALUATION,
-                                        "Create, can not create evaluation response: {}",
-                                        e
-                                    );
-                                    return Err(emit_fail(ctx, e).await);
-                                }
-                            };
-                            if let Err(e) =
-                                self.send_evaluation_to_req(ctx, response).await
-                            {
-                                error!(
-                                    TARGET_EVALUATION,
-                                    "Create, can send evaluation to request actor: {}",
-                                    e
-                                );
-                                return Err(emit_fail(ctx, e).await);
-                            };
-                }
-
                 let signature = match get_sign(
                     ctx,
                     SignTypesNode::EvaluationReq(eval_req.clone()),
@@ -483,7 +441,57 @@ impl Handler<Evaluation> for Evaluation {
                     signature,
                 };
 
-                for signer in signers {
+                self.evaluators_response = vec![];
+                self.signed_eval_req = Some(signed_evaluation_req.clone());
+                self.quorum = quorum;
+                self.evaluators_quantity = signers.len() as u32;
+                self.request_id = request_id.to_string();
+                self.version = version;
+                self.evaluators_signatures = vec![];
+                self.errors = String::default();
+                self.reboot = false;
+
+                if signers.is_empty() {
+                    warn!(
+                        TARGET_EVALUATION,
+                        "Create, There are no evaluators available for the {} scheme",
+                        metadata.schema_id
+                    );
+
+                    let response = match self.fail_evaluation(ctx).await {
+                        Ok(res) => res,
+                        Err(e) => {
+                            error!(
+                                TARGET_EVALUATION,
+                                "Create, can not create evaluation response: {}",
+                                e
+                            );
+                            return Err(emit_fail(ctx, e).await);
+                        }
+                    };
+                    if let Err(e) =
+                        self.send_evaluation_to_req(ctx, response).await
+                    {
+                        error!(
+                            TARGET_EVALUATION,
+                            "Create, can send evaluation to request actor: {}",
+                            e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    };
+                }
+
+                let evaluators_quantity = self.quorum.get_signers(
+                    self.evaluators_quantity,
+                    signers.len() as u32,
+                );
+
+                let (current_eval, pending_eval) =
+                    take_random_signers(signers, evaluators_quantity as usize);
+                self.current_evaluators.clone_from(&current_eval);
+                self.pending_evaluators.clone_from(&pending_eval);
+
+                for signer in current_eval {
                     if let Err(e) = self
                         .create_evaluators(
                             ctx,
@@ -541,9 +549,9 @@ impl Handler<Evaluation> for Evaluation {
                             }
                             EvaluationRes::Reboot => {
                                 let governance_id = if let Some(req) =
-                                    self.eval_req.clone()
+                                    self.signed_eval_req.clone()
                                 {
-                                    req.context.governance_id
+                                    req.content.context.governance_id
                                 } else {
                                     let e = ActorError::FunctionalFail(
                                         "Can not get eval request".to_owned(),
@@ -621,7 +629,52 @@ impl Handler<Evaluation> for Evaluation {
                                 );
                                 return Err(emit_fail(ctx, e).await);
                             };
-                        } else if self.evaluators.is_empty() {
+                        } else if self.current_evaluators.is_empty()
+                            && !self.pending_evaluators.is_empty()
+                        {
+                            if let Some(req) = self.signed_eval_req.clone() {
+                            let evaluators_quantity = self.quorum.get_signers(
+                                self.evaluators_quantity,
+                                self.pending_evaluators.len() as u32,
+                            );
+
+                            let (current_eval, pending_eval) =
+                                take_random_signers(
+                                    self.pending_evaluators.clone(),
+                                    evaluators_quantity as usize,
+                                );
+                            self.current_evaluators.clone_from(&current_eval);
+                            self.pending_evaluators.clone_from(&pending_eval);
+
+                                for signer in current_eval {
+                                    if let Err(e) = self
+                                        .create_evaluators(
+                                            ctx,
+                                            req.clone(),
+                                            &req.content.context.schema_id,
+                                            signer.clone(),
+                                        )
+                                        .await
+                                    {
+                                        error!(
+                                            TARGET_EVALUATION,
+                                            "Can not create evaluator {}: {}",
+                                            signer,
+                                            e
+                                        );
+                                    }
+                                }
+                            } else {
+                                let e = ActorError::FunctionalFail(
+                                    "Can not get evaluation request".to_owned(),
+                                );
+                                error!(
+                                    TARGET_EVALUATION,
+                                    "Response, can not get validation request: {}", e
+                                );
+                                return Err(emit_fail(ctx, e).await);
+                            };
+                        } else if self.current_evaluators.is_empty() {
                             let response = match self.fail_evaluation(ctx).await
                             {
                                 Ok(res) => res,
@@ -1220,7 +1273,7 @@ mod tests {
         assert_eq!(last_event.content.sn, 1);
         assert_eq!(last_event.content.gov_version, 0);
 
-        if let LedgerValue::Patch(a) =  last_event.content.value.clone() {
+        if let LedgerValue::Patch(a) = last_event.content.value.clone() {
             println!("{}", a.0);
         }
 

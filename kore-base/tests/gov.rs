@@ -405,22 +405,22 @@ async fn test_transfer_event_governance_1() {
     .await;
     // add member to governance
     let json = json!({
-    "members": {
-        "add": [
-            {
-                "name": "KoreNode1",
-                "key": future_owner.controller_id()
-            }
-        ]
-    },
-        "roles": {
-            "governance": {
-                "add": {
-                    "witness": ["KoreNode1"],
+        "members": {
+            "add": [
+                {
+                    "name": "KoreNode1",
+                    "key": future_owner.controller_id()
+                }
+            ]
+        },
+            "roles": {
+                "governance": {
+                    "add": {
+                        "witness": ["KoreNode1"],
+                    }
                 }
             }
-        }
-});
+    });
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
         .unwrap();
@@ -522,22 +522,22 @@ async fn test_transfer_event_governance_2() {
         .unwrap();
     // add member to governance
     let json = json!({
-    "members": {
-        "add": [
-            {
-                "name": "KoreNode1",
-                "key": future_owner.controller_id()
-            }
-        ]
-    },
-        "roles": {
-            "governance": {
-                "add": {
-                    "witness": ["KoreNode1"],
+        "members": {
+            "add": [
+                {
+                    "name": "KoreNode1",
+                    "key": future_owner.controller_id()
+                }
+            ]
+        },
+            "roles": {
+                "governance": {
+                    "add": {
+                        "witness": ["KoreNode1"],
+                    }
                 }
             }
-        }
-});
+    });
 
     emit_fact(owner_governance, governance_id.clone(), json, true)
         .await
@@ -589,15 +589,15 @@ async fn test_transfer_event_governance_2() {
         .to_string();
     // add new fake member to governance
     let json = json!({
-    "members": {
-        "add": [
-            {
-                "name": "KoreNode2",
-                "key": fake_node
-            }
-        ]
-    }
-});
+        "members": {
+            "add": [
+                {
+                    "name": "KoreNode2",
+                    "key": fake_node
+                }
+            ]
+        }
+    });
 
     emit_fact(future_owner, governance_id.clone(), json, true)
         .await
@@ -1284,7 +1284,8 @@ async fn test_change_roles_gov() {
         "governance": {
             "add": {
                 "witness": ["KoreNode1"],
-                "evaluator": ["KoreNode1"]
+                "evaluator": ["KoreNode1"],
+                "validator": ["KoreNode1"]
             }
         }
     },
@@ -1323,18 +1324,21 @@ async fn test_change_roles_gov() {
         .await
         .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 2);
+    assert_eq!(state.signatures_vali.len(), 2);
     assert_eq!(state.sn, 2);
     let state = get_signatures(eval_node, governance_id.clone(), Some(2))
         .await
         .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 2);
+    assert_eq!(state.signatures_vali.len(), 2);
     assert_eq!(state.sn, 2);
 
     let json = json!({
     "roles": {
         "governance": {
             "remove": {
-                "evaluator": ["KoreNode1"]
+                "evaluator": ["KoreNode1"],
+                "validator": ["KoreNode1"]
             }
         }
     }});
@@ -1347,11 +1351,13 @@ async fn test_change_roles_gov() {
         .await
         .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 2);
+    assert_eq!(state.signatures_vali.len(), 2);
     assert_eq!(state.sn, 3);
     let state = get_signatures(eval_node, governance_id.clone(), Some(3))
         .await
         .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 2);
+    assert_eq!(state.signatures_vali.len(), 2);
     assert_eq!(state.sn, 3);
 
     let fake_node = KeyPair::Ed25519(Ed25519KeyPair::new())
@@ -1376,11 +1382,13 @@ async fn test_change_roles_gov() {
         .await
         .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 1);
+    assert_eq!(state.signatures_vali.len(), 1);
     assert_eq!(state.sn, 4);
 
     let state = get_signatures(eval_node, governance_id.clone(), Some(4))
         .await
         .unwrap();
     assert_eq!(state.signatures_eval.unwrap().len(), 1);
+    assert_eq!(state.signatures_vali.len(), 1);
     assert_eq!(state.sn, 4);
 }

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::{HashMap, HashSet};
+use rand::rng;
+use rand::seq::IteratorRandom;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
@@ -91,6 +93,28 @@ impl MemoryManager {
         }
         ptr
     }
+}
+
+pub fn take_random_signers(
+    signers: HashSet<KeyIdentifier>,
+    quantity: usize,
+) -> (HashSet<KeyIdentifier>, HashSet<KeyIdentifier>) {
+    if quantity == signers.len() {
+        return (signers, HashSet::new());
+    }
+
+    let mut rng = rng();
+
+    let random_signers: HashSet<KeyIdentifier> = signers
+        .iter()
+        .choose_multiple(&mut rng, quantity)
+        .into_iter()
+        .cloned()
+        .collect();
+
+    let signers = signers.difference(&random_signers).cloned().collect::<HashSet<KeyIdentifier>>();
+
+    (random_signers, signers)
 }
 
 pub async fn get_gov<A>(
