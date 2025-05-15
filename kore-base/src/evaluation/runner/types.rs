@@ -28,6 +28,7 @@ pub struct RunnerResult {
 pub enum EvaluateType {
     AllSchemasFact {
         contract: Vec<u8>,
+        init_state: ValueWrapper,
         payload: ValueWrapper,
     },
     GovFact {

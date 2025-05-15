@@ -1876,10 +1876,10 @@ impl Subject {
                     .await?;
 
                     // Compilo los nuevos contratos en el caso de que hayan sido modificados, sino no afecta.
-                    let current = old_schemas_eval
+                    let current = new_schemas_eval
                         .clone()
                         .iter()
-                        .filter(|x| new_schemas_eval.contains_key(x.0))
+                        .filter(|x| old_schemas_eval.contains_key(x.0))
                         .map(|x| (x.0.clone(), x.1.clone()))
                         .collect();
                     Self::compile_schemas(
