@@ -13,26 +13,14 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
-    ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,
-    NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
-    SubjectResponse,
-    auth::WitnessesAuth,
-    governance::{
-        Governance,
-        model::{CreatorQuantity, RoleTypes},
-    },
-    intermediary::Intermediary,
-    model::{
-        Namespace,
+    auth::WitnessesAuth, governance::{
+        model::{CreatorQuantity, HashThisRole, RoleTypes}, Governance
+    }, intermediary::Intermediary, model::{
         common::{
             emit_fail, get_gov, get_node_subject_data, get_quantity,
             subject_old_owner, try_to_update, update_event, update_vali_data,
-        },
-        event::{Ledger, ProtocolsSignatures},
-        network::RetryNetwork,
-    },
-    update::TransferResponse,
-    validation::proof::ValidationProof,
+        }, event::{Ledger, ProtocolsSignatures}, network::RetryNetwork, Namespace
+    }, update::TransferResponse, validation::proof::ValidationProof, ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
 };
 
 use tracing::{error, warn};
@@ -286,11 +274,8 @@ impl Distributor {
         let (owned, auth, know) =
             self.authorized_subj(ctx, &subject_id.to_string()).await?;
 
-        // Si es una gov
-        let is_gov = auth_data.schema_id == "governance";
-
-        // es gov
-        if is_gov {
+        // si es gov
+        if auth_data.schema_id == "governance" {
             // No está auth
             if !auth {
                 return Err(ActorError::Functional(
@@ -311,96 +296,93 @@ impl Distributor {
                     "Updating governance".to_owned(),
                 ));
             }
-        }
+        } else {
+            let data =
+                get_node_subject_data(ctx, &subject_id.to_string()).await?;
+            let (namespace, governance_id, update) =
+                if let Some((subject_data, _)) = data {
+                    (
+                        subject_data.namespace,
+                        subject_data.governance_id.unwrap_or_default(),
+                        false,
+                    )
+                } else if let EventRequest::Create(request) =
+                    ledger.event_request.content.clone()
+                {
+                    (
+                        request.namespace,
+                        request.governance_id.to_string(),
+                        false,
+                    )
+                } else {
+                    (
+                        auth_data.namespace,
+                        auth_data.governance_id.to_string(),
+                        true,
+                    )
+                };
 
-        let data = get_node_subject_data(ctx, &subject_id.to_string()).await?;
-        let (namespace, governance_id, update) =
-            if let Some((subject_data, _)) = data {
-                (
-                    subject_data.namespace,
-                    subject_data.governance_id.unwrap_or_default(),
-                    false,
-                )
-            } else if let EventRequest::Create(request) =
-                ledger.event_request.content.clone()
-            {
-                (request.namespace, request.governance_id.to_string(), false)
-            } else {
-                (
-                    auth_data.namespace,
-                    auth_data.governance_id.to_string(),
-                    true,
-                )
+            let gov_id_digest = DigestIdentifier::from_str(&governance_id)
+                .map_err(|e| {
+                    ActorError::FunctionalFail(format!(
+                        "Invalid governance_id, {}",
+                        e
+                    ))
+                })?;
+            // obtenemos la gov.
+            let gov = match get_gov(ctx, &governance_id).await {
+                Ok(gov) => gov,
+                Err(e) => {
+                    if let ActorError::NotFound(_) = e {
+                        try_to_update(
+                            ctx,
+                            gov_id_digest,
+                            WitnessesAuth::Witnesses,
+                        )
+                        .await?;
+                        return Err(ActorError::Functional(
+                            "Updating governance".to_owned(),
+                        ));
+                    }
+                    return Err(e);
+                }
             };
 
-        let gov_id_digest = DigestIdentifier::from_str(&governance_id)
-            .map_err(|e| {
-                ActorError::FunctionalFail(format!(
-                    "Invalid governance_id, {}",
-                    e
-                ))
-            })?;
-        // obtenemos la gov.
-        let gov = match get_gov(ctx, &governance_id).await {
-            Ok(gov) => gov,
-            Err(e) => {
-                if let ActorError::NotFound(_) = e {
-                    try_to_update(ctx, gov_id_digest, WitnessesAuth::Witnesses)
-                        .await?;
+            // Comparamos las govs, puede ser que ya no seamos testigo o que de repente seamos testigos.
+            if let Some(gov_version) = auth_data.gov_version {
+                Self::cmp_govs(
+                    ctx,
+                    gov.clone(),
+                    gov_version,
+                    gov_id_digest,
+                    info,
+                    &auth_data.schema_id,
+                )
+                .await?;
+            }
+
+            // Si no está autorizado explicitamente.
+            if !auth {
+                // Miramos que tengamos el rol, se comprueba que el signer sea creator y nosotros testigos
+                if !gov.has_this_role(
+                    HashThisRole::SchemaWitness { who: our_key, creator: signer.clone(), schema_id: auth_data.schema_id, namespace }
+                ) {
                     return Err(ActorError::Functional(
-                        "Updating governance".to_owned(),
+                        "We are not witness".to_string(),
                     ));
                 }
-                return Err(e);
             }
-        };
 
-        // Comparamos las govs, puede ser que ya no seamos testigo o que de repente seamos testigos.
-        if let Some(gov_version) = auth_data.gov_version {
-            Self::cmp_govs(
-                ctx,
-                gov.clone(),
-                gov_version,
-                gov_id_digest,
-                info,
-                &auth_data.schema_id,
-            )
-            .await?;
-        }
-
-        // Si no está autorizado explicitamente.
-        if !auth {
-            // Miramos que tengamos el rol.
-            if !gov.has_this_role(
-                &signer,
-                RoleTypes::Creator,
-                &auth_data.schema_id,
-                namespace.clone(),
-            ) {
+            if update {
+                try_to_update(ctx, subject_id, WitnessesAuth::Owner(signer))
+                    .await?;
                 return Err(ActorError::Functional(
-                    "Signer is not a creator".to_string(),
+                    "Updating subject".to_owned(),
                 ));
             }
 
-            if !gov.has_this_role(
-                &our_key,
-                RoleTypes::Witness,
-                &auth_data.schema_id,
-                namespace,
-            ) {
-                return Err(ActorError::Functional(
-                    "We are not witness".to_string(),
-                ));
-            }
+            Ok(())
         }
-
-        if update {
-            try_to_update(ctx, subject_id, WitnessesAuth::Owner(signer))
-                .await?;
-            return Err(ActorError::Functional("Updating subject".to_owned()));
-        }
-
-        Ok(())
     }
 
     async fn cmp_govs(
@@ -520,7 +502,7 @@ impl Distributor {
                 )
             } else {
                 return Err(ActorError::Functional(
-                    "Can not get node subject data".to_owned(),
+                    "Can not check governance version, can not get node subject data".to_owned(),
                 ));
             };
 
@@ -529,7 +511,7 @@ impl Distributor {
             Err(e) => {
                 if let ActorError::NotFound(_) = e {
                     return Err(ActorError::Functional(
-                        "Can not get governance".to_owned(),
+                        "Can not check governance version, can not get governance".to_owned(),
                     ));
                 } else {
                     return Err(e);
@@ -540,7 +522,7 @@ impl Distributor {
         let gov_id_digest = DigestIdentifier::from_str(&governance_id)
             .map_err(|e| {
                 ActorError::FunctionalFail(format!(
-                    "Invalid governance_id, {}",
+                    "Can not check governance version, invalid governance_id, {}",
                     e
                 ))
             })?;
@@ -566,14 +548,18 @@ impl Distributor {
             return Ok(());
         }
 
+        let has_this_role = if schema_id == "governance" {
+            HashThisRole::Gov { who: info.sender.clone(), role: RoleTypes::Witness }
+        } else {
+            let owner = KeyIdentifier::from_str(&owner).map_err(|e| ActorError::FunctionalFail(format!("Can not conver owner KeyIdentifier (String) into KeyIdentifier: {}", e)))?;
+            HashThisRole::SchemaWitness { who: info.sender.clone(), creator: owner, schema_id, namespace }
+        };
+
         if !gov.has_this_role(
-            &info.sender,
-            RoleTypes::Witness,
-            &schema_id,
-            namespace,
+            has_this_role
         ) {
             return Err(ActorError::Functional(
-                "Sender is neither a witness nor an owner nor a new owner "
+                "Sender is neither a witness nor an owner nor a new owner of subject"
                     .to_owned(),
             ));
         };
@@ -850,12 +836,16 @@ impl Handler<Distributor> for Distributor {
                     subject_data.owner == sender
                 };
 
+                let has_this_role = if subject_data.schema_id == "governance" {
+                    HashThisRole::Gov { who: info.sender.clone(), role: RoleTypes::Witness }
+                } else {
+                    let owner = KeyIdentifier::from_str(&subject_data.owner).map_err(|e| ActorError::FunctionalFail(format!("Can not conver owner KeyIdentifier (String) into KeyIdentifier: {}", e)))?;
+                    HashThisRole::SchemaWitness { who: info.sender.clone(), creator: owner, schema_id: subject_data.schema_id, namespace: subject_data.namespace.clone() }
+                };
+
                 if !is_owner
                     && !gov.has_this_role(
-                        &info.sender,
-                        RoleTypes::Witness,
-                        &subject_data.schema_id,
-                        subject_data.namespace.clone(),
+                        has_this_role
                     )
                 {
                     let e = "Sender neither the owned nor a witness";
@@ -916,7 +906,7 @@ impl Handler<Distributor> for Distributor {
                 {
                     error!(
                         TARGET_DISTRIBUTOR,
-                        "SendDistribution, Can not check governance version {}",
+                        "SendDistribution, {}",
                         e
                     );
                     if let ActorError::Functional(_) = e {

@@ -98,8 +98,8 @@ impl RolesGov {
             RoleTypes::Issuer => {
                 self.issuer.users.contains(name) || self.issuer.any
             }
-            RoleTypes::Creator => self.witness.contains(name),
-            RoleTypes::Witness => false,
+            RoleTypes::Creator => false,
+            RoleTypes::Witness => self.witness.contains(name),
         }
     }
 
@@ -163,9 +163,10 @@ impl From<RolesSchema> for RolesAllSchemas {
 impl RolesAllSchemas {
     pub fn hash_this_rol_not_namespace(
         &self,
-        role: RoleTypes,
+        role: ProtocolTypes,
         name: &str,
     ) -> bool {
+        let role = RoleTypes::from(role);
         match role {
             RoleTypes::Evaluator => {
                 self.evaluator.iter().any(|x| x.name == name)
@@ -402,6 +403,10 @@ pub struct RolesSchema {
 }
 
 impl RolesSchema {
+    pub fn creator_witnesses(&self, name: &str, namespace: Namespace) -> BTreeSet<String> {
+        self.creator.get(&RoleCreator::create(name, namespace)).map(|x| x.witnesses.clone()).unwrap_or_default()
+    }
+
     pub fn remove_member_role(&mut self, remove_members: &Vec<String>) {
         for remove in remove_members {
             self.evaluator.retain(|x| x.name != *remove);
@@ -470,6 +475,7 @@ impl RolesSchema {
                         RoleCreator {
                             quantity: x.quantity.clone(),
                             name: new_name.clone(),
+                            witnesses: x.witnesses.clone(),
                             namespace: x.namespace.clone(),
                         }
                     } else {
@@ -619,9 +625,11 @@ impl RolesSchema {
 
     pub fn hash_this_rol_not_namespace(
         &self,
-        role: RoleTypes,
+        role: ProtocolTypes,
         name: &str,
     ) -> bool {
+        let role = RoleTypes::from(role);
+        
         match role {
             RoleTypes::Evaluator => {
                 self.evaluator.iter().any(|x| x.name == name)
@@ -648,6 +656,7 @@ impl RolesSchema {
             .get(&RoleCreator {
                 name: name.to_string(),
                 namespace,
+                witnesses: BTreeSet::default(),
                 quantity: CreatorQuantity::Infinity,
             })
             .map(|x| x.quantity.clone())
@@ -750,6 +759,85 @@ impl From<ProtocolTypes> for RoleTypes {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum SignersType {
+    Approver,
+    Evaluator,
+    Validator,
+    Creator,
+    Issuer,
+}
+
+impl From<SignersType> for RoleTypes {
+    fn from(value: SignersType) -> Self {
+        match value {
+            SignersType::Approver => RoleTypes::Approver,
+            SignersType::Evaluator => RoleTypes::Evaluator,
+            SignersType::Validator => RoleTypes::Validator,
+            SignersType::Creator => RoleTypes::Creator,
+            SignersType::Issuer => RoleTypes::Issuer,
+        }
+    }
+}
+
+impl From<ProtocolTypes> for SignersType {
+    fn from(value: ProtocolTypes) -> Self {
+        match value {
+            ProtocolTypes::Aprovation => SignersType::Approver,
+            ProtocolTypes::Evaluation => SignersType::Evaluator,
+            ProtocolTypes::Validation => SignersType::Validator,
+        }
+    }
+}
+
+pub enum WitnessesData {
+    Gov,
+    Schema {
+        creator: KeyIdentifier,
+        schema_id: String,
+        namespace: Namespace
+    }
+}
+
+impl WitnessesData {
+    pub fn build(schema_id: &str, namespace: Namespace, creator: KeyIdentifier) -> Self {
+        if schema_id == "governance" {
+            WitnessesData::Gov
+        } else {
+            WitnessesData::Schema { creator, schema_id: schema_id.to_owned(), namespace}
+        }
+    }
+}
+
+pub enum HashThisRole {
+    Gov {
+        who: KeyIdentifier,
+        role: RoleTypes
+    },
+    Schema {
+        who: KeyIdentifier,
+        role: RoleTypes,
+        schema_id: String,
+        namespace: Namespace,
+    },
+    SchemaWitness {
+        who: KeyIdentifier,
+        creator: KeyIdentifier,
+        schema_id: String,
+        namespace: Namespace,
+    }
+}
+
+impl HashThisRole {
+    pub fn get_who(&self) -> KeyIdentifier {
+        match self {
+            HashThisRole::Gov { who, .. } => who.clone(),
+            HashThisRole::Schema { who,  ..} => who.clone(),
+            HashThisRole::SchemaWitness { who, ..} => who.clone(),
+        }
+    }
+}
+
 /// Governance role.
 #[derive(
     Debug, Serialize, Deserialize, Clone, PartialEq, Hash, Eq, PartialOrd, Ord,
@@ -763,13 +851,25 @@ pub struct Role {
 pub struct RoleCreator {
     pub name: String,
     pub namespace: Namespace,
-    pub quantity: CreatorQuantity,
+    #[serde(default = "default_witnesses_creator")]
+    pub witnesses: BTreeSet<String>,
+    pub quantity: CreatorQuantity
+}
+
+fn default_witnesses_creator() -> BTreeSet<String> {
+    BTreeSet::from(["Witnesses".to_owned()])
 }
 
 impl Hash for RoleCreator {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.namespace.hash(state);
+    }
+}
+
+impl RoleCreator {
+    pub fn create(name: &str, namespace: Namespace) -> Self {
+        Self { name: name.to_owned(), namespace: namespace, witnesses: BTreeSet::default(), quantity: CreatorQuantity::Infinity }
     }
 }
 
@@ -810,6 +910,15 @@ pub struct RoleSchemaIssuer {
 pub enum CreatorQuantity {
     Quantity(u32),
     Infinity,
+}
+
+impl CreatorQuantity {
+    pub fn check(&self) -> bool {
+        match self {
+            CreatorQuantity::Quantity(quantity) => *quantity != 0,
+            CreatorQuantity::Infinity => true,
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for CreatorQuantity {

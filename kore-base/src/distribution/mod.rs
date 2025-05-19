@@ -14,7 +14,7 @@ use tracing::{error, warn};
 
 use crate::{
     Event as KoreEvent, Signed,
-    governance::model::RoleTypes,
+    governance::model::WitnessesData,
     model::{
         common::{emit_fail, get_gov},
         event::{Ledger, ProtocolsSignatures},
@@ -178,17 +178,31 @@ impl Handler<Distribution> for Distribution {
                         }
                     };
 
-                let mut witnesses = governance.get_signers(
-                    RoleTypes::Witness,
-                    &last_proof.schema_id,
-                    last_proof.namespace.clone()).0;
+                let mut witnesses = match governance.get_witnesses(
+                    WitnessesData::build(
+                        &last_proof.schema_id,
+                        last_proof.namespace.clone(),
+                        self.node_key.clone(),
+                    ),
+                ) {
+                    Ok(witnesses) => witnesses,
+                    Err(e) => {
+                        error!(
+                            TARGET_DISTRIBUTION,
+                            "Create, can not get witnesses for distribution: {}",
+                            e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    }
+                };
 
                 let _ = witnesses.remove(&self.node_key);
 
                 if witnesses.is_empty() {
                     warn!(
                         TARGET_DISTRIBUTION,
-                        "Create, There are no witnesses available for the {} scheme", last_proof.schema_id
+                        "Create, There are no witnesses available for the {} scheme",
+                        last_proof.schema_id
                     );
                     if let Err(e) = self.end_request(ctx).await {
                         error!(

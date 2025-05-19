@@ -14,9 +14,7 @@ use crate::{
 
 use actor::Error as ActorError;
 use model::{
-    CreatorQuantity, PolicyGov, PolicySchema, ProtocolTypes, RoleGovIssuer,
-    RoleSchemaIssuer, RoleTypes, RolesAllSchemas, RolesGov, RolesSchema,
-    SchemaKeyCreators,
+    CreatorQuantity, HashThisRole, PolicyGov, PolicySchema, ProtocolTypes, RoleGovIssuer, RoleSchemaIssuer, RoleTypes, RolesAllSchemas, RolesGov, RolesSchema, SchemaKeyCreators, SignersType, WitnessesData
 };
 
 pub use model::{Member, Quorum, Role, Schema};
@@ -171,41 +169,85 @@ impl Governance {
     /// * [`Namespace`] - The namespace.
     pub fn has_this_role(
         &self,
-        key: &KeyIdentifier,
-        role: RoleTypes,
-        schema_id: &str,
-        namespace: Namespace,
+        data: HashThisRole
     ) -> bool {
+        let who = data.get_who();
+
         let Some(name) = self
             .members
             .iter()
-            .find(|x| x.1 == key)
+            .find(|x| *x.1 == who)
             .map(|x| x.0)
             .cloned()
         else {
             return false;
         };
 
-        if schema_id == "governance" {
-            if let RoleTypes::Witness = role {
-                return true;
-            }
+        match data {
+            HashThisRole::Gov { role, .. } => {
+                if let RoleTypes::Witness = role {
+                    return true;
+                }
 
-            self.roles_gov.hash_this_rol(role, &name)
-        } else {
-            if self.roles_all_schemas.hash_this_rol(
-                role.clone(),
-                namespace.clone(),
-                &name,
-            ) {
-                return true;
-            }
+                self.roles_gov.hash_this_rol(role, &name)
+            },
+            HashThisRole::Schema { role, schema_id, namespace, .. } => {
+                if self.roles_all_schemas.hash_this_rol(
+                    role.clone(),
+                    namespace.clone(),
+                    &name,
+                ) {
+                    return true;
+                }
 
-            let Some(roles) = self.roles_schema.get(schema_id) else {
+                let Some(roles) = self.roles_schema.get(&schema_id) else {
+                    return false;
+                };
+
+                roles.hash_this_rol(role, namespace, &name)
+            },
+            HashThisRole::SchemaWitness { creator, schema_id, namespace, .. } => {
+                let Some(creator_name) = self
+                    .members
+                    .iter()
+                    .find(|x| *x.1 == creator)
+                    .map(|x| x.0)
+                    .cloned()
+                else {
+                    return false;
+                };
+
+                let Some(roles_schema) = self.roles_schema.get(&schema_id) else {
+                    return false;
+                };
+
+                let witnesses_creator = roles_schema.creator_witnesses(&creator_name, namespace.clone());
+
+                if witnesses_creator.contains(&name) {
+                    return true;
+                }
+
+                if witnesses_creator.contains("Witnesses") {
+                    let not_gov_witnesses = self
+                            .roles_all_schemas
+                            .get_signers(RoleTypes::Witness, namespace.clone())
+                            .0;
+
+                    if not_gov_witnesses.contains(&name) {
+                        return true;
+                    }
+
+                    let schema_witnesses = roles_schema
+                        .get_signers(RoleTypes::Witness, namespace.clone())
+                        .0;
+
+                    if schema_witnesses.contains(&name) {
+                        return true;
+                    }
+                }
+
                 return false;
-            };
-
-            roles.hash_this_rol(role, namespace, &name)
+            },
         }
     }
 
@@ -243,10 +285,12 @@ impl Governance {
     /// * (HashSet<[`KeyIdentifier`]>, bool) - The set of key identifiers and a flag indicating if the user is not a member.
     pub fn get_signers(
         &self,
-        role: RoleTypes,
+        role: SignersType,
         schema_id: &str,
         namespace: Namespace,
     ) -> (HashSet<KeyIdentifier>, bool) {
+        let role = RoleTypes::from(role);
+
         let (names, any) = if schema_id == "governance" {
             self.roles_gov.get_signers(role)
         } else {
@@ -273,6 +317,70 @@ impl Governance {
         }
 
         (signers, any)
+    }
+
+    pub fn get_witnesses(
+        &self,
+        data: WitnessesData,
+    ) -> Result<HashSet<KeyIdentifier>, ActorError> {
+        let names = match data {
+            WitnessesData::Gov => {
+                self.roles_gov.get_signers(RoleTypes::Witness).0
+            }
+            WitnessesData::Schema {
+                creator,
+                schema_id,
+                namespace,
+            } => {
+                let Some(creator) = self
+                    .members
+                    .iter()
+                    .find(|x| *x.1 == creator)
+                    .map(|x| x.0)
+                    .cloned()
+                else {
+                    return Err(ActorError::Functional(
+                        "Creator must be a governance member".to_owned(),
+                    ));
+                };
+
+                let Some(roles_schema) = self.roles_schema.get(&schema_id)
+                else {
+                    return Err(ActorError::Functional("They are trying to obtain witnesses for a scheme that does not exist.".to_owned()));
+                };
+                let witnesses_creator =
+                    roles_schema.creator_witnesses(&creator, namespace.clone());
+
+                let mut names = vec![];
+                for witness in witnesses_creator {
+                    if witness == "Witnesses" {
+                        let mut not_gov_witnesses = self
+                            .roles_all_schemas
+                            .get_signers(RoleTypes::Witness, namespace.clone())
+                            .0;
+                        let mut schema_witnesses = roles_schema
+                            .get_signers(RoleTypes::Witness, namespace.clone())
+                            .0;
+
+                        names.append(&mut not_gov_witnesses);
+                        names.append(&mut schema_witnesses);
+                    } else {
+                        names.push(witness);
+                    }
+                }
+
+                names
+            }
+        };
+
+        let mut signers = HashSet::new();
+        for name in names {
+            if let Some(key) = self.members.get(&name) {
+                signers.insert(key.clone());
+            }
+        }
+
+        Ok(signers)
     }
 
     /// Get the quorum for the role and schema.
@@ -309,7 +417,7 @@ impl Governance {
         namespace: Namespace,
     ) -> Result<(HashSet<KeyIdentifier>, Quorum), ActorError> {
         let (signers, _not_members) = self.get_signers(
-            RoleTypes::from(role.clone()),
+            SignersType::from(role.clone()),
             schema_id,
             namespace,
         );
@@ -338,7 +446,6 @@ impl Governance {
         else {
             return BTreeMap::new();
         };
-        let role = RoleTypes::from(role);
 
         if self
             .roles_all_schemas

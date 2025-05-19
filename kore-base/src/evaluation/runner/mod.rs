@@ -18,20 +18,14 @@ use types::{ContractResult, EvaluateType, RunnerResult};
 use wasmtime::{Config, Engine, Module, Store};
 
 use crate::{
-    Error, ValueWrapper,
     governance::{
-        Governance, Schema,
         events::{
             GovernanceEvent, MemberEvent, PoliciesEvent, RolesEvent,
             SchemasEvent,
-        },
-        model::RoleTypes,
-    },
-    model::{
-        Namespace,
-        common::{MemoryManager, generate_linker},
-        patch::apply_patch,
-    },
+        }, model::{HashThisRole, RoleTypes}, Governance, Schema
+    }, model::{
+        common::{generate_linker, MemoryManager}, patch::apply_patch, Namespace
+    }, Error, ValueWrapper
 };
 
 const TARGET_RUNNER: &str = "Kore-Evaluation-Runner";
@@ -111,10 +105,7 @@ impl Runner {
         }
 
         if !governance.has_this_role(
-            new_owner,
-            RoleTypes::Creator,
-            schema_id,
-            namespace.clone(),
+            HashThisRole::Schema { who: new_owner.clone(), role: RoleTypes::Creator, schema_id: schema_id.to_owned(), namespace: namespace.clone() }
         ) {
             return Err(Error::Runner(format!(
                 "New owner is not a Creator from {} schema_id, with {} namespace",
@@ -842,6 +833,13 @@ impl Runner {
                     )));
                 }
 
+                if new_member.name == "Witnesses" {
+                    return Err(Error::Runner(format!(
+                        "Name of member to add can not be 'Witnesses', {}",
+                        new_member.name
+                    )));
+                }
+
                 if new_member.key.is_empty() {
                     return Err(Error::Runner(format!(
                         "Key of {} can not be empty",
@@ -949,6 +947,13 @@ impl Runner {
                         )));
                     }
 
+                    if new_name == "Witnesses" {
+                        return Err(Error::Runner(format!(
+                            "New name of member can not be 'Witnesses', {}",
+                            new_name
+                        )));
+                    }
+
                     change_name_members
                         .push((actual_member_name, new_name.clone()));
                     actual_member_name = new_name;
@@ -984,6 +989,10 @@ impl Runner {
 
         if new_members.contains_key("Any") {
             return Err(Error::Runner("There can not be a member whose name is Any, it is a reserved word".to_owned()));
+        }
+
+        if new_members.contains_key("Witnesses") {
+            return Err(Error::Runner("There can not be a member whose name is Witnesses, it is a reserved word".to_owned()));
         }
 
         if members_name.len() != members_value.len() {

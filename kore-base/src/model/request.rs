@@ -9,9 +9,7 @@ use std::collections::HashSet;
 use super::{HashId, Namespace, signature::Signed, wrapper::ValueWrapper};
 
 use crate::{
-    Error,
-    governance::{Governance, model::RoleTypes},
-    subject::Metadata,
+    governance::{model::SignersType, Governance}, subject::Metadata, Error
 };
 
 use identity::identifier::{
@@ -144,7 +142,7 @@ impl EventRequest {
             }
             EventRequest::Fact(_) => {
                 let (set, any) = gov.get_signers(
-                    RoleTypes::Issuer,
+                    SignersType::Issuer,
                     &metadata.schema_id,
                     metadata.namespace.clone(),
                 );

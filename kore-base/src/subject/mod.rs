@@ -22,7 +22,7 @@ use crate::{
     },
     governance::{
         Schema,
-        model::{CreatorQuantity, ProtocolTypes, RoleTypes},
+        model::{CreatorQuantity, HashThisRole, ProtocolTypes, RoleTypes},
     },
     helpers::{db::ExternalDB, sink::KoreSink},
     model::{
@@ -368,7 +368,6 @@ impl Subject {
                     ctx,
                     gov.clone(),
                     our_key.clone(),
-                    self.namespace.clone(),
                     ext_db,
                     self.subject_id.clone(),
                 )
@@ -387,7 +386,6 @@ impl Subject {
                 ctx,
                 gov.clone(),
                 our_key.clone(),
-                self.namespace.clone(),
                 ext_db,
                 self.subject_id.clone(),
             )
@@ -427,38 +425,31 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         gov: Governance,
         our_key: KeyIdentifier,
-        namespace: Namespace,
         ext_db: ExternalDB,
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
-        if gov.has_this_role(
-            &our_key,
-            RoleTypes::Validator,
-            "governance",
-            namespace.clone(),
-        ) {
+        if gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Validator,
+        }) {
             // If we are a validator
             let validator = Validator::default();
             ctx.create_child("validator", validator).await?;
         }
 
-        if gov.has_this_role(
-            &our_key,
-            RoleTypes::Evaluator,
-            "governance",
-            namespace.clone(),
-        ) {
+        if gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Evaluator,
+        }) {
             // If we are a evaluator
             let evaluator = Evaluator::default();
             ctx.create_child("evaluator", evaluator).await?;
         }
 
-        if gov.has_this_role(
-            &our_key,
-            RoleTypes::Approver,
-            "governance",
-            namespace.clone(),
-        ) {
+        if gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Approver,
+        }) {
             let Some(config): Option<Config> =
                 ctx.system().get_helper("config").await
             else {
@@ -491,19 +482,15 @@ impl Subject {
         ext_db: ExternalDB,
         subject_id: DigestIdentifier,
     ) -> Result<(), ActorError> {
-        let old_val = old_gov.has_this_role(
-            &our_key,
-            RoleTypes::Validator,
-            "governance",
-            Namespace::new(),
-        );
+        let old_val = old_gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Validator,
+        });
 
-        let new_val = new_gov.has_this_role(
-            &our_key,
-            RoleTypes::Validator,
-            "governance",
-            Namespace::new(),
-        );
+        let new_val = new_gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Validator,
+        });
 
         match (old_val, new_val) {
             (true, false) => {
@@ -524,19 +511,15 @@ impl Subject {
             _ => {}
         };
 
-        let old_eval = old_gov.has_this_role(
-            &our_key,
-            RoleTypes::Evaluator,
-            "governance",
-            Namespace::new(),
-        );
+        let old_eval = old_gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Evaluator,
+        });
 
-        let new_eval = new_gov.has_this_role(
-            &our_key,
-            RoleTypes::Evaluator,
-            "governance",
-            Namespace::new(),
-        );
+        let new_eval = new_gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Evaluator,
+        });
 
         match (old_eval, new_eval) {
             (true, false) => {
@@ -557,19 +540,15 @@ impl Subject {
             _ => {}
         };
 
-        let old_appr = old_gov.has_this_role(
-            &our_key,
-            RoleTypes::Approver,
-            "governance",
-            Namespace::new(),
-        );
+        let old_appr = old_gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Approver,
+        });
 
-        let new_appr = new_gov.has_this_role(
-            &our_key,
-            RoleTypes::Approver,
-            "governance",
-            Namespace::new(),
-        );
+        let new_appr = new_gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Approver,
+        });
 
         match (old_appr, new_appr) {
             (true, false) => {
@@ -618,12 +597,10 @@ impl Subject {
         gov: Governance,
         our_key: KeyIdentifier,
     ) -> Result<(), ActorError> {
-        if gov.has_this_role(
-            &our_key,
-            RoleTypes::Validator,
-            "governance",
-            Namespace::new(),
-        ) {
+        if gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Validator,
+        }) {
             let actor: Option<ActorRef<Validator>> =
                 ctx.get_child("validator").await;
             if let Some(actor) = actor {
@@ -636,12 +613,10 @@ impl Subject {
             }
         }
 
-        if gov.has_this_role(
-            &our_key,
-            RoleTypes::Evaluator,
-            "governance",
-            Namespace::new(),
-        ) {
+        if gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Evaluator,
+        }) {
             let actor: Option<ActorRef<Evaluator>> =
                 ctx.get_child("evaluator").await;
             if let Some(actor) = actor {
@@ -654,12 +629,10 @@ impl Subject {
             }
         }
 
-        if gov.has_this_role(
-            &our_key,
-            RoleTypes::Approver,
-            "governance",
-            Namespace::new(),
-        ) {
+        if gov.has_this_role(HashThisRole::Gov {
+            who: our_key.clone(),
+            role: RoleTypes::Approver,
+        }) {
             let actor: Option<ActorRef<Approver>> =
                 ctx.get_child("approver").await;
             if let Some(actor) = actor {
@@ -1812,7 +1785,6 @@ impl Subject {
                             ctx,
                             new_gov.clone(),
                             our_key.clone(),
-                            self.namespace.clone(),
                             ext_db.clone(),
                             self.subject_id.clone(),
                         )
