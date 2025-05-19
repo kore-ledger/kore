@@ -436,7 +436,8 @@ impl SchemaRoleEvent {
         roles_schema: &mut RolesSchema,
         schema_id: &str,
     ) -> Result<(), Error> {
-        let members: HashSet<String> = governance.members.keys().cloned().collect();
+        let members: HashSet<String> =
+            governance.members.keys().cloned().collect();
 
         if let Some(add) = self.add.clone() {
             if add.is_empty() {
@@ -614,12 +615,11 @@ impl SchemaRoleEvent {
                         )));
                     }
 
-
                     if !creator.quantity.check() {
-                            return Err(Error::Runner(
-                                "Creator quantity in schema roles can not be 0"
-                                    .to_owned(),
-                            ));
+                        return Err(Error::Runner(
+                            "Creator quantity in schema roles can not be 0"
+                                .to_owned(),
+                        ));
                     }
 
                     if !creator.namespace.check() {
@@ -637,13 +637,12 @@ impl SchemaRoleEvent {
                     }
 
                     for witness in creator.witnesses.iter() {
-                        if witness != "Witnesses" {
-                            if !members.contains(witness) {
-                                return Err(Error::Runner(format!(
-                                    "Witness of Creator in schema {} roles is not a governance member",
-                                    schema_id
-                                )));
-                            }       
+                        if witness != "Witnesses" && !members.contains(witness)
+                        {
+                            return Err(Error::Runner(format!(
+                                "Witness of Creator in schema {} roles is not a governance member",
+                                schema_id
+                            )));
                         }
                     }
 
@@ -780,7 +779,10 @@ impl SchemaRoleEvent {
                 }
 
                 for creator in creators {
-                    if !roles_schema.creator.remove(&RoleCreator::create(&creator.name, creator.namespace.clone())) {
+                    if !roles_schema.creator.remove(&RoleCreator::create(
+                        &creator.name,
+                        creator.namespace.clone(),
+                    )) {
                         return Err(Error::Runner(format!(
                             "Can not remove creator {} {} from {} schema, does not have this role",
                             creator.name, creator.namespace, schema_id
@@ -966,7 +968,12 @@ impl SchemaRoleEvent {
                         )));
                     }
 
-                    let Some(old_creator) = roles_schema.creator.take(&RoleCreator::create(&creator.actual_name, creator.actual_namespace.clone()) ) else {
+                    let Some(old_creator) =
+                        roles_schema.creator.take(&RoleCreator::create(
+                            &creator.actual_name,
+                            creator.actual_namespace.clone(),
+                        ))
+                    else {
                         return Err(Error::Runner(format!(
                             "Can not change creator {} {} from {} schema, does not have this role",
                             creator.actual_name,
@@ -974,63 +981,66 @@ impl SchemaRoleEvent {
                             schema_id
                         )));
                     };
-                    
-                    let new_namespace = if let Some(new_namespace) = creator.new_namespace {
+
+                    let new_namespace = if let Some(new_namespace) =
+                        creator.new_namespace
+                    {
                         if !new_namespace.check() {
-                        return Err(Error::Runner(format!(
-                            "Can not change creator {} {} from {} schema, invalid new namespace",
-                            creator.actual_name,
-                            creator.actual_namespace,
-                            schema_id
-                        )));
+                            return Err(Error::Runner(format!(
+                                "Can not change creator {} {} from {} schema, invalid new namespace",
+                                creator.actual_name,
+                                creator.actual_namespace,
+                                schema_id
+                            )));
                         }
                         new_namespace
                     } else {
                         old_creator.namespace
                     };
 
-
-                    let new_quantity = if let Some(quantity) = creator.new_quantity {
-                        if !quantity.check() {
-                            return Err(Error::Runner(
+                    let new_quantity =
+                        if let Some(quantity) = creator.new_quantity {
+                            if !quantity.check() {
+                                return Err(Error::Runner(
                                 "Creator quantity in schema roles can not be 0"
                                     .to_owned(),
                             ));
-                        }
-                        quantity
-                    } else {
-                        old_creator.quantity
-                    };
+                            }
+                            quantity
+                        } else {
+                            old_creator.quantity
+                        };
 
-                    let new_witnesses = if let Some(witnesses) = creator.new_witnesses {
+                    let new_witnesses = if let Some(witnesses) =
+                        creator.new_witnesses
+                    {
                         let mut witnesses = witnesses.clone();
 
                         if witnesses.is_empty() {
                             witnesses.insert("Witnesses".to_owned());
                         }
 
-                    for witness in witnesses.iter() {
-                        if witness != "Witnesses" {
-                            if !members.contains(witness) {
+                        for witness in witnesses.iter() {
+                            if witness != "Witnesses"
+                                && !members.contains(witness)
+                            {
                                 return Err(Error::Runner(format!(
                                     "Witness of Creator in schema {} roles is not a governance member",
                                     schema_id
                                 )));
-                            }       
+                            }
                         }
-                    }
 
                         witnesses
                     } else {
                         old_creator.witnesses
                     };
 
-
                     if !roles_schema.creator.insert(RoleCreator {
                         name: creator.actual_name.clone(),
                         namespace: new_namespace,
                         quantity: new_quantity,
-                        witnesses: new_witnesses
+                        witnesses: new_witnesses,
                     }) {
                         return Err(Error::Runner(format!(
                             "Can not change creator {} {} from {} schema, creator whith this namespace already exist",
@@ -1277,7 +1287,9 @@ pub struct RoleCreatorChange {
 
 impl RoleCreatorChange {
     pub fn is_empty(&self) -> bool {
-        self.new_namespace.is_none() && self.new_quantity.is_none() && self.new_witnesses.is_none()
+        self.new_namespace.is_none()
+            && self.new_quantity.is_none()
+            && self.new_witnesses.is_none()
     }
 }
 

@@ -42,7 +42,7 @@ pub struct GovQuery {
 pub struct EventsQuery {
     quantity: Option<u64>,
     page: Option<u64>,
-    reverse: Option<bool>
+    reverse: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -53,7 +53,7 @@ pub struct EventSnQuery {
 pub struct EventFirstLastQuery {
     quantity: Option<u64>,
     success: Option<bool>,
-    reverse: Option<bool>
+    reverse: Option<bool>,
 }
 
 use crate::doc::ApiDoc;
@@ -652,7 +652,12 @@ async fn get_events(
     Query(parameters): Query<EventsQuery>,
 ) -> Result<Json<PaginatorEvents>, Error> {
     match bridge
-        .get_events(subject_id, parameters.quantity, parameters.page, parameters.reverse)
+        .get_events(
+            subject_id,
+            parameters.quantity,
+            parameters.page,
+            parameters.reverse,
+        )
         .await
     {
         Ok(response) => Ok(Json(PaginatorEvents::from(response))),

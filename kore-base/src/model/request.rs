@@ -9,7 +9,9 @@ use std::collections::HashSet;
 use super::{HashId, Namespace, signature::Signed, wrapper::ValueWrapper};
 
 use crate::{
-    governance::{model::SignersType, Governance}, subject::Metadata, Error
+    Error,
+    governance::{Governance, model::SignersType},
+    subject::Metadata,
 };
 
 use identity::identifier::{

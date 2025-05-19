@@ -1395,14 +1395,9 @@ async fn test_change_roles_gov() {
 
 #[test(tokio::test)]
 async fn test_delete_schema() {
-    let nodes = create_nodes_and_connections(
-        vec![vec![]],
-        vec![],
-        vec![],
-        true,
-        45100,
-    )
-    .await;
+    let nodes =
+        create_nodes_and_connections(vec![vec![]], vec![], vec![], true, 45100)
+            .await;
     let node1 = &nodes[0];
 
     let governance_id =
@@ -1482,7 +1477,9 @@ async fn test_delete_schema() {
         }
     });
 
-    emit_fact(node1, subject_id.clone(), json, true).await.unwrap();
+    emit_fact(node1, subject_id.clone(), json, true)
+        .await
+        .unwrap();
 
     let state = get_subject(node1, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -1502,7 +1499,7 @@ async fn test_delete_schema() {
         })
     );
 
-let json = json!({
+    let json = json!({
         "schemas": {
             "remove": ["Example"]
         }
@@ -1522,8 +1519,10 @@ let json = json!({
         }
     });
 
-    emit_fact(node1, subject_id.clone(), json, true).await.unwrap();
-        let state = get_subject(node1, subject_id.clone(), None).await.unwrap();
+    emit_fact(node1, subject_id.clone(), json, true)
+        .await
+        .unwrap();
+    let state = get_subject(node1, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());
     assert_eq!(state.genesis_gov_version, 1);
@@ -1544,14 +1543,9 @@ let json = json!({
 
 #[test(tokio::test)]
 async fn test_change_schema() {
-    let nodes = create_nodes_and_connections(
-        vec![vec![]],
-        vec![],
-        vec![],
-        true,
-        45110,
-    )
-    .await;
+    let nodes =
+        create_nodes_and_connections(vec![vec![]], vec![], vec![], true, 45110)
+            .await;
     let node1 = &nodes[0];
 
     let governance_id =
@@ -1631,7 +1625,9 @@ async fn test_change_schema() {
         }
     });
 
-    emit_fact(node1, subject_id.clone(), json, true).await.unwrap();
+    emit_fact(node1, subject_id.clone(), json, true)
+        .await
+        .unwrap();
 
     let state = get_subject(node1, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
@@ -1651,9 +1647,7 @@ async fn test_change_schema() {
         })
     );
 
-    
-
-let json = json!({
+    let json = json!({
         "schemas": {
             "change": [{
                 "actual_id": "Example",
@@ -1675,7 +1669,9 @@ let json = json!({
         }
     });
 
-    emit_fact(node1, subject_id.clone(), json, true).await.unwrap();
+    emit_fact(node1, subject_id.clone(), json, true)
+        .await
+        .unwrap();
     let state = get_subject(node1, subject_id.clone(), None).await.unwrap();
     assert_eq!(state.subject_id, subject_id.to_string());
     assert_eq!(state.governance_id, governance_id.to_string());

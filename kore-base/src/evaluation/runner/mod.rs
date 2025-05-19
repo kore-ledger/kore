@@ -18,14 +18,20 @@ use types::{ContractResult, EvaluateType, RunnerResult};
 use wasmtime::{Config, Engine, Module, Store};
 
 use crate::{
+    Error, ValueWrapper,
     governance::{
+        Governance, Schema,
         events::{
             GovernanceEvent, MemberEvent, PoliciesEvent, RolesEvent,
             SchemasEvent,
-        }, model::{HashThisRole, RoleTypes}, Governance, Schema
-    }, model::{
-        common::{generate_linker, MemoryManager}, patch::apply_patch, Namespace
-    }, Error, ValueWrapper
+        },
+        model::{HashThisRole, RoleTypes},
+    },
+    model::{
+        Namespace,
+        common::{MemoryManager, generate_linker},
+        patch::apply_patch,
+    },
 };
 
 const TARGET_RUNNER: &str = "Kore-Evaluation-Runner";
@@ -45,9 +51,19 @@ impl Runner {
         is_owner: bool,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
         match evaluate_type {
-            EvaluateType::AllSchemasFact { contract, init_state, payload } => {
-                Self::execute_fact_not_gov(state, &init_state, &payload, &contract, is_owner)
-                    .await
+            EvaluateType::AllSchemasFact {
+                contract,
+                init_state,
+                payload,
+            } => {
+                Self::execute_fact_not_gov(
+                    state,
+                    &init_state,
+                    &payload,
+                    &contract,
+                    is_owner,
+                )
+                .await
             }
             EvaluateType::GovFact { payload } => {
                 Self::execute_fact_gov(state, &payload).await
@@ -104,9 +120,12 @@ impl Runner {
             ));
         }
 
-        if !governance.has_this_role(
-            HashThisRole::Schema { who: new_owner.clone(), role: RoleTypes::Creator, schema_id: schema_id.to_owned(), namespace: namespace.clone() }
-        ) {
+        if !governance.has_this_role(HashThisRole::Schema {
+            who: new_owner.clone(),
+            role: RoleTypes::Creator,
+            schema_id: schema_id.to_owned(),
+            namespace: namespace.clone(),
+        }) {
             return Err(Error::Runner(format!(
                 "New owner is not a Creator from {} schema_id, with {} namespace",
                 schema_id, namespace
@@ -317,7 +336,10 @@ impl Runner {
 
         // Get access to contract
         let contract_entrypoint = instance
-            .get_typed_func::<(u32, u32, u32, u32), u32>(&mut store, "main_function")
+            .get_typed_func::<(u32, u32, u32, u32), u32>(
+                &mut store,
+                "main_function",
+            )
             .map_err(|e| {
                 Error::Runner(format!("Contract entry point not found: {}", e))
             })?;
@@ -326,7 +348,12 @@ impl Runner {
         let result_ptr = contract_entrypoint
             .call(
                 &mut store,
-                (state_ptr, init_state_ptr, event_ptr, if is_owner { 1 } else { 0 }),
+                (
+                    state_ptr,
+                    init_state_ptr,
+                    event_ptr,
+                    if is_owner { 1 } else { 0 },
+                ),
             )
             .map_err(|e| {
                 Error::Runner(format!("Contract execution failed: {}", e))
@@ -1028,7 +1055,7 @@ impl Runner {
             ))
         })?;
         let init_state_ptr = context.add_data_raw(&init_state_bytes);
-        
+
         let event_bytes = to_vec(&event).map_err(|e| {
             Error::Runner(format!(
                 "Error when serializing the event using borsh: {}",
@@ -1036,7 +1063,12 @@ impl Runner {
             ))
         })?;
         let event_ptr = context.add_data_raw(&event_bytes);
-        Ok((context, state_ptr as u32, init_state_ptr as u32, event_ptr as u32))
+        Ok((
+            context,
+            state_ptr as u32,
+            init_state_ptr as u32,
+            event_ptr as u32,
+        ))
     }
 
     fn get_result(

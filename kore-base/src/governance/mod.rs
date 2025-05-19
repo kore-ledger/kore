@@ -14,7 +14,9 @@ use crate::{
 
 use actor::Error as ActorError;
 use model::{
-    CreatorQuantity, HashThisRole, PolicyGov, PolicySchema, ProtocolTypes, RoleGovIssuer, RoleSchemaIssuer, RoleTypes, RolesAllSchemas, RolesGov, RolesSchema, SchemaKeyCreators, SignersType, WitnessesData
+    CreatorQuantity, HashThisRole, PolicyGov, PolicySchema, ProtocolTypes,
+    RoleGovIssuer, RoleSchemaIssuer, RoleTypes, RolesAllSchemas, RolesGov,
+    RolesSchema, SchemaKeyCreators, SignersType, WitnessesData,
 };
 
 pub use model::{Member, Quorum, Role, Schema};
@@ -167,10 +169,7 @@ impl Governance {
     /// * [`Roles`] - The role.
     /// * `schema` - The schema id from [`Schema`].
     /// * [`Namespace`] - The namespace.
-    pub fn has_this_role(
-        &self,
-        data: HashThisRole
-    ) -> bool {
+    pub fn has_this_role(&self, data: HashThisRole) -> bool {
         let who = data.get_who();
 
         let Some(name) = self
@@ -190,8 +189,13 @@ impl Governance {
                 }
 
                 self.roles_gov.hash_this_rol(role, &name)
-            },
-            HashThisRole::Schema { role, schema_id, namespace, .. } => {
+            }
+            HashThisRole::Schema {
+                role,
+                schema_id,
+                namespace,
+                ..
+            } => {
                 if self.roles_all_schemas.hash_this_rol(
                     role.clone(),
                     namespace.clone(),
@@ -205,8 +209,13 @@ impl Governance {
                 };
 
                 roles.hash_this_rol(role, namespace, &name)
-            },
-            HashThisRole::SchemaWitness { creator, schema_id, namespace, .. } => {
+            }
+            HashThisRole::SchemaWitness {
+                creator,
+                schema_id,
+                namespace,
+                ..
+            } => {
                 let Some(creator_name) = self
                     .members
                     .iter()
@@ -217,11 +226,13 @@ impl Governance {
                     return false;
                 };
 
-                let Some(roles_schema) = self.roles_schema.get(&schema_id) else {
+                let Some(roles_schema) = self.roles_schema.get(&schema_id)
+                else {
                     return false;
                 };
 
-                let witnesses_creator = roles_schema.creator_witnesses(&creator_name, namespace.clone());
+                let witnesses_creator = roles_schema
+                    .creator_witnesses(&creator_name, namespace.clone());
 
                 if witnesses_creator.contains(&name) {
                     return true;
@@ -229,9 +240,9 @@ impl Governance {
 
                 if witnesses_creator.contains("Witnesses") {
                     let not_gov_witnesses = self
-                            .roles_all_schemas
-                            .get_signers(RoleTypes::Witness, namespace.clone())
-                            .0;
+                        .roles_all_schemas
+                        .get_signers(RoleTypes::Witness, namespace.clone())
+                        .0;
 
                     if not_gov_witnesses.contains(&name) {
                         return true;
@@ -246,8 +257,8 @@ impl Governance {
                     }
                 }
 
-                return false;
-            },
+                false
+            }
         }
     }
 

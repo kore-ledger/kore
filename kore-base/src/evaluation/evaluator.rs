@@ -214,7 +214,9 @@ impl Evaluator {
                         (
                             EvaluateType::AllSchemasFact {
                                 contract: contract.to_vec(),
-                                init_state: evaluation_req.gov_state_init_state.clone(),
+                                init_state: evaluation_req
+                                    .gov_state_init_state
+                                    .clone(),
                                 payload: fact_event.payload,
                             },
                             evaluation_req.state.clone(),

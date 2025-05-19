@@ -403,8 +403,15 @@ pub struct RolesSchema {
 }
 
 impl RolesSchema {
-    pub fn creator_witnesses(&self, name: &str, namespace: Namespace) -> BTreeSet<String> {
-        self.creator.get(&RoleCreator::create(name, namespace)).map(|x| x.witnesses.clone()).unwrap_or_default()
+    pub fn creator_witnesses(
+        &self,
+        name: &str,
+        namespace: Namespace,
+    ) -> BTreeSet<String> {
+        self.creator
+            .get(&RoleCreator::create(name, namespace))
+            .map(|x| x.witnesses.clone())
+            .unwrap_or_default()
     }
 
     pub fn remove_member_role(&mut self, remove_members: &Vec<String>) {
@@ -629,7 +636,7 @@ impl RolesSchema {
         name: &str,
     ) -> bool {
         let role = RoleTypes::from(role);
-        
+
         match role {
             RoleTypes::Evaluator => {
                 self.evaluator.iter().any(|x| x.name == name)
@@ -795,16 +802,24 @@ pub enum WitnessesData {
     Schema {
         creator: KeyIdentifier,
         schema_id: String,
-        namespace: Namespace
-    }
+        namespace: Namespace,
+    },
 }
 
 impl WitnessesData {
-    pub fn build(schema_id: &str, namespace: Namespace, creator: KeyIdentifier) -> Self {
+    pub fn build(
+        schema_id: &str,
+        namespace: Namespace,
+        creator: KeyIdentifier,
+    ) -> Self {
         if schema_id == "governance" {
             WitnessesData::Gov
         } else {
-            WitnessesData::Schema { creator, schema_id: schema_id.to_owned(), namespace}
+            WitnessesData::Schema {
+                creator,
+                schema_id: schema_id.to_owned(),
+                namespace,
+            }
         }
     }
 }
@@ -812,7 +827,7 @@ impl WitnessesData {
 pub enum HashThisRole {
     Gov {
         who: KeyIdentifier,
-        role: RoleTypes
+        role: RoleTypes,
     },
     Schema {
         who: KeyIdentifier,
@@ -825,15 +840,15 @@ pub enum HashThisRole {
         creator: KeyIdentifier,
         schema_id: String,
         namespace: Namespace,
-    }
+    },
 }
 
 impl HashThisRole {
     pub fn get_who(&self) -> KeyIdentifier {
         match self {
             HashThisRole::Gov { who, .. } => who.clone(),
-            HashThisRole::Schema { who,  ..} => who.clone(),
-            HashThisRole::SchemaWitness { who, ..} => who.clone(),
+            HashThisRole::Schema { who, .. } => who.clone(),
+            HashThisRole::SchemaWitness { who, .. } => who.clone(),
         }
     }
 }
@@ -853,7 +868,7 @@ pub struct RoleCreator {
     pub namespace: Namespace,
     #[serde(default = "default_witnesses_creator")]
     pub witnesses: BTreeSet<String>,
-    pub quantity: CreatorQuantity
+    pub quantity: CreatorQuantity,
 }
 
 fn default_witnesses_creator() -> BTreeSet<String> {
@@ -869,7 +884,12 @@ impl Hash for RoleCreator {
 
 impl RoleCreator {
     pub fn create(name: &str, namespace: Namespace) -> Self {
-        Self { name: name.to_owned(), namespace: namespace, witnesses: BTreeSet::default(), quantity: CreatorQuantity::Infinity }
+        Self {
+            name: name.to_owned(),
+            namespace,
+            witnesses: BTreeSet::default(),
+            quantity: CreatorQuantity::Infinity,
+        }
     }
 }
 
@@ -1012,9 +1032,11 @@ impl Quorum {
             Quorum::Fixed(fixed) => {
                 let min = std::cmp::min(fixed, &total_members);
                 *min
-            },
+            }
             Quorum::Majority => total_members / 2 + 1,
-            Quorum::Percentage(percentage) => total_members * (percentage / 100) as u32
+            Quorum::Percentage(percentage) => {
+                total_members * (percentage / 100) as u32
+            }
         };
 
         std::cmp::min(signers, pending)

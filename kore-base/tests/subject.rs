@@ -1,4 +1,4 @@
-use std::{str::FromStr};
+use std::str::FromStr;
 
 mod common;
 
@@ -1956,7 +1956,6 @@ async fn test_dynamic_witnesses_1() {
     );
 }
 
-
 #[test(tokio::test)]
 // Un testigo nuevo le pide la copia a otro testigo viejo.
 async fn test_dynamic_witnesses_2() {
@@ -2040,7 +2039,7 @@ async fn test_dynamic_witnesses_2() {
                         {
                             "name": "KoreNode2",
                             "namespace": []
-                        },                         
+                        },
                         {
                             "name": "Owner",
                             "namespace": []
@@ -2258,9 +2257,12 @@ async fn test_dynamic_witnesses_explicit_1() {
     let creator = &nodes[1];
     let witness = &nodes[2];
 
-    let governance_id =
-        create_and_authorize_governance(owner_governance, vec![creator, witness], "")
-            .await;
+    let governance_id = create_and_authorize_governance(
+        owner_governance,
+        vec![creator, witness],
+        "",
+    )
+    .await;
 
     // add member to governance
     let json = json!({
@@ -2404,7 +2406,10 @@ async fn test_dynamic_witnesses_explicit_1() {
         })
     );
 
-    owner_governance.get_subject(subject_id.clone()).await.unwrap_err();
+    owner_governance
+        .get_subject(subject_id.clone())
+        .await
+        .unwrap_err();
 }
 
 #[test(tokio::test)]
@@ -2425,9 +2430,12 @@ async fn test_dynamic_witnesses_explicit_2() {
     let creator = &nodes[1];
     let witness = &nodes[2];
 
-    let governance_id =
-        create_and_authorize_governance(owner_governance, vec![creator, witness], "")
-            .await;
+    let governance_id = create_and_authorize_governance(
+        owner_governance,
+        vec![creator, witness],
+        "",
+    )
+    .await;
 
     // add member to governance
     let json = json!({
@@ -2526,10 +2534,15 @@ async fn test_dynamic_witnesses_explicit_2() {
             .await
             .unwrap();
 
-    let subject_id_2 =
-        create_subject(creator, governance_id.clone(), "Example", "Spain", true)
-            .await
-            .unwrap();
+    let subject_id_2 = create_subject(
+        creator,
+        governance_id.clone(),
+        "Example",
+        "Spain",
+        true,
+    )
+    .await
+    .unwrap();
 
     // emit event to subject
     let json = json!({
@@ -2585,9 +2598,12 @@ async fn test_dynamic_witnesses_explicit_2() {
         })
     );
 
-    owner_governance.get_subject(subject_id_1.clone()).await.unwrap_err();
+    owner_governance
+        .get_subject(subject_id_1.clone())
+        .await
+        .unwrap_err();
 
-        let state = get_subject(creator, subject_id_2.clone(), None)
+    let state = get_subject(creator, subject_id_2.clone(), None)
         .await
         .unwrap();
     assert_eq!(state.subject_id, subject_id_2.to_string());
@@ -2645,9 +2661,12 @@ async fn test_dynamic_witnesses_explicit_3() {
     let creator = &nodes[1];
     let witness = &nodes[2];
 
-    let governance_id =
-        create_and_authorize_governance(owner_governance, vec![creator, witness], "")
-            .await;
+    let governance_id = create_and_authorize_governance(
+        owner_governance,
+        vec![creator, witness],
+        "",
+    )
+    .await;
 
     // add member to governance
     let json = json!({
@@ -2791,9 +2810,12 @@ async fn test_dynamic_witnesses_explicit_3() {
         })
     );
 
-    owner_governance.get_subject(subject_id.clone()).await.unwrap_err();
+    owner_governance
+        .get_subject(subject_id.clone())
+        .await
+        .unwrap_err();
 
-        owner_governance
+    owner_governance
         .auth_subject(
             subject_id.clone(),
             AuthWitness::One(
@@ -2807,31 +2829,23 @@ async fn test_dynamic_witnesses_explicit_3() {
         .await
         .unwrap();
 
-    owner_governance.get_subject(subject_id.clone()).await.unwrap_err();
-
+    owner_governance
+        .get_subject(subject_id.clone())
+        .await
+        .unwrap_err();
 }
 
 #[test(tokio::test)]
 // Un testigo nuevo le pide la copia a otro testigo viejo.
 async fn test_no_subject_validator() {
-    let nodes = create_nodes_and_connections(
-        vec![vec![]],
-        vec![],
-        vec![],
-        true,
-        46110,
-    )
-    .await;
+    let nodes =
+        create_nodes_and_connections(vec![vec![]], vec![], vec![], true, 46110)
+            .await;
 
     let owner_governance = &nodes[0];
 
-
-    let governance_id = create_and_authorize_governance(
-        owner_governance,
-        vec![],
-        "",
-    )
-    .await;
+    let governance_id =
+        create_and_authorize_governance(owner_governance, vec![], "").await;
 
     // add member to governance
     let json = json!({
@@ -2873,10 +2887,15 @@ async fn test_no_subject_validator() {
         .unwrap();
 
     // create subject
-    let subject_id =
-        create_subject(owner_governance, governance_id.clone(), "Example", "", true)
-            .await
-            .unwrap();
+    let subject_id = create_subject(
+        owner_governance,
+        governance_id.clone(),
+        "Example",
+        "",
+        true,
+    )
+    .await
+    .unwrap();
 
     // emit event to subject
     let json = json!({
@@ -2893,24 +2912,14 @@ async fn test_no_subject_validator() {
 #[test(tokio::test)]
 // Un testigo nuevo le pide la copia a otro testigo viejo.
 async fn test_no_subject_evaluator() {
-    let nodes = create_nodes_and_connections(
-        vec![vec![]],
-        vec![],
-        vec![],
-        true,
-        46120,
-    )
-    .await;
+    let nodes =
+        create_nodes_and_connections(vec![vec![]], vec![], vec![], true, 46120)
+            .await;
 
     let owner_governance = &nodes[0];
 
-
-    let governance_id = create_and_authorize_governance(
-        owner_governance,
-        vec![],
-        "",
-    )
-    .await;
+    let governance_id =
+        create_and_authorize_governance(owner_governance, vec![], "").await;
 
     // add member to governance
     let json = json!({
@@ -2964,10 +2973,15 @@ async fn test_no_subject_evaluator() {
         .unwrap();
 
     // create subject
-    let subject_id =
-        create_subject(owner_governance, governance_id.clone(), "Example", "", true)
-            .await
-            .unwrap();
+    let subject_id = create_subject(
+        owner_governance,
+        governance_id.clone(),
+        "Example",
+        "",
+        true,
+    )
+    .await
+    .unwrap();
 
     // emit event to subject
     let json = json!({
@@ -3005,24 +3019,14 @@ async fn test_no_subject_evaluator() {
 #[test(tokio::test)]
 // Un testigo nuevo le pide la copia a otro testigo viejo.
 async fn test_no_subject_issuer() {
-    let nodes = create_nodes_and_connections(
-        vec![vec![]],
-        vec![],
-        vec![],
-        true,
-        46130,
-    )
-    .await;
+    let nodes =
+        create_nodes_and_connections(vec![vec![]], vec![], vec![], true, 46130)
+            .await;
 
     let owner_governance = &nodes[0];
 
-
-    let governance_id = create_and_authorize_governance(
-        owner_governance,
-        vec![],
-        "",
-    )
-    .await;
+    let governance_id =
+        create_and_authorize_governance(owner_governance, vec![], "").await;
 
     // add member to governance
     let json = json!({
@@ -3070,10 +3074,15 @@ async fn test_no_subject_issuer() {
         .unwrap();
 
     // create subject
-    let subject_id =
-        create_subject(owner_governance, governance_id.clone(), "Example", "", true)
-            .await
-            .unwrap();
+    let subject_id = create_subject(
+        owner_governance,
+        governance_id.clone(),
+        "Example",
+        "",
+        true,
+    )
+    .await
+    .unwrap();
 
     // emit event to subject
     let json = json!({

@@ -13,14 +13,26 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 
 use crate::{
-    auth::WitnessesAuth, governance::{
-        model::{CreatorQuantity, HashThisRole, RoleTypes}, Governance
-    }, intermediary::Intermediary, model::{
+    ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,
+    NodeMessage, NodeResponse, Signed, Subject, SubjectMessage,
+    SubjectResponse,
+    auth::WitnessesAuth,
+    governance::{
+        Governance,
+        model::{CreatorQuantity, HashThisRole, RoleTypes},
+    },
+    intermediary::Intermediary,
+    model::{
+        Namespace,
         common::{
             emit_fail, get_gov, get_node_subject_data, get_quantity,
             subject_old_owner, try_to_update, update_event, update_vali_data,
-        }, event::{Ledger, ProtocolsSignatures}, network::RetryNetwork, Namespace
-    }, update::TransferResponse, validation::proof::ValidationProof, ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node, NodeMessage, NodeResponse, Signed, Subject, SubjectMessage, SubjectResponse
+        },
+        event::{Ledger, ProtocolsSignatures},
+        network::RetryNetwork,
+    },
+    update::TransferResponse,
+    validation::proof::ValidationProof,
 };
 
 use tracing::{error, warn};
@@ -278,23 +290,21 @@ impl Distributor {
         if auth_data.schema_id == "governance" {
             // No está auth
             if !auth {
-                return Err(ActorError::Functional(
+                Err(ActorError::Functional(
                     "Governance is not authorized".to_owned(),
-                ));
+                ))
             // está auth y tengo la copia
             } else if owned || know {
-                return Ok(());
+                Ok(())
             // está auth pero no tengo la copia
             } else if let EventRequest::Create(_) =
                 ledger.event_request.content.clone()
             {
-                return Ok(());
+                Ok(())
             } else {
                 try_to_update(ctx, subject_id, WitnessesAuth::Owner(signer))
                     .await?;
-                return Err(ActorError::Functional(
-                    "Updating governance".to_owned(),
-                ));
+                Err(ActorError::Functional("Updating governance".to_owned()))
             }
         } else {
             let data =
@@ -364,9 +374,12 @@ impl Distributor {
             // Si no está autorizado explicitamente.
             if !auth {
                 // Miramos que tengamos el rol, se comprueba que el signer sea creator y nosotros testigos
-                if !gov.has_this_role(
-                    HashThisRole::SchemaWitness { who: our_key, creator: signer.clone(), schema_id: auth_data.schema_id, namespace }
-                ) {
+                if !gov.has_this_role(HashThisRole::SchemaWitness {
+                    who: our_key,
+                    creator: signer.clone(),
+                    schema_id: auth_data.schema_id,
+                    namespace,
+                }) {
                     return Err(ActorError::Functional(
                         "We are not witness".to_string(),
                     ));
@@ -549,15 +562,21 @@ impl Distributor {
         }
 
         let has_this_role = if schema_id == "governance" {
-            HashThisRole::Gov { who: info.sender.clone(), role: RoleTypes::Witness }
+            HashThisRole::Gov {
+                who: info.sender.clone(),
+                role: RoleTypes::Witness,
+            }
         } else {
             let owner = KeyIdentifier::from_str(&owner).map_err(|e| ActorError::FunctionalFail(format!("Can not conver owner KeyIdentifier (String) into KeyIdentifier: {}", e)))?;
-            HashThisRole::SchemaWitness { who: info.sender.clone(), creator: owner, schema_id, namespace }
+            HashThisRole::SchemaWitness {
+                who: info.sender.clone(),
+                creator: owner,
+                schema_id,
+                namespace,
+            }
         };
 
-        if !gov.has_this_role(
-            has_this_role
-        ) {
+        if !gov.has_this_role(has_this_role) {
             return Err(ActorError::Functional(
                 "Sender is neither a witness nor an owner nor a new owner of subject"
                     .to_owned(),
@@ -837,17 +856,21 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 let has_this_role = if subject_data.schema_id == "governance" {
-                    HashThisRole::Gov { who: info.sender.clone(), role: RoleTypes::Witness }
+                    HashThisRole::Gov {
+                        who: info.sender.clone(),
+                        role: RoleTypes::Witness,
+                    }
                 } else {
                     let owner = KeyIdentifier::from_str(&subject_data.owner).map_err(|e| ActorError::FunctionalFail(format!("Can not conver owner KeyIdentifier (String) into KeyIdentifier: {}", e)))?;
-                    HashThisRole::SchemaWitness { who: info.sender.clone(), creator: owner, schema_id: subject_data.schema_id, namespace: subject_data.namespace.clone() }
+                    HashThisRole::SchemaWitness {
+                        who: info.sender.clone(),
+                        creator: owner,
+                        schema_id: subject_data.schema_id,
+                        namespace: subject_data.namespace.clone(),
+                    }
                 };
 
-                if !is_owner
-                    && !gov.has_this_role(
-                        has_this_role
-                    )
-                {
+                if !is_owner && !gov.has_this_role(has_this_role) {
                     let e = "Sender neither the owned nor a witness";
                     error!(TARGET_DISTRIBUTOR, "GetLastSn, {}", e);
                     return Err(ActorError::Functional(e.to_owned()));
@@ -904,11 +927,7 @@ impl Handler<Distributor> for Distributor {
                     .check_gov_version(ctx, &subject_id, gov_version, &info)
                     .await
                 {
-                    error!(
-                        TARGET_DISTRIBUTOR,
-                        "SendDistribution, {}",
-                        e
-                    );
+                    error!(TARGET_DISTRIBUTOR, "SendDistribution, {}", e);
                     if let ActorError::Functional(_) = e {
                         return Err(e);
                     } else {

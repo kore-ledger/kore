@@ -4,11 +4,18 @@
 use std::{collections::HashSet, time::Duration};
 
 use crate::{
-    governance::{model::SignersType, Governance}, helpers::network::{intermediary::Intermediary, NetworkMessage}, model::{
+    Signed,
+    governance::{Governance, model::SignersType},
+    helpers::network::{NetworkMessage, intermediary::Intermediary},
+    model::{
+        SignTypesNode, TimeStamp,
         common::{
-            emit_fail, get_gov, get_metadata, get_sign, update_ledger_network, UpdateData
-        }, event::ProtocolsSignatures, network::{RetryNetwork, TimeOutResponse}, SignTypesNode, TimeStamp
-    }, Signed
+            UpdateData, emit_fail, get_gov, get_metadata, get_sign,
+            update_ledger_network,
+        },
+        event::ProtocolsSignatures,
+        network::{RetryNetwork, TimeOutResponse},
+    },
 };
 
 use super::{

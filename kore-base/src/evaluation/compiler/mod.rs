@@ -220,7 +220,10 @@ impl Compiler {
 
         // Get access to contract, only to check if main_function exist.
         let _main_contract_entrypoint = instance
-            .get_typed_func::<(u32, u32, u32, u32), u32>(&mut store, "main_function")
+            .get_typed_func::<(u32, u32, u32, u32), u32>(
+                &mut store,
+                "main_function",
+            )
             .map_err(|e| {
                 Error::Compiler(format!(
                     "Contract entry point not found: {}",

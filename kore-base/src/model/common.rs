@@ -1,9 +1,9 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::collections::{HashMap, HashSet};
 use rand::rng;
 use rand::seq::IteratorRandom;
+use std::collections::{HashMap, HashSet};
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
@@ -112,7 +112,10 @@ pub fn take_random_signers(
         .cloned()
         .collect();
 
-    let signers = signers.difference(&random_signers).cloned().collect::<HashSet<KeyIdentifier>>();
+    let signers = signers
+        .difference(&random_signers)
+        .cloned()
+        .collect::<HashSet<KeyIdentifier>>();
 
     (random_signers, signers)
 }
