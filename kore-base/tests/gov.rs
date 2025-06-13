@@ -2,19 +2,21 @@ use std::str::FromStr;
 
 mod common;
 
-use identity::{
-    identifier::KeyIdentifier,
-    keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
-};
-use kore_base::{approval::approver::ApprovalStateRes, auth::AuthWitness};
-
 use common::{
     create_and_authorize_governance, create_nodes_and_connections,
     create_subject, emit_approve, emit_confirm, emit_fact, emit_transfer,
     get_signatures, get_subject,
 };
+use identity::{
+    identifier::KeyIdentifier,
+    keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
+};
+use kore_base::{Api, approval::approver::ApprovalStateRes, auth::AuthWitness};
+use network::RoutingNode;
 use serde_json::json;
 use test_log::test;
+use tokio::time::{Duration, sleep};
+use crate::common::{create_config, node_running};
 
 #[test(tokio::test)]
 //  Verificar que se puede crear una gobernanza, sujeto y emitir un evento además de recibir la copia
@@ -1689,4 +1691,220 @@ async fn test_change_schema() {
             "data": "KoreLedger"
         })
     );
+}
+
+#[test(tokio::test)]
+async fn test_many_events() {
+    // Caso de uso básico 1 bootstrap (intermediario), 1 ephemeral(issuer de subject),
+    // 1 addressable(owner de la gobernanza)
+    let (keypair, config, mut registry, password, token) = create_config(
+        network::NodeType::Bootstrap,
+        "/memory/3000",
+        vec![],
+        true,
+    )
+    .await;
+    let boostrap_api = Api::new(
+        keypair.clone(),
+        config.clone(),
+        &mut registry,
+        &password,
+        &token,
+    )
+    .await
+    .unwrap();
+    node_running(&boostrap_api).await.unwrap();
+    let peer = boostrap_api.peer_id();
+    let (keypair2, config2, mut registry2, password2, token2) = create_config(
+        network::NodeType::Ephemeral,
+        "/memory/3001",
+        vec![RoutingNode {
+            peer_id: peer.clone(),
+            address: vec!["/memory/3000".to_string()],
+        }],
+        true,
+    )
+    .await;
+    let ephemeral_api =
+        Api::new(keypair2, config2, &mut registry2, &password2, &token2)
+            .await
+            .unwrap();
+    node_running(&ephemeral_api).await.unwrap();
+
+    let owner_governance = &boostrap_api;
+    let emit_events = &ephemeral_api;
+
+    let governance_id = create_and_authorize_governance(
+        owner_governance,
+        vec![emit_events],
+        "",
+    )
+    .await;
+
+    // add node bootstrap and ephemeral to governance
+    let json = json!({
+        "members": {
+            "add": [
+                {
+                    "name": "KoreNode2",
+                    "key": emit_events.controller_id()
+                }
+            ]
+        },
+        "schemas": {
+            "add": [
+                {
+                    "id": "Example",
+                    "contract": "dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07CnVzZSBrb3JlX2NvbnRyYWN0X3NkayBhcyBzZGs7CgovLy8gRGVmaW5lIHRoZSBzdGF0ZSBvZiB0aGUgY29udHJhY3QuIAojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplLCBDbG9uZSldCnN0cnVjdCBTdGF0ZSB7CiAgcHViIG9uZTogdTMyLAogIHB1YiB0d286IHUzMiwKICBwdWIgdGhyZWU6IHUzMgp9CgojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplKV0KZW51bSBTdGF0ZUV2ZW50IHsKICBNb2RPbmUgeyBkYXRhOiB1MzIgfSwKICBNb2RUd28geyBkYXRhOiB1MzIgfSwKICBNb2RUaHJlZSB7IGRhdGE6IHUzMiB9LAogIE1vZEFsbCB7IG9uZTogdTMyLCB0d286IHUzMiwgdGhyZWU6IHUzMiB9Cn0KCiNbdW5zYWZlKG5vX21hbmdsZSldCnB1YiB1bnNhZmUgZm4gbWFpbl9mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMiwgaW5pdF9zdGF0ZV9wdHI6IGkzMiwgZXZlbnRfcHRyOiBpMzIsIGlzX293bmVyOiBpMzIpIC0+IHUzMiB7CiAgc2RrOjpleGVjdXRlX2NvbnRyYWN0KHN0YXRlX3B0ciwgaW5pdF9zdGF0ZV9wdHIsIGV2ZW50X3B0ciwgaXNfb3duZXIsIGNvbnRyYWN0X2xvZ2ljKQp9CgojW3Vuc2FmZShub19tYW5nbGUpXQpwdWIgdW5zYWZlIGZuIGluaXRfY2hlY2tfZnVuY3Rpb24oc3RhdGVfcHRyOiBpMzIpIC0+IHUzMiB7CiAgc2RrOjpjaGVja19pbml0X2RhdGEoc3RhdGVfcHRyLCBpbml0X2xvZ2ljKQp9CgpmbiBpbml0X2xvZ2ljKAogIF9zdGF0ZTogJlN0YXRlLAogIGNvbnRyYWN0X3Jlc3VsdDogJm11dCBzZGs6OkNvbnRyYWN0SW5pdENoZWNrLAopIHsKICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0KCmZuIGNvbnRyYWN0X2xvZ2ljKAogIGNvbnRleHQ6ICZzZGs6OkNvbnRleHQ8U3RhdGUsIFN0YXRlRXZlbnQ+LAogIGNvbnRyYWN0X3Jlc3VsdDogJm11dCBzZGs6OkNvbnRyYWN0UmVzdWx0PFN0YXRlPiwKKSB7CiAgbGV0IHN0YXRlID0gJm11dCBjb250cmFjdF9yZXN1bHQuZmluYWxfc3RhdGU7CiAgbWF0Y2ggY29udGV4dC5ldmVudCB7CiAgICAgIFN0YXRlRXZlbnQ6Ok1vZE9uZSB7IGRhdGEgfSA9PiB7CiAgICAgICAgc3RhdGUub25lID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kVHdvIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS50d28gPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUaHJlZSB7IGRhdGEgfSA9PiB7CiAgICAgICAgaWYgZGF0YSA9PSA1MCB7CiAgICAgICAgICBjb250cmFjdF9yZXN1bHQuZXJyb3IgPSAiQ2FuIG5vdCBjaGFuZ2UgdGhyZWUgdmFsdWUsIDUwIGlzIGEgaW52YWxpZCB2YWx1ZSIudG9fb3duZWQoKTsKICAgICAgICAgIHJldHVybgogICAgICAgIH0KICAgICAgICAKICAgICAgICBzdGF0ZS50aHJlZSA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZEFsbCB7IG9uZSwgdHdvLCB0aHJlZSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBvbmU7CiAgICAgICAgc3RhdGUudHdvID0gdHdvOwogICAgICAgIHN0YXRlLnRocmVlID0gdGhyZWU7CiAgICAgIH0KICB9CiAgY29udHJhY3RfcmVzdWx0LnN1Y2Nlc3MgPSB0cnVlOwp9",
+                    "initial_value": {
+                        "one": 0,
+                        "two": 0,
+                        "three": 0
+                    }
+                }
+            ]
+        },
+        "roles": {
+            "governance": {
+                "add": {
+                    "witness": [
+                        "KoreNode2"
+                    ]
+                }
+            },
+            "schema":
+                [
+                {
+                    "schema_id": "Example",
+                    "roles": {
+                        "add": {
+                            "evaluator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "validator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "witness": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "creator": [
+                                {
+                                    "name": "KoreNode2",
+                                    "namespace": [],
+                                    "quantity": 1
+                                }
+                            ],
+                            "issuer": [
+                                {
+                                    "name": "KoreNode2",
+                                    "namespace": []
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    });
+
+    emit_fact(owner_governance, governance_id.clone(), json, true)
+        .await
+        .unwrap();
+
+    // ya tiene la copia del subject
+
+    let subject_id_1 =
+        create_subject(emit_events, governance_id.clone(), "Example", "", true)
+            .await
+            .unwrap();
+
+    let subject_id = subject_id_1.clone();
+    // dos hilos uno viendo si llegan los eventos al boostrap y otro emitiendo eventos al ephemeral cuando lleven 100 eventos
+    // debemos parar e boostrpa y seguir enviando al efimero durante 3 minutos y luego volvermos a levnatar el boostrap
+    // con la configuración original
+    let emit_handle = tokio::spawn({
+        let emit_api = emit_events.clone();
+        let subject = subject_id.clone();
+        async move {
+            let json = json!({ "ModOne": { "data": 100 } });
+            loop {
+                emit_fact(&emit_api, subject.clone(), json.clone(), true)
+                    .await
+                    .unwrap();
+            }
+        }
+    });
+
+    let monitor_handle = {
+        let keypair = keypair.clone();
+        let config = config.clone();
+        let password = password.clone();
+        let cancel_token = token.clone();
+        // movemos ownership de la API y del registry original
+        let mut registry = registry;
+        let mut owner_api = boostrap_api;
+        let subject = subject_id.clone();
+
+        tokio::spawn(async move {
+            // 1) espera a N eventos
+            loop {
+                let state = get_subject(&owner_api, subject.clone(), None)
+                    .await
+                    .unwrap();
+                if state.sn >= 2 {
+                    break;
+                }
+                sleep(Duration::from_secs(1)).await;
+            }
+
+            // 2) para y cierra la API original
+            cancel_token.cancel();
+            let new_token = tokio_util::sync::CancellationToken::new();
+            sleep(Duration::from_secs(10)).await;
+            drop(owner_api);
+
+            // 3) espera lo suficiente para que RocksDB libere el LOCK
+            sleep(Duration::from_secs(10)).await;
+
+            // 4) reintenta abrir la DB hasta que funcione
+            let restarted_api = loop {
+                match Api::new(
+                    keypair.clone(),
+                    config.clone(),
+                    &mut registry,
+                    &password,
+                    &new_token,
+                )
+                .await
+                {
+                    Ok(api) => break api,
+                    Err(err) => {
+                        eprintln!("Reopen failed ({:?}), retrying...", err);
+                        sleep(Duration::from_millis(500)).await;
+                    }
+                }
+            };
+            println!("Reopened API successfully");
+            println!("");
+            println!("Checking if node is running...");
+            node_running(&restarted_api).await.unwrap();
+
+            // 5) comprobar que vuelve a recibir
+            let state = get_subject(&restarted_api, subject.clone(), None)
+                .await
+                .unwrap();
+            println!("State after restart: {:?}", state);
+        })
+    };
+
+    let (_emit_res, _mon_res) = tokio::join!(emit_handle, monitor_handle);
 }

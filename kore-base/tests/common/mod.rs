@@ -82,6 +82,45 @@ pub async fn create_node(
         .unwrap()
 }
 
+pub async fn create_config(
+    node_type: network::NodeType,
+    listen_address: &str,
+    peers: Vec<RoutingNode>,
+    always_accept: bool,
+) -> (KeyPair, Config, Registry, String, CancellationToken) {
+    let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
+
+    let dir = tempfile::tempdir().expect("Can not create temporal directory.");
+    let path = dir.path().to_str().unwrap();
+
+    let network_config = NetworkConfig::new(
+        node_type,
+        vec![listen_address.to_owned()],
+        vec![],
+        peers,
+        false,
+    );
+
+    let config = Config {
+        key_derivator: KeyDerivator::Ed25519,
+        digest_derivator: DigestDerivator::Blake3_256,
+        kore_db: KoreDbConfig::build(path),
+        external_db: ExternalDbConfig::build(&format!(
+            "{}/database.db",
+            create_temp_dir()
+        )),
+        network: network_config,
+        contracts_dir: create_temp_dir(),
+        always_accept,
+        garbage_collector: Duration::from_secs(500),
+        sink: BTreeMap::new(),
+    };
+
+    let mut registry = Registry::default();
+    let token = CancellationToken::new();
+    (keys, config, registry, "kore".to_string(), token)
+}
+
 pub async fn create_nodes_and_connections(
     bootstrap: Vec<Vec<usize>>,
     addressable: Vec<Vec<usize>>,
