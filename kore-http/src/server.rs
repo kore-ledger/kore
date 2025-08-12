@@ -970,7 +970,14 @@ async fn get_peer_id(
                     "sink": ""
                 },
                 "keys_path": "keys",
-                "prometheus": "0.0.0.0:3050"
+                "prometheus": "0.0.0.0:3050",
+                "logging": {
+                    "level": "Info",
+                    "file": "kore.log",
+                    "max_size": 100,
+                    "max_files": 10,
+                    "compress": true
+                },
             }
         )),
         (status = 500, description = "Internal Server Error"),

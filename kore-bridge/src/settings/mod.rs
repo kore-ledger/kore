@@ -144,6 +144,13 @@ mod tests {
                 "KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST",
                 "58",
             );
+            std::env::set_var("KORE_LOGGING_OUTPUT", "file");
+            std::env::set_var("KORE_LOGGING_API_URL", "https://example.com/logs");
+            std::env::set_var("KORE_LOGGING_FILE_PATH", "/tmp/my.log");
+            std::env::set_var("KORE_LOGGING_ROTATION", "size");
+            std::env::set_var("KORE_LOGGING_MAX_SIZE", "52428800");
+            std::env::set_var("KORE_LOGGING_MAX_FILES", "5");
+            std::env::set_var("KORE_LOGGING_LEVEL", "debug");
         }
 
         let config = build_config(true, "").unwrap();
@@ -166,6 +173,14 @@ mod tests {
                     .to_owned(),
             },
         ];
+        let log = &config.logging;
+        assert_eq!(log.output, "file");
+        assert_eq!(log.api_url.as_deref(), Some("https://example.com/logs"));
+        assert_eq!(log.file_path, "/tmp/my.log");
+        assert_eq!(log.rotation, "size");
+        assert_eq!(log.max_size, 50 * 1024 * 1024);
+        assert_eq!(log.max_files, 5);
+        assert_eq!(log.level, "debug");
 
         assert_eq!(config.kore_config.network.port_reuse, true);
         assert_eq!(config.kore_config.network.user_agent, "Kore2.0");
@@ -348,6 +363,13 @@ mod tests {
                 "KORE_NETWORK_CONTROL_LIST_SERVICE_BLOCK_LIST",
             );
             std::env::remove_var("KORE_NETWORK_CONTROL_LIST_INTERVAL_REQUEST");
+            std::env::remove_var("KORE_LOGGING_OUTPUT");
+            std::env::remove_var("KORE_LOGGING_API_URL");
+            std::env::remove_var("KORE_LOGGING_FILE_PATH");
+            std::env::remove_var("KORE_LOGGING_ROTATION");
+            std::env::remove_var("KORE_LOGGING_MAX_SIZE");
+            std::env::remove_var("KORE_LOGGING_MAX_FILES");
+            std::env::remove_var("KORE_LOGGING_LEVEL");
         }
     }
 }

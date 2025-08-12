@@ -78,6 +78,15 @@ impl From<Params> for Config {
         Self {
             keys_path: params.kore.keys_path,
             prometheus: params.kore.prometheus,
+            logging: kore_base::config::Logging {
+                output:    params.kore.logging.output,
+                api_url:   params.kore.logging.api_url,
+                file_path: params.kore.logging.file_path,
+                rotation:  params.kore.logging.rotation,
+                max_size:  params.kore.logging.max_size,
+                max_files: params.kore.logging.max_files,
+                level:     params.kore.logging.level,
+            },
             kore_config: kore_base::config::Config {
                 key_derivator: params.kore.base.key_derivator,
                 digest_derivator: params.kore.base.digest_derivator,
@@ -112,6 +121,8 @@ struct KoreParams {
     keys_path: String,
     #[serde(default = "default_prometheus")]
     prometheus: String,
+    #[serde(default)]
+    logging: LoggingParams,
 }
 
 impl KoreParams {
@@ -138,6 +149,7 @@ impl KoreParams {
             base: BaseParams::from_env(&format!("{parent}_")),
             keys_path: kore_params.keys_path,
             prometheus: kore_params.prometheus,
+            logging: LoggingParams::from_env(&format!("{parent}_")),
         }
     }
 
@@ -158,6 +170,7 @@ impl KoreParams {
             base: self.base.mix_config(other_config.base),
             keys_path,
             prometheus,
+            logging: self.logging.mix_config(other_config.logging),
         }
     }
 }
@@ -169,6 +182,7 @@ impl Default for KoreParams {
             base: BaseParams::default(),
             keys_path: default_keys_path(),
             prometheus: default_prometheus(),
+            logging: LoggingParams::default(),
         }
     }
 }
@@ -179,6 +193,71 @@ fn default_prometheus() -> String {
 
 fn default_keys_path() -> String {
     "keys".to_owned()
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct LoggingParams {
+    #[serde(default = "default_log_output")]
+    pub output: String,        // "stdout(Docker)" | "file" | "api"
+    #[serde(default)]
+    pub api_url: Option<String>,
+    #[serde(default = "default_log_file_path")]
+    pub file_path: String,     // ruta base de logs
+    #[serde(default = "default_log_rotation")]
+    pub rotation: String,      // "size" | "hourly" | "daily"
+    #[serde(default = "default_log_max_size")]
+    pub max_size: u64,         // bytes
+    #[serde(default = "default_log_max_files")]
+    pub max_files: usize,      // copias a conservar
+    #[serde(default = "default_log_level")]
+    pub level: String,         // "info", "debug", …
+}
+
+fn default_log_output()    -> String { "stdout".into() }
+fn default_log_file_path() -> String { "logs/kore.log".into() }
+fn default_log_rotation()  -> String { "size".into() }
+fn default_log_max_size()  -> u64    { 100 * 1024 * 1024 }
+fn default_log_max_files() -> usize  { 3 }
+fn default_log_level()     -> String { "info".into() }
+
+impl Default for LoggingParams {
+    fn default() -> Self {
+        LoggingParams {
+            output:   default_log_output(),
+            api_url:  None,
+            file_path: default_log_file_path(),
+            rotation:  default_log_rotation(),
+            max_size:  default_log_max_size(),
+            max_files: default_log_max_files(),
+            level:     default_log_level(),
+        }
+    }
+}
+
+impl LoggingParams {
+    /// Lee logging desde ENV vars con el prefijo (p. ej. "KORE_LOGGING_OUTPUT" etc).
+    fn from_env(parent: &str) -> Self {
+        let mut cfg = config::Config::builder();
+        cfg = cfg.add_source(
+            config::Environment::with_prefix(&format!("{parent}LOGGING"))
+                .try_parsing(true)
+        );
+        let built = cfg.build().unwrap();
+        built.try_deserialize().unwrap_or_default()
+    }
+
+    /// Combina self (prioridad) con other (fallback)
+    fn mix_config(&self, other: LoggingParams) -> LoggingParams {
+        LoggingParams {
+            output:     if self.output     != default_log_output()     { self.output.clone()} else { other.output},
+            api_url:    if self.api_url.is_some()                      { self.api_url.clone()} else { other.api_url},
+            file_path:  if self.file_path  != default_log_file_path()  { self.file_path.clone()} else { other.file_path},
+            rotation:   if self.rotation   != default_log_rotation()   { self.rotation.clone()} else { other.rotation},
+            max_size:   if self.max_size   != default_log_max_size()   { self.max_size} else { other.max_size},
+            max_files:  if self.max_files  != default_log_max_files()  { self.max_files} else { other.max_files},
+            level:      if self.level      != default_log_level()      { self.level.clone()} else { other.level},
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

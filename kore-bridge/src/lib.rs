@@ -10,6 +10,7 @@ pub use kore_base::{
     approval::approver::ApprovalStateRes,
     auth::AuthWitness,
     config::Config as KoreConfig,
+    config::Logging,
     error::Error,
     helpers::db::common::{
         ApprovalReqInfo, ApproveInfo, ConfirmRequestInfo, CreateRequestInfo,

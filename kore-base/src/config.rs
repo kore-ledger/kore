@@ -174,3 +174,21 @@ impl fmt::Display for ExternalDbConfig {
         write!(f, "Sqlite")
     }
 }
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Logging {
+    /// Output type: "stdout", "file", etc.
+    pub output: String,
+    /// Api url for logging.
+    pub api_url: Option<String>,
+    /// Path to the log file.
+    pub file_path: String,
+    /// Log rotation type: "size", "time", etc.
+    pub rotation: String,
+    /// Maximum size of the log file.
+    pub max_size: u64,
+    /// Maximum number of log files to keep.
+    pub max_files: usize,
+    /// Log level: "info", "debug", etc.
+    pub level: String,
+}

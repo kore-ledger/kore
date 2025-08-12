@@ -21,13 +21,13 @@ use middleware::tower_trace;
 use server::build_routes;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
-use tracing_subscriber::EnvFilter;
 
 mod enviroment;
 mod error;
 mod middleware;
 mod server;
 mod wrappers;
+mod logging;
 
 mod doc;
 #[derive(Clone)]
@@ -38,11 +38,6 @@ struct Ports {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init()
-        .unwrap();
-
     let args = Args::parse();
 
     let mut password = args.password;
@@ -73,6 +68,7 @@ async fn main() {
         .allow_origin(Any);
 
     let config = build_config(args.env_config, &file_path).unwrap();
+    logging::init_logging(&config.logging);
     let bridge = Bridge::build(config, &password, None).await.unwrap();
     let token = bridge.token().clone();
 
