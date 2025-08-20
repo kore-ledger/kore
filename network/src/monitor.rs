@@ -6,7 +6,7 @@ use actor::{
     Response,
 };
 
-use crate::Event as NetworkEvent;
+use crate::{Event as NetworkEvent, NetworkState};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -32,25 +32,35 @@ impl Default for Monitor {
     }
 }
 
+/// Monitor network states
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub enum MonitorNetworkState {
+    /// Connecting to others network nodes
     #[default]
     Connecting,
+    /// Connected to others netowrk nodes
     Running,
+    /// Can not connect to others network nodes
     Down,
 }
 
+/// Monitor actor messages
 #[derive(Debug, Clone)]
 pub enum MonitorMessage {
+    /// Network event
     Network(NetworkEvent),
+    /// Network state
     State,
 }
 
 impl Message for MonitorMessage {}
 
+/// Monitor actor responses
 #[derive(Debug, Clone)]
 pub enum MonitorResponse {
+    /// Network state
     State(MonitorNetworkState),
+    /// Defaulto message
     Ok,
 }
 
@@ -87,7 +97,8 @@ impl Handler<Monitor> for Monitor {
     ) -> Result<MonitorResponse, ActorError> {
         match msg {
             MonitorMessage::Network(event) => {
-                if let NetworkEvent::Running = event {
+                if let NetworkEvent::StateChanged(NetworkState::Running) = event
+                {
                     self.state = MonitorNetworkState::Running
                 }
                 Ok(MonitorResponse::Ok)

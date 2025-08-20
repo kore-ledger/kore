@@ -32,16 +32,16 @@ pub use monitor::*;
 pub use routing::{Config as RoutingConfig, RoutingNode};
 pub use service::NetworkService;
 pub use tell::Config as TellConfig;
-pub use worker::{NetworkError, NetworkState, NetworkWorker};
+pub use utils::NetworkState;
+pub use worker::NetworkWorker;
 
 use serde::{Deserialize, Serialize};
+
+pub use crate::utils::ReqResConfig;
 
 /// The network configuration.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
-    /// The user agent.
-    pub user_agent: String,
-
     /// The node type.
     pub node_type: NodeType,
 
@@ -51,14 +51,17 @@ pub struct Config {
     /// External addresses.
     pub external_addresses: Vec<String>,
 
-    /// Message telling configuration.
+    /// Bootnodes to connect to.
+    pub boot_nodes: Vec<RoutingNode>,
+
+    /// Tell configuration.
     pub tell: tell::Config,
+
+    /// ReqRes configuration.
+    pub req_res: ReqResConfig,
 
     /// Routing configuration.
     pub routing: routing::Config,
-
-    /// Configures port reuse for local sockets, which implies reuse of listening ports for outgoing connections to enhance NAT traversal capabilities.
-    pub port_reuse: bool,
 
     /// Control List configuration.
     pub control_list: control_list::Config,
@@ -71,16 +74,15 @@ impl Config {
         listen_addresses: Vec<String>,
         external_addresses: Vec<String>,
         boot_nodes: Vec<RoutingNode>,
-        port_reuse: bool,
     ) -> Self {
         Self {
-            user_agent: "kore-node".to_owned(),
+            boot_nodes,
             node_type,
             listen_addresses,
             external_addresses,
             tell: tell::Config::default(),
-            routing: routing::Config::new(boot_nodes),
-            port_reuse,
+            req_res: ReqResConfig::default(),
+            routing: routing::Config::new(),
             control_list: control_list::Config::default(),
         }
     }
@@ -123,39 +125,8 @@ pub enum Command {
 /// Event enumeration for the network service.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Event {
-    /// Connected to network.
-    Running,
-
-    /// Connected to a bootstrap node.
-    ConnectedToBootstrap {
-        /// The peer ID of the bootstrap node.
-        peer: String,
-    },
-
-    /// A message was received.
-    MessageReceived {
-        /// The peer that sent the message.
-        peer: String,
-        /// The message.
-        message: Vec<u8>,
-    },
-
-    /// A message was sent.
-    MessageSent {
-        /// The peer that the message was sent to.
-        peer: String,
-    },
-
-    /// A peer was identified.
-    PeerIdentified {
-        /// The peer ID.
-        peer: String,
-        /// The peer's address.
-        addresses: Vec<String>,
-    },
-
     /// Network state changed.
-    StateChanged(worker::NetworkState),
+    StateChanged(utils::NetworkState),
 
     /// Network error.
     Error(Error),

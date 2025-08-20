@@ -4,76 +4,170 @@
 use crate::{Error, routing::RoutingNode};
 use ip_network::IpNetwork;
 use libp2p::{Multiaddr, PeerId, multiaddr::Protocol};
-use linked_hash_set::LinkedHashSet;
+use prometheus_client::encoding::{EncodeLabelSet, EncodeLabelValue};
+use serde::{Deserialize, Serialize};
+use tracing::error;
 
-use std::{collections::HashSet, hash::Hash, num::NonZeroUsize, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    hash::Hash,
+    str::FromStr,
+    time::Duration,
+};
 
-/// Wrapper around `LinkedHashSet` with bounded growth.
-///
-/// In the limit, for each element inserted the oldest existing element will be removed.
-#[derive(Debug, Clone)]
-pub struct LruHashSet<T: Hash + Eq> {
-    set: LinkedHashSet<T>,
-    limit: NonZeroUsize,
+const TARGET_UTILS: &str = "KoreNetwork-Utils";
+
+/// Network state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum NetworkState {
+    /// Start.
+    Start,
+    /// Dial.
+    Dial,
+    /// Dialing boot node.
+    Dialing,
+    /// Running.
+    Running,
+    /// Disconnected.
+    Disconnected,
 }
 
-impl<T: Hash + Eq> LruHashSet<T> {
-    /// Create a new `LruHashSet` with the given (exclusive) limit.
-    pub fn new(limit: NonZeroUsize) -> Self {
-        Self {
-            set: LinkedHashSet::new(),
-            limit,
-        }
-    }
+/// Metric labels for the messages.
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+pub struct MetricLabels {
+    /// Fact.
+    pub fact: Fact,
+    /// Peer ID.
+    pub peer_id: String,
+}
 
-    /// Insert element into the set.
-    ///
-    /// Returns `true` if this is a new element to the set, `false` otherwise.
-    /// Maintains the limit of the set by removing the oldest entry if necessary.
-    /// Inserting the same element will update its LRU position.
-    pub fn insert(&mut self, e: T) -> bool {
-        if self.set.insert(e) {
-            if self.len() == usize::from(self.limit) {
-                self.set.pop_front(); // remove oldest entry
+/// Fact related to the message (sent or received).
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelValue)]
+pub enum Fact {
+    /// Message sent.
+    Sent,
+    /// Message received.
+    Received,
+}
+
+pub enum MessagesHelper {
+    Single(Vec<u8>),
+    Vec(VecDeque<Vec<u8>>),
+}
+
+/// Method that update allow and block lists
+pub async fn request_update_lists(
+    service_allow: &[String],
+    service_block: &[String],
+) -> ((Vec<String>, Vec<String>), (u16, u16)) {
+    let mut vec_allow_peers: Vec<String> = vec![];
+    let mut vec_block_peers: Vec<String> = vec![];
+    let mut successful_allow: u16 = 0;
+    let mut successful_block: u16 = 0;
+    let client = reqwest::Client::new();
+
+    for service in service_allow {
+        match client.get(service).send().await {
+            Ok(res) => {
+                let fail = !res.status().is_success();
+                if !fail {
+                    match res.json().await {
+                        Ok(peers) => {
+                            let peers: Vec<String> = peers;
+                            vec_allow_peers.append(&mut peers.clone());
+                            successful_allow += 1;
+                        }
+                        Err(e) => {
+                            error!(
+                                TARGET_UTILS,
+                                "Error performing Get {}, The server did not return what was expected: {}",
+                                service,
+                                e
+                            );
+                        }
+                    }
+                } else {
+                    error!(
+                        TARGET_UTILS,
+                        "Error performing Get {}, The server did not return a correct code: {}",
+                        service,
+                        res.status()
+                    );
+                }
             }
-            return true;
+            Err(e) => {
+                error!(TARGET_UTILS, "Error performing Get {}: {}", service, e);
+            }
         }
-        false
     }
 
-    /// `LruHashSet` length.
-    pub fn len(&self) -> usize {
-        self.set.len()
+    for service in service_block {
+        match client.get(service).send().await {
+            Ok(res) => {
+                let fail = !res.status().is_success();
+                if !fail {
+                    match res.json().await {
+                        Ok(peers) => {
+                            let peers: Vec<String> = peers;
+                            vec_block_peers.append(&mut peers.clone());
+                            successful_block += 1;
+                        }
+                        Err(e) => {
+                            error!(
+                                TARGET_UTILS,
+                                "Error performing Get {}, The server did not return what was expected: {}",
+                                service,
+                                e
+                            );
+                        }
+                    }
+                } else {
+                    error!(
+                        TARGET_UTILS,
+                        "Error performing Get {}, The server did not return a correct code: {}",
+                        service,
+                        res.status()
+                    );
+                }
+            }
+            Err(e) => {
+                error!(TARGET_UTILS, "Error performing Get {}: {}", service, e);
+            }
+        }
     }
+
+    (
+        (vec_allow_peers, vec_block_peers),
+        (successful_allow, successful_block),
+    )
 }
 
 /// Convert boot nodes to `PeerId` and `Multiaddr`.
 pub fn convert_boot_nodes(
-    boot_nodes: Vec<RoutingNode>,
-) -> Vec<(PeerId, Vec<Multiaddr>)> {
-    let mut boot_nodes_aux: Vec<(PeerId, Vec<Multiaddr>)> = vec![];
+    boot_nodes: &[RoutingNode],
+) -> HashMap<PeerId, Vec<Multiaddr>> {
+    let mut boot_nodes_aux = HashMap::new();
+
     for node in boot_nodes {
-        let peer = match bs58::decode(node.peer_id.clone()).into_vec() {
-            Ok(peer) => match PeerId::from_bytes(peer.as_slice()) {
-                Ok(peer) => Some(peer),
-                Err(_) => None,
-            },
-            Err(_) => None,
+        let Ok(peer) = bs58::decode(node.peer_id.clone()).into_vec() else {
+            continue;
         };
+
+        let Ok(peer) = PeerId::from_bytes(peer.as_slice()) else {
+            continue;
+        };
+
         let mut aux_addrs = vec![];
-        if let Some(peer) = peer {
-            for addr in node.address {
-                let addr = match Multiaddr::from_str(&addr) {
-                    Ok(addr) => Some(addr),
-                    Err(_) => None,
-                };
-                if let Some(addr) = addr {
-                    aux_addrs.push(addr);
-                }
-            }
-            if !aux_addrs.is_empty() {
-                boot_nodes_aux.push((peer, aux_addrs))
-            }
+        for addr in node.address.iter() {
+            let Ok(addr) = Multiaddr::from_str(addr) else {
+                continue;
+            };
+
+            aux_addrs.push(addr);
+        }
+
+        if !aux_addrs.is_empty() {
+            boot_nodes_aux.insert(peer, aux_addrs);
         }
     }
 
@@ -125,6 +219,7 @@ pub fn is_reachable(addr: &Multiaddr) -> bool {
 }
 
 /// Chech if the given `Multiaddr` is a memory address.
+#[allow(dead_code)]
 pub fn is_memory(addr: &Multiaddr) -> bool {
     if let Some(Protocol::Memory(_)) = addr.iter().next() {
         return true;
@@ -132,45 +227,57 @@ pub fn is_memory(addr: &Multiaddr) -> bool {
     false
 }
 
-/// Compare generic arrays.
-///
-/// If `b_subset` is `true`, then `b` is a subset of `a`.
-/// Otherwise, `a` and `b` are equal.
-///
-pub fn _compare_arrays<T>(a: &[T], b: &[T], b_subset: bool) -> bool
-where
-    T: Eq + Hash,
-{
-    let a: HashSet<_> = a.iter().collect();
-    let b: HashSet<_> = b.iter().collect();
-    if b_subset { b.is_subset(&a) } else { a == b }
+/// The configuration for a `Behaviour` protocol.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ReqResConfig {
+    /// message timeout
+    pub message_timeout: Duration,
+    /// max concurrent streams
+    pub max_concurrent_streams: usize,
 }
 
-#[cfg(test)]
-mod tests {
+impl ReqResConfig {
+    /// Create a ReqRes Confing
+    pub fn new(
+        message_timeout: Duration,
+        max_concurrent_streams: usize,
+    ) -> Self {
+        Self {
+            message_timeout,
+            max_concurrent_streams,
+        }
+    }
+}
 
-    use super::*;
+impl Default for ReqResConfig {
+    fn default() -> Self {
+        Self {
+            message_timeout: Duration::from_secs(10),
+            max_concurrent_streams: 100,
+        }
+    }
+}
 
-    #[test]
-    fn test_lru_hash_set() {
-        let mut cache = LruHashSet::new(NonZeroUsize::new(2).unwrap());
-        cache.insert("value1");
-        assert_eq!(cache.len(), 1);
-        cache.insert("value2");
-        assert_eq!(cache.len(), 1);
+impl ReqResConfig {
+    /// Sets the timeout for inbound and outbound requests.
+    pub fn with_message_timeout(mut self, timeout: Duration) -> Self {
+        self.message_timeout = timeout;
+        self
     }
 
-    #[test]
-    fn test_compare_arrays() {
-        let a = vec![1, 2, 3];
-        let b = vec![2, 1, 3];
-        let c = vec![1, 2, 3, 4];
-        let d = vec![1, 2];
-        let e = vec![1, 2, 3, 4, 5];
-        assert!(_compare_arrays(&a, &b, false));
-        assert!(!_compare_arrays(&a, &c, false));
-        assert!(_compare_arrays(&a, &d, true));
-        assert!(!_compare_arrays(&a, &e, true));
-        assert!(_compare_arrays(&e, &a, true));
+    /// Sets the upper bound for the number of concurrent inbound + outbound streams.
+    pub fn with_max_concurrent_streams(mut self, num_streams: usize) -> Self {
+        self.max_concurrent_streams = num_streams;
+        self
+    }
+
+    /// Get message timeout
+    pub fn get_message_timeout(&self) -> Duration {
+        self.message_timeout
+    }
+
+    /// Get max concurrent streams
+    pub fn get_max_concurrent_streams(&self) -> usize {
+        self.max_concurrent_streams
     }
 }

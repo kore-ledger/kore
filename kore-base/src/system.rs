@@ -111,8 +111,7 @@ pub mod tests {
             network::NodeType::Bootstrap,
             vec![],
             vec![],
-            vec![],
-            false,
+            vec![]
         );
         let config = KoreBaseConfig {
             key_derivator: KeyDerivator::Ed25519,

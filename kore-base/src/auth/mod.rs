@@ -313,6 +313,7 @@ impl Handler<Auth> for Auth {
                 subject_id,
                 more_info,
             } => {
+                println!("Updateeeeee");
                 let more_witness = match more_info {
                     WitnessesAuth::None => None,
                     WitnessesAuth::Owner(key_identifier) => {
@@ -366,6 +367,7 @@ impl Handler<Auth> for Auth {
 
                     match witness {
                         AuthWitness::One(key_identifier) => {
+                            println!("UNO");
                             let info = ComunicateInfo {
                                 reciver: key_identifier.clone(),
                                 sender: self.our_node.clone(),

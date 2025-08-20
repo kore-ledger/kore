@@ -624,26 +624,28 @@ impl From<KoreConfigBridge> for KoreConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
 pub struct NetworkConfig {
-    pub user_agent: String,
     pub node_type: String,
+    pub boot_nodes: Vec<RoutingNode>,
     pub listen_addresses: Vec<String>,
     pub external_addresses: Vec<String>,
     pub tell: TellConfig,
     pub routing: RoutingConfig,
-    pub port_reuse: bool,
     pub control_list: ControlListConfig,
 }
 
 impl From<NetworkConfigBridge> for NetworkConfig {
     fn from(value: NetworkConfigBridge) -> Self {
         Self {
-            user_agent: value.user_agent,
+            boot_nodes: value
+                .boot_nodes
+                .iter()
+                .map(|x| RoutingNode::from(x.clone()))
+                .collect(),
             node_type: value.node_type.to_string(),
             listen_addresses: value.listen_addresses,
             external_addresses: value.external_addresses,
             tell: TellConfig::from(value.tell),
             routing: RoutingConfig::from(value.routing),
-            port_reuse: value.port_reuse,
             control_list: ControlListConfig::from(value.control_list),
         }
     }
@@ -687,36 +689,20 @@ impl From<TellConfigBridge> for TellConfig {
 }
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 pub struct RoutingConfig {
-    boot_nodes: Vec<RoutingNode>,
     dht_random_walk: bool,
-    pre_routing: bool,
     discovery_only_if_under_num: u64,
-    allow_non_globals_in_dht: bool,
-    allow_private_ip: bool,
-    enable_mdns: bool,
+    allow_non_globals_address_in_dht: bool,
     kademlia_disjoint_query_paths: bool,
-    kademlia_replication_factor: Option<usize>,
 }
 
 impl From<RoutingConfigBridge> for RoutingConfig {
     fn from(value: RoutingConfigBridge) -> Self {
         Self {
-            boot_nodes: value
-                .get_boot_nodes()
-                .iter()
-                .map(|x| RoutingNode::from(x.clone()))
-                .collect(),
             dht_random_walk: value.get_dht_random_walk(),
-            pre_routing: value.get_pre_routing(),
             discovery_only_if_under_num: value.get_discovery_limit(),
-            allow_non_globals_in_dht: value.get_allow_non_globals_in_dht(),
-            allow_private_ip: value.get_allow_private_ip(),
-            enable_mdns: value.get_mdns(),
+            allow_non_globals_address_in_dht: value.get_allow_non_globals_address_in_dht(),
             kademlia_disjoint_query_paths: value
                 .get_kademlia_disjoint_query_paths(),
-            kademlia_replication_factor: value
-                .get_kademlia_replication_factor()
-                .map(|nz| nz.get()),
         }
     }
 }

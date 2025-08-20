@@ -55,7 +55,7 @@ pub fn build_file_path() -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::{num::NonZeroUsize, time::Duration};
+    use std::time::Duration;
 
     use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
     use network::{NodeType, RoutingNode};
@@ -72,8 +72,13 @@ mod tests {
                 "KORE_NETWORK_TELL_MAX_CONCURRENT_STREAMS",
                 "166",
             );
+            std::env::set_var("KORE_NETWORK_REQRES_MESSAGE_TIMEOUT_SECS", "59");
             std::env::set_var(
-                "KORE_NETWORK_ROUTING_BOOT_NODES",
+                "KORE_NETWORK_REQRES_MAX_CONCURRENT_STREAMS",
+                "167",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_BOOT_NODES",
                 "/ip4/172.17.0.1/tcp/50000_/ip4/127.0.0.1/tcp/60001/p2p/12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B,/ip4/11.11.0.11/tcp/10000_/ip4/12.22.33.44/tcp/55511/p2p/12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze",
             );
             std::env::set_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK", "false");
@@ -82,18 +87,12 @@ mod tests {
                 "55",
             );
             std::env::set_var(
-                "KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_IN_DHT",
+                "KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_ADDRESS_IN_DHT",
                 "true",
             );
-            std::env::set_var("KORE_NETWORK_ROUTING_ALLOW_PRIVATE_IP", "true");
-            std::env::set_var("KORE_NETWORK_ROUTING_ENABLE_MDNS", "false");
             std::env::set_var(
                 "KORE_NETWORK_ROUTING_KADEMLIA_DISJOINT_QUERY_PATHS",
                 "false",
-            );
-            std::env::set_var(
-                "KORE_NETWORK_ROUTING_KADEMLIA_REPLICATION_FACTOR",
-                "30",
             );
 
             std::env::set_var("KORE_BASE_KEY_DERIVATOR", "Secp256k1");
@@ -108,8 +107,6 @@ mod tests {
                 "key1:https://www.kore-ledger.net/build/,key2:https://www.kore-ledger.net/community/",
             );
 
-            std::env::set_var("KORE_NETWORK_PORT_REUSE", "true");
-            std::env::set_var("KORE_NETWORK_USER_AGENT", "Kore2.0");
             std::env::set_var("KORE_NETWORK_NODE_TYPE", "Addressable");
             std::env::set_var(
                 "KORE_NETWORK_LISTEN_ADDRESSES",
@@ -167,8 +164,6 @@ mod tests {
             },
         ];
 
-        assert_eq!(config.kore_config.network.port_reuse, true);
-        assert_eq!(config.kore_config.network.user_agent, "Kore2.0");
         assert_eq!(config.kore_config.network.node_type, NodeType::Addressable);
         assert_eq!(
             config.kore_config.network.listen_addresses,
@@ -199,19 +194,19 @@ mod tests {
         assert_eq!(config.kore_config.sink.len(), 2);
 
         assert_eq!(
-            config.kore_config.network.routing.boot_nodes()[0].peer_id,
+            config.kore_config.network.boot_nodes[0].peer_id,
             boot_nodes[0].peer_id
         );
         assert_eq!(
-            config.kore_config.network.routing.boot_nodes()[0].address,
+            config.kore_config.network.boot_nodes[0].address,
             boot_nodes[0].address
         );
         assert_eq!(
-            config.kore_config.network.routing.boot_nodes()[1].peer_id,
+            config.kore_config.network.boot_nodes[1].peer_id,
             boot_nodes[1].peer_id
         );
         assert_eq!(
-            config.kore_config.network.routing.boot_nodes()[1].address,
+            config.kore_config.network.boot_nodes[1].address,
             boot_nodes[1].address
         );
 
@@ -228,14 +223,9 @@ mod tests {
                 .kore_config
                 .network
                 .routing
-                .get_allow_non_globals_in_dht(),
+                .get_allow_non_globals_address_in_dht(),
             true
         );
-        assert_eq!(
-            config.kore_config.network.routing.get_allow_private_ip(),
-            true
-        );
-        assert_eq!(config.kore_config.network.routing.get_mdns(), false);
         assert_eq!(
             config
                 .kore_config
@@ -245,20 +235,21 @@ mod tests {
             false
         );
         assert_eq!(
-            config
-                .kore_config
-                .network
-                .routing
-                .get_kademlia_replication_factor(),
-            Some(NonZeroUsize::new(30).unwrap())
-        );
-        assert_eq!(
             config.kore_config.network.tell.get_message_timeout(),
             Duration::from_secs(58)
+        );
+
+        assert_eq!(
+            config.kore_config.network.req_res.get_message_timeout(),
+            Duration::from_secs(59)
         );
         assert_eq!(
             config.kore_config.network.tell.get_max_concurrent_streams(),
             166
+        );
+        assert_eq!(
+            config.kore_config.network.req_res.get_max_concurrent_streams(),
+            167
         );
 
         assert_eq!(config.keys_path, "./fake/keys/path".to_owned());
@@ -307,25 +298,20 @@ mod tests {
         unsafe {
             std::env::remove_var("KORE_NETWORK_TELL_MESSAGE_TIMEOUT_SECS");
             std::env::remove_var("KORE_NETWORK_TELL_MAX_CONCURRENT_STREAMS");
-            std::env::remove_var("KORE_NETWORK_ROUTING_BOOT_NODES");
+            std::env::remove_var("KORE_NETWORK_REQRES_MESSAGE_TIMEOUT_SECS");
+            std::env::remove_var("KORE_NETWORK_REQRES_MAX_CONCURRENT_STREAMS");
+            std::env::remove_var("KORE_NETWORK_BOOT_NODES");
             std::env::remove_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK");
             std::env::remove_var(
                 "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
             );
             std::env::remove_var(
-                "KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_IN_DHT",
+                "KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_ADDRESS_IN_DHT",
             );
-            std::env::remove_var("KORE_NETWORK_ROUTING_ALLOW_PRIVATE_IP");
-            std::env::remove_var("KORE_NETWORK_ROUTING_ENABLE_MDNS");
             std::env::remove_var(
                 "KORE_NETWORK_ROUTING_KADEMLIA_DISJOINT_QUERY_PATHS",
             );
-            std::env::remove_var(
-                "KORE_NETWORK_ROUTING_KADEMLIA_REPLICATION_FACTOR",
-            );
             std::env::remove_var("KORE_KEYS_PATH");
-            std::env::remove_var("KORE_NETWORK_PORT_REUSE");
-            std::env::remove_var("KORE_NETWORK_USER_AGENT");
             std::env::remove_var("KORE_NETWORK_NODE_TYPE");
             std::env::remove_var("KORE_NETWORK_LISTEN_ADDRESSES");
             std::env::remove_var("KORE_NETWORK_EXTERNAL_ADDRESSES");
