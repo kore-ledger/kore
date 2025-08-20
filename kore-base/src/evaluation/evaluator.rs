@@ -214,6 +214,9 @@ impl Evaluator {
                         (
                             EvaluateType::AllSchemasFact {
                                 contract: contract.to_vec(),
+                                init_state: evaluation_req
+                                    .gov_state_init_state
+                                    .clone(),
                                 payload: fact_event.payload,
                             },
                             evaluation_req.state.clone(),
@@ -238,7 +241,7 @@ impl Evaluator {
                             namespace: evaluation_req.context.namespace.clone(),
                             schema_id: evaluation_req.context.schema_id.clone(),
                         },
-                        evaluation_req.gov.clone(),
+                        evaluation_req.gov_state_init_state.clone(),
                     )
                 } else {
                     (

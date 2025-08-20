@@ -3,6 +3,7 @@ use kore_bridge::{
     ConfirmRequestInfo as ConfirmRequestInfoBridge,
     ControlListConfig as ControlListConfigBridge,
     CreateRequestInfo as CreateRequestInfoBridge,
+    Logging as LoggingBridge,
     EOLRequestInfo as EOLRequestInfoBridge, EventInfo as EventInfoBridge,
     EventRequestInfo as EventRequestInfoBridge, FactInfo as FactInfoBridge,
     FactRequestInfo as FactRequestInfoBridge, GovsData as GovsDataBridge,
@@ -22,12 +23,12 @@ use kore_bridge::{
     TransferRequestInfo as TransferRequestInfoBridge,
     TransferSubject as TransferSubjectBridge, config::Config as ConfigBridge,
 };
-use serde::{Deserialize, Serialize};
+use serde::{ Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct TransferSubject {
     pub name: String,
     pub subject_id: String,
@@ -46,7 +47,7 @@ impl From<TransferSubjectBridge> for TransferSubject {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct PaginatorEvents {
     pub paginator: Paginator,
     pub events: Vec<EventInfo>,
@@ -65,7 +66,7 @@ impl From<PaginatorEventsBridge> for PaginatorEvents {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct EventInfo {
     pub subject_id: String,
     pub sn: u64,
@@ -90,7 +91,7 @@ impl From<EventInfoBridge> for EventInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct Paginator {
     pub pages: u64,
     pub next: Option<u64>,
@@ -107,7 +108,7 @@ impl From<PaginatorBridge> for Paginator {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct ProtocolsError {
     pub evaluation: Option<String>,
     pub validation: Option<String>,
@@ -123,7 +124,7 @@ impl From<ProtocolsErrorBridge> for ProtocolsError {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub enum EventRequestInfo {
     Create(CreateRequestInfo),
     Fact(FactRequestInfo),
@@ -158,7 +159,7 @@ impl From<EventRequestInfoBridge> for EventRequestInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct CreateRequestInfo {
     pub governance_id: String,
     pub schema_id: String,
@@ -179,7 +180,7 @@ impl From<CreateRequestInfoBridge> for CreateRequestInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct TransferRequestInfo {
     pub subject_id: String,
     pub new_owner: String,
@@ -194,7 +195,7 @@ impl From<TransferRequestInfoBridge> for TransferRequestInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct ConfirmRequestInfo {
     pub subject_id: String,
     pub name_old_owner: Option<String>,
@@ -209,7 +210,7 @@ impl From<ConfirmRequestInfoBridge> for ConfirmRequestInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct RejectRequestInfo {
     pub subject_id: String,
 }
@@ -222,7 +223,7 @@ impl From<RejectRequestInfoBridge> for RejectRequestInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct EOLRequestInfo {
     pub subject_id: String,
 }
@@ -235,7 +236,7 @@ impl From<EOLRequestInfoBridge> for EOLRequestInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct FactRequestInfo {
     pub subject_id: String,
     pub payload: Value,
@@ -250,7 +251,7 @@ impl From<FactRequestInfoBridge> for FactRequestInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct Namespace(Vec<String>);
 
 impl From<NamespaceBridge> for Namespace {
@@ -277,7 +278,7 @@ impl From<String> for Namespace {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct RequestData {
     pub request_id: String,
     pub subject_id: String,
@@ -292,7 +293,7 @@ impl From<RequestDataBridge> for RequestData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct GovsData {
     pub governance_id: String,
     pub active: bool,
@@ -311,7 +312,7 @@ impl From<GovsDataBridge> for GovsData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct RegisterDataSubj {
     pub subject_id: String,
     pub schema_id: String,
@@ -332,7 +333,7 @@ impl From<RegisterDataSubjBridge> for RegisterDataSubj {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct RequestInfo {
     status: String,
     version: u64,
@@ -349,7 +350,7 @@ impl From<RequestInfoBridge> for RequestInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct ApproveInfo {
     pub state: String,
     pub request: ApprovalReqInfo,
@@ -364,7 +365,7 @@ impl From<ApproveInfoBridge> for ApproveInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct ApprovalReqInfo {
     /// The signed event request.
     pub event_request: SignedInfo<FactInfo>,
@@ -396,7 +397,7 @@ impl From<ApprovalReqInfoBridge> for ApprovalReqInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct SignedInfo<T>
 where
     T: Serialize + Clone,
@@ -414,7 +415,7 @@ impl From<SignedInfoBridge<FactInfoBridge>> for SignedInfo<FactInfo> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct FactInfo {
     payload: Value,
     subject_id: String,
@@ -430,7 +431,7 @@ impl From<FactInfoBridge> for FactInfo {
 }
 
 #[derive(
-    Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash,
+    Debug, Clone, Serialize,  ToSchema, PartialEq, Eq, Hash,
 )]
 pub struct SignatureInfo {
     pub signer: String,
@@ -450,7 +451,7 @@ impl From<SignatureInfoBridge> for SignatureInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct SubjectInfo {
     pub subject_id: String,
     pub governance_id: String,
@@ -487,7 +488,7 @@ impl From<SubjectInfoBridge> for SubjectInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize,  ToSchema)]
 pub struct SignaturesInfo {
     pub subject_id: String,
     pub sn: u64,
@@ -527,7 +528,7 @@ impl From<SignaturesInfoBridge> for SignaturesInfo {
 }
 
 #[derive(
-    Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash,
+    Debug, Clone, Serialize,  ToSchema, PartialEq, Eq, Hash,
 )]
 pub enum ProtocolsSignaturesInfo {
     Signature(SignatureInfo),
@@ -548,7 +549,7 @@ impl From<ProtocolsSignaturesInfoBridge> for ProtocolsSignaturesInfo {
 }
 
 #[derive(
-    Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq, Hash,
+    Debug, Clone, Serialize,  ToSchema, PartialEq, Eq, Hash,
 )]
 pub struct TimeOutResponseInfo {
     pub who: String,
@@ -566,11 +567,12 @@ impl From<TimeOutResponseInfoBridge> for TimeOutResponseInfo {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct Config {
     pub kore_config: KoreConfig,
     pub keys_path: String,
     pub prometheus: String,
+    pub logging: Logging,
 }
 
 impl From<ConfigBridge> for Config {
@@ -579,10 +581,36 @@ impl From<ConfigBridge> for Config {
             kore_config: KoreConfig::from(value.kore_config),
             keys_path: value.keys_path,
             prometheus: value.prometheus,
+            logging: Logging::from(value.logging),
+        }   
+    }
+}
+
+#[derive(Debug,  Serialize, Clone, ToSchema)]
+pub struct Logging {
+    pub output: String,
+    pub api_url: Option<String>,
+    pub file_path: String,
+    pub rotation: String,
+    pub max_size: u64,
+    pub max_files: usize,
+    pub level: String,        
+}
+
+impl From<LoggingBridge> for Logging {
+    fn from(value: LoggingBridge) -> Self {
+        Self {
+            output: value.output,
+            api_url: value.api_url,
+            file_path: value.file_path,
+            rotation: value.rotation,
+            max_size: value.max_size,
+            max_files: value.max_files,
+            level: value.level,
         }
     }
 }
-#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct KoreConfig {
     pub key_derivator: String,
     pub digest_derivator: String,
@@ -622,7 +650,7 @@ impl From<KoreConfigBridge> for KoreConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Clone,  Serialize, ToSchema)]
 pub struct NetworkConfig {
     pub node_type: String,
     pub boot_nodes: Vec<RoutingNode>,
@@ -651,7 +679,7 @@ impl From<NetworkConfigBridge> for NetworkConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[derive(Clone, Debug,  Serialize, ToSchema)]
 pub struct ControlListConfig {
     enable: bool,
     allow_list: Vec<String>,
@@ -673,7 +701,7 @@ impl From<ControlListConfigBridge> for ControlListConfig {
         }
     }
 }
-#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+#[derive(Debug, Clone,  Serialize, ToSchema)]
 pub struct TellConfig {
     pub message_timeout: u64,
     pub max_concurrent_streams: usize,
@@ -687,7 +715,7 @@ impl From<TellConfigBridge> for TellConfig {
         }
     }
 }
-#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[derive(Clone, Debug,  Serialize, ToSchema)]
 pub struct RoutingConfig {
     dht_random_walk: bool,
     discovery_only_if_under_num: u64,
@@ -706,7 +734,7 @@ impl From<RoutingConfigBridge> for RoutingConfig {
         }
     }
 }
-#[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
+#[derive(Clone, Debug,  Serialize, ToSchema)]
 pub struct RoutingNode {
     pub peer_id: String,
     pub address: Vec<String>,

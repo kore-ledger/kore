@@ -16,12 +16,9 @@ use tracing::{error, warn};
 use crate::{
     ActorMessage, NetworkMessage,
     db::Storable,
-    governance::model::RoleTypes,
+    governance::model::WitnessesData,
     intermediary::Intermediary,
-    model::{
-        Namespace,
-        common::{emit_fail, get_gov, get_node_subject_data, subject_old},
-    },
+    model::common::{emit_fail, get_gov, get_node_subject_data, subject_old},
     update::{Update, UpdateMessage, UpdateNew, UpdateRes},
 };
 
@@ -322,11 +319,8 @@ impl Handler<Auth> for Auth {
                     WitnessesAuth::Witnesses => {
                         match get_gov(ctx, &subject_id.to_string()).await {
                             Ok(gov) => {
-                                let (witnesses, _) = gov.get_signers(
-                                    RoleTypes::Witness,
-                                    "governance",
-                                    Namespace::new(),
-                                );
+                                let witnesses =
+                                    gov.get_witnesses(WitnessesData::Gov)?;
                                 Some(AuthWitness::Many(Vec::from_iter(
                                     witnesses.iter().cloned(),
                                 )))

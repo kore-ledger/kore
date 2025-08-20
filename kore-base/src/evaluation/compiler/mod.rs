@@ -49,7 +49,7 @@ impl Compiler {
     [dependencies]
     serde = { version = "1.0.219", features = ["derive"] }
     serde_json = "1.0.140"
-    kore-contract-sdk = "0.4.0"
+    kore-contract-sdk = "0.5.0"
     
     [profile.release]
     strip = "debuginfo"
@@ -220,7 +220,10 @@ impl Compiler {
 
         // Get access to contract, only to check if main_function exist.
         let _main_contract_entrypoint = instance
-            .get_typed_func::<(u32, u32, u32), u32>(&mut store, "main_function")
+            .get_typed_func::<(u32, u32, u32, u32), u32>(
+                &mut store,
+                "main_function",
+            )
             .map_err(|e| {
                 Error::Compiler(format!(
                     "Contract entry point not found: {}",

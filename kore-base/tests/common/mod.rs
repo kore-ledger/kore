@@ -396,6 +396,7 @@ pub async fn wait_request(
             if state.status == "Finish"
                 || state.status == "In Approval"
                 || state.status == "Invalid"
+                || state.status == "Abort"
             {
                 break;
             }

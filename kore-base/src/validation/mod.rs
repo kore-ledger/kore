@@ -17,7 +17,7 @@ use crate::{
         SignTypesNode,
         common::{
             emit_fail, get_sign, get_signers_quorum_gov_version,
-            send_reboot_to_req, try_to_update,
+            send_reboot_to_req, take_random_signers, try_to_update,
         },
         event::{ProofEvent, ProtocolsSignatures},
         signature::Signed,
@@ -55,8 +55,6 @@ pub struct Validation {
     node_key: KeyIdentifier,
     // Quorum
     quorum: Quorum,
-    // Validators
-    validators: HashSet<KeyIdentifier>,
     // Actual responses
     validators_response: Vec<ProtocolsSignatures>,
 
@@ -74,6 +72,12 @@ pub struct Validation {
     version: u64,
 
     reboot: bool,
+
+    current_validators: HashSet<KeyIdentifier>,
+
+    pending_validators: HashSet<KeyIdentifier>,
+
+    signed_vali_req: Option<Signed<ValidationReq>>,
 }
 
 impl Validation {
@@ -88,7 +92,7 @@ impl Validation {
         &self,
         ctx: &mut ActorContext<Validation>,
     ) -> Result<(), ActorError> {
-        for validator in self.validators.clone() {
+        for validator in self.current_validators.clone() {
             let child: Option<ActorRef<Validator>> =
                 ctx.get_child(&validator.to_string()).await;
             if let Some(child) = child {
@@ -100,7 +104,7 @@ impl Validation {
     }
 
     fn check_validator(&mut self, validator: KeyIdentifier) -> bool {
-        self.validators.remove(&validator)
+        self.current_validators.remove(&validator)
     }
 
     async fn create_validation_req(
@@ -321,11 +325,29 @@ impl Handler<Validation> for Validation {
                 self.errors = String::default();
                 self.validators_response = vec![];
                 self.quorum = quorum;
-                self.validators.clone_from(&signers);
                 self.validators_quantity = signers.len() as u32;
                 self.request_id = request_id.clone();
                 self.version = version;
                 self.reboot = false;
+
+                if signers.is_empty() {
+                    warn!(
+                        TARGET_VALIDATION,
+                        "Create, There are no validators available for the {} scheme",
+                        info.metadata.schema_id
+                    );
+
+                    if let Err(e) =
+                        self.send_validation_to_req(ctx, false).await
+                    {
+                        error!(
+                            TARGET_VALIDATION,
+                            "Create, can not send validation response to Request actor: {}",
+                            e
+                        );
+                        return Err(emit_fail(ctx, e).await);
+                    };
+                }
 
                 let signature = match get_sign(
                     ctx,
@@ -350,7 +372,17 @@ impl Handler<Validation> for Validation {
                     signature,
                 };
 
-                for signer in signers {
+                let validators_quantity = self.quorum.get_signers(
+                    self.validators_quantity,
+                    signers.len() as u32,
+                );
+
+                let (current_val, pending_val) =
+                    take_random_signers(signers, validators_quantity as usize);
+                self.current_validators.clone_from(&current_val);
+                self.pending_validators.clone_from(&pending_val);
+
+                for signer in current_val {
                     if let Err(e) = self
                         .create_validators(
                             ctx,
@@ -437,7 +469,56 @@ impl Handler<Validation> for Validation {
                                 );
                                 return Err(emit_fail(ctx, e).await);
                             };
-                        } else if self.validators.is_empty() {
+                        } else if self.current_validators.is_empty()
+                            && !self.pending_validators.is_empty()
+                        {
+                            if let Some(req) = self.signed_vali_req.clone() {
+                                let validators_quantity =
+                                    self.quorum.get_signers(
+                                        self.validators_quantity,
+                                        self.pending_validators.len() as u32,
+                                    );
+
+                                let (current_val, pending_val) =
+                                    take_random_signers(
+                                        self.pending_validators.clone(),
+                                        validators_quantity as usize,
+                                    );
+                                self.current_validators
+                                    .clone_from(&current_val);
+                                self.pending_validators
+                                    .clone_from(&pending_val);
+
+                                for signer in current_val {
+                                    if let Err(e) = self
+                                        .create_validators(
+                                            ctx,
+                                            req.clone(),
+                                            &self.actual_proof.schema_id,
+                                            signer.clone(),
+                                        )
+                                        .await
+                                    {
+                                        error!(
+                                            TARGET_VALIDATION,
+                                            "Can not create validator {}: {}",
+                                            signer,
+                                            e
+                                        );
+                                    }
+                                }
+                            } else {
+                                let e = ActorError::FunctionalFail(
+                                    "Can not get validation request".to_owned(),
+                                );
+                                error!(
+                                    TARGET_VALIDATION,
+                                    "Response, can not get validation request: {}",
+                                    e
+                                );
+                                return Err(emit_fail(ctx, e).await);
+                            }
+                        } else if self.current_validators.is_empty() {
                             // we have received all the responses and the quorum has not been met
 
                             if let Err(e) =

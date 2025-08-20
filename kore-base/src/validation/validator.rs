@@ -5,7 +5,7 @@ use std::{collections::HashSet, time::Duration};
 
 use crate::{
     Signed,
-    governance::{Governance, model::RoleTypes},
+    governance::{Governance, model::SignersType},
     helpers::network::{NetworkMessage, intermediary::Intermediary},
     model::{
         SignTypesNode, TimeStamp,
@@ -156,7 +156,7 @@ impl Validator {
             if previous_proof.governance_version == gov.version {
                 let actual_signers = gov
                     .get_signers(
-                        RoleTypes::Validator,
+                        SignersType::Validator,
                         &new_proof.schema_id,
                         new_proof.namespace.clone(),
                     )

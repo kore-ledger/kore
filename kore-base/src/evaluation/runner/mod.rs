@@ -25,7 +25,7 @@ use crate::{
             GovernanceEvent, MemberEvent, PoliciesEvent, RolesEvent,
             SchemasEvent,
         },
-        model::RoleTypes,
+        model::{HashThisRole, RoleTypes},
     },
     model::{
         Namespace,
@@ -51,9 +51,19 @@ impl Runner {
         is_owner: bool,
     ) -> Result<(RunnerResult, Vec<String>), Error> {
         match evaluate_type {
-            EvaluateType::AllSchemasFact { contract, payload } => {
-                Self::execute_fact_not_gov(state, &payload, &contract, is_owner)
-                    .await
+            EvaluateType::AllSchemasFact {
+                contract,
+                init_state,
+                payload,
+            } => {
+                Self::execute_fact_not_gov(
+                    state,
+                    &init_state,
+                    &payload,
+                    &contract,
+                    is_owner,
+                )
+                .await
             }
             EvaluateType::GovFact { payload } => {
                 Self::execute_fact_gov(state, &payload).await
@@ -110,12 +120,12 @@ impl Runner {
             ));
         }
 
-        if !governance.has_this_role(
-            new_owner,
-            RoleTypes::Creator,
-            schema_id,
-            namespace.clone(),
-        ) {
+        if !governance.has_this_role(HashThisRole::Schema {
+            who: new_owner.clone(),
+            role: RoleTypes::Creator,
+            schema_id: schema_id.to_owned(),
+            namespace: namespace.clone(),
+        }) {
             return Err(Error::Runner(format!(
                 "New owner is not a Creator from {} schema_id, with {} namespace",
                 schema_id, namespace
@@ -248,6 +258,8 @@ impl Runner {
                     old_owner_name
                 )));
             }
+
+            governance.roles_gov.witness.insert(old_owner_name);
         }
 
         let mod_state = to_value(governance).map_err(|e| {
@@ -283,6 +295,7 @@ impl Runner {
 
     async fn execute_fact_not_gov(
         state: &ValueWrapper,
+        init_state: &ValueWrapper,
         payload: &ValueWrapper,
         contract: &[u8],
         is_owner: bool,
@@ -303,8 +316,8 @@ impl Runner {
         };
 
         // We create a context from the state and the event.
-        let (context, state_ptr, event_ptr) =
-            Self::generate_context(state, payload)?;
+        let (context, state_ptr, init_state_ptr, event_ptr) =
+            Self::generate_context(state, init_state, payload)?;
 
         // Container to store and manage the global state of a WebAssembly instance during its execution.
         let mut store = Store::new(&engine, context);
@@ -323,7 +336,10 @@ impl Runner {
 
         // Get access to contract
         let contract_entrypoint = instance
-            .get_typed_func::<(u32, u32, u32), u32>(&mut store, "main_function")
+            .get_typed_func::<(u32, u32, u32, u32), u32>(
+                &mut store,
+                "main_function",
+            )
             .map_err(|e| {
                 Error::Runner(format!("Contract entry point not found: {}", e))
             })?;
@@ -332,7 +348,12 @@ impl Runner {
         let result_ptr = contract_entrypoint
             .call(
                 &mut store,
-                (state_ptr, event_ptr, if is_owner { 1 } else { 0 }),
+                (
+                    state_ptr,
+                    init_state_ptr,
+                    event_ptr,
+                    if is_owner { 1 } else { 0 },
+                ),
             )
             .map_err(|e| {
                 Error::Runner(format!("Contract execution failed: {}", e))
@@ -839,6 +860,13 @@ impl Runner {
                     )));
                 }
 
+                if new_member.name == "Witnesses" {
+                    return Err(Error::Runner(format!(
+                        "Name of member to add can not be 'Witnesses', {}",
+                        new_member.name
+                    )));
+                }
+
                 if new_member.key.is_empty() {
                     return Err(Error::Runner(format!(
                         "Key of {} can not be empty",
@@ -946,6 +974,13 @@ impl Runner {
                         )));
                     }
 
+                    if new_name == "Witnesses" {
+                        return Err(Error::Runner(format!(
+                            "New name of member can not be 'Witnesses', {}",
+                            new_name
+                        )));
+                    }
+
                     change_name_members
                         .push((actual_member_name, new_name.clone()));
                     actual_member_name = new_name;
@@ -983,6 +1018,10 @@ impl Runner {
             return Err(Error::Runner("There can not be a member whose name is Any, it is a reserved word".to_owned()));
         }
 
+        if new_members.contains_key("Witnesses") {
+            return Err(Error::Runner("There can not be a member whose name is Witnesses, it is a reserved word".to_owned()));
+        }
+
         if members_name.len() != members_value.len() {
             return Err(Error::Runner(
                 "There are members who have the same key".to_owned(),
@@ -996,9 +1035,11 @@ impl Runner {
 
     fn generate_context(
         state: &ValueWrapper,
+        init_state: &ValueWrapper,
         event: &ValueWrapper,
-    ) -> Result<(MemoryManager, u32, u32), Error> {
+    ) -> Result<(MemoryManager, u32, u32, u32), Error> {
         let mut context = MemoryManager::default();
+
         let state_bytes = to_vec(&state).map_err(|e| {
             Error::Runner(format!(
                 "Error when serializing the state using borsh: {}",
@@ -1006,6 +1047,15 @@ impl Runner {
             ))
         })?;
         let state_ptr = context.add_data_raw(&state_bytes);
+
+        let init_state_bytes = to_vec(&init_state).map_err(|e| {
+            Error::Runner(format!(
+                "Error when serializing the init_state using borsh: {}",
+                e
+            ))
+        })?;
+        let init_state_ptr = context.add_data_raw(&init_state_bytes);
+
         let event_bytes = to_vec(&event).map_err(|e| {
             Error::Runner(format!(
                 "Error when serializing the event using borsh: {}",
@@ -1013,7 +1063,12 @@ impl Runner {
             ))
         })?;
         let event_ptr = context.add_data_raw(&event_bytes);
-        Ok((context, state_ptr as u32, event_ptr as u32))
+        Ok((
+            context,
+            state_ptr as u32,
+            init_state_ptr as u32,
+            event_ptr as u32,
+        ))
     }
 
     fn get_result(
