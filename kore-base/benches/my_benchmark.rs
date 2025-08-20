@@ -47,7 +47,6 @@ pub async fn create_node(
         vec![listen_address.to_owned()],
         vec![],
         peers,
-        false,
     );
 
     let config = Config {

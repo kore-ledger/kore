@@ -297,6 +297,13 @@ async fn test_basic_use_case_1b_1e_1a() {
         json!({"members":{"KoreNode2":intermediary.controller_id(),"KoreNode3":emit_events.controller_id(),"Owner":owner_governance.controller_id()},"policies_gov":{"approve":"majority","evaluate":"majority","validate":"majority"},"policies_schema":{},"roles_gov":{"approver":["Owner"],"evaluator":["Owner"],"issuer":{"any":false,"users":["Owner"]},"validator":["Owner"],"witness":["KoreNode2", "KoreNode3"]},"roles_all_schemas":{"evaluator":[],"issuer":{"any":false,"users":[]},"validator":[],"witness":[]},"roles_schema":{},"schemas":{},"version":1})
     );
 
+    println!("DE AQUÏ NO PASA");
+    println!("");
+    emit_events
+        .update_subject(governance_id.clone())
+        .await
+        .unwrap();
+    println!("CONTINUA");
     let state = get_subject(emit_events, governance_id.clone(), Some(1))
         .await
         .unwrap();
@@ -991,6 +998,9 @@ async fn test_governance_auto_many_approvers() {
     .await
     .unwrap();
 
+    let _ = get_subject(approver_1, governance_id.clone(), None)
+        .await
+        .unwrap();
     emit_approve(
         approver_1,
         governance_id.clone(),
@@ -1001,6 +1011,9 @@ async fn test_governance_auto_many_approvers() {
     .await
     .unwrap();
 
+    let _ = get_subject(approver_2, governance_id.clone(), None)
+        .await
+        .unwrap();
     emit_approve(
         approver_2,
         governance_id.clone(),

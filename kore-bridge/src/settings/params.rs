@@ -39,26 +39,24 @@ impl From<Params> for Config {
             params.kore.network.tell.max_concurrent_streams,
         );
 
+        let req_res = network::ReqResConfig::new(
+            params.kore.network.req_res.message_timeout_secs,
+            params.kore.network.req_res.max_concurrent_streams,
+        );
+
         let routing =
-            network::RoutingConfig::new(params.kore.network.routing.boot_nodes)
+            network::RoutingConfig::new()
                 .with_dht_random_walk(
                     params.kore.network.routing.dht_random_walk,
                 )
                 .with_discovery_limit(
                     params.kore.network.routing.discovery_only_if_under_num,
                 )
-                .with_allow_non_globals_in_dht(
-                    params.kore.network.routing.allow_non_globals_in_dht,
+                .with_allow_non_globals_address_in_dht(
+                    params.kore.network.routing.allow_non_globals_address_in_dht,
                 )
-                .with_allow_private_ip(
-                    params.kore.network.routing.allow_private_ip,
-                )
-                .with_mdns(params.kore.network.routing.enable_mdns)
                 .with_kademlia_disjoint_query_paths(
                     params.kore.network.routing.kademlia_disjoint_query_paths,
-                )
-                .with_kademlia_replication_factor(
-                    params.kore.network.routing.kademlia_replication_factor,
                 );
 
         let control_list = network::ControlListConfig::default()
@@ -93,13 +91,13 @@ impl From<Params> for Config {
                 kore_db: params.kore.base.kore_db,
                 external_db: params.kore.base.external_db,
                 network: network::Config {
-                    user_agent: params.kore.network.user_agent,
+                    boot_nodes: params.kore.network.boot_nodes,
                     node_type: params.kore.network.node_type,
                     listen_addresses: params.kore.network.listen_addresses,
                     external_addresses: params.kore.network.external_addresses,
                     tell,
+                    req_res,
                     routing,
-                    port_reuse: params.kore.network.port_reuse,
                     control_list,
                 },
                 contracts_dir: params.kore.base.contracts_dir,
@@ -273,11 +271,15 @@ struct NetworkParams {
     #[serde(default)]
     tell: TellParams,
     #[serde(default)]
+    req_res: ReqResParams,
+    #[serde(default)]
     routing: RoutingParams,
     #[serde(default)]
     port_reuse: bool,
     #[serde(default)]
     control_list: ControlListParams,
+    #[serde(default, deserialize_with = "deserialize_boot_nodes")]
+    boot_nodes: Vec<RoutingNode>,
 }
 
 impl NetworkParams {
@@ -287,8 +289,7 @@ impl NetworkParams {
             config::Environment::with_prefix(&format!("{parent}NETWORK"))
                 .list_separator(",")
                 .with_list_parse_key("listen_addresses")
-                .try_parsing(true)
-                .list_separator(",")
+                .with_list_parse_key("boot_nodes")
                 .with_list_parse_key("external_addresses")
                 .try_parsing(true),
         );
@@ -309,11 +310,13 @@ impl NetworkParams {
 
         let parent = &format!("{parent}NETWORK_");
         Self {
+            boot_nodes:network.boot_nodes,
             user_agent: network.user_agent,
             node_type: network.node_type,
             listen_addresses: network.listen_addresses,
             external_addresses: network.external_addresses,
             tell: TellParams::from_env(parent),
+            req_res: ReqResParams::from_env(parent),
             routing: RoutingParams::from_env(parent),
             port_reuse: network.port_reuse,
             control_list: ControlListParams::from_env(parent),
@@ -321,6 +324,11 @@ impl NetworkParams {
     }
 
     fn mix_config(&self, other_config: NetworkParams) -> Self {
+        let boot_nodes = if !other_config.boot_nodes.is_empty() {
+            other_config.boot_nodes
+        } else {
+            self.boot_nodes.clone()
+        };
         let user_agent = if other_config.user_agent != default_user_agent() {
             other_config.user_agent
         } else {
@@ -353,6 +361,7 @@ impl NetworkParams {
         };
 
         Self {
+            boot_nodes,
             user_agent,
             node_type,
             listen_addresses,
@@ -360,6 +369,7 @@ impl NetworkParams {
             tell: self.tell.mix_config(other_config.tell),
             routing: self.routing.mix_config(other_config.routing),
             port_reuse,
+            req_res: self.req_res.mix_config(other_config.req_res),
             control_list: self
                 .control_list
                 .mix_config(other_config.control_list),
@@ -378,11 +388,13 @@ fn default_node_type() -> NodeType {
 impl Default for NetworkParams {
     fn default() -> Self {
         Self {
+            boot_nodes: vec![],
             user_agent: default_user_agent(),
             node_type: default_node_type(),
             listen_addresses: vec![],
             external_addresses: vec![],
             tell: TellParams::default(),
+            req_res: ReqResParams::default(),
             routing: RoutingParams::default(),
             port_reuse: false,
             control_list: ControlListParams::default(),
@@ -568,6 +580,7 @@ impl TellParams {
     }
 }
 
+
 impl Default for TellParams {
     fn default() -> Self {
         Self {
@@ -576,6 +589,89 @@ impl Default for TellParams {
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+#[derive(Debug, Deserialize)]
+struct ReqResParams {
+    #[serde(
+        default = "default_message_timeout_secs",
+        deserialize_with = "deserialize_duration_secs"
+    )]
+    message_timeout_secs: Duration,
+    #[serde(default = "default_max_concurrent_streams")]
+    max_concurrent_streams: usize,
+}
+
+impl ReqResParams {
+    fn from_env(parent: &str) -> Self {
+        let mut config = config::Config::builder();
+        config = config.add_source(config::Environment::with_prefix(&format!(
+            "{parent}REQRES"
+        )));
+
+        let config = config
+            .build()
+            .map_err(|e| {
+                error!(TARGET_PARAMS, "Error building config: {}", e);
+            })
+            .unwrap();
+
+        config
+            .try_deserialize()
+            .map_err(|e| {
+                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
+            })
+            .unwrap()
+    }
+
+    fn mix_config(&self, other_config: ReqResParams) -> Self {
+        let message_timeout_secs = if other_config.message_timeout_secs
+            != default_message_timeout_secs()
+        {
+            other_config.message_timeout_secs
+        } else {
+            self.message_timeout_secs
+        };
+
+        let max_concurrent_streams = if other_config.max_concurrent_streams
+            != default_max_concurrent_streams()
+        {
+            other_config.max_concurrent_streams
+        } else {
+            self.max_concurrent_streams
+        };
+        Self {
+            message_timeout_secs,
+            max_concurrent_streams,
+        }
+    }
+}
+
+
+
+impl Default for ReqResParams {
+    fn default() -> Self {
+        Self {
+            message_timeout_secs: default_message_timeout_secs(),
+            max_concurrent_streams: default_max_concurrent_streams(),
+        }
+    }
+}
+
+
+
+
+
 
 fn deserialize_duration_secs<'de, D>(
     deserializer: D,
@@ -597,18 +693,12 @@ fn default_message_timeout_secs() -> Duration {
 
 #[derive(Debug, Deserialize)]
 struct RoutingParams {
-    #[serde(default, deserialize_with = "deserialize_boot_nodes")]
-    boot_nodes: Vec<RoutingNode>,
     #[serde(default = "default_true")]
     dht_random_walk: bool,
     #[serde(default = "default_discovery_only_if_under_num")]
     discovery_only_if_under_num: u64,
     #[serde(default)]
-    allow_non_globals_in_dht: bool,
-    #[serde(default)]
-    allow_private_ip: bool,
-    #[serde(default = "default_true")]
-    enable_mdns: bool,
+    allow_non_globals_address_in_dht: bool,
     #[serde(default = "default_true")]
     kademlia_disjoint_query_paths: bool,
     #[serde(default)]
@@ -622,7 +712,6 @@ impl RoutingParams {
             config::Environment::with_prefix(&format!("{parent}ROUTING"))
                 .list_separator(",")
                 .with_list_parse_key("protocol_names")
-                .with_list_parse_key("boot_nodes")
                 .try_parsing(true),
         );
 
@@ -642,11 +731,6 @@ impl RoutingParams {
     }
 
     fn mix_config(&self, other_config: RoutingParams) -> Self {
-        let boot_nodes = if !other_config.boot_nodes.is_empty() {
-            other_config.boot_nodes
-        } else {
-            self.boot_nodes.clone()
-        };
         let dht_random_walk = if !other_config.dht_random_walk {
             other_config.dht_random_walk
         } else {
@@ -660,21 +744,11 @@ impl RoutingParams {
         } else {
             self.discovery_only_if_under_num
         };
-        let allow_non_globals_in_dht = if other_config.allow_non_globals_in_dht
+        let allow_non_globals_address_in_dht = if other_config.allow_non_globals_address_in_dht
         {
-            other_config.allow_non_globals_in_dht
+            other_config.allow_non_globals_address_in_dht
         } else {
-            self.allow_non_globals_in_dht
-        };
-        let allow_private_ip = if other_config.allow_private_ip {
-            other_config.allow_private_ip
-        } else {
-            self.allow_private_ip
-        };
-        let enable_mdns = if !other_config.enable_mdns {
-            other_config.enable_mdns
-        } else {
-            self.enable_mdns
+            self.allow_non_globals_address_in_dht
         };
         let kademlia_disjoint_query_paths =
             if !other_config.kademlia_disjoint_query_paths {
@@ -690,12 +764,9 @@ impl RoutingParams {
             };
 
         Self {
-            boot_nodes,
             dht_random_walk,
             discovery_only_if_under_num,
-            allow_non_globals_in_dht,
-            allow_private_ip,
-            enable_mdns,
+            allow_non_globals_address_in_dht,
             kademlia_disjoint_query_paths,
             kademlia_replication_factor,
         }
@@ -705,12 +776,9 @@ impl RoutingParams {
 impl Default for RoutingParams {
     fn default() -> Self {
         Self {
-            boot_nodes: vec![],
             dht_random_walk: default_true(),
             discovery_only_if_under_num: default_discovery_only_if_under_num(),
-            allow_non_globals_in_dht: false,
-            allow_private_ip: false,
-            enable_mdns: false,
+            allow_non_globals_address_in_dht: false,
             kademlia_disjoint_query_paths: default_true(),
             kademlia_replication_factor: 0,
         }

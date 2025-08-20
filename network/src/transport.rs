@@ -45,7 +45,6 @@ pub type KoreTransport = Boxed<(PeerId, StreamMuxerBox)>;
 pub fn build_transport(
     registry: &mut Registry,
     keys: &Keypair,
-    _port_reuse: bool,
 ) -> Result<KoreTransport, Error> {
     // Build the noise authentication.
     let noise = noise::Config::new(keys).map_err(|e| {
@@ -84,7 +83,7 @@ mod tests {
     fn test_build_transport() {
         let mut registry = Registry::default();
         let keypair = Keypair::generate_ed25519();
-        let result = build_transport(&mut registry, &keypair, false);
+        let result = build_transport(&mut registry, &keypair);
 
         assert!(result.is_ok());
     }
