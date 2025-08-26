@@ -20,13 +20,15 @@ use libp2p::{
 use serde::Deserialize;
 
 use std::{
-    cmp,
     collections::{HashMap, VecDeque},
     task::{Poll, Waker},
     time::Duration,
 };
 
-use crate::{NodeType, utils::is_reachable};
+use crate::{
+    NodeType,
+    utils::{is_dns, is_local, is_loop_back},
+};
 
 #[cfg(not(feature = "test"))]
 use crate::utils::is_memory;
@@ -54,7 +56,12 @@ pub struct Behaviour {
     discovery_only_if_under_num: u64,
 
     /// Whether to allow non-global addresses in the DHT.
-    allow_non_globals_address_in_dht: bool,
+    allow_local_address_in_dht: bool,
+
+    /// Whether to allow non-global addresses in the DHT.
+    allow_dns_address_in_dht: bool,
+
+    allow_loop_back_address_in_dht: bool,
 
     /// Peers to close connection
     close_connections: VecDeque<(PeerId, Option<ConnectionId>)>,
@@ -73,7 +80,9 @@ impl Behaviour {
         let Config {
             dht_random_walk,
             discovery_only_if_under_num,
-            allow_non_globals_address_in_dht,
+            allow_dns_address_in_dht,
+            allow_local_address_in_dht,
+            allow_loop_back_address_in_dht,
             kademlia_disjoint_query_paths,
         } = config;
 
@@ -105,7 +114,9 @@ impl Behaviour {
             duration_to_next_kad: Duration::from_secs(1),
             num_connections: 0,
             discovery_only_if_under_num,
-            allow_non_globals_address_in_dht,
+            allow_dns_address_in_dht,
+            allow_local_address_in_dht,
+            allow_loop_back_address_in_dht,
             close_connections: VecDeque::new(),
             pre_routing: true,
             waker: None,
@@ -148,20 +159,27 @@ impl Behaviour {
     pub fn add_self_reported_address(
         &mut self,
         peer_id: &PeerId,
-        addr: Multiaddr,
-    ) {
+        addr: &Multiaddr,
+    ) -> bool {
         #[cfg(not(feature = "test"))]
         {
-            if is_memory(&addr) {
-                return;
+            if is_memory(addr) {
+                return false;
             }
         }
 
-        if !self.allow_non_globals_address_in_dht && !is_reachable(&addr) {
-            return;
+        if self.is_invalid_address(addr) {
+            return false;
         }
 
         self.kademlia.add_address(peer_id, addr.clone());
+        true
+    }
+
+    pub fn is_invalid_address(&self, addr: &Multiaddr) -> bool {
+        !self.allow_local_address_in_dht && is_local(addr)
+            || !self.allow_loop_back_address_in_dht && is_loop_back(addr)
+            || !self.allow_dns_address_in_dht && is_dns(addr)
     }
 
     /// Discover closet peers to the given `PeerId`.
@@ -183,6 +201,7 @@ pub enum Event {
         peer_id: PeerId,
         info: Option<PeerInfo>,
     },
+    RandomWalk(PeerId),
 }
 
 impl NetworkBehaviour for Behaviour {
@@ -294,7 +313,7 @@ impl NetworkBehaviour for Behaviour {
                 ToSwarm::GenerateEvent(ev) => {
                     match ev {
                         KademliaEvent::RoutablePeer { peer, address } => {
-                            self.add_self_reported_address(&peer, address);
+                            self.add_self_reported_address(&peer, &address);
                         }
                         KademliaEvent::ModeChanged { .. }
                         | KademliaEvent::InboundRequest { .. }
@@ -449,20 +468,29 @@ impl NetworkBehaviour for Behaviour {
 
         // Poll the stream that fires when we need to start a random Kademlia query.
         if !self.pre_routing {
-            if let Some(next_random_walk) = self.next_random_walk.as_mut() {
-                while next_random_walk.poll_unpin(cx).is_ready() {
+            if let Some(next) = self.next_random_walk.as_mut() {
+                if next.poll_unpin(cx).is_ready() {
                     if self.num_connections < self.discovery_only_if_under_num {
-                        self.kademlia.get_closest_peers(PeerId::random());
+                        let target = PeerId::random(); // objetivo aleatorio para refrescar la DHT
+                        self.kademlia.get_closest_peers(target);
+
+                        *next = Delay::new(self.duration_to_next_kad);
+
+                        self.duration_to_next_kad = std::cmp::min(
+                            self.duration_to_next_kad * 2,
+                            Duration::from_secs(120),
+                        );
+
+                        return Poll::Ready(ToSwarm::GenerateEvent(
+                            Event::RandomWalk(target),
+                        ));
+                    } else {
+                        *next = Delay::new(self.duration_to_next_kad);
+                        self.duration_to_next_kad = std::cmp::min(
+                            self.duration_to_next_kad * 2,
+                            Duration::from_secs(120),
+                        );
                     }
-
-                    // Schedule the next random query with exponentially increasing delay,
-                    // capped at 60 seconds.
-                    *next_random_walk = Delay::new(self.duration_to_next_kad);
-
-                    self.duration_to_next_kad = cmp::min(
-                        self.duration_to_next_kad * 2,
-                        Duration::from_secs(60 * 2),
-                    );
                 }
             }
         }
@@ -491,12 +519,34 @@ impl NetworkBehaviour for Behaviour {
         addresses: &[Multiaddr],
         effective_role: libp2p::core::Endpoint,
     ) -> Result<Vec<Multiaddr>, libp2p::swarm::ConnectionDenied> {
-        self.kademlia.handle_pending_outbound_connection(
+        let address = self.kademlia.handle_pending_outbound_connection(
             connection_id,
             maybe_peer,
             addresses,
             effective_role,
-        )
+        )?;
+
+        let filter_address = address
+            .iter()
+            .filter(|x| !self.is_invalid_address(x))
+            .cloned()
+            .collect::<Vec<Multiaddr>>();
+
+        if filter_address.len() != address.len() {
+            if let Some(peer_id) = maybe_peer {
+                self.kademlia.remove_peer(&peer_id);
+                for addr in filter_address.iter() {
+                    self.kademlia.add_address(&peer_id, addr.clone());
+                }
+            }
+        } else if filter_address.is_empty() {
+            if let Some(peer_id) = maybe_peer {
+                self.peer_to_remove.remove(&peer_id);
+                self.kademlia.remove_peer(&peer_id);
+            }
+        }
+
+        Ok(filter_address)
     }
 }
 
@@ -510,7 +560,12 @@ pub struct Config {
     discovery_only_if_under_num: u64,
 
     /// Whether to allow non-global addresses in the DHT.
-    allow_non_globals_address_in_dht: bool,
+    allow_local_address_in_dht: bool,
+
+    /// Whether to allow non-global addresses in the DHT.
+    allow_dns_address_in_dht: bool,
+
+    allow_loop_back_address_in_dht: bool,
 
     /// When enabled the number of disjoint paths used equals the configured parallelism.
     kademlia_disjoint_query_paths: bool,
@@ -522,7 +577,9 @@ impl Config {
         Self {
             dht_random_walk: false,
             discovery_only_if_under_num: u64::MAX,
-            allow_non_globals_address_in_dht: true,
+            allow_local_address_in_dht: false,
+            allow_dns_address_in_dht: false,
+            allow_loop_back_address_in_dht: false,
             kademlia_disjoint_query_paths: true,
         }
     }
@@ -549,17 +606,36 @@ impl Config {
         self
     }
 
-    /// Get allow_non_globals_in_dht.
-    pub fn get_allow_non_globals_address_in_dht(&self) -> bool {
-        self.allow_non_globals_address_in_dht
+    /// Get allow_local_address_in_dht.
+    pub fn get_allow_local_address_in_dht(&self) -> bool {
+        self.allow_local_address_in_dht
+    }
+
+    /// Whether to allow local addresses in the DHT.
+    pub fn with_allow_local_address_in_dht(mut self, allow: bool) -> Self {
+        self.allow_local_address_in_dht = allow;
+        self
+    }
+
+    /// Get allow_dns_address_in_dht.
+    pub fn get_allow_dns_address_in_dht(&self) -> bool {
+        self.allow_dns_address_in_dht
     }
 
     /// Whether to allow non-global addresses in the DHT.
-    pub fn with_allow_non_globals_address_in_dht(
-        mut self,
-        allow: bool,
-    ) -> Self {
-        self.allow_non_globals_address_in_dht = allow;
+    pub fn with_allow_dns_address_in_dht(mut self, allow: bool) -> Self {
+        self.allow_dns_address_in_dht = allow;
+        self
+    }
+
+    /// Get allow_non_globals_in_dht.
+    pub fn get_allow_loop_back_address_in_dht(&self) -> bool {
+        self.allow_loop_back_address_in_dht
+    }
+
+    /// Whether to allow non-global addresses in the DHT.
+    pub fn with_allow_loop_back_address_in_dht(mut self, allow: bool) -> Self {
+        self.allow_loop_back_address_in_dht = allow;
         self
     }
 
@@ -614,7 +690,7 @@ mod tests {
         let mut boot_nodes = vec![];
 
         let config = Config::new()
-            .with_allow_non_globals_address_in_dht(true)
+            .with_allow_local_address_in_dht(true)
             .with_discovery_limit(100)
             .with_dht_random_walk(true);
 
@@ -633,14 +709,13 @@ mod tests {
         let mut swarms = (1..10)
             .map(|x| {
                 let config = Config::new()
-                    .with_allow_non_globals_address_in_dht(true)
+                    .with_allow_local_address_in_dht(true)
                     .with_discovery_limit(100);
                 let (swarm, addr) =
                     build_node(config, 2000 + x, boot_nodes.clone());
-                boot_swarm.behaviour_mut().add_self_reported_address(
-                    swarm.local_peer_id(),
-                    addr.clone(),
-                );
+                boot_swarm
+                    .behaviour_mut()
+                    .add_self_reported_address(swarm.local_peer_id(), &addr);
 
                 (swarm, addr)
             })
@@ -683,7 +758,7 @@ mod tests {
                                                 .0
                                                 .behaviour_mut()
                                                 .add_self_reported_address(
-                                                    &peer_id, addr,
+                                                    &peer_id, &addr,
                                                 );
                                         }
 
@@ -697,6 +772,7 @@ mod tests {
                                         }
                                     }
                                 }
+                                _ => {}
                             },
                             _ => {}
                         },
@@ -740,7 +816,7 @@ mod tests {
             for addr in addrs {
                 swarm
                     .behaviour_mut()
-                    .add_self_reported_address(&peer_id, addr);
+                    .add_self_reported_address(&peer_id, &addr);
             }
         }
 

@@ -49,7 +49,7 @@ impl Compiler {
     [dependencies]
     serde = { version = "1.0.219", features = ["derive"] }
     serde_json = "1.0.140"
-    kore-contract-sdk = "0.5.0"
+    kore-contract-sdk = "0.6.0"
     
     [profile.release]
     strip = "debuginfo"

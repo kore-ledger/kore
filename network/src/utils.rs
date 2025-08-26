@@ -206,16 +206,35 @@ fn multiaddr(addr: &str) -> Option<Multiaddr> {
 // NB: Currently all DNS names are allowed and no check for TLD suffixes is done
 // because the set of valid domains is highly dynamic and would require frequent
 // updates, for example by utilising publicsuffix.org or IANA.
-pub fn is_reachable(addr: &Multiaddr) -> bool {
+pub fn is_local(addr: &Multiaddr) -> bool {
     let ip = match addr.iter().next() {
         Some(Protocol::Ip4(ip)) => IpNetwork::from(ip),
         Some(Protocol::Ip6(ip)) => IpNetwork::from(ip),
+        _ => return false,
+    };
+    !ip.is_global()
+}
+
+pub fn is_loop_back(addr: &Multiaddr) -> bool {
+    match addr.iter().next() {
+        Some(Protocol::Ip4(ip)) => ip.is_loopback(), // 127.0.0.0/8
+        Some(Protocol::Ip6(ip)) => ip.is_loopback(), // ::1
+        Some(Protocol::Dns(name))
+        | Some(Protocol::Dns4(name))
+        | Some(Protocol::Dns6(name)) => {
+            name.as_ref().eq_ignore_ascii_case("localhost")
+        }
+        _ => false,
+    }
+}
+
+pub fn is_dns(addr: &Multiaddr) -> bool {
+    match addr.iter().next() {
         Some(Protocol::Dns(_))
         | Some(Protocol::Dns4(_))
         | Some(Protocol::Dns6(_)) => return true,
         _ => return false,
     };
-    ip.is_global()
 }
 
 /// Chech if the given `Multiaddr` is a memory address.

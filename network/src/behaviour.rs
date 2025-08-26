@@ -131,14 +131,19 @@ impl Behaviour {
     pub fn add_self_reported_address(
         &mut self,
         peer_id: &PeerId,
-        addr: Multiaddr,
-    ) {
-        self.routing.add_self_reported_address(peer_id, addr);
+        addr: &Multiaddr,
+    ) -> bool {
+        self.routing.add_self_reported_address(peer_id, &addr)
     }
 
     /// Returns true if the given `PeerId` is known.
     pub fn is_known_peer(&mut self, peer_id: &PeerId) -> bool {
         self.routing.is_known_peer(peer_id)
+    }
+
+    /// Returns true if the given `PeerId` is known.
+    pub fn is_invalid_address(&self, addr: &Multiaddr) -> bool {
+        self.routing.is_invalid_address(addr)
     }
 
     pub fn close_connections(
@@ -212,6 +217,9 @@ pub enum Event {
         info: Option<PeerInfo>,
     },
 
+    /// Closets peers founded.
+    RandomWalk(PeerId),
+
     /// Dummy Event for control_list, ReqRes and Tell
     Dummy,
 }
@@ -224,9 +232,12 @@ impl From<control_list::Event> for Event {
 
 impl From<routing::Event> for Event {
     fn from(event: routing::Event) -> Self {
-        let routing::Event::ClosestPeer { peer_id, info } = event;
-
-        Event::ClosestPeer { peer_id, info }
+        match event {
+            routing::Event::ClosestPeer { peer_id, info } => {
+                Event::ClosestPeer { peer_id, info }
+            }
+            routing::Event::RandomWalk(peer_id) => Event::RandomWalk(peer_id),
+        }
     }
 }
 
@@ -525,7 +536,7 @@ mod tests {
                         for addr in info.listen_addrs {
                             boot_node
                                 .behaviour_mut()
-                                .add_self_reported_address(&peer_id, addr);
+                                .add_self_reported_address(&peer_id, &addr);
                         }
                     }
                     _ => {}
@@ -545,7 +556,7 @@ mod tests {
                         for addr in info.listen_addrs {
                             node_b
                                 .behaviour_mut()
-                                .add_self_reported_address(&peer_id, addr);
+                                .add_self_reported_address(&peer_id, &addr);
                         }
                     }
                     SwarmEvent::Behaviour(Event::ReqresMessage {
@@ -582,7 +593,7 @@ mod tests {
                         for addr in info.listen_addrs {
                             node_a
                                 .behaviour_mut()
-                                .add_self_reported_address(&peer_id, addr);
+                                .add_self_reported_address(&peer_id, &addr);
                         }
 
                         if peer_id == node_b_peer_id {
@@ -649,7 +660,7 @@ mod tests {
         node_type: NodeType,
     ) -> Config {
         let config = crate::routing::Config::new()
-            .with_allow_non_globals_address_in_dht(true)
+            .with_allow_local_address_in_dht(true)
             .with_discovery_limit(50)
             .with_dht_random_walk(random_walk);
 

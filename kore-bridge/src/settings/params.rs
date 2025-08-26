@@ -52,9 +52,11 @@ impl From<Params> for Config {
                 .with_discovery_limit(
                     params.kore.network.routing.discovery_only_if_under_num,
                 )
-                .with_allow_non_globals_address_in_dht(
-                    params.kore.network.routing.allow_non_globals_address_in_dht,
+                .with_allow_local_address_in_dht(
+                    params.kore.network.routing.allow_local_address_in_dht,
                 )
+                .with_allow_loop_back_address_in_dht(params.kore.network.routing.allow_loop_back_address_in_dht)
+                .with_allow_dns_address_in_dht(params.kore.network.routing.allow_dns_address_in_dht)
                 .with_kademlia_disjoint_query_paths(
                     params.kore.network.routing.kademlia_disjoint_query_paths,
                 );
@@ -698,7 +700,11 @@ struct RoutingParams {
     #[serde(default = "default_discovery_only_if_under_num")]
     discovery_only_if_under_num: u64,
     #[serde(default)]
-    allow_non_globals_address_in_dht: bool,
+    allow_local_address_in_dht: bool,
+    #[serde(default)]
+    allow_dns_address_in_dht: bool,
+    #[serde(default)]
+    allow_loop_back_address_in_dht: bool,
     #[serde(default = "default_true")]
     kademlia_disjoint_query_paths: bool,
     #[serde(default)]
@@ -744,12 +750,28 @@ impl RoutingParams {
         } else {
             self.discovery_only_if_under_num
         };
-        let allow_non_globals_address_in_dht = if other_config.allow_non_globals_address_in_dht
+
+        let allow_local_address_in_dht = if other_config.allow_local_address_in_dht
         {
-            other_config.allow_non_globals_address_in_dht
+            other_config.allow_local_address_in_dht
         } else {
-            self.allow_non_globals_address_in_dht
+            self.allow_local_address_in_dht
         };
+
+        let allow_dns_address_in_dht = if other_config.allow_dns_address_in_dht
+        {
+            other_config.allow_dns_address_in_dht
+        } else {
+            self.allow_dns_address_in_dht
+        };
+
+        let allow_loop_back_address_in_dht = if other_config.allow_loop_back_address_in_dht
+        {
+            other_config.allow_loop_back_address_in_dht
+        } else {
+            self.allow_loop_back_address_in_dht
+        };
+
         let kademlia_disjoint_query_paths =
             if !other_config.kademlia_disjoint_query_paths {
                 other_config.kademlia_disjoint_query_paths
@@ -766,7 +788,9 @@ impl RoutingParams {
         Self {
             dht_random_walk,
             discovery_only_if_under_num,
-            allow_non_globals_address_in_dht,
+            allow_local_address_in_dht,
+            allow_dns_address_in_dht,
+            allow_loop_back_address_in_dht,
             kademlia_disjoint_query_paths,
             kademlia_replication_factor,
         }
@@ -778,7 +802,9 @@ impl Default for RoutingParams {
         Self {
             dht_random_walk: default_true(),
             discovery_only_if_under_num: default_discovery_only_if_under_num(),
-            allow_non_globals_address_in_dht: false,
+            allow_local_address_in_dht: false,
+            allow_dns_address_in_dht: false,
+            allow_loop_back_address_in_dht: false,
             kademlia_disjoint_query_paths: default_true(),
             kademlia_replication_factor: 0,
         }

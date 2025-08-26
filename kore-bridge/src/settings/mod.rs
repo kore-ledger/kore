@@ -81,13 +81,21 @@ mod tests {
                 "KORE_NETWORK_BOOT_NODES",
                 "/ip4/172.17.0.1/tcp/50000_/ip4/127.0.0.1/tcp/60001/p2p/12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B,/ip4/11.11.0.11/tcp/10000_/ip4/12.22.33.44/tcp/55511/p2p/12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze",
             );
-            std::env::set_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK", "false");
+            std::env::set_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK", "true");
             std::env::set_var(
                 "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
                 "55",
             );
             std::env::set_var(
-                "KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_ADDRESS_IN_DHT",
+                "KORE_NETWORK_ROUTING_ALLOW_LOCAL_ADDRESS_IN_DHT",
+                "true",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_ROUTING_ALLOW_DNS_ADDRESS_IN_DHT",
+                "true",
+            );
+            std::env::set_var(
+                "KORE_NETWORK_ROUTING_ALLOW_LOOP_BACK_ADDRESS_IN_DHT",
                 "true",
             );
             std::env::set_var(
@@ -227,7 +235,7 @@ mod tests {
 
         assert_eq!(
             config.kore_config.network.routing.get_dht_random_walk(),
-            false
+            true
         );
         assert_eq!(
             config.kore_config.network.routing.get_discovery_limit(),
@@ -238,7 +246,23 @@ mod tests {
                 .kore_config
                 .network
                 .routing
-                .get_allow_non_globals_address_in_dht(),
+                .get_allow_local_address_in_dht(),
+            true
+        );
+        assert_eq!(
+            config
+                .kore_config
+                .network
+                .routing
+                .get_allow_dns_address_in_dht(),
+            true
+        );
+        assert_eq!(
+            config
+                .kore_config
+                .network
+                .routing
+                .get_allow_loop_back_address_in_dht(),
             true
         );
         assert_eq!(
@@ -321,7 +345,13 @@ mod tests {
                 "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
             );
             std::env::remove_var(
-                "KORE_NETWORK_ROUTING_ALLOW_NON_GLOBALS_ADDRESS_IN_DHT",
+                "KORE_NETWORK_ROUTING_ALLOW_LOCAL_ADDRESS_IN_DHT",
+            );
+            std::env::remove_var(
+                "KORE_NETWORK_ROUTING_ALLOW_DNS_ADDRESS_IN_DHT",
+            );
+                        std::env::remove_var(
+                "KORE_NETWORK_ROUTING_ALLOW_LOOP_BACK_ADDRESS_IN_DHT",
             );
             std::env::remove_var(
                 "KORE_NETWORK_ROUTING_KADEMLIA_DISJOINT_QUERY_PATHS",

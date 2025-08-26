@@ -719,7 +719,9 @@ impl From<TellConfigBridge> for TellConfig {
 pub struct RoutingConfig {
     dht_random_walk: bool,
     discovery_only_if_under_num: u64,
-    allow_non_globals_address_in_dht: bool,
+    allow_local_address_in_dht: bool,
+    allow_dns_address_in_dht: bool,
+    allow_loop_back_address_in_dht: bool,
     kademlia_disjoint_query_paths: bool,
 }
 
@@ -728,7 +730,9 @@ impl From<RoutingConfigBridge> for RoutingConfig {
         Self {
             dht_random_walk: value.get_dht_random_walk(),
             discovery_only_if_under_num: value.get_discovery_limit(),
-            allow_non_globals_address_in_dht: value.get_allow_non_globals_address_in_dht(),
+            allow_local_address_in_dht: value.get_allow_local_address_in_dht(),
+            allow_dns_address_in_dht: value.get_allow_dns_address_in_dht(),
+            allow_loop_back_address_in_dht: value.get_allow_loop_back_address_in_dht(),
             kademlia_disjoint_query_paths: value
                 .get_kademlia_disjoint_query_paths(),
         }
