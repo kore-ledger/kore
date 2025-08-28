@@ -33,7 +33,7 @@ impl Default for Monitor {
 }
 
 /// Monitor network states
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, Eq, PartialEq)]
 pub enum MonitorNetworkState {
     /// Connecting to others network nodes
     #[default]
