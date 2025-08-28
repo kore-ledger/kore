@@ -32,6 +32,7 @@ pub use kore_base::{
     request::RequestData,
 };
 use model::BridgeSignedEventRequest;
+use network::MonitorNetworkState;
 pub use network::{
     Config as NetworkConfig, ControlListConfig, RoutingConfig, RoutingNode,
     TellConfig,
@@ -139,6 +140,12 @@ impl Bridge {
         } else {
             self.api.own_request(event).await
         }
+    }
+
+    pub async fn get_network_state(
+        &self,
+    ) -> Result<MonitorNetworkState, Error> {
+        self.api.get_network_state().await
     }
 
     pub async fn get_pending_transfers(

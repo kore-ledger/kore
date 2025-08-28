@@ -47,9 +47,12 @@ use model::event::Event;
 use model::signature::*;
 use model::{SignTypesNode, request::*};
 use network::{
-    Monitor, MonitorMessage, MonitorNetworkState, MonitorResponse,
+    Monitor, MonitorMessage, MonitorResponse,
     NetworkWorker,
 };
+
+pub use network::MonitorNetworkState;
+
 use node::register::{
     GovsData, Register, RegisterDataSubj, RegisterMessage, RegisterResponse,
 };
