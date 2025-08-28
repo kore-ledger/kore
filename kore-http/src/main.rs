@@ -24,10 +24,10 @@ use tower_http::cors::{Any, CorsLayer};
 
 mod enviroment;
 mod error;
+mod logging;
 mod middleware;
 mod server;
 mod wrappers;
-mod logging;
 
 mod doc;
 #[derive(Clone)]

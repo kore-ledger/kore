@@ -44,22 +44,23 @@ impl From<Params> for Config {
             params.kore.network.req_res.max_concurrent_streams,
         );
 
-        let routing =
-            network::RoutingConfig::new()
-                .with_dht_random_walk(
-                    params.kore.network.routing.dht_random_walk,
-                )
-                .with_discovery_limit(
-                    params.kore.network.routing.discovery_only_if_under_num,
-                )
-                .with_allow_local_address_in_dht(
-                    params.kore.network.routing.allow_local_address_in_dht,
-                )
-                .with_allow_loop_back_address_in_dht(params.kore.network.routing.allow_loop_back_address_in_dht)
-                .with_allow_dns_address_in_dht(params.kore.network.routing.allow_dns_address_in_dht)
-                .with_kademlia_disjoint_query_paths(
-                    params.kore.network.routing.kademlia_disjoint_query_paths,
-                );
+        let routing = network::RoutingConfig::new()
+            .with_dht_random_walk(params.kore.network.routing.dht_random_walk)
+            .with_discovery_limit(
+                params.kore.network.routing.discovery_only_if_under_num,
+            )
+            .with_allow_local_address_in_dht(
+                params.kore.network.routing.allow_local_address_in_dht,
+            )
+            .with_allow_loop_back_address_in_dht(
+                params.kore.network.routing.allow_loop_back_address_in_dht,
+            )
+            .with_allow_dns_address_in_dht(
+                params.kore.network.routing.allow_dns_address_in_dht,
+            )
+            .with_kademlia_disjoint_query_paths(
+                params.kore.network.routing.kademlia_disjoint_query_paths,
+            );
 
         let control_list = network::ControlListConfig::default()
             .with_allow_list(params.kore.network.control_list.allow_list)
@@ -79,13 +80,13 @@ impl From<Params> for Config {
             keys_path: params.kore.keys_path,
             prometheus: params.kore.prometheus,
             logging: kore_base::config::Logging {
-                output:    params.kore.logging.output,
-                api_url:   params.kore.logging.api_url,
+                output: params.kore.logging.output,
+                api_url: params.kore.logging.api_url,
                 file_path: params.kore.logging.file_path,
-                rotation:  params.kore.logging.rotation,
-                max_size:  params.kore.logging.max_size,
+                rotation: params.kore.logging.rotation,
+                max_size: params.kore.logging.max_size,
                 max_files: params.kore.logging.max_files,
-                level:     params.kore.logging.level,
+                level: params.kore.logging.level,
             },
             kore_config: kore_base::config::Config {
                 key_derivator: params.kore.base.key_derivator,
@@ -198,38 +199,50 @@ fn default_keys_path() -> String {
 #[derive(Debug, Deserialize, Clone)]
 struct LoggingParams {
     #[serde(default = "default_log_output")]
-    pub output: String,        // "stdout(Docker)" | "file" | "api"
+    pub output: String, // "stdout(Docker)" | "file" | "api"
     #[serde(default)]
     pub api_url: Option<String>,
     #[serde(default = "default_log_file_path")]
-    pub file_path: String,     // ruta base de logs
+    pub file_path: String, // ruta base de logs
     #[serde(default = "default_log_rotation")]
-    pub rotation: String,      // "size" | "hourly" | "daily"
+    pub rotation: String, // "size" | "hourly" | "daily"
     #[serde(default = "default_log_max_size")]
-    pub max_size: u64,         // bytes
+    pub max_size: u64, // bytes
     #[serde(default = "default_log_max_files")]
-    pub max_files: usize,      // copias a conservar
+    pub max_files: usize, // copias a conservar
     #[serde(default = "default_log_level")]
-    pub level: String,         // "info", "debug", …
+    pub level: String, // "info", "debug", …
 }
 
-fn default_log_output()    -> String { "stdout".into() }
-fn default_log_file_path() -> String { "logs/kore.log".into() }
-fn default_log_rotation()  -> String { "size".into() }
-fn default_log_max_size()  -> u64    { 100 * 1024 * 1024 }
-fn default_log_max_files() -> usize  { 3 }
-fn default_log_level()     -> String { "info".into() }
+fn default_log_output() -> String {
+    "stdout".into()
+}
+fn default_log_file_path() -> String {
+    "logs/kore.log".into()
+}
+fn default_log_rotation() -> String {
+    "size".into()
+}
+fn default_log_max_size() -> u64 {
+    100 * 1024 * 1024
+}
+fn default_log_max_files() -> usize {
+    3
+}
+fn default_log_level() -> String {
+    "info".into()
+}
 
 impl Default for LoggingParams {
     fn default() -> Self {
         LoggingParams {
-            output:   default_log_output(),
-            api_url:  None,
+            output: default_log_output(),
+            api_url: None,
             file_path: default_log_file_path(),
-            rotation:  default_log_rotation(),
-            max_size:  default_log_max_size(),
+            rotation: default_log_rotation(),
+            max_size: default_log_max_size(),
             max_files: default_log_max_files(),
-            level:     default_log_level(),
+            level: default_log_level(),
         }
     }
 }
@@ -240,7 +253,7 @@ impl LoggingParams {
         let mut cfg = config::Config::builder();
         cfg = cfg.add_source(
             config::Environment::with_prefix(&format!("{parent}LOGGING"))
-                .try_parsing(true)
+                .try_parsing(true),
         );
         let built = cfg.build().unwrap();
         built.try_deserialize().unwrap_or_default()
@@ -249,13 +262,41 @@ impl LoggingParams {
     /// Combina self (prioridad) con other (fallback)
     fn mix_config(&self, other: LoggingParams) -> LoggingParams {
         LoggingParams {
-            output:     if self.output     != default_log_output()     { self.output.clone()} else { other.output},
-            api_url:    if self.api_url.is_some()                      { self.api_url.clone()} else { other.api_url},
-            file_path:  if self.file_path  != default_log_file_path()  { self.file_path.clone()} else { other.file_path},
-            rotation:   if self.rotation   != default_log_rotation()   { self.rotation.clone()} else { other.rotation},
-            max_size:   if self.max_size   != default_log_max_size()   { self.max_size} else { other.max_size},
-            max_files:  if self.max_files  != default_log_max_files()  { self.max_files} else { other.max_files},
-            level:      if self.level      != default_log_level()      { self.level.clone()} else { other.level},
+            output: if self.output != default_log_output() {
+                self.output.clone()
+            } else {
+                other.output
+            },
+            api_url: if self.api_url.is_some() {
+                self.api_url.clone()
+            } else {
+                other.api_url
+            },
+            file_path: if self.file_path != default_log_file_path() {
+                self.file_path.clone()
+            } else {
+                other.file_path
+            },
+            rotation: if self.rotation != default_log_rotation() {
+                self.rotation.clone()
+            } else {
+                other.rotation
+            },
+            max_size: if self.max_size != default_log_max_size() {
+                self.max_size
+            } else {
+                other.max_size
+            },
+            max_files: if self.max_files != default_log_max_files() {
+                self.max_files
+            } else {
+                other.max_files
+            },
+            level: if self.level != default_log_level() {
+                self.level.clone()
+            } else {
+                other.level
+            },
         }
     }
 }
@@ -312,7 +353,7 @@ impl NetworkParams {
 
         let parent = &format!("{parent}NETWORK_");
         Self {
-            boot_nodes:network.boot_nodes,
+            boot_nodes: network.boot_nodes,
             user_agent: network.user_agent,
             node_type: network.node_type,
             listen_addresses: network.listen_addresses,
@@ -582,7 +623,6 @@ impl TellParams {
     }
 }
 
-
 impl Default for TellParams {
     fn default() -> Self {
         Self {
@@ -591,17 +631,6 @@ impl Default for TellParams {
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
 
 #[derive(Debug, Deserialize)]
 struct ReqResParams {
@@ -659,8 +688,6 @@ impl ReqResParams {
     }
 }
 
-
-
 impl Default for ReqResParams {
     fn default() -> Self {
         Self {
@@ -669,11 +696,6 @@ impl Default for ReqResParams {
         }
     }
 }
-
-
-
-
-
 
 fn deserialize_duration_secs<'de, D>(
     deserializer: D,
@@ -751,12 +773,12 @@ impl RoutingParams {
             self.discovery_only_if_under_num
         };
 
-        let allow_local_address_in_dht = if other_config.allow_local_address_in_dht
-        {
-            other_config.allow_local_address_in_dht
-        } else {
-            self.allow_local_address_in_dht
-        };
+        let allow_local_address_in_dht =
+            if other_config.allow_local_address_in_dht {
+                other_config.allow_local_address_in_dht
+            } else {
+                self.allow_local_address_in_dht
+            };
 
         let allow_dns_address_in_dht = if other_config.allow_dns_address_in_dht
         {
@@ -765,12 +787,12 @@ impl RoutingParams {
             self.allow_dns_address_in_dht
         };
 
-        let allow_loop_back_address_in_dht = if other_config.allow_loop_back_address_in_dht
-        {
-            other_config.allow_loop_back_address_in_dht
-        } else {
-            self.allow_loop_back_address_in_dht
-        };
+        let allow_loop_back_address_in_dht =
+            if other_config.allow_loop_back_address_in_dht {
+                other_config.allow_loop_back_address_in_dht
+            } else {
+                self.allow_loop_back_address_in_dht
+            };
 
         let kademlia_disjoint_query_paths =
             if !other_config.kademlia_disjoint_query_paths {

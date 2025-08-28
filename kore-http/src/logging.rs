@@ -1,14 +1,16 @@
 use file_rotate::compression::Compression;
+use file_rotate::{ContentLimit, FileRotate, suffix::AppendCount};
 use kore_bridge::Logging;
+use reqwest::Client;
 use std::fs::OpenOptions;
-use std::io::{self, sink, Write};
-use std::path::{PathBuf};
+use std::io::{self, Write, sink};
+use std::path::PathBuf;
+use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
 use tracing_appender::non_blocking::NonBlocking;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use file_rotate::{FileRotate, suffix::AppendCount, ContentLimit};
-use tracing_subscriber::{fmt, EnvFilter, prelude::*, fmt::writer::BoxMakeWriter};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use reqwest::Client;
+use tracing_subscriber::{
+    EnvFilter, fmt, fmt::writer::BoxMakeWriter, prelude::*,
+};
 pub struct AsyncApiWriter {
     tx: UnboundedSender<String>,
 }
@@ -22,10 +24,7 @@ impl AsyncApiWriter {
         // Spawn de fondo: consume el canal y hace POST
         tokio::spawn(async move {
             while let Some(line) = rx.recv().await {
-                let _ = client.post(&url)
-                    .body(line)
-                    .send()
-                    .await;
+                let _ = client.post(&url).body(line).send().await;
             }
         });
         AsyncApiWriter { tx }
@@ -40,17 +39,19 @@ impl Write for AsyncApiWriter {
         }
         Ok(buf.len())
     }
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 pub fn init_logging(cfg: &Logging) {
     // 1) Clona por valor todo lo que vayamos a capturar:
-    let level        = cfg.level.clone();
-    let file_path    = cfg.file_path.clone();
-    let rotation     = cfg.rotation.clone();
-    let max_files    = cfg.max_files;
-    let max_size     = cfg.max_size as usize;
-    let api_url      = cfg.api_url.clone();
+    let level = cfg.level.clone();
+    let file_path = cfg.file_path.clone();
+    let rotation = cfg.rotation.clone();
+    let max_files = cfg.max_files;
+    let max_size = cfg.max_size as usize;
+    let api_url = cfg.api_url.clone();
 
     // 2) Interpreta OUTPUT en 3 booleans, sin referencias a cfg:
     let parts: Vec<String> = cfg
@@ -59,8 +60,8 @@ pub fn init_logging(cfg: &Logging) {
         .map(|s| s.trim().to_string())
         .collect();
     let enable_stdout = parts.iter().any(|p| p == "stdout");
-    let enable_file   = parts.iter().any(|p| p == "file");
-    let enable_api    = parts.iter().any(|p| p == "api");
+    let enable_file = parts.iter().any(|p| p == "file");
+    let enable_api = parts.iter().any(|p| p == "api");
 
     // 3) Capa stdout
     let stdout_layer = fmt::layer()
@@ -76,47 +77,51 @@ pub fn init_logging(cfg: &Logging) {
 
     // 4) Capa fichero
     let file_layer = fmt::layer()
-    .with_target(true)
-    .with_writer(BoxMakeWriter::new(move || {
-        if enable_file {
-            let writer: Box<dyn Write + Send + Sync> = match rotation.as_str() {
-                "size" => {
-                    let mut opts = OpenOptions::new();
-                    opts.read(true).write(true).create(true).append(true);
-                    Box::new(FileRotate::new(
-                        &file_path,
-                        AppendCount::new(max_files),
-                        ContentLimit::Bytes(max_size),
-                        Compression::None,
-                        Some(opts),
-                    )) as Box<dyn Write + Send + Sync>
-                }
-                "hourly" | "daily" | "never" => {
-                    let when = match rotation.as_str() {
-                        "hourly" => Rotation::HOURLY,
-                        "daily" => Rotation::DAILY,
-                        "never" => Rotation::NEVER,
-                        _ => unreachable!(),
-                    };
-                    let app = RollingFileAppender::new(
-                        when,
-                        PathBuf::from(&file_path).parent().unwrap(),
-                        PathBuf::from(&file_path)
-                            .file_name().unwrap()
-                            .to_str().unwrap(),
-                    );
-                    let (nb, _guard) = NonBlocking::new(app);
-                    Box::new(nb) as Box<dyn Write + Send + Sync>
-                }
-                _ => Box::new(sink()) as Box<dyn Write + Send + Sync>,
-            };
-            writer
-        } else {
-            Box::new(sink()) as Box<dyn Write + Send + Sync>
-        }
-    }))
-    .with_filter(EnvFilter::new(&level));
-
+        .with_target(true)
+        .with_writer(BoxMakeWriter::new(move || {
+            if enable_file {
+                let writer: Box<dyn Write + Send + Sync> = match rotation
+                    .as_str()
+                {
+                    "size" => {
+                        let mut opts = OpenOptions::new();
+                        opts.read(true).write(true).create(true).append(true);
+                        Box::new(FileRotate::new(
+                            &file_path,
+                            AppendCount::new(max_files),
+                            ContentLimit::Bytes(max_size),
+                            Compression::None,
+                            Some(opts),
+                        ))
+                            as Box<dyn Write + Send + Sync>
+                    }
+                    "hourly" | "daily" | "never" => {
+                        let when = match rotation.as_str() {
+                            "hourly" => Rotation::HOURLY,
+                            "daily" => Rotation::DAILY,
+                            "never" => Rotation::NEVER,
+                            _ => unreachable!(),
+                        };
+                        let app = RollingFileAppender::new(
+                            when,
+                            PathBuf::from(&file_path).parent().unwrap(),
+                            PathBuf::from(&file_path)
+                                .file_name()
+                                .unwrap()
+                                .to_str()
+                                .unwrap(),
+                        );
+                        let (nb, _guard) = NonBlocking::new(app);
+                        Box::new(nb) as Box<dyn Write + Send + Sync>
+                    }
+                    _ => Box::new(sink()) as Box<dyn Write + Send + Sync>,
+                };
+                writer
+            } else {
+                Box::new(sink()) as Box<dyn Write + Send + Sync>
+            }
+        }))
+        .with_filter(EnvFilter::new(&level));
 
     // 5) Capa API
     let api_layer = fmt::layer()
@@ -124,7 +129,8 @@ pub fn init_logging(cfg: &Logging) {
         .with_writer(BoxMakeWriter::new(move || {
             if enable_api {
                 if let Some(url) = api_url.clone() {
-                    Box::new(AsyncApiWriter::new(url)) as Box<dyn Write + Send + Sync>
+                    Box::new(AsyncApiWriter::new(url))
+                        as Box<dyn Write + Send + Sync>
                 } else {
                     Box::new(sink())
                 }

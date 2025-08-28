@@ -151,6 +151,23 @@ impl Behaviour {
         false
     }
 
+    pub fn add_peer_to_remove(&mut self, peer_id: &PeerId) {
+        let count = self
+            .peer_to_remove
+            .entry(*peer_id)
+            .and_modify(|x| *x += 1)
+            .or_default();
+
+        if *count >= 3 {
+            self.remove_node(peer_id);
+            self.clean_peer_to_remove(peer_id);
+        }
+    }
+
+    pub fn clean_peer_to_remove(&mut self, peer_id: &PeerId) {
+        self.peer_to_remove.remove(peer_id);
+    }
+
     /// Add a self-reported address of a remote peer to the k-buckets of the DHT
     /// if it has compatible `supported_protocols`.
     ///
@@ -201,7 +218,6 @@ pub enum Event {
         peer_id: PeerId,
         info: Option<PeerInfo>,
     },
-    RandomWalk(PeerId),
 }
 
 impl NetworkBehaviour for Behaviour {
@@ -330,25 +346,14 @@ impl NetworkBehaviour for Behaviour {
                                 QueryResult::Bootstrap(bootstrap_ok) => {
                                     match bootstrap_ok {
                                         Ok(ok) => {
-                                            self.peer_to_remove
-                                                .remove(&ok.peer);
+                                            self.clean_peer_to_remove(&ok.peer);
                                         }
                                         Err(e) => {
                                             let BootstrapError::Timeout {
                                                 peer,
                                                 ..
                                             } = e;
-                                            let count = self
-                                                .peer_to_remove
-                                                .entry(peer)
-                                                .and_modify(|x| *x += 1)
-                                                .or_default();
-
-                                            if *count == 3 {
-                                                self.remove_node(&peer);
-                                                self.peer_to_remove
-                                                    .remove(&peer);
-                                            }
+                                            self.add_peer_to_remove(&peer);
                                         }
                                     };
                                 }
@@ -425,6 +430,9 @@ impl NetworkBehaviour for Behaviour {
                     }
                 }
                 ToSwarm::Dial { opts } => {
+                    if let Some(peer_id) = opts.get_peer_id() {
+                        println!("SOY KADEMLIA HACIENDO DIAL A {}", peer_id);
+                    }
                     return Poll::Ready(ToSwarm::Dial { opts });
                 }
                 ToSwarm::NotifyHandler {
@@ -471,8 +479,7 @@ impl NetworkBehaviour for Behaviour {
             if let Some(next) = self.next_random_walk.as_mut() {
                 if next.poll_unpin(cx).is_ready() {
                     if self.num_connections < self.discovery_only_if_under_num {
-                        let target = PeerId::random(); // objetivo aleatorio para refrescar la DHT
-                        self.kademlia.get_closest_peers(target);
+                        self.kademlia.get_closest_peers(PeerId::random());
 
                         *next = Delay::new(self.duration_to_next_kad);
 
@@ -480,10 +487,6 @@ impl NetworkBehaviour for Behaviour {
                             self.duration_to_next_kad * 2,
                             Duration::from_secs(120),
                         );
-
-                        return Poll::Ready(ToSwarm::GenerateEvent(
-                            Event::RandomWalk(target),
-                        ));
                     } else {
                         *next = Delay::new(self.duration_to_next_kad);
                         self.duration_to_next_kad = std::cmp::min(
@@ -519,34 +522,34 @@ impl NetworkBehaviour for Behaviour {
         addresses: &[Multiaddr],
         effective_role: libp2p::core::Endpoint,
     ) -> Result<Vec<Multiaddr>, libp2p::swarm::ConnectionDenied> {
-        let address = self.kademlia.handle_pending_outbound_connection(
+        let addresses = self.kademlia.handle_pending_outbound_connection(
             connection_id,
             maybe_peer,
             addresses,
             effective_role,
         )?;
 
-        let filter_address = address
+        let filter_addresses = addresses
             .iter()
             .filter(|x| !self.is_invalid_address(x))
             .cloned()
             .collect::<Vec<Multiaddr>>();
 
-        if filter_address.len() != address.len() {
+        if filter_addresses.len() != addresses.len() {
             if let Some(peer_id) = maybe_peer {
                 self.kademlia.remove_peer(&peer_id);
-                for addr in filter_address.iter() {
+                for addr in filter_addresses.iter() {
                     self.kademlia.add_address(&peer_id, addr.clone());
                 }
             }
-        } else if filter_address.is_empty() {
+        } else if filter_addresses.is_empty() {
             if let Some(peer_id) = maybe_peer {
                 self.peer_to_remove.remove(&peer_id);
                 self.kademlia.remove_peer(&peer_id);
             }
         }
 
-        Ok(filter_address)
+        Ok(filter_addresses)
     }
 }
 
@@ -772,7 +775,6 @@ mod tests {
                                         }
                                     }
                                 }
-                                _ => {}
                             },
                             _ => {}
                         },

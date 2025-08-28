@@ -13,7 +13,7 @@ pub struct Config {
     /// TcpListener from prometheus axum server.
     pub prometheus: String,
     /// Logging parameters.
-    pub logging: Logging
+    pub logging: Logging,
 }
 
 impl Config {

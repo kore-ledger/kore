@@ -150,7 +150,10 @@ mod tests {
                 "58",
             );
             std::env::set_var("KORE_LOGGING_OUTPUT", "file");
-            std::env::set_var("KORE_LOGGING_API_URL", "https://example.com/logs");
+            std::env::set_var(
+                "KORE_LOGGING_API_URL",
+                "https://example.com/logs",
+            );
             std::env::set_var("KORE_LOGGING_FILE_PATH", "/tmp/my.log");
             std::env::set_var("KORE_LOGGING_ROTATION", "size");
             std::env::set_var("KORE_LOGGING_MAX_SIZE", "52428800");
@@ -287,7 +290,11 @@ mod tests {
             166
         );
         assert_eq!(
-            config.kore_config.network.req_res.get_max_concurrent_streams(),
+            config
+                .kore_config
+                .network
+                .req_res
+                .get_max_concurrent_streams(),
             167
         );
 
@@ -350,7 +357,7 @@ mod tests {
             std::env::remove_var(
                 "KORE_NETWORK_ROUTING_ALLOW_DNS_ADDRESS_IN_DHT",
             );
-                        std::env::remove_var(
+            std::env::remove_var(
                 "KORE_NETWORK_ROUTING_ALLOW_LOOP_BACK_ADDRESS_IN_DHT",
             );
             std::env::remove_var(

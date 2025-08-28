@@ -3,12 +3,14 @@
 
 use crate::{Error, routing::RoutingNode};
 use ip_network::IpNetwork;
-use libp2p::{Multiaddr, PeerId, multiaddr::Protocol};
+use libp2p::{Multiaddr, PeerId, multiaddr::Protocol, swarm::ConnectionId};
 use prometheus_client::encoding::{EncodeLabelSet, EncodeLabelValue};
 use serde::{Deserialize, Serialize};
+use tokio::time::Instant;
 use tracing::error;
 
 use std::{
+    cmp::Ordering,
     collections::{HashMap, HashSet, VecDeque},
     hash::Hash,
     str::FromStr,
@@ -16,6 +18,59 @@ use std::{
 };
 
 const TARGET_UTILS: &str = "KoreNetwork-Utils";
+
+pub enum ScheduleType {
+    Discover,
+    Dial(Vec<Multiaddr>),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum Action {
+    Discover,
+    Dial,
+    Identified(ConnectionId),
+}
+
+impl From<RetryKind> for Action {
+    fn from(value: RetryKind) -> Self {
+        match value {
+            RetryKind::Discover => Action::Discover,
+            RetryKind::Dial => Action::Dial,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum RetryKind {
+    Discover,
+    Dial,
+}
+
+#[derive(Clone, Debug)]
+pub struct RetryState {
+    pub attempts: u8,
+    pub when: Instant,
+    pub kind: RetryKind,
+    pub addrs: Vec<Multiaddr>,
+}
+
+#[derive(Eq, Clone, Debug)]
+pub struct Due(pub PeerId, pub Instant);
+impl PartialEq for Due {
+    fn eq(&self, o: &Self) -> bool {
+        self.1.eq(&o.1)
+    }
+}
+impl Ord for Due {
+    fn cmp(&self, o: &Self) -> Ordering {
+        o.1.cmp(&self.1)
+    }
+}
+impl PartialOrd for Due {
+    fn partial_cmp(&self, o: &Self) -> Option<Ordering> {
+        Some(self.cmp(o))
+    }
+}
 
 /// Network state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -441,6 +441,8 @@ pub async fn check_transfer(
 
         tokio::time::sleep(Duration::from_secs(1)).await
     }
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
     Ok(())
 }
 

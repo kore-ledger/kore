@@ -123,6 +123,19 @@ impl Behaviour {
         )
     }
 
+    pub fn clean_peer_to_remove(&mut self, peer_id: &PeerId) {
+        self.routing.clean_peer_to_remove(peer_id);
+    }
+
+    pub fn clean_hard_peer_to_remove(&mut self, peer_id: &PeerId) {
+        self.routing.clean_peer_to_remove(peer_id);
+        self.routing.remove_node(peer_id);
+    }
+
+    pub fn add_peer_to_remove(&mut self, peer_id: &PeerId) {
+        self.routing.add_peer_to_remove(peer_id);
+    }
+
     /// Discover closets peers.
     pub fn discover(&mut self, peer_id: &PeerId) {
         self.routing.discover(peer_id);
@@ -217,9 +230,6 @@ pub enum Event {
         info: Option<PeerInfo>,
     },
 
-    /// Closets peers founded.
-    RandomWalk(PeerId),
-
     /// Dummy Event for control_list, ReqRes and Tell
     Dummy,
 }
@@ -236,7 +246,6 @@ impl From<routing::Event> for Event {
             routing::Event::ClosestPeer { peer_id, info } => {
                 Event::ClosestPeer { peer_id, info }
             }
-            routing::Event::RandomWalk(peer_id) => Event::RandomWalk(peer_id),
         }
     }
 }
