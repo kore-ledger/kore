@@ -32,7 +32,7 @@ pub use kore_base::{
     request::RequestData,
 };
 use model::BridgeSignedEventRequest;
-use network::MonitorNetworkState;
+pub use network::MonitorNetworkState;
 pub use network::{
     Config as NetworkConfig, ControlListConfig, RoutingConfig, RoutingNode,
     TellConfig,
