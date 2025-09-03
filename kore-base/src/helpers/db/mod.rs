@@ -17,7 +17,7 @@ use crate::{
 use crate::config::ExternalDbConfig;
 
 use actor::{ActorRef, Subscriber};
-use async_std::fs;
+use tokio::fs;
 use async_trait::async_trait;
 use common::{
     ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo,

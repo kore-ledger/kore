@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 
 mod common;
 
@@ -14,6 +14,134 @@ use kore_base::{
 };
 use serde_json::json;
 use test_log::test;
+
+use crate::common::{create_node, node_running};
+
+/*
+#[test(tokio::test)]
+async fn test_prueba() {
+    let listen_address = format!("/memory/46000");
+
+    let (local_db, ext_db, governance_id) = {
+        let (owner_governance, local_db, ext_db, token) = create_node(
+            network::NodeType::Bootstrap,
+            &listen_address,
+            vec![],
+            true,
+            None,
+        )
+        .await;
+
+        node_running(&owner_governance).await.unwrap();
+
+        let governance_id =
+            create_and_authorize_governance(&owner_governance, vec![], "")
+                .await;
+
+        // add node bootstrap and ephemeral to governance
+        let json = json!({
+            "schemas": {
+                "add": [
+                    {
+                        "id": "Example",
+                        "contract": "dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07CnVzZSBrb3JlX2NvbnRyYWN0X3NkayBhcyBzZGs7CgovLy8gRGVmaW5lIHRoZSBzdGF0ZSBvZiB0aGUgY29udHJhY3QuIAojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplLCBDbG9uZSldCnN0cnVjdCBTdGF0ZSB7CiAgcHViIG9uZTogdTMyLAogIHB1YiB0d286IHUzMiwKICBwdWIgdGhyZWU6IHUzMgp9CgojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplKV0KZW51bSBTdGF0ZUV2ZW50IHsKICBNb2RPbmUgeyBkYXRhOiB1MzIgfSwKICBNb2RUd28geyBkYXRhOiB1MzIgfSwKICBNb2RUaHJlZSB7IGRhdGE6IHUzMiB9LAogIE1vZEFsbCB7IG9uZTogdTMyLCB0d286IHUzMiwgdGhyZWU6IHUzMiB9Cn0KCiNbdW5zYWZlKG5vX21hbmdsZSldCnB1YiB1bnNhZmUgZm4gbWFpbl9mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMiwgaW5pdF9zdGF0ZV9wdHI6IGkzMiwgZXZlbnRfcHRyOiBpMzIsIGlzX293bmVyOiBpMzIpIC0+IHUzMiB7CiAgc2RrOjpleGVjdXRlX2NvbnRyYWN0KHN0YXRlX3B0ciwgaW5pdF9zdGF0ZV9wdHIsIGV2ZW50X3B0ciwgaXNfb3duZXIsIGNvbnRyYWN0X2xvZ2ljKQp9CgojW3Vuc2FmZShub19tYW5nbGUpXQpwdWIgdW5zYWZlIGZuIGluaXRfY2hlY2tfZnVuY3Rpb24oc3RhdGVfcHRyOiBpMzIpIC0+IHUzMiB7CiAgc2RrOjpjaGVja19pbml0X2RhdGEoc3RhdGVfcHRyLCBpbml0X2xvZ2ljKQp9CgpmbiBpbml0X2xvZ2ljKAogIF9zdGF0ZTogJlN0YXRlLAogIGNvbnRyYWN0X3Jlc3VsdDogJm11dCBzZGs6OkNvbnRyYWN0SW5pdENoZWNrLAopIHsKICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0KCmZuIGNvbnRyYWN0X2xvZ2ljKAogIGNvbnRleHQ6ICZzZGs6OkNvbnRleHQ8U3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0=",
+                        "initial_value": {
+                            "one": 0,
+                            "two": 0,
+                            "three": 0
+                        }
+                    }
+                ]
+            },
+            "roles": {
+                "schema":
+                    [
+                    {
+                        "schema_id": "Example",
+                        "roles": {
+                            "add": {
+                                "evaluator": [
+                                    {
+                                        "name": "Owner",
+                                        "namespace": []
+                                    }
+                                ],
+                                "validator": [
+                                    {
+                                        "name": "Owner",
+                                        "namespace": []
+                                    }
+                                ],
+                                "witness": [
+                                    {
+                                        "name": "Owner",
+                                        "namespace": []
+                                    }
+                                ],
+                                "creator": [
+                                    {
+                                        "name": "Owner",
+                                        "namespace": [],
+                                        "quantity": 1
+                                    }
+                                ],
+                                "issuer": [
+                                    {
+                                        "name": "Owner",
+                                        "namespace": []
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ]
+            }
+        });
+
+        emit_fact(&owner_governance, governance_id.clone(), json, true)
+            .await
+            .unwrap();
+
+        let subject_id = create_subject(
+            &owner_governance,
+            governance_id.clone(),
+            "Example",
+            "",
+            true,
+        )
+        .await
+        .unwrap();
+
+        let subjects = owner_governance
+            .all_subjs(governance_id.clone(), None, None)
+            .await
+            .unwrap();
+        println!("Mostrando sujetos: {:#?}", subjects);
+        token.cancel();
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        (local_db, ext_db, governance_id.clone())
+    };
+
+    let listen_address = format!("/memory/46001");
+
+    let (owner_governance, local_db, ext_db, token) = create_node(
+        network::NodeType::Bootstrap,
+        &listen_address,
+        vec![],
+        true,
+        Some((local_db, ext_db)),
+    )
+    .await;
+
+    let subjects = owner_governance
+        .all_subjs(governance_id.clone(), None, None)
+        .await
+        .unwrap();
+    
+    println!("Mostrando sujetos: {:#?}", subjects);
+}
+*/
 
 #[test(tokio::test)]
 // Testear limitaciones en la creación de sujetos INFINITY - QUANTITY
@@ -1624,6 +1752,9 @@ async fn test_subject_transfer_event_3() {
         .await
         .unwrap();
 
+    println!("/////////////////////////////////");
+    println!("/////////////////////////////////");
+    println!("/////////////////////////////////");
     old_owner
         .auth_subject(
             subject_id_1.clone(),
@@ -1638,6 +1769,11 @@ async fn test_subject_transfer_event_3() {
     check_transfer(old_owner, subject_id_1.clone())
         .await
         .unwrap();
+
+    println!("/////////////////////////////////");
+    println!("/////////////////////////////////");
+    println!("/////////////////////////////////");
+    tokio::time::sleep(Duration::from_secs(10)).await;
 
     let transfer_data = old_owner.get_pending_transfers().await.unwrap();
     assert!(transfer_data.is_empty());

@@ -1079,7 +1079,7 @@ impl Handler<Distributor> for Distributor {
                 let target = RetryNetwork::default();
 
                 let strategy = Strategy::FixedInterval(
-                    FixedIntervalStrategy::new(2, Duration::from_secs(3)),
+                    FixedIntervalStrategy::new(2, Duration::from_secs(5)),
                 );
 
                 let retry_actor = RetryActor::new(target, message, strategy);

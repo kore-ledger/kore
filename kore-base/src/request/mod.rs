@@ -12,7 +12,7 @@ use identity::identifier::{
 use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, info};
 use types::ReqManInitMessage;
 
@@ -667,6 +667,8 @@ impl Handler<RequestHandler> for RequestHandler {
                         .await?;
 
                         if metadata.new_owner.is_some() {
+                            println!("por aquí", );
+                            println!("{}", metadata.sn);
                             let e = "After Transfer event only can emit Confirm or Reject event";
                             error!(TARGET_REQUEST, "NewRequest, {}", e);
                             return Err(ActorError::Functional(e.to_owned()));
@@ -1131,7 +1133,7 @@ impl Handler<RequestHandler> for RequestHandler {
         event: RequestHandlerEvent,
         ctx: &mut ActorContext<RequestHandler>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_REQUEST,
                 "OnEvent, can not persist information: {}", e
@@ -1154,6 +1156,8 @@ impl Storable for RequestHandler {}
 
 #[async_trait]
 impl PersistentActor for RequestHandler {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {

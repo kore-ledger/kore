@@ -146,7 +146,7 @@ impl Behaviour {
         peer_id: &PeerId,
         addr: &Multiaddr,
     ) -> bool {
-        self.routing.add_self_reported_address(peer_id, &addr)
+        self.routing.add_self_reported_address(peer_id, addr)
     }
 
     /// Returns true if the given `PeerId` is known.
@@ -685,3 +685,4 @@ mod tests {
         }
     }
 }
+

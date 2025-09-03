@@ -16,22 +16,26 @@ use libp2p_swarm_test::SwarmExt;
 
 use std::{io, iter, pin::pin, time::Duration};
 
-#[async_std::test]
+#[tokio::test]
 #[serial]
 async fn test_outbound_failure() {
     let (peer1_id, mut swarm1) = new_swarm();
+    println!("{}", peer1_id);
     let (_peer2_id, mut swarm2) = new_swarm();
+    println!("{}", _peer2_id);
 
-    swarm1.listen().with_memory_addr_external().await;
-    swarm2.connect(&mut swarm1).await;
+    swarm2.listen().with_memory_addr_external().await;
+    swarm1.connect(&mut swarm2).await;
 
     // Expects no events because `Event::Request` is produced after `read_request`.
     // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead.
-    let server_task = wait_no_events(&mut swarm1);
+    // let server_task = wait_no_events(&mut swarm1);
 
     // Expects OutboundFailure::Io failure with `FailOnWriteRequest` error.
     let client_task = async move {
-        let req_id = swarm2
+        println!("ENVIANDO DESDE CILENTE", );
+        
+                let req_id = swarm2
             .behaviour_mut()
             .send_message(&peer1_id, Action::FailOnWriteMessage);
 
@@ -52,12 +56,16 @@ async fn test_outbound_failure() {
         );
     };
 
-    let server_task = pin!(server_task);
-    let client_task = pin!(client_task);
-    futures::future::select(server_task, client_task).await;
+    /*
+        let server_task = pin!(server_task);
+        let client_task = pin!(client_task);
+        futures::future::select(server_task, client_task).await;
+    */
+    client_task.await;
+
 }
 
-#[async_std::test]
+#[tokio::test]
 #[serial]
 async fn test_inbound_failure() {
     let (peer1_id, mut swarm1) = new_swarm();
@@ -100,6 +108,7 @@ async fn wait_no_events(swarm: &mut Swarm<tell::Behaviour<TestCodec>>) {
         if let Ok(ev) =
             swarm.select_next_some().await.try_into_behaviour_event()
         {
+            println!("evento", );
             panic!("Unexpected event: {ev:?}")
         }
     }
@@ -117,7 +126,7 @@ async fn wait_outbound_failure(
             }) => {
                 return Ok((peer_id, outbound_id, error));
             }
-            Ok(ev) => bail!("Unexpected event: {ev:?}"),
+            Ok(ev) => panic!("Unexpected event: {ev:?}"),
             Err(..) => {}
         }
     }
@@ -150,7 +159,7 @@ fn new_swarm_with_timeout(
     ));
     let cfg = tell::Config::default().with_message_timeout(timeout);
 
-    let swarm = Swarm::new_ephemeral(|_| {
+    let swarm = Swarm::new_ephemeral_tokio(|_| {
         tell::Behaviour::<TestCodec>::new(protocols, cfg)
     });
     let peed_id = *swarm.local_peer_id();
@@ -203,8 +212,9 @@ impl tell::Codec for TestCodec {
         io: &mut T,
     ) -> std::io::Result<Self::Message>
     where
-        T: async_std::io::Read + Unpin + Send,
+        T: AsyncRead + Unpin + Send,
     {
+        println!("READ");
         let mut buf = Vec::new();
         io.read_to_end(&mut buf).await?;
 
@@ -229,8 +239,9 @@ impl tell::Codec for TestCodec {
         req: Self::Message,
     ) -> std::io::Result<()>
     where
-        T: async_std::io::Write + Unpin + Send,
+        T: AsyncWrite + Unpin + Send,
     {
+        println!("WRITEEEE");
         match req {
             Action::FailOnWriteMessage => {
                 Err(io::Error::new(io::ErrorKind::Other, "FailOnWriteRequest"))

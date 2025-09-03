@@ -336,7 +336,7 @@ impl Handler<Validator> for Validator {
                 let target = RetryNetwork::default();
 
                 let strategy = Strategy::FixedInterval(
-                    FixedIntervalStrategy::new(3, Duration::from_secs(3)),
+                    FixedIntervalStrategy::new(3, Duration::from_secs(10)),
                 );
 
                 let retry_actor = RetryActor::new(target, message, strategy);

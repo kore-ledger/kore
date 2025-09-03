@@ -13,7 +13,7 @@ use identity::identifier::KeyIdentifier;
 use request::ApprovalReq;
 use response::ApprovalRes;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::evaluation::response::EvalLedgerResponse;
@@ -469,7 +469,7 @@ impl Handler<Approval> for Approval {
         event: ApprovalEvent,
         ctx: &mut ActorContext<Approval>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_APPROVAL,
                 "OnEvent, can not persist information: {}", e
@@ -491,6 +491,8 @@ impl Handler<Approval> for Approval {
 // Debemos persistir quienes han aprobado y quienes no
 #[async_trait]
 impl PersistentActor for Approval {
+    type Persistence = LightPersistence;
+
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             ApprovalEvent::SafeState {

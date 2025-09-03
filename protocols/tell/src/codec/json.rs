@@ -89,7 +89,7 @@ mod test {
         payload: String,
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_codec() {
         let expected_message = TestMessage {
             payload: "test_payload".to_string(),

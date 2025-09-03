@@ -12,7 +12,7 @@ use identity::identifier::{
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
+use store::store::{LightPersistence, PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -1559,7 +1559,7 @@ impl Handler<RequestManager> for RequestManager {
         event: RequestManagerEvent,
         ctx: &mut ActorContext<RequestManager>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_MANAGER,
                 "OnEvent, can not persist information: {}", e
@@ -1589,6 +1589,8 @@ impl Handler<RequestManager> for RequestManager {
 
 #[async_trait]
 impl PersistentActor for RequestManager {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {

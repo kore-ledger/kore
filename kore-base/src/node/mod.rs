@@ -6,7 +6,7 @@
 
 use std::{collections::HashMap, path::Path};
 
-use async_std::fs;
+use tokio::fs;
 use nodekey::NodeKey;
 use register::Register;
 use relationship::RelationShip;
@@ -44,7 +44,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 
 pub mod nodekey;
 pub mod register;
@@ -151,6 +151,7 @@ impl Node {
     }
 
     pub fn delete_transfer(&mut self, subject_id: String) {
+        println!("DELETE TRANSFER SUBJECT");
         self.transfer_subjects.remove(&subject_id);
     }
 
@@ -159,6 +160,7 @@ impl Node {
         subject_id: String,
         new_owner: Option<String>,
     ) {
+        println!("CHANGE TRANSFER SUBJECV");
         self.transfer_subjects.remove(&subject_id);
 
         if let Some(new_owner) = new_owner {
@@ -415,6 +417,8 @@ impl Actor for Node {
 
 #[async_trait]
 impl PersistentActor for Node {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
@@ -434,6 +438,7 @@ impl PersistentActor for Node {
                 self.add_temporal_subject(subject_id.clone(), data.clone());
             }
             NodeEvent::RejectTransfer(subject_id) => {
+                println!("RRejectTransfer");
                 self.delete_transfer(subject_id.clone());
             }
             NodeEvent::TransferSubject(transfer) => {
@@ -912,7 +917,7 @@ impl Handler<Node> for Node {
         event: NodeEvent,
         ctx: &mut ActorContext<Node>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_NODE, "OnEvent, can not persist information: {}", e);
             ctx.system().send_event(SystemEvent::StopSystem).await;
         };

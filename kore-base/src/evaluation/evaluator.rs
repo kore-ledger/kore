@@ -610,7 +610,7 @@ impl Handler<Evaluator> for Evaluator {
 
                 // TODO, la evaluación, si hay compilación podría tardar más
                 let strategy = Strategy::FixedInterval(
-                    FixedIntervalStrategy::new(3, Duration::from_secs(10)),
+                    FixedIntervalStrategy::new(3, Duration::from_secs(15)),
                 );
 
                 let retry_actor = RetryActor::new(target, message, strategy);

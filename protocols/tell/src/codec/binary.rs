@@ -75,7 +75,7 @@ mod tests {
     use futures_ringbuf::Endpoint;
     use libp2p::StreamProtocol;
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_codec() {
         let expected_message = b"Hello, World!".to_vec();
         let protocol = StreamProtocol::new("/test_json/1");

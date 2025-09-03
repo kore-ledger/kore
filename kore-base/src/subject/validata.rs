@@ -11,7 +11,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::error;
 
 use crate::db::Storable;
@@ -116,7 +116,7 @@ impl Handler<ValiData> for ValiData {
         event: ValiDataEvent,
         ctx: &mut ActorContext<ValiData>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_VALIDATA,
                 "OnEvent, can not persist information: {}", e
@@ -136,6 +136,8 @@ impl Handler<ValiData> for ValiData {
 
 #[async_trait]
 impl PersistentActor for ValiData {
+    type Persistence = LightPersistence;
+    
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         self.last_proof = Some(event.last_proof.clone());
         self.prev_event_validation_response =

@@ -25,7 +25,7 @@ pub mod validation;
 
 use actor::{ActorPath, ActorRef, Sink};
 use approval::approver::ApprovalStateRes;
-use async_std::sync::RwLock;
+use tokio::sync::RwLock;
 use auth::{Auth, AuthMessage, AuthResponse, AuthWitness};
 use config::Config as KoreBaseConfig;
 use error::Error;

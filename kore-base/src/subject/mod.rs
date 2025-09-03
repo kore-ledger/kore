@@ -67,7 +67,7 @@ use json_patch::{Patch, patch};
 use serde::{Deserialize, Serialize};
 use serde_json::to_value;
 use sinkdata::{SinkData, SinkDataMessage};
-use store::store::{PersistentActor, Store, StoreCommand, StoreResponse};
+use store::store::{FullPersistence, PersistentActor, Store, StoreCommand, StoreResponse};
 use tracing::{error, warn};
 use transfer::{TransferRegister, TransferRegisterMessage};
 use validata::ValiData;
@@ -1359,6 +1359,7 @@ impl Subject {
                         .await?
                     }
                     EventRequest::Reject(reject_request) => {
+                        println!("Borrando 2");
                         Subject::reject_transfer_subject(
                             ctx,
                             &reject_request.subject_id.to_string(),
@@ -1494,6 +1495,7 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         events: &[Signed<Ledger>],
     ) -> Result<(), ActorError> {
+        
         let mut events = events.to_vec();
         let last_ledger = self.get_last_ledger_state(ctx).await?;
 
@@ -1562,6 +1564,7 @@ impl Subject {
                         .await?;
                     }
                     EventRequest::Reject(reject_request) => {
+                        println!("Borrando");
                         Subject::reject_transfer_subject(
                             ctx,
                             &reject_request.subject_id.to_string(),
@@ -2129,6 +2132,7 @@ impl Subject {
         last_sn: u64,
     ) -> Result<SubjectResponse, ActorError> {
         let ledger = self.get_ledger(ctx, last_sn).await?;
+        println!("TAMAÑO DEL VEC{}", ledger.len());
 
         if ledger.len() < 100 {
             let last_event = get_last_event(ctx, &self.subject_id.to_string())
@@ -2387,6 +2391,7 @@ impl Handler<Subject> for Subject {
                         .await?;
                     }
                     TransferResponse::Reject => {
+                        println!("REJECT DEL TransferResponse");
                         Subject::reject_transfer_subject(
                             ctx,
                             &self.subject_id.to_string(),
@@ -2423,6 +2428,8 @@ impl Handler<Subject> for Subject {
                 Ok(SubjectResponse::NewCompilers(new_compilers))
             }
             SubjectMessage::GetLedger { last_sn } => {
+                println!("LAST SN {}", last_sn);
+                println!("SN {}", self.sn);
                 self.get_ledger_data(ctx, last_sn).await
             }
             SubjectMessage::GetLastLedger => {
@@ -2480,6 +2487,7 @@ impl Handler<Subject> for Subject {
         event: Signed<Ledger>,
         ctx: &mut ActorContext<Subject>,
     ) {
+        println!("EVENTO");
         if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_SUBJECT,
@@ -2510,7 +2518,11 @@ impl Handler<Subject> for Subject {
 
 #[async_trait]
 impl PersistentActor for Subject {
+    type Persistence = FullPersistence;
+    
+
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
+        println!("APLY");
         let valid_event = match verify_protocols_state(
             EventRequestType::from(event.content.event_request.content.clone()),
             event.content.eval_success,
@@ -2585,6 +2597,7 @@ impl PersistentActor for Subject {
                     self.new_owner = None;
                 }
                 EventRequest::Reject(_reject_request) => {
+                    println!("REJECT EVENT");
                     self.new_owner = None;
                 }
                 EventRequest::EOL(_eolrequest) => self.active = false,

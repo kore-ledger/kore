@@ -22,9 +22,7 @@ pub use codec::cbor;
 #[cfg(feature = "json")]
 pub use codec::json;
 
-use cache::PeerAddresses;
-
-use crate::handler::OutboundMessage;
+use crate::{cache::PeerAddresses, handler::OutboundMessage};
 
 use libp2p::{
     Multiaddr, PeerId,
@@ -810,7 +808,7 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     struct Ping(Vec<u8>);
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_ping_protocol() {
         use crate::codec::binary::Behaviour;
         use rand::Rng;
@@ -822,11 +820,11 @@ mod tests {
             ProtocolSupport::InboundOutbound,
         ));
         let cfg = Config::default();
-        let mut swarm1 = Swarm::new_ephemeral(|_| {
+        let mut swarm1 = Swarm::new_ephemeral_tokio(|_| {
             Behaviour::new(protocols.clone(), cfg.clone())
         });
         let peer1_id = *swarm1.local_peer_id();
-        let mut swarm2 = Swarm::new_ephemeral(|_| {
+        let mut swarm2 = Swarm::new_ephemeral_tokio(|_| {
             Behaviour::new(protocols.clone(), cfg.clone())
         });
         let peer2_id = *swarm2.local_peer_id();
@@ -898,11 +896,11 @@ mod tests {
                 }
             }
         };
-        async_std::task::spawn(Box::pin(peer1));
+        tokio::spawn(Box::pin(peer1));
         peer2.await;
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_pending_outbound() {
         use crate::codec::binary::Behaviour;
         let _ = tracing_subscriber::fmt()
@@ -910,7 +908,7 @@ mod tests {
             .try_init();
         let ping = Ping("ping".to_string().into_bytes());
         let offline_peer = PeerId::random();
-        let mut swarm1 = Swarm::new_ephemeral(|_| {
+        let mut swarm1 = Swarm::new_ephemeral_tokio(|_| {
             Behaviour::new(
                 vec![(
                     StreamProtocol::new("/ping/1"),

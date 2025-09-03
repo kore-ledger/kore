@@ -9,7 +9,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::error;
 
 use crate::{
@@ -185,7 +185,7 @@ impl Handler<DBManager> for DBManager {
         event: DBManagerEvent,
         ctx: &mut ActorContext<DBManager>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_EXTERNAL,
                 "OnEvent, can not persist information: {}", e
@@ -197,6 +197,8 @@ impl Handler<DBManager> for DBManager {
 
 #[async_trait]
 impl PersistentActor for DBManager {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {

@@ -264,7 +264,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
     }
 
     fn schedule_retry(&mut self, peer: PeerId, schedule_type: ScheduleType) {
-        if self.peer_action.get(&peer).is_some() {
+        if self.peer_action.contains_key(&peer) {
             return;
         }
 
@@ -1337,6 +1337,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {

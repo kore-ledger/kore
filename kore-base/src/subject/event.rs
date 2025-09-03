@@ -11,7 +11,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::{
@@ -175,7 +175,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
         event: LedgerEventEvent,
         ctx: &mut ActorContext<LedgerEvent>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_EVENT, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -189,6 +189,8 @@ impl Handler<LedgerEvent> for LedgerEvent {
 
 #[async_trait]
 impl PersistentActor for LedgerEvent {
+    type Persistence = LightPersistence;
+
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         self.last_event = Some(event.event.clone());
         Ok(())

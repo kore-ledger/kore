@@ -8,7 +8,7 @@ use actor::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::{db::Storable, model::common::emit_fail};
@@ -186,6 +186,7 @@ impl Handler<Register> for Register {
                     .await
             }
             RegisterMessage::RegisterSubj { gov_id, data } => {
+                println!("RegisterMessage::RegisterSubj Registrando sujeto {}", data.subject_id);
                 self.on_event(RegisterEvent::RegisterSubj { gov_id, data }, ctx)
                     .await
             }
@@ -198,7 +199,7 @@ impl Handler<Register> for Register {
         event: RegisterEvent,
         ctx: &mut ActorContext<Register>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_REGISTER,
                 "OnEvent, can not persist information: {}", e
@@ -210,6 +211,8 @@ impl Handler<Register> for Register {
 
 #[async_trait]
 impl PersistentActor for Register {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
@@ -218,6 +221,7 @@ impl PersistentActor for Register {
                 self.register_subj.insert(gov_id.clone(), vec![]);
             }
             RegisterEvent::RegisterSubj { gov_id, data } => {
+                println!("RegisterEvent::RegisterSubj Registrando sujeto {}", data.subject_id);
                 self.register_subj
                     .entry(gov_id.clone())
                     .or_default()

@@ -468,11 +468,11 @@ mod tests {
     fn build_behaviours() -> (Swarm<Behaviour>, Swarm<Behaviour>) {
         let mut behaviour = Behaviour::default();
         behaviour.set_enable(true);
-        let dialer = Swarm::new_ephemeral(|_| behaviour);
+        let dialer = Swarm::new_ephemeral_tokio(|_| behaviour);
 
         let mut behaviour = Behaviour::default();
         behaviour.set_enable(true);
-        let listener = Swarm::new_ephemeral(|_| behaviour);
+        let listener = Swarm::new_ephemeral_tokio(|_| behaviour);
 
         (dialer, listener)
     }

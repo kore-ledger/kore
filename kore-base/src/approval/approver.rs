@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use super::{
@@ -846,7 +846,7 @@ impl Handler<Approver> for Approver {
         event: ApproverEvent,
         ctx: &mut ActorContext<Approver>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_APPROVER,
                 "OnEvent, can not persist information: {}", e
@@ -926,6 +926,8 @@ impl Handler<Approver> for Approver {
 // Debemos persistir el estado de la petición hasta que se apruebe
 #[async_trait]
 impl PersistentActor for Approver {
+    type Persistence = LightPersistence;
+
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             ApproverEvent::ChangeState { state, .. } => {

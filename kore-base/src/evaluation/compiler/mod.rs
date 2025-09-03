@@ -7,7 +7,7 @@ use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
     Message,
 };
-use async_std::fs;
+use tokio::fs;
 use async_trait::async_trait;
 use base64::{Engine as Base64Engine, prelude::BASE64_STANDARD};
 use borsh::{BorshDeserialize, BorshSerialize, to_vec};

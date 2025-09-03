@@ -9,7 +9,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::{
@@ -150,7 +150,7 @@ impl Handler<RelationShip> for RelationShip {
         event: RelationShipEvent,
         ctx: &mut ActorContext<RelationShip>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_RELATIONSHIP,
                 "OnEvent, can not persist information: {}", e
@@ -162,6 +162,8 @@ impl Handler<RelationShip> for RelationShip {
 
 #[async_trait]
 impl PersistentActor for RelationShip {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
