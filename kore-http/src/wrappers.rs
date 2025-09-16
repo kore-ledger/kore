@@ -7,8 +7,10 @@ use kore_bridge::{
     EventRequestInfo as EventRequestInfoBridge, FactInfo as FactInfoBridge,
     FactRequestInfo as FactRequestInfoBridge, GovsData as GovsDataBridge,
     KoreConfig as KoreConfigBridge, Logging as LoggingBridge,
-    Namespace as NamespaceBridge, NetworkConfig as NetworkConfigBridge,
-    Paginator as PaginatorBridge, PaginatorEvents as PaginatorEventsBridge,
+    LoggingOutput as LoggingOutputBridge,
+    LoggingRotation as LoggingRotationBridge, Namespace as NamespaceBridge,
+    NetworkConfig as NetworkConfigBridge, Paginator as PaginatorBridge,
+    PaginatorEvents as PaginatorEventsBridge,
     ProtocolsError as ProtocolsErrorBridge,
     ProtocolsSignaturesInfo as ProtocolsSignaturesInfoBridge,
     RegisterDataSubj as RegisterDataSubjBridge,
@@ -21,7 +23,6 @@ use kore_bridge::{
     TimeOutResponseInfo as TimeOutResponseInfoBridge,
     TransferRequestInfo as TransferRequestInfoBridge,
     TransferSubject as TransferSubjectBridge, config::Config as ConfigBridge,
-    LoggingOutput as LoggingOutputBridge, LoggingRotation as LoggingRotationBridge
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -589,7 +590,11 @@ pub struct LoggingOutput {
 
 impl From<LoggingOutputBridge> for LoggingOutput {
     fn from(value: LoggingOutputBridge) -> Self {
-        Self { stdout: value.stdout, file: value.file, api: value.api }
+        Self {
+            stdout: value.stdout,
+            file: value.file,
+            api: value.api,
+        }
     }
 }
 
@@ -602,7 +607,7 @@ pub enum LoggingRotation {
     Weekly,
     Monthly,
     Yearly,
-    Never
+    Never,
 }
 
 impl From<LoggingRotationBridge> for LoggingRotation {
@@ -628,9 +633,6 @@ pub struct Logging {
     pub max_size: usize,
     pub max_files: usize,
 }
-
-
-
 
 impl From<LoggingBridge> for Logging {
     fn from(value: LoggingBridge) -> Self {

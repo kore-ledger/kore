@@ -10,7 +10,7 @@ pub use kore_base::{
     approval::approver::ApprovalStateRes,
     auth::AuthWitness,
     config::Config as KoreConfig,
-    config::{Logging, LoggingRotation, LoggingOutput},
+    config::{Logging, LoggingOutput, LoggingRotation},
     error::Error,
     helpers::db::common::{
         ApprovalReqInfo, ApproveInfo, ConfirmRequestInfo, CreateRequestInfo,
@@ -83,15 +83,23 @@ impl Bridge {
 
         Self::bind_with_shutdown(token.clone(), tokio::signal::ctrl_c());
 
-        #[cfg(feature = "prometheus")] {
-            runners.push(run_prometheus(registry, &settings.prometheus, token.clone()));
-        }   
+        #[cfg(feature = "prometheus")]
+        {
+            runners.push(run_prometheus(
+                registry,
+                &settings.prometheus,
+                token.clone(),
+            ));
+        }
 
-        Ok((Self {
-            api,
-            config: settings,
-            cancellation: token,
-        }, runners))
+        Ok((
+            Self {
+                api,
+                config: settings,
+                cancellation: token,
+            },
+            runners,
+        ))
     }
 
     pub fn token(&self) -> &CancellationToken {

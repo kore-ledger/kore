@@ -23,8 +23,8 @@ use kore_base::{
 };
 use network::{Config as NetworkConfig, MonitorNetworkState, RoutingNode};
 use prometheus_client::registry::Registry;
-use tokio::task::JoinHandle;
 use std::{collections::BTreeMap, fs, str::FromStr, time::Duration};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 pub fn create_temp_dir() -> String {
@@ -46,17 +46,19 @@ pub async fn create_node(
     listen_address: &str,
     peers: Vec<RoutingNode>,
     always_accept: bool,
-    paths: Option<(String, String)>
+    paths: Option<(String, String)>,
 ) -> (Api, String, String, CancellationToken, Vec<JoinHandle<()>>) {
     let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
 
     let (local_db, ext_db) = if let Some((local_db, ext_db)) = paths {
         (local_db, ext_db)
     } else {
-        let dir = tempfile::tempdir().expect("Can not create temporal directory.");
+        let dir =
+            tempfile::tempdir().expect("Can not create temporal directory.");
         let local_db = dir.path().to_str().unwrap();
 
-        let dir = tempfile::tempdir().expect("Can not create temporal directory.");
+        let dir =
+            tempfile::tempdir().expect("Can not create temporal directory.");
         let ext_db = dir.path().to_str().unwrap();
         (local_db.to_owned(), ext_db.to_owned())
     };
@@ -83,9 +85,10 @@ pub async fn create_node(
     let mut registry = Registry::default();
     let token = CancellationToken::new();
 
-    let (api, runners) = Api::build(keys, config, &mut registry, "kore", &token)
-        .await
-        .unwrap();
+    let (api, runners) =
+        Api::build(keys, config, &mut registry, "kore", &token)
+            .await
+            .unwrap();
 
     (api, local_db, ext_db, token.clone(), runners)
 }
@@ -114,12 +117,12 @@ pub async fn create_nodes_and_connections(
             })
             .collect();
 
-        let (node, .. ) = create_node(
+        let (node, ..) = create_node(
             network::NodeType::Bootstrap,
             &listen_address,
             peers,
             always_accept,
-            None
+            None,
         )
         .await;
 
@@ -139,12 +142,12 @@ pub async fn create_nodes_and_connections(
             })
             .collect();
 
-        let (node, .. ) = create_node(
+        let (node, ..) = create_node(
             network::NodeType::Addressable,
             &listen_address,
             peers,
             always_accept,
-            None
+            None,
         )
         .await;
 
@@ -163,12 +166,12 @@ pub async fn create_nodes_and_connections(
             })
             .collect();
 
-        let (node, .. ) = create_node(
+        let (node, ..) = create_node(
             network::NodeType::Ephemeral,
             &listen_address,
             peers,
             always_accept,
-            None
+            None,
         )
         .await;
 

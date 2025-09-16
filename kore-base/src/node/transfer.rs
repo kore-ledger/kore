@@ -63,8 +63,7 @@ impl Actor for TransferRegister {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        self.init_store("transfer_register", None, true, ctx)
-            .await
+        self.init_store("transfer_register", None, true, ctx).await
     }
 
     async fn pre_stop(

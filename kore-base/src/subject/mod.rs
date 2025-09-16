@@ -67,7 +67,9 @@ use json_patch::{Patch, patch};
 use serde::{Deserialize, Serialize};
 use serde_json::to_value;
 use sinkdata::{SinkData, SinkDataMessage};
-use store::store::{FullPersistence, PersistentActor, Store, StoreCommand, StoreResponse};
+use store::store::{
+    FullPersistence, PersistentActor, Store, StoreCommand, StoreResponse,
+};
 use tracing::{error, warn};
 use transfer::{TransferRegister, TransferRegisterMessage};
 use validata::ValiData;
@@ -766,11 +768,12 @@ impl Subject {
         for (id, schema) in schemas {
             let actor_name = format!("{}_compiler", id);
 
-            let compiler = if let Some(compiler) = ctx.get_child(&actor_name).await {
-                compiler
-            } else {
-                ctx.create_child(&actor_name, Compiler::default()).await?
-            };
+            let compiler =
+                if let Some(compiler) = ctx.get_child(&actor_name).await {
+                    compiler
+                } else {
+                    ctx.create_child(&actor_name, Compiler::default()).await?
+                };
 
             compiler
                 .tell(CompilerMessage::Compile {
@@ -1076,14 +1079,14 @@ impl Subject {
             self.governance_id.is_empty(),
         )?;
 
-        if valid_last_event && let EventRequest::EOL(..) =
-                last_ledger.content.event_request.content.clone() {
-
-                return Err(Error::Subject(
-                    "The last event was EOL, no more events can be received"
-                        .to_owned(),
-                ));
-            
+        if valid_last_event
+            && let EventRequest::EOL(..) =
+                last_ledger.content.event_request.content.clone()
+        {
+            return Err(Error::Subject(
+                "The last event was EOL, no more events can be received"
+                    .to_owned(),
+            ));
         }
 
         let valid_new_event = verify_protocols_state(
@@ -1194,15 +1197,16 @@ impl Subject {
         if let EventRequest::Create(event_req) =
             event.content.event_request.content.clone()
         {
-            if let Some(name) = event_req.name && (name.is_empty() || name.len() > 100) {
-                    return Err(Error::Subject("The subject name must be less than 100 characters or not be empty.".to_owned()));
-
+            if let Some(name) = event_req.name
+                && (name.is_empty() || name.len() > 100)
+            {
+                return Err(Error::Subject("The subject name must be less than 100 characters or not be empty.".to_owned()));
             }
 
-            if let Some(description) = event_req.description && (description.is_empty() || description.len() > 200) {
-                
+            if let Some(description) = event_req.description
+                && (description.is_empty() || description.len() > 200)
+            {
                 return Err(Error::Subject("The subject description must be less than 200 characters or not be empty.".to_owned()));
-                
             }
 
             if event_req.schema_id == "governance"
@@ -1386,18 +1390,17 @@ impl Subject {
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
             if let EventRequest::Fact(fact_req) =
-                event.content.event_request.content.clone() && last_event_is_ok
+                event.content.event_request.content.clone()
+                && last_event_is_ok
             {
-                
-                    Self::publish_sink(
-                        ctx,
-                        SinkDataMessage::PublishFact {
-                            schema_id: self.schema_id.clone(),
-                            fact_req,
-                        },
-                    )
-                    .await?;
-                
+                Self::publish_sink(
+                    ctx,
+                    SinkDataMessage::PublishFact {
+                        schema_id: self.schema_id.clone(),
+                        fact_req,
+                    },
+                )
+                .await?;
             };
 
             // Acutalizar último evento.
@@ -1496,7 +1499,6 @@ impl Subject {
         ctx: &mut ActorContext<Subject>,
         events: &[Signed<Ledger>],
     ) -> Result<(), ActorError> {
-        
         let mut events = events.to_vec();
         let last_ledger = self.get_last_ledger_state(ctx).await?;
 
@@ -1615,16 +1617,17 @@ impl Subject {
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
             if let EventRequest::Fact(fact_req) =
-                event.content.event_request.content.clone() && last_event_is_ok
+                event.content.event_request.content.clone()
+                && last_event_is_ok
             {
-                    Self::publish_sink(
-                        ctx,
-                        SinkDataMessage::PublishFact {
-                            schema_id: self.schema_id.clone(),
-                            fact_req,
-                        },
-                    )
-                    .await?;
+                Self::publish_sink(
+                    ctx,
+                    SinkDataMessage::PublishFact {
+                        schema_id: self.schema_id.clone(),
+                        fact_req,
+                    },
+                )
+                .await?;
             };
 
             // Acutalizar último evento.
@@ -2455,7 +2458,11 @@ impl Handler<Subject> for Subject {
                 // If is a governance
                 if self.governance_id.is_empty() {
                     match Governance::try_from(self.properties.clone()) {
-                        Ok(gov) => return Ok(SubjectResponse::Governance(Box::new(gov))),
+                        Ok(gov) => {
+                            return Ok(SubjectResponse::Governance(Box::new(
+                                gov,
+                            )));
+                        }
                         Err(e) => {
                             error!(
                                 TARGET_SUBJECT,
@@ -2469,8 +2476,9 @@ impl Handler<Subject> for Subject {
                     }
                 }
                 // If is not a governance
-                return Ok(SubjectResponse::Governance(Box::new(self.get_governance_from_other_subject(ctx).await?),
-                ));
+                return Ok(SubjectResponse::Governance(Box::new(
+                    self.get_governance_from_other_subject(ctx).await?,
+                )));
             }
         }
     }
@@ -2511,7 +2519,6 @@ impl Handler<Subject> for Subject {
 #[async_trait]
 impl PersistentActor for Subject {
     type Persistence = FullPersistence;
-    
 
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         let valid_event = match verify_protocols_state(
@@ -2657,10 +2664,13 @@ mod tests {
     use super::*;
 
     use crate::{
+        FactRequest,
         model::{
             event::Event as KoreEvent,
             request::tests::create_start_request_mock, signature::Signature,
-        }, node::NodeResponse, system::tests::create_system, FactRequest
+        },
+        node::NodeResponse,
+        system::tests::create_system,
     };
 
     async fn create_subject_and_ledger_event(
@@ -2673,7 +2683,7 @@ mod tests {
         Signed<Ledger>,
     ) {
         let node = Node::new(&node_keys).unwrap();
-        let node_actor= system.create_root_actor("node", node).await.unwrap();
+        let node_actor = system.create_root_actor("node", node).await.unwrap();
         let request = create_start_request_mock("issuer", node_keys.clone());
         let event = KoreEvent::from_create_request(
             &request,
@@ -2713,14 +2723,20 @@ mod tests {
         )
         .unwrap();
 
-        let response = node_actor.ask(NodeMessage::CreateNewSubjectLedger(signed_ledger.clone())).await.unwrap();
+        let response = node_actor
+            .ask(NodeMessage::CreateNewSubjectLedger(signed_ledger.clone()))
+            .await
+            .unwrap();
 
         let NodeResponse::SonWasCreated = response else {
             panic!("Invalid response");
         };
 
         let subject_actor = system
-            .get_actor(&ActorPath::from(format!("user/node/{}", subject.subject_id)))
+            .get_actor(&ActorPath::from(format!(
+                "user/node/{}",
+                subject.subject_id
+            )))
             .await
             .unwrap();
 
@@ -2919,10 +2935,16 @@ mod tests {
 
         assert_eq!(subject.namespace, Namespace::from("namespace"));
         let actor_id = subject.subject_id.to_string();
-        node_actor.ask(NodeMessage::CreateNewSubjectLedger(signed_ledger.clone())).await.unwrap();
+        node_actor
+            .ask(NodeMessage::CreateNewSubjectLedger(signed_ledger.clone()))
+            .await
+            .unwrap();
 
         let subject_actor = system
-            .get_actor::<Subject>(&ActorPath::from(format!("/user/node/{}", subject.subject_id)))
+            .get_actor::<Subject>(&ActorPath::from(format!(
+                "/user/node/{}",
+                subject.subject_id
+            )))
             .await
             .unwrap();
 

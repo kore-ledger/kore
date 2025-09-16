@@ -179,12 +179,16 @@ impl fmt::Display for ExternalDbConfig {
 pub struct LoggingOutput {
     pub stdout: bool,
     pub file: bool,
-    pub api: bool
+    pub api: bool,
 }
 
 impl Default for LoggingOutput {
     fn default() -> Self {
-        Self { stdout: true, file: Default::default(), api: Default::default() }
+        Self {
+            stdout: true,
+            file: Default::default(),
+            api: Default::default(),
+        }
     }
 }
 
@@ -198,7 +202,7 @@ pub enum LoggingRotation {
     Weekly,
     Monthly,
     Yearly,
-    Never
+    Never,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -219,6 +223,6 @@ pub struct Logging {
 
 impl Logging {
     pub fn logs(&self) -> bool {
-        self.output.api || self.output.file ||self.output.stdout
+        self.output.api || self.output.file || self.output.stdout
     }
 }

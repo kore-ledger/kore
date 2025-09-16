@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message
+    Handler, Message,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -51,9 +51,11 @@ impl DBManager {
             tokio::time::sleep(time).await;
             match delete.clone() {
                 DeleteTypes::Request { id } => {
-                    if let Err(e) = helper.del_request(&id).await && let Err(e) =
-                            our_ref.tell(DBManagerMessage::Error(e)).await {
-                            error!(TARGET_EXTERNAL, "{}", e);
+                    if let Err(e) = helper.del_request(&id).await
+                        && let Err(e) =
+                            our_ref.tell(DBManagerMessage::Error(e)).await
+                    {
+                        error!(TARGET_EXTERNAL, "{}", e);
                     };
                 }
             };

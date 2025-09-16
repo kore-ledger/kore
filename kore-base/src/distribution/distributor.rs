@@ -133,37 +133,33 @@ impl Distributor {
         ledger: Signed<Ledger>,
     ) -> Result<(), ActorError> {
         if let EventRequest::Create(request) =
-            ledger.content.event_request.content.clone() && request.schema_id != "governance"
+            ledger.content.event_request.content.clone()
+            && request.schema_id != "governance"
         {
-            
-                let gov =
-                    get_gov(ctx, &request.governance_id.to_string()).await?;
+            let gov = get_gov(ctx, &request.governance_id.to_string()).await?;
 
-                if let Some(max_quantity) = gov.max_creations(
-                    &ledger.signature.signer,
-                    &request.schema_id,
-                    request.namespace.clone(),
-                ) {
-                    let quantity = get_quantity(
-                        ctx,
-                        request.governance_id.to_string(),
-                        request.schema_id.clone(),
-                        ledger.signature.signer.to_string(),
-                        request.namespace.to_string(),
-                    )
-                    .await?;
+            if let Some(max_quantity) = gov.max_creations(
+                &ledger.signature.signer,
+                &request.schema_id,
+                request.namespace.clone(),
+            ) {
+                let quantity = get_quantity(
+                    ctx,
+                    request.governance_id.to_string(),
+                    request.schema_id.clone(),
+                    ledger.signature.signer.to_string(),
+                    request.namespace.to_string(),
+                )
+                .await?;
 
-                    if let CreatorQuantity::Quantity(max_quantity) =
-                        max_quantity && quantity >= max_quantity as usize
-                    {
-                        
-                            return Err(ActorError::Functional("The maximum number of created subjects has been reached".to_owned()));
-                        
-                    }
-                } else {
-                    return Err(ActorError::Functional("The number of subjects that can be created has not been found".to_owned()));
-                };
-            
+                if let CreatorQuantity::Quantity(max_quantity) = max_quantity
+                    && quantity >= max_quantity as usize
+                {
+                    return Err(ActorError::Functional("The maximum number of created subjects has been reached".to_owned()));
+                }
+            } else {
+                return Err(ActorError::Functional("The number of subjects that can be created has not been found".to_owned()));
+            };
         }
 
         let node_path = ActorPath::from("/user/node");
@@ -721,11 +717,11 @@ impl Handler<Distributor> for Distributor {
 
                 let sender = info.sender.to_string();
 
-                if let Some(_new_owner) = new_owner && subject_data.owner == sender {
-                    
-                        // Todavía no se ha emitido evento de confirm ni de reject
-                        return Ok(());
-                    
+                if let Some(_new_owner) = new_owner
+                    && subject_data.owner == sender
+                {
+                    // Todavía no se ha emitido evento de confirm ni de reject
+                    return Ok(());
                 }
 
                 let is_old_owner = match subject_old_owner(
@@ -1273,17 +1269,18 @@ impl Handler<Distributor> for Distributor {
                         old_new_owner,
                         &schema_id,
                     ) && let Err(e) =
-                            Self::up_subject(ctx, subject_id, false).await {
-                            let e = format!("Can not up know subject: {}", e);
-                            error!(
-                                TARGET_DISTRIBUTOR,
-                                "LastEventDistribution, {}", e
-                            );
-                            return Err(emit_fail(
-                                ctx,
-                                ActorError::FunctionalFail(e),
-                            )
-                            .await);
+                        Self::up_subject(ctx, subject_id, false).await
+                    {
+                        let e = format!("Can not up know subject: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "LastEventDistribution, {}", e
+                        );
+                        return Err(emit_fail(
+                            ctx,
+                            ActorError::FunctionalFail(e),
+                        )
+                        .await);
                     }
 
                     match Self::update_ledger(
@@ -1618,18 +1615,18 @@ impl Handler<Distributor> for Distributor {
                         old_new_owner.clone(),
                         &schema_id,
                     ) && let Err(e) =
-                            Self::up_subject(ctx, subject_id, false).await {
-                        
-                            let e = format!("Can not up know subject: {}", e);
-                            error!(
-                                TARGET_DISTRIBUTOR,
-                                "LastEventDistribution, {}", e
-                            );
-                            return Err(emit_fail(
-                                ctx,
-                                ActorError::FunctionalFail(e),
-                            )
-                            .await);
+                        Self::up_subject(ctx, subject_id, false).await
+                    {
+                        let e = format!("Can not up know subject: {}", e);
+                        error!(
+                            TARGET_DISTRIBUTOR,
+                            "LastEventDistribution, {}", e
+                        );
+                        return Err(emit_fail(
+                            ctx,
+                            ActorError::FunctionalFail(e),
+                        )
+                        .await);
                     }
 
                     (old_owner, old_new_owner, sn)

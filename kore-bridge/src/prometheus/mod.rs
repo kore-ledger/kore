@@ -32,20 +32,27 @@ pub fn build_routes(registry: Registry) -> Router {
     Router::new().merge(endpoints)
 }
 
-pub fn run_prometheus(registry: Registry, tcp_listener: &str, token: CancellationToken) -> JoinHandle<()>{
+pub fn run_prometheus(
+    registry: Registry,
+    tcp_listener: &str,
+    token: CancellationToken,
+) -> JoinHandle<()> {
     let routes = build_routes(registry);
     let tcp_listener = tcp_listener.to_owned();
 
     tokio::spawn(async move {
-        let listener =
-            tokio::net::TcpListener::bind(tcp_listener).await.expect("Can not build prometheus listener");
-            
-        axum::serve(listener, routes).with_graceful_shutdown(async move {
-            tokio::select! {
-                _ = token.cancelled() => {
+        let listener = tokio::net::TcpListener::bind(tcp_listener)
+            .await
+            .expect("Can not build prometheus listener");
+
+        axum::serve(listener, routes)
+            .with_graceful_shutdown(async move {
+                tokio::select! {
+                    _ = token.cancelled() => {
+                    }
                 }
-            }
-        })
-        .await.expect("Prometheus axum server can not run");
+            })
+            .await
+            .expect("Prometheus axum server can not run");
     })
 }

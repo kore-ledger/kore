@@ -33,9 +33,9 @@ async fn test_outbound_failure() {
 
     // Expects OutboundFailure::Io failure with `FailOnWriteRequest` error.
     let client_task = async move {
-        println!("ENVIANDO DESDE CILENTE", );
-        
-                let req_id = swarm2
+        println!("ENVIANDO DESDE CILENTE",);
+
+        let req_id = swarm2
             .behaviour_mut()
             .send_message(&peer1_id, Action::FailOnWriteMessage);
 
@@ -56,13 +56,11 @@ async fn test_outbound_failure() {
         );
     };
 
-
-        let server_task = pin!(server_task);
-        let client_task = pin!(client_task);
-        futures::future::select(server_task, client_task).await;
+    let server_task = pin!(server_task);
+    let client_task = pin!(client_task);
+    futures::future::select(server_task, client_task).await;
 
     //client_task.await;
-
 }
 
 #[tokio::test]
@@ -108,7 +106,7 @@ async fn wait_no_events(swarm: &mut Swarm<tell::Behaviour<TestCodec>>) {
         if let Ok(ev) =
             swarm.select_next_some().await.try_into_behaviour_event()
         {
-            println!("evento", );
+            println!("evento",);
             panic!("Unexpected event: {ev:?}")
         }
     }

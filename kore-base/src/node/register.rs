@@ -159,15 +159,16 @@ impl Handler<Register> for Register {
                 if let Some(subjects) = subjects {
                     let mut subj = vec![];
                     for subject in subjects {
-                        if let Some(active) = active && subject.active != active {
-                            
-                                continue;
-                            
+                        if let Some(active) = active
+                            && subject.active != active
+                        {
+                            continue;
                         };
 
-                        if let Some(schema_id) = schema_id.clone() && subject.schema_id != schema_id {
-                                continue;
-                            
+                        if let Some(schema_id) = schema_id.clone()
+                            && subject.schema_id != schema_id
+                        {
+                            continue;
                         }
 
                         subj.push(subject.clone());

@@ -182,7 +182,14 @@ mod tests {
             },
         ];
         let log = &config.logging;
-        assert_eq!(log.output, LoggingOutput { stdout: false, file: true, api: true });
+        assert_eq!(
+            log.output,
+            LoggingOutput {
+                stdout: false,
+                file: true,
+                api: true
+            }
+        );
         assert_eq!(log.api_url.as_deref(), Some("https://example.com/logs"));
         assert_eq!(log.file_path, "/tmp/my.log");
         assert_eq!(log.rotation, LoggingRotation::Hourly);

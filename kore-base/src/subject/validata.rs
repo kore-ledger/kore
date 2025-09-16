@@ -137,7 +137,7 @@ impl Handler<ValiData> for ValiData {
 #[async_trait]
 impl PersistentActor for ValiData {
     type Persistence = LightPersistence;
-    
+
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         self.last_proof = Some(event.last_proof.clone());
         self.prev_event_validation_response =

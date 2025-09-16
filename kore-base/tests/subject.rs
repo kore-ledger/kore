@@ -138,7 +138,7 @@ async fn test_prueba() {
         .all_subjs(governance_id.clone(), None, None)
         .await
         .unwrap();
-    
+
     println!("Mostrando sujetos: {:#?}", subjects);
 }
 */

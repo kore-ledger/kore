@@ -77,7 +77,7 @@ pub mod tests {
 
     #[test(tokio::test)]
     async fn test_system() {
-        let (system, _runner )= create_system().await;
+        let (system, _runner) = create_system().await;
         let db: Option<Database> = system.get_helper("store").await;
         assert!(db.is_some());
         let ep: Option<EncryptedPass> =
@@ -125,7 +125,9 @@ pub mod tests {
             sink: BTreeMap::new(),
         };
 
-        let sys = system(config.clone(), "password", CancellationToken::new()).await.unwrap();
+        let sys = system(config.clone(), "password", CancellationToken::new())
+            .await
+            .unwrap();
         sys
     }
 }

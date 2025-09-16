@@ -509,25 +509,22 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 let metadata = match request.content.clone() {
                     EventRequest::Create(create_request) => {
-                        if let Some(name) = create_request.name.clone() && (name.is_empty() || name.len() > 100) {
-                                let e = "The subject name must be less than 100 characters or not be empty.";
-                                error!(TARGET_REQUEST, "NewRequest, {}", e);
-                                return Err(ActorError::Functional(
-                                    e.to_owned(),
-                                ));
-                            
+                        if let Some(name) = create_request.name.clone()
+                            && (name.is_empty() || name.len() > 100)
+                        {
+                            let e = "The subject name must be less than 100 characters or not be empty.";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
                         }
 
                         if let Some(description) =
-                            create_request.description.clone() && (description.is_empty() || description.len() > 200)
+                            create_request.description.clone()
+                            && (description.is_empty()
+                                || description.len() > 200)
                         {
-
-                                let e = "The subject description must be less than 200 characters or not be empty.";
-                                error!(TARGET_REQUEST, "NewRequest, {}", e);
-                                return Err(ActorError::Functional(
-                                    e.to_owned(),
-                                ));
-                            
+                            let e = "The subject description must be less than 200 characters or not be empty.";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
                         }
 
                         // verificar que el firmante sea el nodo.
@@ -831,20 +828,19 @@ impl Handler<RequestHandler> for RequestHandler {
                 )
                 .await;
 
-                if !self.handling.contains_key(&metadata.subject_id.to_string()) && let Err(e) = RequestHandler::queued_event(
+                if !self.handling.contains_key(&metadata.subject_id.to_string())
+                    && let Err(e) = RequestHandler::queued_event(
                         ctx,
                         &metadata.subject_id.to_string(),
                     )
                     .await
                 {
-
-                        error!(
-                            TARGET_REQUEST,
-                            "NewRequest, Can not enqueue new event: {}", e
-                        );
-                        ctx.system().stop_system();
-                        return Err(e);
-                    
+                    error!(
+                        TARGET_REQUEST,
+                        "NewRequest, Can not enqueue new event: {}", e
+                    );
+                    ctx.system().stop_system();
+                    return Err(e);
                 }
 
                 Ok(RequestHandlerResponse::Ok(RequestData {
@@ -935,7 +931,8 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 let (message, command) = match event.content.clone() {
                     EventRequest::Create(create_request) => {
-                        if create_request.schema_id != "governance" && let Err(e) = self
+                        if create_request.schema_id != "governance"
+                            && let Err(e) = self
                                 .check_creations(
                                     "PopQueue",
                                     ctx,
@@ -944,15 +941,16 @@ impl Handler<RequestHandler> for RequestHandler {
                                     metadata.namespace.clone(),
                                     gov,
                                 )
-                                .await {
-                                return self
-                                    .error(
-                                        ctx,
-                                        &e.to_string(),
-                                        &subject_id,
-                                        &request_id,
-                                    )
-                                    .await;
+                                .await
+                        {
+                            return self
+                                .error(
+                                    ctx,
+                                    &e.to_string(),
+                                    &subject_id,
+                                    &request_id,
+                                )
+                                .await;
                         }
                         (
                             RequestManagerMessage::Validate,
@@ -962,13 +960,13 @@ impl Handler<RequestHandler> for RequestHandler {
 
                     EventRequest::Confirm(confirm_req) => {
                         if metadata.governance_id.is_empty() {
-                            if let Some(name) = confirm_req.name_old_owner && name.is_empty() {
-                                
-                                    let e = "Name of old owner can not be a empty String";
-                                    return self
-                                        .error(ctx, e, &subject_id, &request_id)
-                                        .await;
-                                
+                            if let Some(name) = confirm_req.name_old_owner
+                                && name.is_empty()
+                            {
+                                let e = "Name of old owner can not be a empty String";
+                                return self
+                                    .error(ctx, e, &subject_id, &request_id)
+                                    .await;
                             }
                             (
                                 RequestManagerMessage::Evaluate,

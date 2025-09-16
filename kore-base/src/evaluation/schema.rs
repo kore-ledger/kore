@@ -73,18 +73,19 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 info,
                 schema_id,
             } => {
-                if self.gov_version < evaluation_req.content.gov_version && let Err(e) = try_to_update(
+                if self.gov_version < evaluation_req.content.gov_version
+                    && let Err(e) = try_to_update(
                         ctx,
                         evaluation_req.content.context.governance_id.clone(),
                         WitnessesAuth::Witnesses,
                     )
-                    .await {
-                        error!(
-                            TARGET_SCHEMA,
-                            "NetworkRequest, can not update governance: {}", e
-                        );
-                        return Err(emit_fail(ctx, e).await);
-                    
+                    .await
+                {
+                    error!(
+                        TARGET_SCHEMA,
+                        "NetworkRequest, can not update governance: {}", e
+                    );
+                    return Err(emit_fail(ctx, e).await);
                 }
 
                 let creator =

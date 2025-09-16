@@ -4,11 +4,13 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
-use kore_base::config::{ExternalDbConfig, KoreDbConfig, LoggingOutput, LoggingRotation};
+use kore_base::config::{
+    ExternalDbConfig, KoreDbConfig, LoggingOutput, LoggingRotation,
+};
 use kore_base::error::Error;
 use network::{NodeType, RoutingNode};
-use serde::{Deserialize, Deserializer};
 use serde::de::Error as SerdeError;
+use serde::{Deserialize, Deserializer};
 use tracing::error;
 
 use crate::config::Config;
@@ -196,8 +198,6 @@ fn default_keys_path() -> String {
     "keys".to_owned()
 }
 
-
-
 fn deserialize_logging_output<'de, D>(
     deserializer: D,
 ) -> Result<LoggingOutput, D::Error>
@@ -207,7 +207,9 @@ where
     let v: Vec<String> = Vec::deserialize(deserializer)?;
 
     if v.len() > 3 {
-        return Err(SerdeError::custom("LoggingOutput vector length must not exceed 3"));
+        return Err(SerdeError::custom(
+            "LoggingOutput vector length must not exceed 3",
+        ));
     }
 
     let mut logging = LoggingOutput {
@@ -216,25 +218,40 @@ where
         api: false,
     };
 
-
     for element in v.iter() {
         match element.as_str() {
-            "stdout" => if logging.stdout {
-                return Err(SerdeError::custom("stdout can only appear once in the logging output configuration"));
-            } else {
-                logging.stdout = true;
+            "stdout" => {
+                if logging.stdout {
+                    return Err(SerdeError::custom(
+                        "stdout can only appear once in the logging output configuration",
+                    ));
+                } else {
+                    logging.stdout = true;
+                }
             }
-            "file" => if logging.file {
-                return Err(SerdeError::custom("file can only appear once in the logging output configuration"));
-            } else {
-                logging.file = true;
+            "file" => {
+                if logging.file {
+                    return Err(SerdeError::custom(
+                        "file can only appear once in the logging output configuration",
+                    ));
+                } else {
+                    logging.file = true;
+                }
             }
-            "api" => if logging.api {
-                return Err(SerdeError::custom("api can only appear once in the logging output configuration"));
-            } else {
-                logging.api = true;
+            "api" => {
+                if logging.api {
+                    return Err(SerdeError::custom(
+                        "api can only appear once in the logging output configuration",
+                    ));
+                } else {
+                    logging.api = true;
+                }
             }
-            _ => return Err(SerdeError::custom("Invalid logging output configuration"))
+            _ => {
+                return Err(SerdeError::custom(
+                    "Invalid logging output configuration",
+                ));
+            }
         }
     }
 

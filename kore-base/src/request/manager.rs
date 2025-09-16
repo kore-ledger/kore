@@ -12,7 +12,9 @@ use identity::identifier::{
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use store::store::{LightPersistence, PersistentActor, Store, StoreCommand, StoreResponse};
+use store::store::{
+    LightPersistence, PersistentActor, Store, StoreCommand, StoreResponse,
+};
 use tracing::{error, info, warn};
 
 use crate::{

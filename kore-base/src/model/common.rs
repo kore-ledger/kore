@@ -6,7 +6,7 @@ use rand::seq::IteratorRandom;
 use std::collections::{HashMap, HashSet};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
 };
 
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
@@ -339,7 +339,9 @@ where
 
     let response = if let Some(ledger_event_actor) = ledger_event_actor {
         ledger_event_actor
-            .ask(LedgerEventMessage::UpdateLastEvent { event: Box::new(event) })
+            .ask(LedgerEventMessage::UpdateLastEvent {
+                event: Box::new(event),
+            })
             .await?
     } else {
         return Err(ActorError::NotFound(ledger_event_path));

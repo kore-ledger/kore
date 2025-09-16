@@ -655,14 +655,16 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
             }
         }
 
-        if state == "Finish" && let Err(e) = self
+        if state == "Finish"
+            && let Err(e) = self
                 .manager
                 .tell(DBManagerMessage::Delete(DeleteTypes::Request { id }))
-                .await {
-                error!(
-                    TARGET_SQLITE,
-                    "Can no send message to DBManager actor: {}", e
-                );
+                .await
+        {
+            error!(
+                TARGET_SQLITE,
+                "Can no send message to DBManager actor: {}", e
+            );
         }
     }
 }

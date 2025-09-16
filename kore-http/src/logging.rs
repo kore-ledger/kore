@@ -1,5 +1,5 @@
-use file_rotate::compression::Compression;
 use file_rotate::TimeFrequency;
+use file_rotate::compression::Compression;
 use file_rotate::{ContentLimit, FileRotate, suffix::AppendCount};
 use kore_bridge::{Logging, LoggingRotation};
 use reqwest::Client;
@@ -12,7 +12,7 @@ use tracing_subscriber::fmt::{self, writer::BoxMakeWriter};
 use tracing_subscriber::{EnvFilter, Registry, prelude::*};
 
 pub struct LoggingHandle {
-    _vec: Vec<WorkerGuard>
+    _vec: Vec<WorkerGuard>,
 }
 
 struct ApiEventWriter {
@@ -90,9 +90,7 @@ pub async fn init_logging(cfg: &Logging) -> Option<LoggingHandle> {
             LoggingRotation::Hourly => {
                 ContentLimit::Time(TimeFrequency::Hourly)
             }
-            LoggingRotation::Daily => {
-                ContentLimit::Time(TimeFrequency::Daily)
-            }
+            LoggingRotation::Daily => ContentLimit::Time(TimeFrequency::Daily),
             LoggingRotation::Weekly => {
                 ContentLimit::Time(TimeFrequency::Weekly)
             }
@@ -178,5 +176,5 @@ pub async fn init_logging(cfg: &Logging) -> Option<LoggingHandle> {
         });
     }
 
-    Some(LoggingHandle{_vec: guards})
+    Some(LoggingHandle { _vec: guards })
 }

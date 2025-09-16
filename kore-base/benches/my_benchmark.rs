@@ -69,7 +69,8 @@ pub async fn create_node(
 
     Api::build(keys, config, &mut registry, "kore", &token)
         .await
-        .unwrap().0
+        .unwrap()
+        .0
 }
 
 async fn governance_copy_benchmark() {

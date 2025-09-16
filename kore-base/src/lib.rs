@@ -25,7 +25,6 @@ pub mod validation;
 
 use actor::{ActorPath, ActorRef, Sink};
 use approval::approver::ApprovalStateRes;
-use tokio::sync::RwLock;
 use auth::{Auth, AuthMessage, AuthResponse, AuthWitness};
 use config::Config as KoreBaseConfig;
 use error::Error;
@@ -46,10 +45,8 @@ use model::ValueWrapper;
 use model::event::Event;
 use model::signature::*;
 use model::{SignTypesNode, request::*};
-use network::{
-    Monitor, MonitorMessage, MonitorResponse,
-    NetworkWorker,
-};
+use network::{Monitor, MonitorMessage, MonitorResponse, NetworkWorker};
+use tokio::sync::RwLock;
 
 pub use network::MonitorNetworkState;
 
@@ -227,17 +224,20 @@ impl Api {
 
         let tasks = Vec::from([runner, worker_runner]);
 
-        Ok((Self {
-            controller_id: keys.key_identifier().to_string(),
-            peer_id,
-            request: request_actor,
-            auth: auth_actor,
-            node: node_actor,
-            query: query_actor,
-            register: register_actor,
-            monitor: newtork_monitor_actor,
-            manual_dis: manual_dis_actor,
-        }, tasks))
+        Ok((
+            Self {
+                controller_id: keys.key_identifier().to_string(),
+                peer_id,
+                request: request_actor,
+                auth: auth_actor,
+                node: node_actor,
+                query: query_actor,
+                register: register_actor,
+                monitor: newtork_monitor_actor,
+                manual_dis: manual_dis_actor,
+            },
+            tasks,
+        ))
     }
 
     pub fn peer_id(&self) -> String {

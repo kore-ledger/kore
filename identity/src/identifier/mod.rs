@@ -19,7 +19,6 @@ use std::str::FromStr;
 
 use self::error::Error;
 
-
 /// Derivable Identifiers
 pub trait Derivable: FromStr<Err = Error> {
     fn derivative(&self) -> Vec<u8>;

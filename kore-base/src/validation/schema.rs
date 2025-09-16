@@ -74,20 +74,19 @@ impl Handler<ValidationSchema> for ValidationSchema {
                 schema_id,
             } => {
                 if self.gov_version
-                    < validation_req.content.proof.governance_version && let Err(e) = try_to_update(
+                    < validation_req.content.proof.governance_version
+                    && let Err(e) = try_to_update(
                         ctx,
                         validation_req.content.proof.governance_id.clone(),
                         WitnessesAuth::Witnesses,
                     )
                     .await
                 {
-
-                        error!(
-                            TARGET_SCHEMA,
-                            "NetworkRequest, can not update governance: {}", e
-                        );
-                        return Err(emit_fail(ctx, e).await);
-                    
+                    error!(
+                        TARGET_SCHEMA,
+                        "NetworkRequest, can not update governance: {}", e
+                    );
+                    return Err(emit_fail(ctx, e).await);
                 }
 
                 let creator =

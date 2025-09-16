@@ -384,7 +384,9 @@ impl Handler<Approval> for Approval {
                             request_id: request_id.clone(),
                             version,
                             quorum: quorum.clone(),
-                            request: Box::new(Some(signed_approval_req.clone())),
+                            request: Box::new(Some(
+                                signed_approval_req.clone(),
+                            )),
                             approvers: signers.clone(),
                             approvers_response: vec![].clone(),
                             approvers_quantity: signers.len() as u32,
@@ -403,11 +405,11 @@ impl Handler<Approval> for Approval {
                         ApprovalRes::Response(sinature, response) => {
                             if response {
                                 self.on_event(
-                                    ApprovalEvent::Response(
-                                        Box::new(ProtocolsSignatures::Signature(
+                                    ApprovalEvent::Response(Box::new(
+                                        ProtocolsSignatures::Signature(
                                             sinature,
-                                        )),
-                                    ),
+                                        ),
+                                    )),
                                     ctx,
                                 )
                                 .await;
@@ -415,11 +417,11 @@ impl Handler<Approval> for Approval {
                         }
                         ApprovalRes::TimeOut(approval_time_out) => {
                             self.on_event(
-                                ApprovalEvent::Response(
-                                    Box::new(ProtocolsSignatures::TimeOut(
+                                ApprovalEvent::Response(Box::new(
+                                    ProtocolsSignatures::TimeOut(
                                         approval_time_out,
-                                    )),
-                                ),
+                                    ),
+                                )),
                                 ctx,
                             )
                             .await;
@@ -441,16 +443,16 @@ impl Handler<Approval> for Approval {
                             );
                             return Err(emit_fail(ctx, e).await);
                         };
-                    } else if self.approvers.is_empty() && let Err(e) =
-                            self.send_approval_to_req(ctx, false).await {
-
-                            error!(
-                                TARGET_APPROVAL,
-                                "Response, Can not send approval response to request actor, {}",
-                                e
-                            );
-                            return Err(emit_fail(ctx, e).await);
-                        
+                    } else if self.approvers.is_empty()
+                        && let Err(e) =
+                            self.send_approval_to_req(ctx, false).await
+                    {
+                        error!(
+                            TARGET_APPROVAL,
+                            "Response, Can not send approval response to request actor, {}",
+                            e
+                        );
+                        return Err(emit_fail(ctx, e).await);
                     }
                 } else {
                     warn!(
