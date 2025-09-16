@@ -209,7 +209,7 @@ pub enum ApprovalMessage {
     Create {
         request_id: String,
         version: u64,
-        eval_req: EvaluationReq,
+        eval_req: Box<EvaluationReq>,
         eval_res: EvalLedgerResponse,
     },
     Response {
@@ -228,7 +228,7 @@ pub enum ApprovalEvent {
         version: u64,
         // Quorum
         quorum: Quorum,
-        request: Option<Signed<ApprovalReq>>,
+        request: Box<Option<Signed<ApprovalReq>>>,
         // approvers
         approvers: HashSet<KeyIdentifier>,
         // Actual responses
@@ -236,7 +236,7 @@ pub enum ApprovalEvent {
         // approvers quantity
         approvers_quantity: u32,
     },
-    Response(ProtocolsSignatures),
+    Response(Box<ProtocolsSignatures>),
 }
 
 impl Event for ApprovalEvent {}
@@ -303,7 +303,7 @@ impl Handler<Approval> for Approval {
                 } else {
                     // Creamos una petición de aprobación, miramos quorum y lanzamos approvers
                     let approval_req = match self
-                        .create_approval_req(ctx, eval_req.clone(), eval_res)
+                        .create_approval_req(ctx, *eval_req.clone(), eval_res)
                         .await
                     {
                         Ok(approval_req) => approval_req,
@@ -384,7 +384,7 @@ impl Handler<Approval> for Approval {
                             request_id: request_id.clone(),
                             version,
                             quorum: quorum.clone(),
-                            request: Some(signed_approval_req.clone()),
+                            request: Box::new(Some(signed_approval_req.clone())),
                             approvers: signers.clone(),
                             approvers_response: vec![].clone(),
                             approvers_quantity: signers.len() as u32,
@@ -404,9 +404,9 @@ impl Handler<Approval> for Approval {
                             if response {
                                 self.on_event(
                                     ApprovalEvent::Response(
-                                        ProtocolsSignatures::Signature(
+                                        Box::new(ProtocolsSignatures::Signature(
                                             sinature,
-                                        ),
+                                        )),
                                     ),
                                     ctx,
                                 )
@@ -416,9 +416,9 @@ impl Handler<Approval> for Approval {
                         ApprovalRes::TimeOut(approval_time_out) => {
                             self.on_event(
                                 ApprovalEvent::Response(
-                                    ProtocolsSignatures::TimeOut(
+                                    Box::new(ProtocolsSignatures::TimeOut(
                                         approval_time_out,
-                                    ),
+                                    )),
                                 ),
                                 ctx,
                             )
@@ -441,17 +441,16 @@ impl Handler<Approval> for Approval {
                             );
                             return Err(emit_fail(ctx, e).await);
                         };
-                    } else if self.approvers.is_empty() {
-                        if let Err(e) =
-                            self.send_approval_to_req(ctx, false).await
-                        {
+                    } else if self.approvers.is_empty() && let Err(e) =
+                            self.send_approval_to_req(ctx, false).await {
+
                             error!(
                                 TARGET_APPROVAL,
                                 "Response, Can not send approval response to request actor, {}",
                                 e
                             );
                             return Err(emit_fail(ctx, e).await);
-                        };
+                        
                     }
                 } else {
                     warn!(
@@ -513,7 +512,7 @@ impl PersistentActor for Approval {
                 self.approvers_quantity = *approvers_quantity;
             }
             ApprovalEvent::Response(response) => {
-                self.approvers_response.push(response.clone());
+                self.approvers_response.push(*response.clone());
             }
         };
 

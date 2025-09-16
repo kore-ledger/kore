@@ -284,12 +284,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             addrs: vec![],
         });
 
-        println!("");
-        println!("schedule_retry {}", peer);
-        println!("Retry {}", entry.attempts);
-        println!("KIND {:?}", kind);
-        println!("");
-
         let when = if let (RetryKind::Discover, RetryKind::Dial) =
             (entry.kind, kind)
         {
@@ -343,13 +337,13 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             }
 
             self.retry_queue.pop();
-            if let Some(retry) = self.retry_by_peer.get(&peer).cloned() {
-                if retry.when <= now {
-                    self.retry_by_peer
-                        .entry(peer)
-                        .and_modify(|x| x.attempts += 1);
-                    out.push((peer, retry.kind, retry.addrs));
-                }
+            if let Some(retry) = self.retry_by_peer.get(&peer).cloned()
+                && retry.when <= now
+            {
+                self.retry_by_peer
+                    .entry(peer)
+                    .and_modify(|x| x.attempts += 1);
+                out.push((peer, retry.kind, retry.addrs));
             }
         }
 
@@ -478,14 +472,14 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
     /// Send event
     async fn send_event(&mut self, event: NetworkEvent) {
-        if let Some(monitor) = self.monitor.clone() {
-            if let Err(e) = monitor.tell(MonitorMessage::Network(event)).await {
-                error!(
-                    TARGET_WORKER,
-                    "Can't send network event to monitor actor: {}", e
-                );
-                self.cancel.cancel();
-            }
+        if let Some(monitor) = self.monitor.clone()
+            && let Err(e) = monitor.tell(MonitorMessage::Network(event)).await
+        {
+            error!(
+                TARGET_WORKER,
+                "Can't send network event to monitor actor: {}", e
+            );
+            self.cancel.cancel();
         }
     }
 
@@ -800,14 +794,13 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 let (add_to_retry, new_addresses) =
                     Self::init_dial_error_manager(error, peer_id, self.retrys);
 
-                if let Some(addresses) = self.boot_nodes.remove(&peer_id) {
-                    if add_to_retry {
-                        if new_addresses.is_empty() {
-                            self.retry_boot_nodes.insert(peer_id, addresses);
-                        } else {
-                            self.retry_boot_nodes
-                                .insert(peer_id, new_addresses);
-                        }
+                if let Some(addresses) = self.boot_nodes.remove(&peer_id)
+                    && add_to_retry
+                {
+                    if new_addresses.is_empty() {
+                        self.retry_boot_nodes.insert(peer_id, addresses);
+                    } else {
+                        self.retry_boot_nodes.insert(peer_id, new_addresses);
                     }
                 }
             }
@@ -915,9 +908,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 }, if self.retry_timer.is_some() => {
                     for (peer, kind, addrs) in self.drain_due_retries() {
                         if let Some(action) = self.peer_action.get(&peer) {
-                            println!("IN SELECT");
-                            println!("IN Action {:?}",action);
-                            println!("IN kind {:?}", kind);
                             match (action, kind) {
                                 (Action::Discover, RetryKind::Discover) => {
                                     self.swarm.behaviour_mut().discover(&peer);
@@ -928,10 +918,9 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                             .addresses(addrs)
                                             .extend_addresses_through_behaviour()
                                             .build()
-                                    ) {
-                                    if let Some((retry, new_address)) =
-                                        self.dial_error_manager(error, &peer)
-                                    {
+                                    ) && let Some((retry, new_address)) =
+                                        self.dial_error_manager(error, &peer) {
+
                                         self.peer_action.remove(&peer);
                                         if retry {
                                             let addr = new_address
@@ -953,7 +942,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                         } else {
                                             self.schedule_retry(peer, ScheduleType::Discover);
                                         }
-                                    };
                                 };
                                 },
                                 _ => {}
@@ -1026,8 +1014,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         info,
                         connection_id,
                     } => {
-                        println!("IDENTIFY");
-                        println!("A {}", peer_id);
                         if !self.check_protocols(
                             &info.protocol_version,
                             &info.protocols,
@@ -1051,8 +1037,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                 Some(connection_id),
                             );
                         } else {
-                            println!("CONECTADO");
-
                             self.peer_action.insert(
                                 peer_id,
                                 Action::Identified(connection_id),
@@ -1175,17 +1159,10 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             .inc();
                     }
                     BehaviourEvent::ClosestPeer { peer_id, info } => {
-                        println!("");
-                        println!("ClosestPeer {}", peer_id);
-                        println!("INFO {}", info.is_some());
-
                         if let Some(Action::Discover) =
                             self.peer_action.get(&peer_id)
                         {
                             self.peer_action.remove(&peer_id);
-                            println!("NO RAMDOM");
-                            println!("");
-
                             if let Some(info) = info {
                                 let addr = info
                                     .addrs
@@ -1228,16 +1205,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                 peer_id: Some(peer_id),
                 ..
             } => {
-                println!("");
-                println!("OutgoingConnectionError {}", peer_id);
-                println!("Error {}", error);
-                if let Some(action) = self.peer_action.get(&peer_id) {
-                    println!("ACTION: {:?}", action);
-                } else {
-                    println!("ACTION: None");
-                }
-                println!("");
-
                 if let Some(Action::Dial) = self.peer_action.get(&peer_id) {
                     self.peer_action.remove(&peer_id);
 
@@ -1285,23 +1252,21 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             } => {
                 if let Some(Action::Identified(id)) =
                     self.peer_action.get(&peer_id)
+                    && connection_id == *id
                 {
-                    if connection_id == *id {
-                        self.peer_action.remove(&peer_id);
+                    self.peer_action.remove(&peer_id);
 
-                        self.peer_identify.remove(&peer_id);
-                        self.pending_inbound_messages.remove(&peer_id);
-                        self.ephemeral_responses.remove(&peer_id);
+                    self.peer_identify.remove(&peer_id);
+                    self.pending_inbound_messages.remove(&peer_id);
+                    self.ephemeral_responses.remove(&peer_id);
 
-                        self.retry_by_peer.remove(&peer_id);
+                    self.retry_by_peer.remove(&peer_id);
 
-                        if self.pending_outbound_messages.contains_key(&peer_id)
-                        {
-                            self.schedule_retry(
-                                peer_id,
-                                ScheduleType::Dial(vec![]),
-                            );
-                        }
+                    if self.pending_outbound_messages.contains_key(&peer_id) {
+                        self.schedule_retry(
+                            peer_id,
+                            ScheduleType::Dial(vec![]),
+                        );
                     }
                 }
             }
@@ -1337,7 +1302,6 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -6,8 +6,7 @@ use rand::seq::IteratorRandom;
 use std::collections::{HashMap, HashSet};
 
 use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler,
-    SystemEvent,
+    Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Handler
 };
 
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
@@ -142,7 +141,7 @@ where
     };
 
     match response {
-        SubjectResponse::Governance(gov) => Ok(gov),
+        SubjectResponse::Governance(gov) => Ok(*gov),
         _ => Err(ActorError::UnexpectedResponse(
             subject_path,
             "SubjectResponse::Governance".to_owned(),
@@ -257,7 +256,7 @@ where
     };
 
     match response {
-        SubjectResponse::Metadata(metadata) => Ok(metadata),
+        SubjectResponse::Metadata(metadata) => Ok(*metadata),
         _ => Err(ActorError::UnexpectedResponse(
             subject_path,
             "SubjectResponse::Metadata".to_owned(),
@@ -340,7 +339,7 @@ where
 
     let response = if let Some(ledger_event_actor) = ledger_event_actor {
         ledger_event_actor
-            .ask(LedgerEventMessage::UpdateLastEvent { event })
+            .ask(LedgerEventMessage::UpdateLastEvent { event: Box::new(event) })
             .await?
     } else {
         return Err(ActorError::NotFound(ledger_event_path));
@@ -587,7 +586,7 @@ where
 {
     if let Err(e) = ctx.emit_fail(error.clone()).await {
         error!(TARGET_COMMON, "EmitFail, can not emit fail: {}", e);
-        ctx.system().send_event(SystemEvent::StopSystem).await;
+        ctx.system().stop_system();
     };
     error
 }
@@ -792,7 +791,7 @@ where
     };
 
     match response {
-        LedgerEventResponse::LastEvent(event) => Ok(event),
+        LedgerEventResponse::LastEvent(event) => Ok(*event),
         _ => Err(ActorError::UnexpectedResponse(
             ledger_event_path,
             "LedgerEventResponse::LastEvent".to_owned(),

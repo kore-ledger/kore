@@ -105,7 +105,7 @@ impl RequestManager {
                     last_proof: Box::new(last_proof),
                     prev_event_validation_response,
                     version: self.version,
-                    info: val_info,
+                    info: Box::new(val_info),
                 })
                 .await?
         } else {
@@ -159,7 +159,7 @@ impl RequestManager {
                 .tell(ApprovalMessage::Create {
                     request_id: self.id.clone(),
                     version: self.version,
-                    eval_req,
+                    eval_req: Box::new(eval_req),
                     eval_res,
                 })
                 .await?
@@ -214,12 +214,12 @@ impl RequestManager {
         self.on_event(
             RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
-                state: RequestManagerState::Validation {
-                    val_info: val_info.clone(),
+                state: Box::new(RequestManagerState::Validation {
+                    val_info: Box::new(val_info.clone()),
                     last_proof: last_proof.clone(),
                     prev_event_validation_response:
                         prev_event_validation_response.clone(),
-                },
+                }),
             },
             ctx,
         )
@@ -244,11 +244,11 @@ impl RequestManager {
         self.on_event(
             RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
-                state: RequestManagerState::Approval {
-                    eval_req: eval_req.clone(),
+                state: Box::new(RequestManagerState::Approval {
+                    eval_req: Box::new(eval_req.clone()),
                     eval_res: eval_res.clone(),
                     eval_signatures,
-                },
+                }),
             },
             ctx,
         )
@@ -264,7 +264,7 @@ impl RequestManager {
         self.on_event(
             RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
-                state: RequestManagerState::Evaluation,
+                state: Box::new(RequestManagerState::Evaluation),
             },
             ctx,
         )
@@ -421,13 +421,13 @@ impl RequestManager {
         self.on_event(
             RequestManagerEvent::UpdateState {
                 id: self.id.clone(),
-                state: RequestManagerState::Distribution {
-                    event: signed_event.clone(),
-                    ledger: signed_ledger.clone(),
+                state: Box::new(RequestManagerState::Distribution {
+                    event: Box::new(signed_event.clone()),
+                    ledger: Box::new(signed_ledger.clone()),
                     last_proof: last_proof.clone(),
                     prev_event_validation_response:
                         prev_event_validation_response.clone(),
-                },
+                }),
             },
             ctx,
         )
@@ -456,8 +456,8 @@ impl RequestManager {
             distribution_actor
                 .tell(DistributionMessage::Create {
                     request_id: self.id.clone(),
-                    event,
-                    ledger,
+                    event: Box::new(event),
+                    ledger: Box::new(ledger),
                     last_proof: Box::new(last_proof),
                     prev_event_validation_response,
                 })
@@ -473,8 +473,8 @@ impl RequestManager {
             distribution_actor
                 .tell(DistributionMessage::Create {
                     request_id: self.id.clone(),
-                    event,
-                    ledger,
+                    event: Box::new(event),
+                    ledger: Box::new(ledger),
                     last_proof: Box::new(last_proof),
                     prev_event_validation_response,
                 })
@@ -858,7 +858,7 @@ pub enum RequestManagerMessage {
         errors: String,
     },
     EvaluationRes {
-        request: EvaluationReq,
+        request: Box<EvaluationReq>,
         response: EvalLedgerResponse,
         signatures: Vec<ProtocolsSignatures>,
     },
@@ -871,7 +871,7 @@ impl Message for RequestManagerMessage {}
 pub enum RequestManagerEvent {
     UpdateState {
         id: String,
-        state: RequestManagerState,
+        state: Box<RequestManagerState>,
     },
     UpdateVersion {
         id: String,
@@ -941,7 +941,7 @@ impl Handler<RequestManager> for RequestManager {
                     self.on_event(
                         RequestManagerEvent::UpdateState {
                             id: self.id.clone(),
-                            state: RequestManagerState::Reboot,
+                            state: Box::new(RequestManagerState::Reboot),
                         },
                         ctx,
                     )
@@ -1162,7 +1162,7 @@ impl Handler<RequestManager> for RequestManager {
                         ..
                     } => {
                         if let Err(e) =
-                            self.send_approval(ctx, eval_req, eval_res).await
+                            self.send_approval(ctx, *eval_req, eval_res).await
                         {
                             error!(
                                 TARGET_MANAGER,
@@ -1179,7 +1179,7 @@ impl Handler<RequestManager> for RequestManager {
                         if let Err(e) = self
                             .send_validation(
                                 ctx,
-                                val_info,
+                                *val_info,
                                 last_proof,
                                 prev_event_validation_response,
                             )
@@ -1201,8 +1201,8 @@ impl Handler<RequestManager> for RequestManager {
                         if let Err(e) = self
                             .init_distribution(
                                 ctx,
-                                event,
-                                ledger,
+                                *event,
+                                *ledger,
                                 last_proof,
                                 prev_event_validation_response,
                             )
@@ -1302,7 +1302,7 @@ impl Handler<RequestManager> for RequestManager {
                     if let Err(e) = self
                         .approval(
                             ctx,
-                            request,
+                            *request,
                             response,
                             HashSet::from_iter(signatures.iter().cloned()),
                         )
@@ -1406,7 +1406,7 @@ impl Handler<RequestManager> for RequestManager {
                 };
 
                 let (ledger, event) = match self.create_ledger_event(
-                    val_info,
+                    *val_info,
                     signatures.clone(),
                     result,
                     &errors,
@@ -1595,7 +1595,7 @@ impl PersistentActor for RequestManager {
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             RequestManagerEvent::UpdateState { state, .. } => {
-                self.state = state.clone()
+                self.state = *state.clone()
             }
             RequestManagerEvent::UpdateVersion { version, .. } => {
                 self.version = *version

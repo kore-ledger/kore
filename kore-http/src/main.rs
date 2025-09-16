@@ -1,9 +1,12 @@
-use std::{net::SocketAddr, path::PathBuf};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 use axum::{
     BoxError,
     handler::HandlerWithoutStateExt,
-    http::{Method, StatusCode, Uri, header},
+    http::{
+        Method, StatusCode, Uri, header,
+        uri::{Authority, Scheme},
+    },
     response::Redirect,
 };
 use axum_extra::extract::Host;
@@ -12,6 +15,7 @@ use enviroment::{
     build_address_http, build_address_https, build_https_cert,
     build_https_private_key,
 };
+use futures::future::join_all;
 use kore_bridge::{
     Bridge,
     clap::Parser,
@@ -21,6 +25,7 @@ use middleware::tower_trace;
 use server::build_routes;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
+use tracing::info;
 
 mod enviroment;
 mod error;
@@ -35,6 +40,8 @@ struct Ports {
     http: String,
     https: String,
 }
+
+const TARGET_HTTP: &str = "KoreHttp";
 
 #[tokio::main]
 async fn main() {
@@ -68,9 +75,10 @@ async fn main() {
         .allow_origin(Any);
 
     let config = build_config(args.env_config, &file_path).unwrap();
-    logging::init_logging(&config.logging);
-    let bridge = Bridge::build(config, &password, None).await.unwrap();
-    let token = bridge.token().clone();
+    let _log_handle = logging::init_logging(&config.logging).await;
+
+    let (bridge, runners) =
+        Bridge::build(config, &password, None).await.unwrap();
 
     if !https_address.is_empty() {
         let https_address = https_address.parse::<SocketAddr>().unwrap();
@@ -94,11 +102,9 @@ async fn main() {
 
         let handle_clone = handle.clone();
         tokio::spawn(async move {
-            tokio::select! {
-                _ = token.cancelled() => {
-                    handle.graceful_shutdown(None);
-                }
-            }
+            join_all(runners).await;
+            handle.graceful_shutdown(Some(Duration::from_secs(10)));
+            info!(TARGET_HTTP, "All the runners have stopped");
         });
 
         axum_server::bind_rustls(https_address, tls)
@@ -118,10 +124,8 @@ async fn main() {
                 .into_make_service_with_connect_info::<SocketAddr>(),
         )
         .with_graceful_shutdown(async move {
-            tokio::select! {
-                _ = token.cancelled() => {
-                }
-            }
+            join_all(runners).await;
+            info!(TARGET_HTTP, "All the runners have stopped");
         })
         .await
         .unwrap()
@@ -135,19 +139,35 @@ async fn redirect_http_to_https(https: u16, listener_http: TcpListener) {
         ports: Ports,
     ) -> Result<Uri, BoxError> {
         let mut parts = uri.into_parts();
-
-        parts.scheme = Some(axum::http::uri::Scheme::HTTPS);
+        parts.scheme = Some(Scheme::HTTPS);
 
         if parts.path_and_query.is_none() {
-            parts.path_and_query = Some("/".parse().unwrap());
+            parts.path_and_query = Some("/".parse()?);
         }
 
-        let https_host =
-            host.replace(&ports.http.to_string(), &ports.https.to_string());
-        parts.authority = Some(https_host.parse()?);
+        let auth: Authority = host.parse()?;
 
+        let http_port: u16 = ports.http.parse()?;
+        let https_port: u16 = ports.https.parse()?;
+
+        let new_auth_str = match auth.port() {
+            Some(p) if p == http_port => {
+                format!("{}:{}", auth.host(), https_port)
+            }
+            Some(_) => auth.as_str().to_string(), // puerto “no esperado”: no lo tocamos
+            None => {
+                if https_port == 443 {
+                    auth.host().to_string()
+                } else {
+                    format!("{}:{}", auth.host(), https_port)
+                }
+            }
+        };
+
+        parts.authority = Some(new_auth_str.parse()?);
         Ok(Uri::from_parts(parts)?)
     }
+
     let ports = Ports {
         https: https.to_string(),
         http: listener_http.local_addr().unwrap().port().to_string(),

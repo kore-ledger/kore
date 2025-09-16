@@ -23,6 +23,7 @@ use kore_base::{
 };
 use network::{Config as NetworkConfig, MonitorNetworkState, RoutingNode};
 use prometheus_client::registry::Registry;
+use tokio::task::JoinHandle;
 use std::{collections::BTreeMap, fs, str::FromStr, time::Duration};
 use tokio_util::sync::CancellationToken;
 
@@ -46,7 +47,7 @@ pub async fn create_node(
     peers: Vec<RoutingNode>,
     always_accept: bool,
     paths: Option<(String, String)>
-) -> (Api, String, String, CancellationToken) {
+) -> (Api, String, String, CancellationToken, Vec<JoinHandle<()>>) {
     let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
 
     let (local_db, ext_db) = if let Some((local_db, ext_db)) = paths {
@@ -82,9 +83,11 @@ pub async fn create_node(
     let mut registry = Registry::default();
     let token = CancellationToken::new();
 
-    (Api::new(keys, config, &mut registry, "kore", &token)
+    let (api, runners) = Api::build(keys, config, &mut registry, "kore", &token)
         .await
-        .unwrap(), local_db, ext_db, token.clone())
+        .unwrap();
+
+    (api, local_db, ext_db, token.clone(), runners)
 }
 
 pub async fn create_nodes_and_connections(

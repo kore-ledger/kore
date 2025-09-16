@@ -133,9 +133,9 @@ impl Distributor {
         ledger: Signed<Ledger>,
     ) -> Result<(), ActorError> {
         if let EventRequest::Create(request) =
-            ledger.content.event_request.content.clone()
+            ledger.content.event_request.content.clone() && request.schema_id != "governance"
         {
-            if request.schema_id != "governance" {
+            
                 let gov =
                     get_gov(ctx, &request.governance_id.to_string()).await?;
 
@@ -154,16 +154,16 @@ impl Distributor {
                     .await?;
 
                     if let CreatorQuantity::Quantity(max_quantity) =
-                        max_quantity
+                        max_quantity && quantity >= max_quantity as usize
                     {
-                        if quantity >= max_quantity as usize {
+                        
                             return Err(ActorError::Functional("The maximum number of created subjects has been reached".to_owned()));
-                        }
+                        
                     }
                 } else {
                     return Err(ActorError::Functional("The number of subjects that can be created has not been found".to_owned()));
                 };
-            }
+            
         }
 
         let node_path = ActorPath::from("/user/node");
@@ -234,7 +234,7 @@ impl Distributor {
                 prev_event_validation_response,
             } => Ok((
                 ledger,
-                last_event,
+                *last_event,
                 *last_proof,
                 prev_event_validation_response,
             )),
@@ -721,11 +721,11 @@ impl Handler<Distributor> for Distributor {
 
                 let sender = info.sender.to_string();
 
-                if let Some(_new_owner) = new_owner {
-                    if subject_data.owner == sender {
+                if let Some(_new_owner) = new_owner && subject_data.owner == sender {
+                    
                         // Todavía no se ha emitido evento de confirm ni de reject
                         return Ok(());
-                    }
+                    
                 }
 
                 let is_old_owner = match subject_old_owner(
@@ -1027,7 +1027,7 @@ impl Handler<Distributor> for Distributor {
                             info: new_info,
                             message: ActorMessage::DistributionLedgerRes {
                                 ledger,
-                                last_event,
+                                last_event: Box::new(last_event),
                                 last_proof,
                                 prev_event_validation_response,
                                 schema_id,
@@ -1069,8 +1069,8 @@ impl Handler<Distributor> for Distributor {
                         reciver_actor,
                     },
                     message: ActorMessage::DistributionLastEventReq {
-                        ledger,
-                        event,
+                        ledger: Box::new(ledger),
+                        event: Box::new(event),
                         last_proof,
                         prev_event_validation_response,
                     },
@@ -1272,10 +1272,8 @@ impl Handler<Distributor> for Distributor {
                         &old_owner,
                         old_new_owner,
                         &schema_id,
-                    ) {
-                        if let Err(e) =
-                            Self::up_subject(ctx, subject_id, false).await
-                        {
+                    ) && let Err(e) =
+                            Self::up_subject(ctx, subject_id, false).await {
                             let e = format!("Can not up know subject: {}", e);
                             error!(
                                 TARGET_DISTRIBUTOR,
@@ -1286,7 +1284,6 @@ impl Handler<Distributor> for Distributor {
                                 ActorError::FunctionalFail(e),
                             )
                             .await);
-                        };
                     }
 
                     match Self::update_ledger(
@@ -1620,10 +1617,9 @@ impl Handler<Distributor> for Distributor {
                         &old_owner,
                         old_new_owner.clone(),
                         &schema_id,
-                    ) {
-                        if let Err(e) =
-                            Self::up_subject(ctx, subject_id, false).await
-                        {
+                    ) && let Err(e) =
+                            Self::up_subject(ctx, subject_id, false).await {
+                        
                             let e = format!("Can not up know subject: {}", e);
                             error!(
                                 TARGET_DISTRIBUTOR,
@@ -1634,7 +1630,6 @@ impl Handler<Distributor> for Distributor {
                                 ActorError::FunctionalFail(e),
                             )
                             .await);
-                        };
                     }
 
                     (old_owner, old_new_owner, sn)

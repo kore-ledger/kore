@@ -64,6 +64,7 @@ use request::{
 };
 use subject::{Subject, SubjectMessage, SubjectResponse};
 use system::system;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use validation::{Validation, ValidationInfo, ValidationMessage};
@@ -103,17 +104,17 @@ pub struct Api {
 
 impl Api {
     /// Creates a new `Api`.
-    pub async fn new(
+    pub async fn build(
         keys: KeyPair,
         config: KoreBaseConfig,
         registry: &mut Registry,
         password: &str,
         token: &CancellationToken,
-    ) -> Result<Self, Error> {
+    ) -> Result<(Self, Vec<JoinHandle<()>>), Error> {
         info!(TARGET_API, "Creating Api");
 
-        let system =
-            system(config.clone(), password, Some(token.clone())).await?;
+        let (system, runner) =
+            system(config.clone(), password, token.clone()).await?;
 
         let newtork_monitor = Monitor::default();
         let newtork_monitor_actor = system
@@ -154,7 +155,7 @@ impl Api {
 
         system.add_helper("network", service).await;
 
-        tokio::spawn(async move {
+        let worker_runner = tokio::spawn(async move {
             let _ = worker.run().await;
         });
 
@@ -224,7 +225,9 @@ impl Api {
                 Error::System(e.to_owned())
             })?;
 
-        Ok(Self {
+        let tasks = Vec::from([runner, worker_runner]);
+
+        Ok((Self {
             controller_id: keys.key_identifier().to_string(),
             peer_id,
             request: request_actor,
@@ -234,7 +237,7 @@ impl Api {
             register: register_actor,
             monitor: newtork_monitor_actor,
             manual_dis: manual_dis_actor,
-        })
+        }, tasks))
     }
 
     pub fn peer_id(&self) -> String {

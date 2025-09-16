@@ -820,11 +820,11 @@ mod tests {
             ProtocolSupport::InboundOutbound,
         ));
         let cfg = Config::default();
-        let mut swarm1 = Swarm::new_ephemeral_tokio(|_| {
+        let mut swarm1 = Swarm::new_ephemeral(|_| {
             Behaviour::new(protocols.clone(), cfg.clone())
         });
         let peer1_id = *swarm1.local_peer_id();
-        let mut swarm2 = Swarm::new_ephemeral_tokio(|_| {
+        let mut swarm2 = Swarm::new_ephemeral(|_| {
             Behaviour::new(protocols.clone(), cfg.clone())
         });
         let peer2_id = *swarm2.local_peer_id();
@@ -908,7 +908,7 @@ mod tests {
             .try_init();
         let ping = Ping("ping".to_string().into_bytes());
         let offline_peer = PeerId::random();
-        let mut swarm1 = Swarm::new_ephemeral_tokio(|_| {
+        let mut swarm1 = Swarm::new_ephemeral(|_| {
             Behaviour::new(
                 vec![(
                     StreamProtocol::new("/ping/1"),

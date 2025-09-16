@@ -1752,9 +1752,6 @@ async fn test_subject_transfer_event_3() {
         .await
         .unwrap();
 
-    println!("/////////////////////////////////");
-    println!("/////////////////////////////////");
-    println!("/////////////////////////////////");
     old_owner
         .auth_subject(
             subject_id_1.clone(),
@@ -1770,9 +1767,6 @@ async fn test_subject_transfer_event_3() {
         .await
         .unwrap();
 
-    println!("/////////////////////////////////");
-    println!("/////////////////////////////////");
-    println!("/////////////////////////////////");
     tokio::time::sleep(Duration::from_secs(10)).await;
 
     let transfer_data = old_owner.get_pending_transfers().await.unwrap();

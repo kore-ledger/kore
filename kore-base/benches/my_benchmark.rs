@@ -67,9 +67,9 @@ pub async fn create_node(
     let mut registry = Registry::default();
     let token = CancellationToken::new();
 
-    Api::new(keys, config, &mut registry, "kore", &token)
+    Api::build(keys, config, &mut registry, "kore", &token)
         .await
-        .unwrap()
+        .unwrap().0
 }
 
 async fn governance_copy_benchmark() {

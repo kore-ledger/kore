@@ -77,14 +77,13 @@ impl Intermediary {
             loop {
                 tokio::select! {
                     command = command_receiver.recv() => {
-                        if let Some(command) = command{
-                            if let Err(e) = clone.handle_command(command).await {
+                        if let Some(command) = command && let Err(e) = clone.handle_command(command).await {
+                            
                                 error!(TARGET_NETWORK, "{}", e);
                                 if let Error::Network(_) = e {
                                     clone.token.cancel();
                                     break;
                                 }
-                            };
                         }
                     },
                     _ = clone.token.cancelled() => {
@@ -338,7 +337,7 @@ impl Intermediary {
                             if let Some(evaluator_actor) = evaluator_actor {
                                 if let Err(e) = evaluator_actor
                             .tell(EvaluationSchemaMessage::NetworkRequest {
-                                evaluation_req: req,
+                                evaluation_req: Box::new(req),
                                 info: message.info,
                                 schema_id
                             })
@@ -425,8 +424,8 @@ impl Intermediary {
                         // We obtain the validator
                         if let Err(e) = distributor_actor
                             .tell(DistributorMessage::LastEventDistribution {
-                                event,
-                                ledger,
+                                event: *event,
+                                ledger: *ledger,
                                 info: message.info,
                                 last_proof: last_proof.clone(),
                                 prev_event_validation_response,
@@ -611,7 +610,7 @@ impl Intermediary {
                         if let Err(e) = distributor_actor
                             .tell(DistributorMessage::LedgerDistribution {
                                 events: ledger,
-                                last_event,
+                                last_event: *last_event,
                                 info: message.info,
                                 last_proof,
                                 prev_event_validation_response,

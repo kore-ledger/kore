@@ -86,7 +86,7 @@ fn decode_into_io_error(
 ) -> io::Error {
     match err {
         cbor4ii::serde::DecodeError::Core(DecodeError::Read(e)) => {
-            io::Error::new(io::ErrorKind::Other, e)
+            io::Error::other(e.to_string())
         }
         cbor4ii::serde::DecodeError::Core(
             e @ DecodeError::Unsupported { .. },
@@ -98,7 +98,7 @@ fn decode_into_io_error(
             io::Error::new(io::ErrorKind::InvalidData, e)
         }
         cbor4ii::serde::DecodeError::Custom(e) => {
-            io::Error::new(io::ErrorKind::Other, e.to_string())
+            io::Error::other(e.to_string())
         }
     }
 }
@@ -106,7 +106,7 @@ fn decode_into_io_error(
 fn encode_into_io_error(
     err: cbor4ii::serde::EncodeError<TryReserveError>,
 ) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, err)
+    io::Error::other(err)
 }
 
 #[cfg(test)]

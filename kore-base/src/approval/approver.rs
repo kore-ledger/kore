@@ -312,7 +312,7 @@ pub enum ApproverEvent {
         request_id: String,
         version: u64,
         subject_id: String,
-        request: ApprovalReq,
+        request: Box<ApprovalReq>,
         state: ApprovalState,
         info: Option<ComunicateInfo>,
     },
@@ -525,7 +525,7 @@ impl Handler<Approver> for Approver {
                             subject_id: self.subject_id.clone(),
                             version,
                             request_id,
-                            request: approval_req,
+                            request: Box::new(approval_req),
                             state,
                             info: None,
                         },
@@ -776,7 +776,7 @@ impl Handler<Approver> for Approver {
                             subject_id: self.subject_id.clone(),
                             request_id: info.request_id.clone(),
                             version: info.version,
-                            request: approval_req.content,
+                            request: Box::new(approval_req.content),
                             state,
                             info: Some(info),
                         },
@@ -943,7 +943,7 @@ impl PersistentActor for Approver {
             } => {
                 self.version = *version;
                 self.request_id.clone_from(request_id);
-                self.request = Some(request.clone());
+                self.request = Some(*request.clone());
                 self.state = Some(state.clone());
                 self.info.clone_from(info);
             }

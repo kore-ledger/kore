@@ -39,7 +39,7 @@ impl LedgerEvent {
 
 #[derive(Debug, Clone)]
 pub enum LedgerEventMessage {
-    UpdateLastEvent { event: Signed<KoreEvent> },
+    UpdateLastEvent { event: Box<Signed<KoreEvent>> },
     GetLastEvent,
 }
 
@@ -54,7 +54,7 @@ impl Event for LedgerEventEvent {}
 
 #[derive(Debug, Clone)]
 pub enum LedgerEventResponse {
-    LastEvent(Signed<KoreEvent>),
+    LastEvent(Box<Signed<KoreEvent>>),
     Ok,
 }
 
@@ -92,12 +92,11 @@ impl Handler<LedgerEvent> for LedgerEvent {
     ) -> Result<LedgerEventResponse, ActorError> {
         match msg {
             LedgerEventMessage::UpdateLastEvent { event } => {
-                if let Some(last_event) = self.last_event.clone() {
-                    if last_event.content.sn >= event.content.sn {
+                if let Some(last_event) = self.last_event.clone() && last_event.content.sn >= event.content.sn {
                         let e = "An attempt was made to update the event ledger with an event prior to the one already saved.";
                         warn!(TARGET_EVENT, "UpdateLastEvent, {}", e);
                         return Err(ActorError::Functional(e.to_owned()));
-                    }
+                    
                 };
 
                 if let Err(e) = verify_protocols_state(
@@ -116,7 +115,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
 
                 self.on_event(
                     LedgerEventEvent {
-                        event: event.clone(),
+                        event: *event.clone(),
                     },
                     ctx,
                 )
@@ -135,18 +134,16 @@ impl Handler<LedgerEvent> for LedgerEvent {
                         let approver_actor: Option<ActorRef<Approver>> =
                             ctx.system().get_actor(&approver_path).await;
 
-                        if let Some(approver_actor) = approver_actor {
-                            if let Err(e) = approver_actor
+                        if let Some(approver_actor) = approver_actor && let Err(e) = approver_actor
                                 .tell(ApproverMessage::MakeObsolete)
-                                .await
-                            {
+                                .await {
                                 error!(
                                     TARGET_EVENT,
                                     "UpdateLastEvent, can not send message to Approver actor {}",
                                     e
                                 );
                                 return Err(emit_fail(ctx, e).await);
-                            }
+                            
                         }
                     };
                 }
@@ -165,7 +162,7 @@ impl Handler<LedgerEvent> for LedgerEvent {
                     ));
                 };
 
-                Ok(LedgerEventResponse::LastEvent(last_event))
+                Ok(LedgerEventResponse::LastEvent(Box::new(last_event)))
             }
         }
     }

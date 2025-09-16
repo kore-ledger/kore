@@ -159,16 +159,15 @@ impl Handler<Register> for Register {
                 if let Some(subjects) = subjects {
                     let mut subj = vec![];
                     for subject in subjects {
-                        if let Some(active) = active {
-                            if subject.active != active {
+                        if let Some(active) = active && subject.active != active {
+                            
                                 continue;
-                            };
+                            
                         };
 
-                        if let Some(schema_id) = schema_id.clone() {
-                            if subject.schema_id != schema_id {
+                        if let Some(schema_id) = schema_id.clone() && subject.schema_id != schema_id {
                                 continue;
-                            }
+                            
                         }
 
                         subj.push(subject.clone());
@@ -186,7 +185,6 @@ impl Handler<Register> for Register {
                     .await
             }
             RegisterMessage::RegisterSubj { gov_id, data } => {
-                println!("RegisterMessage::RegisterSubj Registrando sujeto {}", data.subject_id);
                 self.on_event(RegisterEvent::RegisterSubj { gov_id, data }, ctx)
                     .await
             }
@@ -221,7 +219,6 @@ impl PersistentActor for Register {
                 self.register_subj.insert(gov_id.clone(), vec![]);
             }
             RegisterEvent::RegisterSubj { gov_id, data } => {
-                println!("RegisterEvent::RegisterSubj Registrando sujeto {}", data.subject_id);
                 self.register_subj
                     .entry(gov_id.clone())
                     .or_default()

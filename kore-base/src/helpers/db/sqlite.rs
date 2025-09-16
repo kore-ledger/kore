@@ -522,7 +522,7 @@ impl Subscriber<RequestManagerEvent> for SqliteLocal {
     async fn notify(&self, event: RequestManagerEvent) {
         let sql = match event {
             RequestManagerEvent::UpdateState { id, state } => {
-                let state = match state {
+                let state = match *state {
                     RequestManagerState::Starting => return,
                     RequestManagerState::Reboot => "In Reboot".to_owned(),
                     RequestManagerState::Evaluation => {
@@ -655,17 +655,14 @@ impl Subscriber<RequestHandlerEvent> for SqliteLocal {
             }
         }
 
-        if state == "Finish" {
-            if let Err(e) = self
+        if state == "Finish" && let Err(e) = self
                 .manager
                 .tell(DBManagerMessage::Delete(DeleteTypes::Request { id }))
-                .await
-            {
+                .await {
                 error!(
                     TARGET_SQLITE,
                     "Can no send message to DBManager actor: {}", e
                 );
-            }
         }
     }
 }

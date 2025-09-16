@@ -49,14 +49,14 @@ impl Subscriber<SinkDataEvent> for KoreSink {
         match client.post(sink).json(&fact_req.payload.0).send().await {
             Ok(res) => {
                 if let Err(e) = res.error_for_status() {
-                    if let Some(status) = e.status() {
-                        if status.as_u16() == 422 {
+                    if let Some(status) = e.status() && status.as_u16() == 422 {
+                        
                             warn!(
                                 TARGET_SINK,
                                 "The sink was expecting another type of data"
                             );
                             return;
-                        }
+                        
                     }
                     error!(
                         TARGET_SINK,

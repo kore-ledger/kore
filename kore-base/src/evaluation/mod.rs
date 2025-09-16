@@ -262,7 +262,7 @@ impl Evaluation {
         if let Some(req_actor) = req_actor {
             req_actor
                 .tell(RequestManagerMessage::EvaluationRes {
-                    request,
+                    request: Box::new(request),
                     response,
                     signatures: self.evaluators_signatures.clone(),
                 })
@@ -1344,12 +1344,6 @@ mod tests {
         assert_eq!(last_event.content.event_request, signed_event_req);
         assert_eq!(last_event.content.sn, 1);
         assert_eq!(last_event.content.gov_version, 0);
-
-        /*
-            if let LedgerValue::Patch(a) = last_event.content.value.clone() {
-                println!("{}", a.0);
-            }
-        */
 
         assert_eq!(
             last_event.content.value,

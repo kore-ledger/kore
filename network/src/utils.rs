@@ -249,10 +249,7 @@ pub fn convert_addresses(
 
 /// Parses a string into a `Multiaddr` if possible.
 fn multiaddr(addr: &str) -> Option<Multiaddr> {
-    match addr.parse::<Multiaddr>() {
-        Ok(a) => Some(a),
-        Err(_) => None,
-    }
+    addr.parse::<Multiaddr>().ok()
 }
 
 /// Check if the given `Multiaddr` is reachable.
@@ -286,7 +283,9 @@ pub fn is_loop_back(addr: &Multiaddr) -> bool {
 }
 
 pub fn is_dns(addr: &Multiaddr) -> bool {
-    addr.iter().any(|p| matches!(p, Protocol::Dns(_) | Protocol::Dns4(_) | Protocol::Dns6(_)))
+    addr.iter().any(|p| {
+        matches!(p, Protocol::Dns(_) | Protocol::Dns4(_) | Protocol::Dns6(_))
+    })
 }
 
 /// Chech if the given `Multiaddr` is a memory address.

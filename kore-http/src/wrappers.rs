@@ -21,6 +21,7 @@ use kore_bridge::{
     TimeOutResponseInfo as TimeOutResponseInfoBridge,
     TransferRequestInfo as TransferRequestInfoBridge,
     TransferSubject as TransferSubjectBridge, config::Config as ConfigBridge,
+    LoggingOutput as LoggingOutputBridge, LoggingRotation as LoggingRotationBridge
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -580,26 +581,66 @@ impl From<ConfigBridge> for Config {
 }
 
 #[derive(Debug, Serialize, Clone, ToSchema)]
+pub struct LoggingOutput {
+    pub stdout: bool,
+    pub file: bool,
+    pub api: bool,
+}
+
+impl From<LoggingOutputBridge> for LoggingOutput {
+    fn from(value: LoggingOutputBridge) -> Self {
+        Self { stdout: value.stdout, file: value.file, api: value.api }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum LoggingRotation {
+    Size,
+    Hourly,
+    Daily,
+    Weekly,
+    Monthly,
+    Yearly,
+    Never
+}
+
+impl From<LoggingRotationBridge> for LoggingRotation {
+    fn from(value: LoggingRotationBridge) -> Self {
+        match value {
+            LoggingRotationBridge::Size => LoggingRotation::Size,
+            LoggingRotationBridge::Hourly => LoggingRotation::Hourly,
+            LoggingRotationBridge::Daily => LoggingRotation::Daily,
+            LoggingRotationBridge::Weekly => LoggingRotation::Weekly,
+            LoggingRotationBridge::Monthly => LoggingRotation::Monthly,
+            LoggingRotationBridge::Yearly => LoggingRotation::Yearly,
+            LoggingRotationBridge::Never => LoggingRotation::Never,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Clone, ToSchema)]
 pub struct Logging {
-    pub output: String,
+    pub output: LoggingOutput,
     pub api_url: Option<String>,
     pub file_path: String,
-    pub rotation: String,
-    pub max_size: u64,
+    pub rotation: LoggingRotation,
+    pub max_size: usize,
     pub max_files: usize,
-    pub level: String,
 }
+
+
+
 
 impl From<LoggingBridge> for Logging {
     fn from(value: LoggingBridge) -> Self {
         Self {
-            output: value.output,
+            output: LoggingOutput::from(value.output),
             api_url: value.api_url,
             file_path: value.file_path,
-            rotation: value.rotation,
+            rotation: LoggingRotation::from(value.rotation),
             max_size: value.max_size,
             max_files: value.max_files,
-            level: value.level,
         }
     }
 }

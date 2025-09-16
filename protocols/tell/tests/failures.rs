@@ -29,7 +29,7 @@ async fn test_outbound_failure() {
 
     // Expects no events because `Event::Request` is produced after `read_request`.
     // Keep the connection alive, otherwise swarm2 may receive `ConnectionClosed` instead.
-    // let server_task = wait_no_events(&mut swarm1);
+    let server_task = wait_no_events(&mut swarm1);
 
     // Expects OutboundFailure::Io failure with `FailOnWriteRequest` error.
     let client_task = async move {
@@ -56,12 +56,12 @@ async fn test_outbound_failure() {
         );
     };
 
-    /*
+
         let server_task = pin!(server_task);
         let client_task = pin!(client_task);
         futures::future::select(server_task, client_task).await;
-    */
-    client_task.await;
+
+    //client_task.await;
 
 }
 
@@ -159,7 +159,7 @@ fn new_swarm_with_timeout(
     ));
     let cfg = tell::Config::default().with_message_timeout(timeout);
 
-    let swarm = Swarm::new_ephemeral_tokio(|_| {
+    let swarm = Swarm::new_ephemeral(|_| {
         tell::Behaviour::<TestCodec>::new(protocols, cfg)
     });
     let peed_id = *swarm.local_peer_id();

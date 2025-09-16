@@ -10,7 +10,7 @@ pub use kore_base::{
     approval::approver::ApprovalStateRes,
     auth::AuthWitness,
     config::Config as KoreConfig,
-    config::Logging,
+    config::{Logging, LoggingRotation, LoggingOutput},
     error::Error,
     helpers::db::common::{
         ApprovalReqInfo, ApproveInfo, ConfirmRequestInfo, CreateRequestInfo,
@@ -39,6 +39,7 @@ pub use network::{
 };
 use prometheus::run_prometheus;
 use prometheus_client::registry::Registry;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use utils::key_pair;
 
@@ -61,7 +62,7 @@ impl Bridge {
         settings: Config,
         password: &str,
         token: Option<CancellationToken>,
-    ) -> Result<Self, Error> {
+    ) -> Result<(Self, Vec<JoinHandle<()>>), Error> {
         let keys = key_pair(&settings, password)?;
         let mut registry = <Registry>::default();
 
@@ -71,25 +72,26 @@ impl Bridge {
             CancellationToken::new()
         };
 
-        let api = KoreApi::new(
+        let (api, mut runners) = KoreApi::build(
             keys,
             settings.kore_config.clone(),
             &mut registry,
             password,
-            &token,
+            &token.clone(),
         )
         .await?;
 
-        #[cfg(feature = "prometheus")]
-        run_prometheus(registry, &settings.prometheus);
-
         Self::bind_with_shutdown(token.clone(), tokio::signal::ctrl_c());
 
-        Ok(Self {
+        #[cfg(feature = "prometheus")] {
+            runners.push(run_prometheus(registry, &settings.prometheus, token.clone()));
+        }   
+
+        Ok((Self {
             api,
             config: settings,
             cancellation: token,
-        })
+        }, runners))
     }
 
     pub fn token(&self) -> &CancellationToken {

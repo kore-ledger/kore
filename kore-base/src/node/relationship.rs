@@ -119,12 +119,12 @@ impl Handler<RelationShip> for RelationShip {
                     0
                 };
 
-                if let CreatorQuantity::Quantity(max_quantity) = max_quantity {
-                    if quantity >= max_quantity as usize {
+                if let CreatorQuantity::Quantity(max_quantity) = max_quantity && quantity >= max_quantity as usize {
+                    
                         let e = "Maximum number of subjects reached";
                         warn!(TARGET_RELATIONSHIP, "RegisterNewSubject, {}", e);
                         return Err(ActorError::Functional(e.to_owned()));
-                    }
+                    
                 }
 
                 self.on_event(

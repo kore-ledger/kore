@@ -441,9 +441,6 @@ impl NetworkBehaviour for Behaviour {
                     }
                 }
                 ToSwarm::Dial { opts } => {
-                    if let Some(peer_id) = opts.get_peer_id() {
-                        println!("SOY KADEMLIA HACIENDO DIAL A {}", peer_id);
-                    }
                     return Poll::Ready(ToSwarm::Dial { opts });
                 }
                 ToSwarm::NotifyHandler {
@@ -486,26 +483,25 @@ impl NetworkBehaviour for Behaviour {
         }
 
         // Poll the stream that fires when we need to start a random Kademlia query.
-        if !self.pre_routing {
-            if let Some(next) = self.next_random_walk.as_mut() {
-                if next.poll_unpin(cx).is_ready() {
-                    if self.num_connections < self.discovery_only_if_under_num {
-                        self.kademlia.get_closest_peers(PeerId::random());
+        if !self.pre_routing
+            && let Some(next) = self.next_random_walk.as_mut()
+            && next.poll_unpin(cx).is_ready()
+        {
+            if self.num_connections < self.discovery_only_if_under_num {
+                self.kademlia.get_closest_peers(PeerId::random());
 
-                        *next = Delay::new(self.duration_to_next_kad);
+                *next = Delay::new(self.duration_to_next_kad);
 
-                        self.duration_to_next_kad = std::cmp::min(
-                            self.duration_to_next_kad * 2,
-                            Duration::from_secs(120),
-                        );
-                    } else {
-                        *next = Delay::new(self.duration_to_next_kad);
-                        self.duration_to_next_kad = std::cmp::min(
-                            self.duration_to_next_kad * 2,
-                            Duration::from_secs(120),
-                        );
-                    }
-                }
+                self.duration_to_next_kad = std::cmp::min(
+                    self.duration_to_next_kad * 2,
+                    Duration::from_secs(120),
+                );
+            } else {
+                *next = Delay::new(self.duration_to_next_kad);
+                self.duration_to_next_kad = std::cmp::min(
+                    self.duration_to_next_kad * 2,
+                    Duration::from_secs(120),
+                );
             }
         }
 
@@ -553,11 +549,11 @@ impl NetworkBehaviour for Behaviour {
                     self.kademlia.add_address(&peer_id, addr.clone());
                 }
             }
-        } else if filter_addresses.is_empty() {
-            if let Some(peer_id) = maybe_peer {
-                self.peer_to_remove.remove(&peer_id);
-                self.kademlia.remove_peer(&peer_id);
-            }
+        } else if filter_addresses.is_empty()
+            && let Some(peer_id) = maybe_peer
+        {
+            self.peer_to_remove.remove(&peer_id);
+            self.kademlia.remove_peer(&peer_id);
         }
 
         Ok(filter_addresses)
@@ -678,4 +674,163 @@ pub struct RoutingNode {
     pub peer_id: String,
     /// Address.
     pub address: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use crate::utils::convert_boot_nodes;
+
+    use super::*;
+    use test_log::test;
+
+    use libp2p::{
+        Multiaddr,
+        swarm::{Swarm, SwarmEvent},
+    };
+    use libp2p_swarm_test::SwarmExt;
+
+    use futures::prelude::*;
+    use serial_test::serial;
+
+    #[test(tokio::test)]
+    #[serial]
+    async fn test_routing() {
+        let mut boot_nodes = vec![];
+
+        let config = Config::new()
+            .with_allow_local_address_in_dht(true)
+            .with_discovery_limit(100)
+            .with_dht_random_walk(true);
+
+        let (mut boot_swarm, addr) = build_node(config, 2000, HashMap::new());
+
+        let peer_id = *boot_swarm.local_peer_id();
+        let boot_node = RoutingNode {
+            peer_id: peer_id.to_base58(),
+            address: vec![addr.to_string()],
+        };
+
+        boot_nodes.push(boot_node);
+        let boot_nodes: HashMap<PeerId, Vec<Multiaddr>> =
+            convert_boot_nodes(&boot_nodes);
+
+        let mut swarms = (1..10)
+            .map(|x| {
+                let config = Config::new()
+                    .with_allow_local_address_in_dht(true)
+                    .with_discovery_limit(100);
+                let (swarm, addr) =
+                    build_node(config, 2000 + x, boot_nodes.clone());
+                boot_swarm
+                    .behaviour_mut()
+                    .add_self_reported_address(swarm.local_peer_id(), &addr);
+
+                (swarm, addr)
+            })
+            .collect::<Vec<_>>();
+
+        swarms.insert(0, (boot_swarm, addr));
+
+        // Build a `Vec<HashSet<PeerId>>` with the list of nodes remaining to be discovered.
+        let mut to_discover = (0..swarms.len())
+            .map(|n| {
+                (0..swarms.len())
+                    // Skip the first swarm as all other swarms already know it.
+                    .skip(1)
+                    .filter(|p| *p != n)
+                    .map(|p| *Swarm::local_peer_id(&swarms[p].0))
+                    .collect::<HashSet<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        let fut = futures::future::poll_fn(move |cx| {
+            loop {
+                for swarm_n in 0..swarms.len() {
+                    for peer_id in to_discover[swarm_n].clone() {
+                        swarms[swarm_n].0.behaviour_mut().discover(&peer_id);
+                    }
+
+                    match swarms[swarm_n].0.poll_next_unpin(cx) {
+                        Poll::Ready(Some(e)) => match e {
+                            SwarmEvent::ConnectionEstablished {
+                                peer_id,
+                                ..
+                            } => {
+                                to_discover[swarm_n].remove(&peer_id);
+                            }
+                            SwarmEvent::Behaviour(behavior) => match behavior {
+                                Event::ClosestPeer { peer_id, info } => {
+                                    if let Some(info) = info {
+                                        for addr in info.addrs {
+                                            swarms[swarm_n]
+                                                .0
+                                                .behaviour_mut()
+                                                .add_self_reported_address(
+                                                    &peer_id, &addr,
+                                                );
+                                        }
+
+                                        if swarms[swarm_n]
+                                            .0
+                                            .behaviour_mut()
+                                            .is_known_peer(&peer_id)
+                                        {
+                                            to_discover[swarm_n]
+                                                .remove(&peer_id);
+                                        }
+                                    }
+                                }
+                            },
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+                break;
+            }
+            if to_discover.iter().all(|l| l.is_empty()) {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        });
+
+        futures::executor::block_on(fut);
+    }
+
+    /// Build test swarm
+    fn build_node(
+        config: Config,
+        port: u64,
+        boot_nodes: HashMap<PeerId, Vec<Multiaddr>>,
+    ) -> (Swarm<Behaviour>, Multiaddr) {
+        let mut swarm = Swarm::new_ephemeral(|key_pair| {
+            Behaviour::new(
+                PeerId::from_public_key(&key_pair.public()),
+                config,
+                StreamProtocol::new("/kore/routing/1.0.0"),
+                NodeType::Bootstrap,
+            )
+        });
+        let listen_addr: Multiaddr =
+            format!("/memory/{}", port).parse().unwrap();
+
+        let _ = swarm.listen_on(listen_addr.clone()).unwrap();
+
+        swarm.add_external_address(listen_addr.clone());
+
+        for (peer_id, addrs) in boot_nodes {
+            for addr in addrs {
+                swarm
+                    .behaviour_mut()
+                    .add_self_reported_address(&peer_id, &addr);
+            }
+        }
+
+        swarm.behaviour_mut().finish_prerouting_state();
+
+        (swarm, listen_addr)
+    }
 }

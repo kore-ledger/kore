@@ -28,7 +28,7 @@ sqlite_db = { path = "../../rush-rs/databases/sqlite_db", optional = true }
 store = { path = "../../rush-rs/store" }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["std"] }
-tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "fs"] }
 tracing = { workspace = true }
 network = { path = "../network" }
 rmp-serde = { workspace = true }

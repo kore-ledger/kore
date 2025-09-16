@@ -43,7 +43,7 @@ impl EvaluationSchema {
 #[derive(Debug, Clone)]
 pub enum EvaluationSchemaMessage {
     NetworkRequest {
-        evaluation_req: Signed<EvaluationReq>,
+        evaluation_req: Box<Signed<EvaluationReq>>,
         info: ComunicateInfo,
         schema_id: String,
     },
@@ -73,20 +73,18 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
                 info,
                 schema_id,
             } => {
-                if self.gov_version < evaluation_req.content.gov_version {
-                    if let Err(e) = try_to_update(
+                if self.gov_version < evaluation_req.content.gov_version && let Err(e) = try_to_update(
                         ctx,
                         evaluation_req.content.context.governance_id.clone(),
                         WitnessesAuth::Witnesses,
                     )
-                    .await
-                    {
+                    .await {
                         error!(
                             TARGET_SCHEMA,
                             "NetworkRequest, can not update governance: {}", e
                         );
                         return Err(emit_fail(ctx, e).await);
-                    }
+                    
                 }
 
                 let creator =
@@ -143,7 +141,7 @@ impl Handler<EvaluationSchema> for EvaluationSchema {
 
                 if let Err(e) = evaluator_actor
                     .tell(EvaluatorMessage::NetworkRequest {
-                        evaluation_req,
+                        evaluation_req: *evaluation_req,
                         info,
                         schema_id,
                     })
