@@ -8,7 +8,7 @@ use actor::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::{db::Storable, model::common::emit_fail};
@@ -159,16 +159,16 @@ impl Handler<Register> for Register {
                 if let Some(subjects) = subjects {
                     let mut subj = vec![];
                     for subject in subjects {
-                        if let Some(active) = active {
-                            if subject.active != active {
-                                continue;
-                            };
+                        if let Some(active) = active
+                            && subject.active != active
+                        {
+                            continue;
                         };
 
-                        if let Some(schema_id) = schema_id.clone() {
-                            if subject.schema_id != schema_id {
-                                continue;
-                            }
+                        if let Some(schema_id) = schema_id.clone()
+                            && subject.schema_id != schema_id
+                        {
+                            continue;
                         }
 
                         subj.push(subject.clone());
@@ -198,7 +198,7 @@ impl Handler<Register> for Register {
         event: RegisterEvent,
         ctx: &mut ActorContext<Register>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_REGISTER,
                 "OnEvent, can not persist information: {}", e
@@ -210,6 +210,8 @@ impl Handler<Register> for Register {
 
 #[async_trait]
 impl PersistentActor for Register {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {

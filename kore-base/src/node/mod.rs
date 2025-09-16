@@ -6,10 +6,10 @@
 
 use std::{collections::HashMap, path::Path};
 
-use async_std::fs;
 use nodekey::NodeKey;
 use register::Register;
 use relationship::RelationShip;
+use tokio::fs;
 use tracing::{error, warn};
 use transfer::TransferRegister;
 
@@ -40,11 +40,11 @@ use identity::{
 
 use actor::{
     Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event,
-    Handler, Message, Response, Sink, SystemEvent,
+    Handler, Message, Response, Sink,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 
 pub mod nodekey;
 pub mod register;
@@ -415,6 +415,8 @@ impl Actor for Node {
 
 #[async_trait]
 impl PersistentActor for Node {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
@@ -480,7 +482,7 @@ impl Handler<Node> for Node {
                         format!("Can not create distributor for subject {}", e);
                     error!("UpDistributor, {}", e);
 
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    ctx.system().stop_system();
                     let e = ActorError::FunctionalFail(e);
                     return Err(e);
                 };
@@ -612,7 +614,7 @@ impl Handler<Node> for Node {
                         TARGET_NODE,
                         "CreateNewSubjectLedger, Can not obtain ext_db helper"
                     );
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    ctx.system().stop_system();
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
@@ -716,7 +718,7 @@ impl Handler<Node> for Node {
                         Ok(NodeResponse::SonWasCreated)
                     }
                     _ => {
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        ctx.system().stop_system();
                         let e = ActorError::UnexpectedResponse(
                             subject_actor.path(),
                             "SubjectResponse::UpdateResult".to_owned(),
@@ -729,7 +731,7 @@ impl Handler<Node> for Node {
                 let Some(ext_db): Option<ExternalDB> =
                     ctx.system().get_helper("ext_db").await
                 else {
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    ctx.system().stop_system();
                     error!(
                         TARGET_NODE,
                         "CreateNewSubjectReq, Can not obtain ext_db helper"
@@ -856,14 +858,12 @@ impl Handler<Node> for Node {
                     let res = match auth.ask(AuthMessage::GetAuths).await {
                         Ok(res) => res,
                         Err(e) => {
-                            ctx.system()
-                                .send_event(SystemEvent::StopSystem)
-                                .await;
+                            ctx.system().stop_system();
                             return Err(e);
                         }
                     };
                     let AuthResponse::Auths { subjects } = res else {
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        ctx.system().stop_system();
                         let e = ActorError::UnexpectedResponse(
                             ActorPath::from(format!("{}/auth", ctx.path())),
                             "AuthResponse::Auths".to_owned(),
@@ -872,7 +872,7 @@ impl Handler<Node> for Node {
                     };
                     subjects
                 } else {
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    ctx.system().stop_system();
                     let e = ActorError::NotFound(ActorPath::from(format!(
                         "{}/auth",
                         ctx.path()
@@ -903,7 +903,7 @@ impl Handler<Node> for Node {
         _error: ActorError,
         ctx: &mut ActorContext<Node>,
     ) -> ChildAction {
-        ctx.system().send_event(SystemEvent::StopSystem).await;
+        ctx.system().stop_system();
         ChildAction::Stop
     }
 
@@ -912,9 +912,9 @@ impl Handler<Node> for Node {
         event: NodeEvent,
         ctx: &mut ActorContext<Node>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_NODE, "OnEvent, can not persist information: {}", e);
-            ctx.system().send_event(SystemEvent::StopSystem).await;
+            ctx.system().stop_system();
         };
     }
 }

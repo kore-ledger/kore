@@ -3,7 +3,7 @@
 
 use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
-    Response, SystemEvent,
+    Response,
 };
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
@@ -111,7 +111,7 @@ impl Handler<Query> for Query {
             ctx.system().get_helper("ext_db").await
         else {
             error!(TARGET_QUERY, "Can not obtain ext_db helper");
-            ctx.system().send_event(SystemEvent::StopSystem).await;
+            ctx.system().stop_system();
             return Err(ActorError::NotHelper("ext_db".to_owned()));
         };
 

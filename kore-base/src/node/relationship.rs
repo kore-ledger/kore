@@ -9,7 +9,7 @@ use actor::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::{
@@ -119,12 +119,12 @@ impl Handler<RelationShip> for RelationShip {
                     0
                 };
 
-                if let CreatorQuantity::Quantity(max_quantity) = max_quantity {
-                    if quantity >= max_quantity as usize {
-                        let e = "Maximum number of subjects reached";
-                        warn!(TARGET_RELATIONSHIP, "RegisterNewSubject, {}", e);
-                        return Err(ActorError::Functional(e.to_owned()));
-                    }
+                if let CreatorQuantity::Quantity(max_quantity) = max_quantity
+                    && quantity >= max_quantity as usize
+                {
+                    let e = "Maximum number of subjects reached";
+                    warn!(TARGET_RELATIONSHIP, "RegisterNewSubject, {}", e);
+                    return Err(ActorError::Functional(e.to_owned()));
                 }
 
                 self.on_event(
@@ -150,7 +150,7 @@ impl Handler<RelationShip> for RelationShip {
         event: RelationShipEvent,
         ctx: &mut ActorContext<RelationShip>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_RELATIONSHIP,
                 "OnEvent, can not persist information: {}", e
@@ -162,6 +162,8 @@ impl Handler<RelationShip> for RelationShip {
 
 #[async_trait]
 impl PersistentActor for RelationShip {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {

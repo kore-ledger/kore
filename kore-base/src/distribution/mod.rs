@@ -136,8 +136,8 @@ impl Actor for Distribution {
 pub enum DistributionMessage {
     Create {
         request_id: String,
-        event: Signed<KoreEvent>,
-        ledger: Signed<Ledger>,
+        event: Box<Signed<KoreEvent>>,
+        ledger: Box<Signed<Ledger>>,
         last_proof: Box<ValidationProof>,
         prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
@@ -220,8 +220,8 @@ impl Handler<Distribution> for Distribution {
                 for witness in witnesses {
                     self.create_distributors(
                         ctx,
-                        event.clone(),
-                        ledger.clone(),
+                        *event.clone(),
+                        *ledger.clone(),
                         witness,
                         last_proof.clone(),
                         prev_event_validation_response.clone(),

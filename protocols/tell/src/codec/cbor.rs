@@ -86,7 +86,7 @@ fn decode_into_io_error(
 ) -> io::Error {
     match err {
         cbor4ii::serde::DecodeError::Core(DecodeError::Read(e)) => {
-            io::Error::new(io::ErrorKind::Other, e)
+            io::Error::other(e.to_string())
         }
         cbor4ii::serde::DecodeError::Core(
             e @ DecodeError::Unsupported { .. },
@@ -98,7 +98,7 @@ fn decode_into_io_error(
             io::Error::new(io::ErrorKind::InvalidData, e)
         }
         cbor4ii::serde::DecodeError::Custom(e) => {
-            io::Error::new(io::ErrorKind::Other, e.to_string())
+            io::Error::other(e.to_string())
         }
     }
 }
@@ -106,15 +106,14 @@ fn decode_into_io_error(
 fn encode_into_io_error(
     err: cbor4ii::serde::EncodeError<TryReserveError>,
 ) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, err)
+    io::Error::other(err)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::codec::Codec;
-    use async_std::io::Cursor;
-    use futures::executor::block_on;
+    use futures_ringbuf::Endpoint;
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -123,28 +122,29 @@ mod tests {
         b: String,
     }
 
-    #[test]
-    fn test_codec() {
+    #[tokio::test]
+    async fn test_codec() {
         let mut codec = super::Codec::default();
-        let msg = TestMessage {
+        let expected_message = TestMessage {
             a: 42,
             b: "hello".to_string(),
         };
 
-        let mut buf = Vec::new();
-        block_on(codec.write_message(
-            &StreamProtocol::new("/test"),
-            &mut buf,
-            msg.clone(),
-        ))
-        .unwrap();
+        let protocol = StreamProtocol::new("/test_cbor/1");
 
-        let mut buf = Cursor::new(buf);
-        let msg2 = block_on(
-            codec.read_message(&StreamProtocol::new("/test"), &mut buf),
-        )
-        .unwrap();
+        let (mut a, mut b) = Endpoint::pair(124, 124);
+        codec
+            .write_message(&protocol, &mut a, expected_message.clone())
+            .await
+            .expect("Should write request");
+        a.close().await.unwrap();
 
-        assert_eq!(msg, msg2);
+        let actual_message = codec
+            .read_message(&protocol, &mut b)
+            .await
+            .expect("Should read request");
+        b.close().await.unwrap();
+
+        assert_eq!(actual_message, expected_message);
     }
 }

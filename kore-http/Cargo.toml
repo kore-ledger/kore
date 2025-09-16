@@ -20,7 +20,12 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+file-rotate = {  workspace = true }
 
+futures = { version = "0.3", default-features = false }
+
+reqwest = { version = "0.12.22"}
 rustls = { version = "0.23.23", features = ["ring"] }
 axum-server = { version = "0.7.1", features = ["tls-rustls"] }
 axum = { version = "0.8.1" }
@@ -29,7 +34,7 @@ tower = "0.5.2"
 tower-http = {version = "0.6.2", features = ["trace", "metrics", "cors"]}
 utoipa = { version = "5.3.1", features = ["axum_extras"]}
 utoipa-rapidoc = { version = "6.0.0", features = ["axum"]}
-zip = "2.2.2"
+zip = "5.1.1"
 bytes = "1.10.0"
 [features]
 default = []

@@ -21,18 +21,18 @@ pub enum RequestManagerState {
     Starting,
     Evaluation,
     Approval {
-        eval_req: EvaluationReq,
+        eval_req: Box<EvaluationReq>,
         eval_res: EvalLedgerResponse,
         eval_signatures: HashSet<ProtocolsSignatures>,
     },
     Validation {
-        val_info: ValidationInfo,
+        val_info: Box<ValidationInfo>,
         last_proof: Option<ValidationProof>,
         prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
     Distribution {
-        event: Signed<KoreEvent>,
-        ledger: Signed<Ledger>,
+        event: Box<Signed<KoreEvent>>,
+        ledger: Box<Signed<Ledger>>,
         last_proof: ValidationProof,
         prev_event_validation_response: Vec<ProtocolsSignatures>,
     },

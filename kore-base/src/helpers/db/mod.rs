@@ -17,7 +17,6 @@ use crate::{
 use crate::config::ExternalDbConfig;
 
 use actor::{ActorRef, Subscriber};
-use async_std::fs;
 use async_trait::async_trait;
 use common::{
     ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo,
@@ -26,6 +25,7 @@ use common::{
 #[cfg(feature = "ext-sqlite")]
 use sqlite::SqliteLocal;
 use std::path::Path;
+use tokio::fs;
 #[cfg(feature = "ext-sqlite")]
 mod sqlite;
 

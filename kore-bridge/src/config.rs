@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use kore_base::config::Config as KoreConfig;
+use kore_base::config::{Config as KoreConfig, Logging};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -12,6 +12,8 @@ pub struct Config {
     pub keys_path: String,
     /// TcpListener from prometheus axum server.
     pub prometheus: String,
+    /// Logging parameters.
+    pub logging: Logging,
 }
 
 impl Config {

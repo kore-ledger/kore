@@ -37,7 +37,7 @@ impl ManualDistribution {
     ) -> Result<
         (
             Vec<Signed<Ledger>>,
-            Option<Signed<KoreEvent>>,
+            Box<Option<Signed<KoreEvent>>>,
             Box<Option<ValidationProof>>,
             Option<Vec<ProtocolsSignatures>>,
         ),
@@ -134,7 +134,7 @@ impl Handler<ManualDistribution> for ManualDistribution {
                     prev_event_validation_response,
                 ) = Self::get_last_ledger(ctx, &subject_id.to_string()).await?;
 
-                let Some(last_event) = last_event else {
+                let Some(last_event) = *last_event else {
                     let e = "Can not obtain last signed event";
                     error!(TARGET_MANUAL_DISTRIBUTION, "Update, {}", e);
                     return Err(ActorError::Functional(e.to_string()));
@@ -171,8 +171,8 @@ impl Handler<ManualDistribution> for ManualDistribution {
                 if let Err(e) = distribution_actor
                     .tell(DistributionMessage::Create {
                         request_id,
-                        event: last_event,
-                        ledger,
+                        event: Box::new(last_event),
+                        ledger: Box::new(ledger),
                         last_proof: Box::new(last_proof),
                         prev_event_validation_response,
                     })

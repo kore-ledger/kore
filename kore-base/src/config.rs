@@ -174,3 +174,55 @@ impl fmt::Display for ExternalDbConfig {
         write!(f, "Sqlite")
     }
 }
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+pub struct LoggingOutput {
+    pub stdout: bool,
+    pub file: bool,
+    pub api: bool,
+}
+
+impl Default for LoggingOutput {
+    fn default() -> Self {
+        Self {
+            stdout: true,
+            file: Default::default(),
+            api: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LoggingRotation {
+    #[default]
+    Size,
+    Hourly,
+    Daily,
+    Weekly,
+    Monthly,
+    Yearly,
+    Never,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Logging {
+    /// Output type: "stdout", "file", etc.
+    pub output: LoggingOutput,
+    /// Api url for logging.
+    pub api_url: Option<String>,
+    /// Path to the log file.
+    pub file_path: String,
+    /// Log rotation type: "size", "time", etc.
+    pub rotation: LoggingRotation,
+    /// Maximum size of the log file.
+    pub max_size: usize,
+    /// Maximum number of log files to keep.
+    pub max_files: usize,
+}
+
+impl Logging {
+    pub fn logs(&self) -> bool {
+        self.output.api || self.output.file || self.output.stdout
+    }
+}

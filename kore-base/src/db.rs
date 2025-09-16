@@ -13,7 +13,7 @@ use rocksdb_db::{RocksDbManager, RocksDbStore};
 use sqlite_db::SqliteManager;
 use store::{
     Error as StoreError,
-    database::{Collection, DbManager},
+    database::{Collection, DbManager, State},
     store::PersistentActor,
 };
 
@@ -44,7 +44,7 @@ impl Database {
     }
 }
 
-impl DbManager<DbCollection> for Database {
+impl DbManager<DbCollection, DbCollection> for Database {
     fn create_collection(
         &self,
         name: &str,
@@ -63,6 +63,25 @@ impl DbManager<DbCollection> for Database {
             }
         }
     }
+
+    fn create_state(
+        &self,
+        name: &str,
+        prefix: &str,
+    ) -> Result<DbCollection, StoreError> {
+        match self {
+            #[cfg(feature = "rocksdb")]
+            Database::RocksDb(manager) => {
+                let store = manager.create_state(name, prefix)?;
+                Ok(DbCollection::RocksDb(store))
+            }
+            #[cfg(feature = "sqlite")]
+            Database::SQLite(manager) => {
+                let store = manager.create_state(name, prefix)?;
+                Ok(DbCollection::SQLite(store))
+            }
+        }
+    }
 }
 
 pub enum DbCollection {
@@ -76,36 +95,36 @@ impl Collection for DbCollection {
     fn name(&self) -> &str {
         match self {
             #[cfg(feature = "rocksdb")]
-            DbCollection::RocksDb(store) => store.name(),
+            DbCollection::RocksDb(store) => Collection::name(store),
             #[cfg(feature = "sqlite")]
-            DbCollection::SQLite(store) => store.name(),
+            DbCollection::SQLite(store) => Collection::name(store),
         }
     }
 
     fn get(&self, key: &str) -> Result<Vec<u8>, store::Error> {
         match self {
             #[cfg(feature = "rocksdb")]
-            DbCollection::RocksDb(store) => store.get(key),
+            DbCollection::RocksDb(store) => Collection::get(store, key),
             #[cfg(feature = "sqlite")]
-            DbCollection::SQLite(store) => store.get(key),
+            DbCollection::SQLite(store) => Collection::get(store, key),
         }
     }
 
     fn put(&mut self, key: &str, data: &[u8]) -> Result<(), store::Error> {
         match self {
             #[cfg(feature = "rocksdb")]
-            DbCollection::RocksDb(store) => store.put(key, data),
+            DbCollection::RocksDb(store) => Collection::put(store, key, data),
             #[cfg(feature = "sqlite")]
-            DbCollection::SQLite(store) => store.put(key, data),
+            DbCollection::SQLite(store) => Collection::put(store, key, data),
         }
     }
 
     fn del(&mut self, key: &str) -> Result<(), store::Error> {
         match self {
             #[cfg(feature = "rocksdb")]
-            DbCollection::RocksDb(store) => store.del(key),
+            DbCollection::RocksDb(store) => Collection::del(store, key),
             #[cfg(feature = "sqlite")]
-            DbCollection::SQLite(store) => store.del(key),
+            DbCollection::SQLite(store) => Collection::del(store, key),
         }
     }
 
@@ -115,18 +134,65 @@ impl Collection for DbCollection {
     ) -> Box<dyn Iterator<Item = (String, Vec<u8>)> + 'a> {
         match self {
             #[cfg(feature = "rocksdb")]
-            DbCollection::RocksDb(store) => store.iter(reverse),
+            DbCollection::RocksDb(store) => Collection::iter(store, reverse),
             #[cfg(feature = "sqlite")]
-            DbCollection::SQLite(store) => store.iter(reverse),
+            DbCollection::SQLite(store) => Collection::iter(store, reverse),
         }
     }
 
     fn purge(&mut self) -> Result<(), StoreError> {
         match self {
             #[cfg(feature = "rocksdb")]
-            DbCollection::RocksDb(store) => store.purge(),
+            DbCollection::RocksDb(store) => Collection::purge(store),
             #[cfg(feature = "sqlite")]
-            DbCollection::SQLite(store) => store.purge(),
+            DbCollection::SQLite(store) => Collection::purge(store),
+        }
+    }
+}
+
+impl State for DbCollection {
+    fn name(&self) -> &str {
+        match self {
+            #[cfg(feature = "rocksdb")]
+            DbCollection::RocksDb(store) => State::name(store),
+            #[cfg(feature = "sqlite")]
+            DbCollection::SQLite(store) => State::name(store),
+        }
+    }
+
+    fn get(&self) -> Result<Vec<u8>, store::Error> {
+        match self {
+            #[cfg(feature = "rocksdb")]
+            DbCollection::RocksDb(store) => State::get(store),
+            #[cfg(feature = "sqlite")]
+            DbCollection::SQLite(store) => State::get(store),
+        }
+    }
+
+    fn put(&mut self, data: &[u8]) -> Result<(), store::Error> {
+        match self {
+            #[cfg(feature = "rocksdb")]
+            DbCollection::RocksDb(store) => State::put(store, data),
+            #[cfg(feature = "sqlite")]
+            DbCollection::SQLite(store) => State::put(store, data),
+        }
+    }
+
+    fn del(&mut self) -> Result<(), store::Error> {
+        match self {
+            #[cfg(feature = "rocksdb")]
+            DbCollection::RocksDb(store) => State::del(store),
+            #[cfg(feature = "sqlite")]
+            DbCollection::SQLite(store) => State::del(store),
+        }
+    }
+
+    fn purge(&mut self) -> Result<(), StoreError> {
+        match self {
+            #[cfg(feature = "rocksdb")]
+            DbCollection::RocksDb(store) => State::purge(store),
+            #[cfg(feature = "sqlite")]
+            DbCollection::SQLite(store) => State::purge(store),
         }
     }
 }

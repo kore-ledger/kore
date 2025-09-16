@@ -4,6 +4,8 @@
 //! Transport layer.
 //!
 
+use std::time::Duration;
+
 use crate::Error;
 
 use libp2p::{
@@ -45,13 +47,7 @@ pub type KoreTransport = Boxed<(PeerId, StreamMuxerBox)>;
 pub fn build_transport(
     registry: &mut Registry,
     keys: &Keypair,
-    _port_reuse: bool,
 ) -> Result<KoreTransport, Error> {
-    // Build the noise authentication.
-    let noise = noise::Config::new(keys).map_err(|e| {
-        Error::Transport(format!("Noise authentication {:?}", e))
-    })?;
-
     // Allow TCP transport.
     // port_reuse(true) for use the same port to send / receive communication.
     #[cfg(not(feature = "test"))]
@@ -59,15 +55,22 @@ pub fn build_transport(
     #[cfg(feature = "test")]
     let transport = memory::MemoryTransport::default();
 
-    // Upgrade the transport with the noise authentication and yamux multiplexing.
-    let transport = transport
-        .upgrade(Version::V1)
-        .authenticate(noise)
-        .multiplex(yamux::Config::default());
-
     // Allow the DNS transport.
     let transport = dns::tokio::Transport::system(transport)
         .map_err(|e| Error::Transport(format!("DNS error {:?}", e)))?;
+
+    // Build the noise authentication.
+    let noise = noise::Config::new(keys).map_err(|e| {
+        Error::Transport(format!("Noise authentication {:?}", e))
+    })?;
+
+    // Upgrade the transport with the noise authentication and yamux multiplexing.
+    let transport = transport
+        .upgrade(Version::V1Lazy)
+        .authenticate(noise)
+        .multiplex(yamux::Config::default())
+        .timeout(Duration::from_secs(10))
+        .boxed();
 
     // Wrap the transport with bandwidth metrics for Prometheus.
     let transport = BandwidthTransport::new(transport, registry)
@@ -84,7 +87,7 @@ mod tests {
     fn test_build_transport() {
         let mut registry = Registry::default();
         let keypair = Keypair::generate_ed25519();
-        let result = build_transport(&mut registry, &keypair, false);
+        let result = build_transport(&mut registry, &keypair);
 
         assert!(result.is_ok());
     }

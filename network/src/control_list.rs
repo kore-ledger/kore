@@ -11,15 +11,19 @@ use serde::Deserialize;
 use std::{
     collections::{HashSet, VecDeque},
     fmt,
+    pin::Pin,
     str::FromStr,
-    sync::{Arc, Mutex},
-    task::{Poll, Waker},
+    task::Poll,
     time::Duration,
 };
-use tokio::time;
-use tracing::{debug, error, info, warn};
+use tokio::{
+    sync::mpsc::{self, Receiver},
+    time::sleep,
+};
+use tokio_util::sync::CancellationToken;
+use tracing::{error, info, warn};
 
-use crate::RoutingNode;
+use crate::{RoutingNode, utils::request_update_lists};
 
 const TARGET_CONTROL_LIST: &str = "KoreNetwork-Control-list";
 
@@ -48,45 +52,45 @@ pub struct Config {
 /// Control List Settings
 impl Config {
     /// Set enable
-    pub fn with_enable(&mut self, enable: bool) -> Self {
+    pub fn with_enable(mut self, enable: bool) -> Self {
         self.enable = enable;
-        self.clone()
+        self
     }
 
     /// Set allow list
-    pub fn with_allow_list(&mut self, allow_list: Vec<String>) -> Self {
+    pub fn with_allow_list(mut self, allow_list: Vec<String>) -> Self {
         self.allow_list = allow_list;
-        self.clone()
+        self
     }
 
     /// Set block list
-    pub fn with_block_list(&mut self, block_list: Vec<String>) -> Self {
+    pub fn with_block_list(mut self, block_list: Vec<String>) -> Self {
         self.block_list = block_list;
-        self.clone()
+        self
     }
 
     /// Set Service list to consult allow list
     pub fn with_service_allow_list(
-        &mut self,
+        mut self,
         service_allow_list: Vec<String>,
     ) -> Self {
         self.service_allow_list = service_allow_list;
-        self.clone()
+        self
     }
 
     /// Set Service list to consult block list
     pub fn with_service_block_list(
-        &mut self,
+        mut self,
         service_block_list: Vec<String>,
     ) -> Self {
         self.service_block_list = service_block_list;
-        self.clone()
+        self
     }
 
     /// Set interval request
-    pub fn with_interval_request(&mut self, interval: Duration) -> Self {
+    pub fn with_interval_request(mut self, interval: Duration) -> Self {
         self.interval_request = interval;
-        self.clone()
+        self
     }
 
     /// Set interval request
@@ -119,69 +123,26 @@ impl Config {
     }
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct Behaviour {
-    allow_peers: Arc<Mutex<HashSet<PeerId>>>,
-    block_peers: Arc<Mutex<HashSet<PeerId>>>,
-    close_connections: Arc<Mutex<VecDeque<PeerId>>>,
-    waker: Option<Waker>,
-    enable: bool,
-}
+pub fn build_control_lists_updaters(
+    config: &Config,
+    token: CancellationToken,
+) -> Option<Receiver<Event>> {
+    if config.enable {
+        info!(TARGET_CONTROL_LIST, "Control list is enable.");
 
-impl Behaviour {
-    /// Creates a new control list `Behaviour`.
-    pub fn new(config: Config, boot_nodes: &[RoutingNode]) -> Self {
-        if config.enable {
-            let mut full_allow_list = config.allow_list.clone();
-            for node in boot_nodes {
-                full_allow_list.push(node.peer_id.clone());
-            }
-
-            Self {
-                enable: true,
-                allow_peers: Arc::new(Mutex::new(HashSet::from_iter(
-                    full_allow_list
-                        .iter()
-                        .filter_map(|e| PeerId::from_str(e).ok()),
-                ))),
-                block_peers: Arc::new(Mutex::new(HashSet::from_iter(
-                    config
-                        .block_list
-                        .iter()
-                        .filter_map(|e| PeerId::from_str(e).ok()),
-                ))),
-                ..Default::default()
-            }
-            .spawn_update_lists(
-                &config.service_allow_list,
-                &config.service_block_list,
-                config.interval_request,
-            )
-        } else {
-            Behaviour::default()
-        }
-    }
-
-    /// Method that launches the tokio spawns that will be in charge of keeping the lists updated
-    fn spawn_update_lists(
-        &mut self,
-        service_allow: &[String],
-        service_block: &[String],
-        interval: Duration,
-    ) -> Self {
-        let mut interval = time::interval(interval);
-        let service_allow = service_allow.to_vec();
-        let service_block = service_block.to_vec();
-        let mut clone = self.clone();
+        let (sender, receiver) = mpsc::channel(1000);
+        let interval = config.interval_request;
+        let service_allow = config.service_allow_list.clone();
+        let service_block = config.service_block_list.clone();
 
         tokio::spawn(async move {
             loop {
-                interval.tick().await;
-
-                let (
+                tokio::select! {
+                    _ = sleep(interval) => {
+                        let (
                     (vec_allow_peers, vec_block_peers),
                     (successful_allow, successful_block),
-                ) = Behaviour::request_update_lists(
+                ) = request_update_lists(
                     &service_allow,
                     &service_block,
                 )
@@ -189,8 +150,9 @@ impl Behaviour {
 
                 // If at least 1 update of the list was possible
                 if successful_allow != 0 {
-                    info!(TARGET_CONTROL_LIST, "Updating the allow list.");
-                    clone.update_allow_peers(&vec_allow_peers);
+                    if let Err(e) = sender.send(Event::AllowListUpdated(vec_allow_peers)).await {
+                        error!(TARGET_CONTROL_LIST, "Can not send Event::AllowListUpdated, {}", e)
+                    }
                 } else {
                     warn!(
                         TARGET_CONTROL_LIST,
@@ -200,115 +162,72 @@ impl Behaviour {
 
                 // If at least 1 update of the list was possible
                 if successful_block != 0 {
-                    info!(TARGET_CONTROL_LIST, "Updating the block list.");
-                    clone.update_block_peers(&vec_block_peers);
+                    if let Err(e) = sender.send(Event::BlockListUpdated(vec_block_peers)).await {
+                        error!(TARGET_CONTROL_LIST, "Can not send Event::BlockListUpdated, {}", e)
+                    }
                 } else {
                     warn!(
                         TARGET_CONTROL_LIST,
-                        "No get to the services providing the list of allowed peers was performed."
+                        "No get to the services providing the list of block peers was performed."
                     );
                 }
+                    }
+                    _ = token.cancelled() => {
+                        info!(TARGET_CONTROL_LIST, "Control list updater cancelled.");
+                        break;
+                    }
+                };
             }
         });
 
-        self.clone()
+        Some(receiver)
+    } else {
+        info!(TARGET_CONTROL_LIST, "Control list is not enable.");
+        None
     }
+}
 
-    /// Method that update allow and block lists
-    async fn request_update_lists(
-        service_allow: &[String],
-        service_block: &[String],
-    ) -> ((Vec<String>, Vec<String>), (u16, u16)) {
-        let mut vec_allow_peers: Vec<String> = vec![];
-        let mut vec_block_peers: Vec<String> = vec![];
-        let mut successful_allow: u16 = 0;
-        let mut successful_block: u16 = 0;
-        let client = reqwest::Client::new();
+#[derive(Default, Debug)]
+pub struct Behaviour {
+    allow_peers: HashSet<PeerId>,
+    block_peers: HashSet<PeerId>,
+    close_connections: VecDeque<PeerId>,
+    enable: bool,
+    receiver: Option<Receiver<Event>>,
+}
 
-        info!(TARGET_CONTROL_LIST, "Consulting allow lists");
-        for service in service_allow {
-            debug!(TARGET_CONTROL_LIST, "Consulting {}", service);
-            match client.get(service).send().await {
-                Ok(res) => {
-                    let fail = !res.status().is_success();
-                    if !fail {
-                        match res.json().await {
-                            Ok(peers) => {
-                                let peers: Vec<String> = peers;
-                                vec_allow_peers.append(&mut peers.clone());
-                                successful_allow += 1;
-                            }
-                            Err(e) => {
-                                error!(
-                                    TARGET_CONTROL_LIST,
-                                    "Error performing Get {}, The server did not return what was expected: {}",
-                                    service,
-                                    e
-                                );
-                            }
-                        }
-                    } else {
-                        error!(
-                            TARGET_CONTROL_LIST,
-                            "Error performing Get {}, The server did not return a correct code: {}",
-                            service,
-                            res.status()
-                        );
-                    }
-                }
-                Err(e) => {
-                    error!(
-                        TARGET_CONTROL_LIST,
-                        "Error performing Get {}: {}", service, e
-                    );
-                }
+impl Behaviour {
+    /// Creates a new control list `Behaviour`.
+    pub fn new(
+        config: Config,
+        boot_nodes: &[RoutingNode],
+        receiver: Option<Receiver<Event>>,
+    ) -> Self {
+        if config.enable {
+            let mut full_allow_list = config.allow_list.clone();
+            for node in boot_nodes {
+                full_allow_list.push(node.peer_id.clone());
             }
-        }
 
-        info!(TARGET_CONTROL_LIST, "Consulting block lists");
-        for service in service_block {
-            debug!(TARGET_CONTROL_LIST, "Consulting {}", service);
-            match client.get(service).send().await {
-                Ok(res) => {
-                    let fail = !res.status().is_success();
-                    if !fail {
-                        match res.json().await {
-                            Ok(peers) => {
-                                let peers: Vec<String> = peers;
-                                vec_block_peers.append(&mut peers.clone());
-                                successful_block += 1;
-                            }
-                            Err(e) => {
-                                error!(
-                                    TARGET_CONTROL_LIST,
-                                    "Error performing Get {}, The server did not return what was expected: {}",
-                                    service,
-                                    e
-                                );
-                            }
-                        }
-                    } else {
-                        error!(
-                            TARGET_CONTROL_LIST,
-                            "Error performing Get {}, The server did not return a correct code: {}",
-                            service,
-                            res.status()
-                        );
-                    }
-                }
-                Err(e) => {
-                    error!(
-                        TARGET_CONTROL_LIST,
-                        "Error performing Get {}: {}", service, e
-                    );
-                }
+            Self {
+                enable: true,
+                allow_peers: HashSet::from_iter(
+                    full_allow_list
+                        .iter()
+                        .filter_map(|e| PeerId::from_str(e).ok()),
+                ),
+                block_peers: HashSet::from_iter(
+                    config
+                        .block_list
+                        .iter()
+                        .filter_map(|e| PeerId::from_str(e).ok()),
+                ),
+                receiver,
+                ..Default::default()
             }
+        } else {
+            Behaviour::default()
         }
-
-        (
-            (vec_allow_peers, vec_block_peers),
-            (successful_allow, successful_block),
-        )
     }
 
     /// Method that update allow list
@@ -321,28 +240,10 @@ impl Behaviour {
                 .filter_map(|e| PeerId::from_str(e).ok()),
         );
 
-        // Access to state
-        if let Ok(mut allow_peer) = self.allow_peers.lock() {
-            let close_peers: Vec<PeerId> =
-                allow_peer.difference(&new_list).cloned().collect();
-
-            // Close connections with new blocked peers
-            if let Ok(mut close_connections) = self.close_connections.lock() {
-                close_connections.extend(close_peers.clone());
-            }
-
-            // Update new allow list
-            allow_peer.clone_from(&new_list);
-
-            if let Some(waker) = self.waker.take() {
-                waker.wake()
-            }
-        } else {
-            error!(
-                TARGET_CONTROL_LIST,
-                "Access to allowed nodes state is not possible"
-            );
-        };
+        let close_peers: Vec<PeerId> =
+            self.allow_peers.difference(&new_list).cloned().collect();
+        self.close_connections.extend(close_peers.clone());
+        self.allow_peers.clone_from(&new_list);
     }
 
     /// Method that update block list
@@ -355,30 +256,14 @@ impl Behaviour {
                 .filter_map(|e| PeerId::from_str(e).ok()),
         );
 
-        // Close connections with new blocked peers
-        if let Ok(mut close_connections) = self.close_connections.lock() {
-            close_connections.extend(new_list.clone());
-        }
-
-        // Update new block list
-        if let Ok(mut block_peers) = self.block_peers.lock() {
-            block_peers.clone_from(&new_list);
-        } else {
-            error!("Access to blocked nodes state is not possible");
-            return;
-        };
-
-        if let Some(waker) = self.waker.take() {
-            waker.wake()
-        }
+        self.close_connections.extend(new_list.clone());
+        self.block_peers.clone_from(&new_list);
     }
 
     /// Method that check if a peer is in allow list
     fn check_allow(&self, peer: &PeerId) -> Result<(), ConnectionDenied> {
-        if let Ok(allow_peers) = self.allow_peers.lock() {
-            if allow_peers.contains(peer) {
-                return Ok(());
-            }
+        if self.allow_peers.contains(peer) {
+            return Ok(());
         }
 
         warn!(
@@ -390,10 +275,8 @@ impl Behaviour {
 
     /// Method that check if a peer is in block list
     fn check_block(&self, peer: &PeerId) -> Result<(), ConnectionDenied> {
-        if let Ok(block_peers) = self.block_peers.lock() {
-            if !block_peers.contains(peer) {
-                return Ok(());
-            }
+        if !self.block_peers.contains(peer) {
+            return Ok(());
         }
 
         warn!(
@@ -444,7 +327,10 @@ impl std::error::Error for Blocked {}
 
 /// Event Struct for implement control list Behaviour in main Behaviour
 #[derive(Debug)]
-pub enum Event {}
+pub enum Event {
+    AllowListUpdated(Vec<String>),
+    BlockListUpdated(Vec<String>),
+}
 
 impl NetworkBehaviour for Behaviour {
     type ConnectionHandler = dummy::ConnectionHandler;
@@ -508,16 +394,32 @@ impl NetworkBehaviour for Behaviour {
             libp2p::swarm::THandlerInEvent<Self>,
         >,
     > {
-        if let Ok(mut close_connections) = self.close_connections.lock() {
-            if let Some(peer) = close_connections.pop_front() {
-                return Poll::Ready(ToSwarm::CloseConnection {
-                    peer_id: peer,
-                    connection: CloseConnection::All,
-                });
+        let mut receiver_opt = self.receiver.take();
+        if let Some(mut rx) = receiver_opt.as_mut() {
+            let mut cx = std::task::Context::from_waker(cx.waker());
+            while let Poll::Ready(Some(event)) =
+                Pin::new(&mut rx).poll_recv(&mut cx)
+            {
+                match event {
+                    Event::AllowListUpdated(items) => {
+                        self.update_allow_peers(&items)
+                    }
+                    Event::BlockListUpdated(items) => {
+                        self.update_block_peers(&items)
+                    }
+                }
             }
         }
 
-        self.waker = Some(cx.waker().clone());
+        self.receiver = receiver_opt;
+
+        if let Some(peer) = self.close_connections.pop_front() {
+            return Poll::Ready(ToSwarm::CloseConnection {
+                peer_id: peer,
+                connection: CloseConnection::All,
+            });
+        }
+
         Poll::Pending
     }
 }
@@ -540,23 +442,15 @@ mod tests {
 
     impl Behaviour {
         pub fn block_peer(&mut self, peer: PeerId) {
-            self.block_peers.lock().unwrap().insert(peer);
-            self.close_connections.lock().unwrap().push_back(peer);
-
-            if let Some(waker) = self.waker.take() {
-                waker.wake()
-            }
+            self.block_peers.insert(peer);
+            self.close_connections.push_back(peer);
         }
 
         pub fn allow_peer(&mut self, peer: PeerId) {
-            self.allow_peers.lock().unwrap().insert(peer);
-            if let Some(waker) = self.waker.take() {
-                waker.wake()
-            }
+            self.allow_peers.insert(peer);
         }
-        pub fn set_enable(&mut self, enable: bool) -> Self {
+        pub fn set_enable(&mut self, enable: bool) {
             self.enable = enable;
-            self.clone()
         }
     }
 
@@ -571,13 +465,23 @@ mod tests {
         )
     }
 
+    fn build_behaviours() -> (Swarm<Behaviour>, Swarm<Behaviour>) {
+        let mut behaviour = Behaviour::default();
+        behaviour.set_enable(true);
+        let dialer = Swarm::new_ephemeral(|_| behaviour);
+
+        let mut behaviour = Behaviour::default();
+        behaviour.set_enable(true);
+        let listener = Swarm::new_ephemeral(|_| behaviour);
+
+        (dialer, listener)
+    }
+
     #[test(tokio::test)]
     #[serial]
     async fn cannot_dial_blocked_peer() {
-        let mut dialer =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let (mut dialer, mut listener) = build_behaviours();
+
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().block_peer(*listener.local_peer_id());
@@ -593,10 +497,8 @@ mod tests {
     #[test(tokio::test)]
     #[serial]
     async fn cannot_dial_not_allowed_peer() {
-        let mut dialer =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let (mut dialer, mut listener) = build_behaviours();
+
         listener.listen().with_memory_addr_external().await;
 
         let DialError::Denied { cause } =
@@ -610,10 +512,7 @@ mod tests {
     #[test(tokio::test)]
     #[serial]
     async fn can_dial_allowed_not_blocked_peer() {
-        let mut dialer =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let (mut dialer, mut listener) = build_behaviours();
 
         listener.listen().with_memory_addr_external().await;
 
@@ -625,10 +524,7 @@ mod tests {
     #[test(tokio::test)]
     #[serial]
     async fn cannot_dial_allowed_blocked_peer() {
-        let mut dialer =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let (mut dialer, mut listener) = build_behaviours();
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().block_peer(*listener.local_peer_id());
@@ -645,10 +541,7 @@ mod tests {
     #[test(tokio::test)]
     #[serial]
     async fn blocked_peer_cannot_dial_us() {
-        let mut dialer =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let (mut dialer, mut listener) = build_behaviours();
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().allow_peer(*listener.local_peer_id());
@@ -672,10 +565,7 @@ mod tests {
     #[test(tokio::test)]
     #[serial]
     async fn not_allowed_peer_cannot_dial_us() {
-        let mut dialer =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let (mut dialer, mut listener) = build_behaviours();
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().allow_peer(*listener.local_peer_id());
@@ -729,10 +619,7 @@ mod tests {
     #[test(tokio::test)]
     #[serial]
     async fn connections_get_closed_upon_disallow() {
-        let mut dialer =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
-        let mut listener =
-            Swarm::new_ephemeral(|_| Behaviour::default().set_enable(true));
+        let (mut dialer, mut listener) = build_behaviours();
         listener.listen().with_memory_addr_external().await;
 
         dialer.behaviour_mut().allow_peer(*listener.local_peer_id());

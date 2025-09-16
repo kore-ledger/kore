@@ -4,8 +4,12 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
-use kore_base::config::{ExternalDbConfig, KoreDbConfig};
+use kore_base::config::{
+    ExternalDbConfig, KoreDbConfig, LoggingOutput, LoggingRotation,
+};
+use kore_base::error::Error;
 use network::{NodeType, RoutingNode};
+use serde::de::Error as SerdeError;
 use serde::{Deserialize, Deserializer};
 use tracing::error;
 
@@ -19,10 +23,10 @@ pub struct Params {
 }
 
 impl Params {
-    pub fn from_env() -> Self {
-        Self {
-            kore: KoreParams::from_env("KORE"),
-        }
+    pub fn from_env() -> Result<Self, Error> {
+        Ok(Self {
+            kore: KoreParams::from_env("KORE")?,
+        })
     }
 
     pub fn mix_config(&self, other_config: Params) -> Self {
@@ -39,27 +43,28 @@ impl From<Params> for Config {
             params.kore.network.tell.max_concurrent_streams,
         );
 
-        let routing =
-            network::RoutingConfig::new(params.kore.network.routing.boot_nodes)
-                .with_dht_random_walk(
-                    params.kore.network.routing.dht_random_walk,
-                )
-                .with_discovery_limit(
-                    params.kore.network.routing.discovery_only_if_under_num,
-                )
-                .with_allow_non_globals_in_dht(
-                    params.kore.network.routing.allow_non_globals_in_dht,
-                )
-                .with_allow_private_ip(
-                    params.kore.network.routing.allow_private_ip,
-                )
-                .with_mdns(params.kore.network.routing.enable_mdns)
-                .with_kademlia_disjoint_query_paths(
-                    params.kore.network.routing.kademlia_disjoint_query_paths,
-                )
-                .with_kademlia_replication_factor(
-                    params.kore.network.routing.kademlia_replication_factor,
-                );
+        let req_res = network::ReqResConfig::new(
+            params.kore.network.req_res.message_timeout_secs,
+            params.kore.network.req_res.max_concurrent_streams,
+        );
+
+        let routing = network::RoutingConfig::new()
+            .with_dht_random_walk(params.kore.network.routing.dht_random_walk)
+            .with_discovery_limit(
+                params.kore.network.routing.discovery_only_if_under_num,
+            )
+            .with_allow_local_address_in_dht(
+                params.kore.network.routing.allow_local_address_in_dht,
+            )
+            .with_allow_loop_back_address_in_dht(
+                params.kore.network.routing.allow_loop_back_address_in_dht,
+            )
+            .with_allow_dns_address_in_dht(
+                params.kore.network.routing.allow_dns_address_in_dht,
+            )
+            .with_kademlia_disjoint_query_paths(
+                params.kore.network.routing.kademlia_disjoint_query_paths,
+            );
 
         let control_list = network::ControlListConfig::default()
             .with_allow_list(params.kore.network.control_list.allow_list)
@@ -78,19 +83,27 @@ impl From<Params> for Config {
         Self {
             keys_path: params.kore.keys_path,
             prometheus: params.kore.prometheus,
+            logging: kore_base::config::Logging {
+                output: params.kore.logging.output,
+                api_url: params.kore.logging.api_url,
+                file_path: params.kore.logging.file_path,
+                rotation: params.kore.logging.rotation,
+                max_size: params.kore.logging.max_size,
+                max_files: params.kore.logging.max_files,
+            },
             kore_config: kore_base::config::Config {
                 key_derivator: params.kore.base.key_derivator,
                 digest_derivator: params.kore.base.digest_derivator,
                 kore_db: params.kore.base.kore_db,
                 external_db: params.kore.base.external_db,
                 network: network::Config {
-                    user_agent: params.kore.network.user_agent,
+                    boot_nodes: params.kore.network.boot_nodes,
                     node_type: params.kore.network.node_type,
                     listen_addresses: params.kore.network.listen_addresses,
                     external_addresses: params.kore.network.external_addresses,
                     tell,
+                    req_res,
                     routing,
-                    port_reuse: params.kore.network.port_reuse,
                     control_list,
                 },
                 contracts_dir: params.kore.base.contracts_dir,
@@ -112,33 +125,35 @@ struct KoreParams {
     keys_path: String,
     #[serde(default = "default_prometheus")]
     prometheus: String,
+    #[serde(default)]
+    logging: LoggingParams,
 }
 
 impl KoreParams {
-    fn from_env(parent: &str) -> Self {
+    fn from_env(parent: &str) -> Result<Self, Error> {
         let mut config = config::Config::builder();
         config = config.add_source(config::Environment::with_prefix(parent));
 
-        let config = config
-            .build()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error building config: {}", e);
-            })
-            .unwrap();
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_PARAMS, "{}", e);
+            Error::Bridge(e)
+        })?;
 
-        let kore_params: KoreParams = config
-            .try_deserialize()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
-            })
-            .unwrap();
+        let kore_params: KoreParams =
+            config.try_deserialize().map_err(|e| {
+                let e = format!("Error try deserialize config: {}", e);
+                error!(TARGET_PARAMS, "{}", e);
+                Error::Bridge(e)
+            })?;
 
-        Self {
-            network: NetworkParams::from_env(&format!("{parent}_")),
-            base: BaseParams::from_env(&format!("{parent}_")),
+        Ok(Self {
+            network: NetworkParams::from_env(&format!("{parent}_"))?,
+            base: BaseParams::from_env(&format!("{parent}_"))?,
             keys_path: kore_params.keys_path,
             prometheus: kore_params.prometheus,
-        }
+            logging: LoggingParams::from_env(&format!("{parent}_"))?,
+        })
     }
 
     fn mix_config(&self, other_config: KoreParams) -> Self {
@@ -158,6 +173,7 @@ impl KoreParams {
             base: self.base.mix_config(other_config.base),
             keys_path,
             prometheus,
+            logging: self.logging.mix_config(other_config.logging),
         }
     }
 }
@@ -169,6 +185,7 @@ impl Default for KoreParams {
             base: BaseParams::default(),
             keys_path: default_keys_path(),
             prometheus: default_prometheus(),
+            logging: LoggingParams::default(),
         }
     }
 }
@@ -179,6 +196,167 @@ fn default_prometheus() -> String {
 
 fn default_keys_path() -> String {
     "keys".to_owned()
+}
+
+fn deserialize_logging_output<'de, D>(
+    deserializer: D,
+) -> Result<LoggingOutput, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v: Vec<String> = Vec::deserialize(deserializer)?;
+
+    if v.len() > 3 {
+        return Err(SerdeError::custom(
+            "LoggingOutput vector length must not exceed 3",
+        ));
+    }
+
+    let mut logging = LoggingOutput {
+        stdout: false,
+        file: false,
+        api: false,
+    };
+
+    for element in v.iter() {
+        match element.as_str() {
+            "stdout" => {
+                if logging.stdout {
+                    return Err(SerdeError::custom(
+                        "stdout can only appear once in the logging output configuration",
+                    ));
+                } else {
+                    logging.stdout = true;
+                }
+            }
+            "file" => {
+                if logging.file {
+                    return Err(SerdeError::custom(
+                        "file can only appear once in the logging output configuration",
+                    ));
+                } else {
+                    logging.file = true;
+                }
+            }
+            "api" => {
+                if logging.api {
+                    return Err(SerdeError::custom(
+                        "api can only appear once in the logging output configuration",
+                    ));
+                } else {
+                    logging.api = true;
+                }
+            }
+            _ => {
+                return Err(SerdeError::custom(
+                    "Invalid logging output configuration",
+                ));
+            }
+        }
+    }
+
+    Ok(logging)
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct LoggingParams {
+    #[serde(default, deserialize_with = "deserialize_logging_output")]
+    pub output: LoggingOutput,
+    #[serde(default)]
+    pub api_url: Option<String>,
+    #[serde(default = "default_log_file_path")]
+    pub file_path: String, // ruta base de logs
+    #[serde(default)]
+    pub rotation: LoggingRotation,
+    #[serde(default = "default_log_max_size")]
+    pub max_size: usize, // bytes
+    #[serde(default = "default_log_max_files")]
+    pub max_files: usize, // copias a conservar
+}
+
+fn default_log_file_path() -> String {
+    "logs".to_owned()
+}
+
+fn default_log_max_size() -> usize {
+    100 * 1024 * 1024
+}
+fn default_log_max_files() -> usize {
+    3
+}
+
+impl Default for LoggingParams {
+    fn default() -> Self {
+        LoggingParams {
+            output: LoggingOutput::default(),
+            api_url: None,
+            file_path: default_log_file_path(),
+            rotation: LoggingRotation::default(),
+            max_size: default_log_max_size(),
+            max_files: default_log_max_files(),
+        }
+    }
+}
+
+impl LoggingParams {
+    /// Lee logging desde ENV vars con el prefijo (p. ej. "KORE_LOGGING_OUTPUT" etc).
+    fn from_env(parent: &str) -> Result<Self, Error> {
+        let mut config = config::Config::builder();
+        config = config.add_source(
+            config::Environment::with_prefix(&format!("{parent}LOGGING"))
+                .list_separator(",")
+                .with_list_parse_key("output")
+                .try_parsing(true),
+        );
+
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_PARAMS, e);
+            Error::Bridge(e)
+        })?;
+
+        config.try_deserialize().map_err(|e| {
+            let e = format!("Error try deserialize config: {}", e);
+            error!(TARGET_PARAMS, "{}", e);
+            Error::Bridge(e)
+        })
+    }
+
+    /// Combina self (prioridad) con other (fallback)
+    fn mix_config(&self, other: LoggingParams) -> LoggingParams {
+        LoggingParams {
+            output: if self.output != LoggingOutput::default() {
+                self.output.clone()
+            } else {
+                other.output
+            },
+            api_url: if self.api_url.is_some() {
+                self.api_url.clone()
+            } else {
+                other.api_url
+            },
+            file_path: if self.file_path != default_log_file_path() {
+                self.file_path.clone()
+            } else {
+                other.file_path
+            },
+            rotation: if self.rotation != LoggingRotation::default() {
+                self.rotation.clone()
+            } else {
+                other.rotation
+            },
+            max_size: if self.max_size != default_log_max_size() {
+                self.max_size
+            } else {
+                other.max_size
+            },
+            max_files: if self.max_files != default_log_max_files() {
+                self.max_files
+            } else {
+                other.max_files
+            },
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -194,54 +372,62 @@ struct NetworkParams {
     #[serde(default)]
     tell: TellParams,
     #[serde(default)]
+    req_res: ReqResParams,
+    #[serde(default)]
     routing: RoutingParams,
     #[serde(default)]
     port_reuse: bool,
     #[serde(default)]
     control_list: ControlListParams,
+    #[serde(default, deserialize_with = "deserialize_boot_nodes")]
+    boot_nodes: Vec<RoutingNode>,
 }
 
 impl NetworkParams {
-    fn from_env(parent: &str) -> Self {
+    fn from_env(parent: &str) -> Result<Self, Error> {
         let mut config = config::Config::builder();
         config = config.add_source(
             config::Environment::with_prefix(&format!("{parent}NETWORK"))
                 .list_separator(",")
                 .with_list_parse_key("listen_addresses")
-                .try_parsing(true)
-                .list_separator(",")
+                .with_list_parse_key("boot_nodes")
                 .with_list_parse_key("external_addresses")
                 .try_parsing(true),
         );
 
-        let config = config
-            .build()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error building config: {}", e);
-            })
-            .unwrap();
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_PARAMS, e);
+            Error::Bridge(e)
+        })?;
 
-        let network: NetworkParams = config
-            .try_deserialize()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
-            })
-            .unwrap();
+        let network: NetworkParams = config.try_deserialize().map_err(|e| {
+            let e = format!("Error try deserialize config: {}", e);
+            error!(TARGET_PARAMS, "{}", e);
+            Error::Bridge(e)
+        })?;
 
         let parent = &format!("{parent}NETWORK_");
-        Self {
+        Ok(Self {
+            boot_nodes: network.boot_nodes,
             user_agent: network.user_agent,
             node_type: network.node_type,
             listen_addresses: network.listen_addresses,
             external_addresses: network.external_addresses,
-            tell: TellParams::from_env(parent),
-            routing: RoutingParams::from_env(parent),
+            tell: TellParams::from_env(parent)?,
+            req_res: ReqResParams::from_env(parent)?,
+            routing: RoutingParams::from_env(parent)?,
             port_reuse: network.port_reuse,
-            control_list: ControlListParams::from_env(parent),
-        }
+            control_list: ControlListParams::from_env(parent)?,
+        })
     }
 
     fn mix_config(&self, other_config: NetworkParams) -> Self {
+        let boot_nodes = if !other_config.boot_nodes.is_empty() {
+            other_config.boot_nodes
+        } else {
+            self.boot_nodes.clone()
+        };
         let user_agent = if other_config.user_agent != default_user_agent() {
             other_config.user_agent
         } else {
@@ -274,6 +460,7 @@ impl NetworkParams {
         };
 
         Self {
+            boot_nodes,
             user_agent,
             node_type,
             listen_addresses,
@@ -281,6 +468,7 @@ impl NetworkParams {
             tell: self.tell.mix_config(other_config.tell),
             routing: self.routing.mix_config(other_config.routing),
             port_reuse,
+            req_res: self.req_res.mix_config(other_config.req_res),
             control_list: self
                 .control_list
                 .mix_config(other_config.control_list),
@@ -299,11 +487,13 @@ fn default_node_type() -> NodeType {
 impl Default for NetworkParams {
     fn default() -> Self {
         Self {
+            boot_nodes: vec![],
             user_agent: default_user_agent(),
             node_type: default_node_type(),
             listen_addresses: vec![],
             external_addresses: vec![],
             tell: TellParams::default(),
+            req_res: ReqResParams::default(),
             routing: RoutingParams::default(),
             port_reuse: false,
             control_list: ControlListParams::default(),
@@ -348,7 +538,7 @@ fn default_interval_request_secs() -> Duration {
 }
 
 impl ControlListParams {
-    fn from_env(parent: &str) -> Self {
+    fn from_env(parent: &str) -> Result<Self, Error> {
         let mut config = config::Config::builder();
         config = config.add_source(
             config::Environment::with_prefix(&format!("{parent}CONTROL_LIST"))
@@ -366,19 +556,17 @@ impl ControlListParams {
                 .try_parsing(true),
         );
 
-        let config = config
-            .build()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error building config: {}", e);
-            })
-            .unwrap();
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_PARAMS, e);
+            Error::Bridge(e)
+        })?;
 
-        config
-            .try_deserialize()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
-            })
-            .unwrap()
+        config.try_deserialize().map_err(|e| {
+            let e = format!("Error try deserialize config: {}", e);
+            error!(TARGET_PARAMS, "{}", e);
+            Error::Bridge(e)
+        })
     }
 
     fn mix_config(&self, other_config: ControlListParams) -> Self {
@@ -445,25 +633,23 @@ struct TellParams {
 }
 
 impl TellParams {
-    fn from_env(parent: &str) -> Self {
+    fn from_env(parent: &str) -> Result<Self, Error> {
         let mut config = config::Config::builder();
         config = config.add_source(config::Environment::with_prefix(&format!(
             "{parent}TELL"
         )));
 
-        let config = config
-            .build()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error building config: {}", e);
-            })
-            .unwrap();
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_PARAMS, e);
+            Error::Bridge(e)
+        })?;
 
-        config
-            .try_deserialize()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
-            })
-            .unwrap()
+        config.try_deserialize().map_err(|e| {
+            let e = format!("Error try deserialize config: {}", e);
+            error!(TARGET_PARAMS, "{}", e);
+            Error::Bridge(e)
+        })
     }
 
     fn mix_config(&self, other_config: TellParams) -> Self {
@@ -498,6 +684,69 @@ impl Default for TellParams {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct ReqResParams {
+    #[serde(
+        default = "default_message_timeout_secs",
+        deserialize_with = "deserialize_duration_secs"
+    )]
+    message_timeout_secs: Duration,
+    #[serde(default = "default_max_concurrent_streams")]
+    max_concurrent_streams: usize,
+}
+
+impl ReqResParams {
+    fn from_env(parent: &str) -> Result<Self, Error> {
+        let mut config = config::Config::builder();
+        config = config.add_source(config::Environment::with_prefix(&format!(
+            "{parent}REQRES"
+        )));
+
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_PARAMS, e);
+            Error::Bridge(e)
+        })?;
+
+        config.try_deserialize().map_err(|e| {
+            let e = format!("Error try deserialize config: {}", e);
+            error!(TARGET_PARAMS, "{}", e);
+            Error::Bridge(e)
+        })
+    }
+
+    fn mix_config(&self, other_config: ReqResParams) -> Self {
+        let message_timeout_secs = if other_config.message_timeout_secs
+            != default_message_timeout_secs()
+        {
+            other_config.message_timeout_secs
+        } else {
+            self.message_timeout_secs
+        };
+
+        let max_concurrent_streams = if other_config.max_concurrent_streams
+            != default_max_concurrent_streams()
+        {
+            other_config.max_concurrent_streams
+        } else {
+            self.max_concurrent_streams
+        };
+        Self {
+            message_timeout_secs,
+            max_concurrent_streams,
+        }
+    }
+}
+
+impl Default for ReqResParams {
+    fn default() -> Self {
+        Self {
+            message_timeout_secs: default_message_timeout_secs(),
+            max_concurrent_streams: default_max_concurrent_streams(),
+        }
+    }
+}
+
 fn deserialize_duration_secs<'de, D>(
     deserializer: D,
 ) -> Result<Duration, D::Error>
@@ -518,18 +767,16 @@ fn default_message_timeout_secs() -> Duration {
 
 #[derive(Debug, Deserialize)]
 struct RoutingParams {
-    #[serde(default, deserialize_with = "deserialize_boot_nodes")]
-    boot_nodes: Vec<RoutingNode>,
     #[serde(default = "default_true")]
     dht_random_walk: bool,
     #[serde(default = "default_discovery_only_if_under_num")]
     discovery_only_if_under_num: u64,
     #[serde(default)]
-    allow_non_globals_in_dht: bool,
+    allow_local_address_in_dht: bool,
     #[serde(default)]
-    allow_private_ip: bool,
-    #[serde(default = "default_true")]
-    enable_mdns: bool,
+    allow_dns_address_in_dht: bool,
+    #[serde(default)]
+    allow_loop_back_address_in_dht: bool,
     #[serde(default = "default_true")]
     kademlia_disjoint_query_paths: bool,
     #[serde(default)]
@@ -537,37 +784,29 @@ struct RoutingParams {
 }
 
 impl RoutingParams {
-    fn from_env(parent: &str) -> Self {
+    fn from_env(parent: &str) -> Result<Self, Error> {
         let mut config = config::Config::builder();
         config = config.add_source(
             config::Environment::with_prefix(&format!("{parent}ROUTING"))
                 .list_separator(",")
                 .with_list_parse_key("protocol_names")
-                .with_list_parse_key("boot_nodes")
                 .try_parsing(true),
         );
 
-        let config = config
-            .build()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error building config: {}", e);
-            })
-            .unwrap();
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_PARAMS, e);
+            Error::Bridge(e)
+        })?;
 
-        config
-            .try_deserialize()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
-            })
-            .unwrap()
+        config.try_deserialize().map_err(|e| {
+            let e = format!("Error try deserialize config: {}", e);
+            error!(TARGET_PARAMS, "{}", e);
+            Error::Bridge(e)
+        })
     }
 
     fn mix_config(&self, other_config: RoutingParams) -> Self {
-        let boot_nodes = if !other_config.boot_nodes.is_empty() {
-            other_config.boot_nodes
-        } else {
-            self.boot_nodes.clone()
-        };
         let dht_random_walk = if !other_config.dht_random_walk {
             other_config.dht_random_walk
         } else {
@@ -581,22 +820,28 @@ impl RoutingParams {
         } else {
             self.discovery_only_if_under_num
         };
-        let allow_non_globals_in_dht = if other_config.allow_non_globals_in_dht
+
+        let allow_local_address_in_dht =
+            if other_config.allow_local_address_in_dht {
+                other_config.allow_local_address_in_dht
+            } else {
+                self.allow_local_address_in_dht
+            };
+
+        let allow_dns_address_in_dht = if other_config.allow_dns_address_in_dht
         {
-            other_config.allow_non_globals_in_dht
+            other_config.allow_dns_address_in_dht
         } else {
-            self.allow_non_globals_in_dht
+            self.allow_dns_address_in_dht
         };
-        let allow_private_ip = if other_config.allow_private_ip {
-            other_config.allow_private_ip
-        } else {
-            self.allow_private_ip
-        };
-        let enable_mdns = if !other_config.enable_mdns {
-            other_config.enable_mdns
-        } else {
-            self.enable_mdns
-        };
+
+        let allow_loop_back_address_in_dht =
+            if other_config.allow_loop_back_address_in_dht {
+                other_config.allow_loop_back_address_in_dht
+            } else {
+                self.allow_loop_back_address_in_dht
+            };
+
         let kademlia_disjoint_query_paths =
             if !other_config.kademlia_disjoint_query_paths {
                 other_config.kademlia_disjoint_query_paths
@@ -611,12 +856,11 @@ impl RoutingParams {
             };
 
         Self {
-            boot_nodes,
             dht_random_walk,
             discovery_only_if_under_num,
-            allow_non_globals_in_dht,
-            allow_private_ip,
-            enable_mdns,
+            allow_local_address_in_dht,
+            allow_dns_address_in_dht,
+            allow_loop_back_address_in_dht,
             kademlia_disjoint_query_paths,
             kademlia_replication_factor,
         }
@@ -626,12 +870,11 @@ impl RoutingParams {
 impl Default for RoutingParams {
     fn default() -> Self {
         Self {
-            boot_nodes: vec![],
             dht_random_walk: default_true(),
             discovery_only_if_under_num: default_discovery_only_if_under_num(),
-            allow_non_globals_in_dht: false,
-            allow_private_ip: false,
-            enable_mdns: false,
+            allow_local_address_in_dht: false,
+            allow_dns_address_in_dht: false,
+            allow_loop_back_address_in_dht: false,
             kademlia_disjoint_query_paths: default_true(),
             kademlia_replication_factor: 0,
         }
@@ -699,25 +942,23 @@ struct BaseParams {
 }
 
 impl BaseParams {
-    fn from_env(parent: &str) -> Self {
+    fn from_env(parent: &str) -> Result<Self, Error> {
         let mut config = config::Config::builder();
         config = config.add_source(config::Environment::with_prefix(&format!(
             "{parent}BASE"
         )));
 
-        let config = config
-            .build()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error building config: {}", e);
-            })
-            .unwrap();
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_PARAMS, e);
+            Error::Bridge(e)
+        })?;
 
-        config
-            .try_deserialize()
-            .map_err(|e| {
-                error!(TARGET_PARAMS, "Error try deserialize config: {}", e);
-            })
-            .unwrap()
+        config.try_deserialize().map_err(|e| {
+            let e = format!("Error try deserialize config: {}", e);
+            error!(TARGET_PARAMS, "{}", e);
+            Error::Bridge(e)
+        })
     }
 
     fn mix_config(&self, other_config: BaseParams) -> Self {

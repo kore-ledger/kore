@@ -20,7 +20,7 @@ pub struct SinkData;
 
 #[derive(Debug, Clone)]
 pub enum SinkDataMessage {
-    UpdateState(Metadata),
+    UpdateState(Box<Metadata>),
     PublishFact {
         schema_id: String,
         fact_req: FactRequest,
@@ -38,7 +38,7 @@ impl Response for SinkDataResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SinkDataEvent {
-    UpdateState(Metadata),
+    UpdateState(Box<Metadata>),
     PublishFact {
         schema_id: String,
         fact_req: FactRequest,

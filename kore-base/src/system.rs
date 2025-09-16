@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use actor::{ActorSystem, SystemRef};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -14,8 +15,8 @@ use crate::{
 pub async fn system(
     config: KoreBaseConfig,
     password: &str,
-    token: Option<CancellationToken>,
-) -> Result<SystemRef, Error> {
+    token: CancellationToken,
+) -> Result<(SystemRef, JoinHandle<()>), Error> {
     // Update statics.
     if let Ok(mut derivator) = DIGEST_DERIVATOR.lock() {
         *derivator = config.digest_derivator;
@@ -53,12 +54,11 @@ pub async fn system(
 
     system.add_helper("ext_db", ext_db).await;
 
-    // Spawn the runner.
-    tokio::spawn(async move {
+    let runner = tokio::spawn(async move {
         runner.run().await;
     });
 
-    Ok(system)
+    Ok((system, runner))
 }
 
 #[cfg(test)]
@@ -77,7 +77,7 @@ pub mod tests {
 
     #[test(tokio::test)]
     async fn test_system() {
-        let system = create_system().await;
+        let (system, _runner) = create_system().await;
         let db: Option<Database> = system.get_helper("store").await;
         assert!(db.is_some());
         let ep: Option<EncryptedPass> =
@@ -102,7 +102,7 @@ pub mod tests {
         dir.path().to_str().unwrap().to_owned()
     }
 
-    pub async fn create_system() -> SystemRef {
+    pub async fn create_system() -> (SystemRef, JoinHandle<()>) {
         let dir =
             tempfile::tempdir().expect("Can not create temporal directory.");
         let path = dir.path().to_str().unwrap();
@@ -112,7 +112,6 @@ pub mod tests {
             vec![],
             vec![],
             vec![],
-            false,
         );
         let config = KoreBaseConfig {
             key_derivator: KeyDerivator::Ed25519,
@@ -126,7 +125,9 @@ pub mod tests {
             sink: BTreeMap::new(),
         };
 
-        let sys = system(config.clone(), "password", None).await.unwrap();
+        let sys = system(config.clone(), "password", CancellationToken::new())
+            .await
+            .unwrap();
         sys
     }
 }

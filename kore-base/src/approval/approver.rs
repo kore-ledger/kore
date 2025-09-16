@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use super::{
@@ -312,7 +312,7 @@ pub enum ApproverEvent {
         request_id: String,
         version: u64,
         subject_id: String,
-        request: ApprovalReq,
+        request: Box<ApprovalReq>,
         state: ApprovalState,
         info: Option<ComunicateInfo>,
     },
@@ -525,7 +525,7 @@ impl Handler<Approver> for Approver {
                             subject_id: self.subject_id.clone(),
                             version,
                             request_id,
-                            request: approval_req,
+                            request: Box::new(approval_req),
                             state,
                             info: None,
                         },
@@ -776,7 +776,7 @@ impl Handler<Approver> for Approver {
                             subject_id: self.subject_id.clone(),
                             request_id: info.request_id.clone(),
                             version: info.version,
-                            request: approval_req.content,
+                            request: Box::new(approval_req.content),
                             state,
                             info: Some(info),
                         },
@@ -846,7 +846,7 @@ impl Handler<Approver> for Approver {
         event: ApproverEvent,
         ctx: &mut ActorContext<Approver>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_APPROVER,
                 "OnEvent, can not persist information: {}", e
@@ -926,6 +926,8 @@ impl Handler<Approver> for Approver {
 // Debemos persistir el estado de la petición hasta que se apruebe
 #[async_trait]
 impl PersistentActor for Approver {
+    type Persistence = LightPersistence;
+
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             ApproverEvent::ChangeState { state, .. } => {
@@ -941,7 +943,7 @@ impl PersistentActor for Approver {
             } => {
                 self.version = *version;
                 self.request_id.clone_from(request_id);
-                self.request = Some(request.clone());
+                self.request = Some(*request.clone());
                 self.state = Some(state.clone());
                 self.info.clone_from(info);
             }

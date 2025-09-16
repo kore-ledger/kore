@@ -8,7 +8,7 @@ use actor::{
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::error;
 
 use crate::db::Storable;
@@ -63,9 +63,7 @@ impl Actor for TransferRegister {
         &mut self,
         ctx: &mut ActorContext<Self>,
     ) -> Result<(), ActorError> {
-        let prefix = ctx.path().parent().key();
-        self.init_store("transfer_register", Some(prefix), true, ctx)
-            .await
+        self.init_store("transfer_register", None, true, ctx).await
     }
 
     async fn pre_stop(
@@ -119,7 +117,7 @@ impl Handler<TransferRegister> for TransferRegister {
         event: TransferRegisterEvent,
         ctx: &mut ActorContext<TransferRegister>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_TRANSFER,
                 "OnEvent, can not persist information: {}", e
@@ -131,6 +129,8 @@ impl Handler<TransferRegister> for TransferRegister {
 
 #[async_trait]
 impl PersistentActor for TransferRegister {
+    type Persistence = LightPersistence;
+
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
             TransferRegisterEvent::RegisterNewOldOwner {

@@ -5,11 +5,11 @@ use std::time::Duration;
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, Error as ActorError, Event,
-    Handler, Message, SystemEvent,
+    Handler, Message,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::error;
 
 use crate::{
@@ -51,12 +51,11 @@ impl DBManager {
             tokio::time::sleep(time).await;
             match delete.clone() {
                 DeleteTypes::Request { id } => {
-                    if let Err(e) = helper.del_request(&id).await {
-                        if let Err(e) =
+                    if let Err(e) = helper.del_request(&id).await
+                        && let Err(e) =
                             our_ref.tell(DBManagerMessage::Error(e)).await
-                        {
-                            error!(TARGET_EXTERNAL, "{}", e);
-                        };
+                    {
+                        error!(TARGET_EXTERNAL, "{}", e);
                     };
                 }
             };
@@ -121,7 +120,7 @@ impl Handler<DBManager> for DBManager {
             ctx.system().get_helper("ext_db").await
         else {
             error!(TARGET_EXTERNAL, "Can not obtain ext_db helper");
-            ctx.system().send_event(SystemEvent::StopSystem).await;
+            ctx.system().stop_system();
             let e = ActorError::NotHelper("ext_db".to_owned());
             return Err(e);
         };
@@ -135,7 +134,7 @@ impl Handler<DBManager> for DBManager {
                         TARGET_EXTERNAL,
                         "InitDelete, Can not obtain DBManager actor"
                     );
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    ctx.system().stop_system();
                     let e = ActorError::NotFound(ctx.path().clone());
                     return Err(e);
                 };
@@ -150,7 +149,7 @@ impl Handler<DBManager> for DBManager {
                     "Error, Problem in Subscriber: {}", error
                 );
                 let e = ActorError::FunctionalFail(error.to_string());
-                ctx.system().send_event(SystemEvent::StopSystem).await;
+                ctx.system().stop_system();
                 return Err(e);
             }
             DBManagerMessage::Delete(delete) => {
@@ -165,7 +164,7 @@ impl Handler<DBManager> for DBManager {
                         "InitDelete, Can not obtain DBManager actor"
                     );
                     let e = ActorError::NotFound(ctx.path().clone());
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    ctx.system().stop_system();
                     return Err(e);
                 };
 
@@ -185,18 +184,20 @@ impl Handler<DBManager> for DBManager {
         event: DBManagerEvent,
         ctx: &mut ActorContext<DBManager>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_EXTERNAL,
                 "OnEvent, can not persist information: {}", e
             );
-            ctx.system().send_event(SystemEvent::StopSystem).await;
+            ctx.system().stop_system();
         };
     }
 }
 
 #[async_trait]
 impl PersistentActor for DBManager {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {

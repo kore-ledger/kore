@@ -7,13 +7,13 @@ use actor::{
     Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
     Message,
 };
-use async_std::fs;
 use async_trait::async_trait;
 use base64::{Engine as Base64Engine, prelude::BASE64_STANDARD};
 use borsh::{BorshDeserialize, BorshSerialize, to_vec};
 use identity::identifier::{DigestIdentifier, derive::digest::DigestDerivator};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tokio::fs;
 
 use tracing::error;
 use wasmtime::{Config, Engine, ExternType, Module, Store};
@@ -49,7 +49,7 @@ impl Compiler {
     [dependencies]
     serde = { version = "1.0.219", features = ["derive"] }
     serde_json = "1.0.140"
-    kore-contract-sdk = "0.5.0"
+    kore-contract-sdk = "0.6.0"
     
     [profile.release]
     strip = "debuginfo"

@@ -203,11 +203,11 @@ impl Handler<Reboot> for Reboot {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                if self.sn_ledger > last_sn_ledger {
-                    if let Err(e) = self.sleep(ctx).await {
-                        error!(TARGET_REBOOT, "Update, can not sleep: {}", e);
-                        return Err(emit_fail(ctx, e).await);
-                    };
+                if self.sn_ledger > last_sn_ledger
+                    && let Err(e) = self.sleep(ctx).await
+                {
+                    error!(TARGET_REBOOT, "Update, can not sleep: {}", e);
+                    return Err(emit_fail(ctx, e).await);
                 }
 
                 if let Err(e) = Self::finish(ctx).await {

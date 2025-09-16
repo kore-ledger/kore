@@ -25,7 +25,6 @@ pub mod validation;
 
 use actor::{ActorPath, ActorRef, Sink};
 use approval::approver::ApprovalStateRes;
-use async_std::sync::RwLock;
 use auth::{Auth, AuthMessage, AuthResponse, AuthWitness};
 use config::Config as KoreBaseConfig;
 use error::Error;
@@ -46,10 +45,11 @@ use model::ValueWrapper;
 use model::event::Event;
 use model::signature::*;
 use model::{SignTypesNode, request::*};
-use network::{
-    Monitor, MonitorMessage, MonitorNetworkState, MonitorResponse,
-    NetworkWorker,
-};
+use network::{Monitor, MonitorMessage, MonitorResponse, NetworkWorker};
+use tokio::sync::RwLock;
+
+pub use network::MonitorNetworkState;
+
 use node::register::{
     GovsData, Register, RegisterDataSubj, RegisterMessage, RegisterResponse,
 };
@@ -61,6 +61,7 @@ use request::{
 };
 use subject::{Subject, SubjectMessage, SubjectResponse};
 use system::system;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use validation::{Validation, ValidationInfo, ValidationMessage};
@@ -100,17 +101,17 @@ pub struct Api {
 
 impl Api {
     /// Creates a new `Api`.
-    pub async fn new(
+    pub async fn build(
         keys: KeyPair,
         config: KoreBaseConfig,
         registry: &mut Registry,
         password: &str,
         token: &CancellationToken,
-    ) -> Result<Self, Error> {
+    ) -> Result<(Self, Vec<JoinHandle<()>>), Error> {
         info!(TARGET_API, "Creating Api");
 
-        let system =
-            system(config.clone(), password, Some(token.clone())).await?;
+        let (system, runner) =
+            system(config.clone(), password, token.clone()).await?;
 
         let newtork_monitor = Monitor::default();
         let newtork_monitor_actor = system
@@ -151,7 +152,7 @@ impl Api {
 
         system.add_helper("network", service).await;
 
-        tokio::spawn(async move {
+        let worker_runner = tokio::spawn(async move {
             let _ = worker.run().await;
         });
 
@@ -221,17 +222,22 @@ impl Api {
                 Error::System(e.to_owned())
             })?;
 
-        Ok(Self {
-            controller_id: keys.key_identifier().to_string(),
-            peer_id,
-            request: request_actor,
-            auth: auth_actor,
-            node: node_actor,
-            query: query_actor,
-            register: register_actor,
-            monitor: newtork_monitor_actor,
-            manual_dis: manual_dis_actor,
-        })
+        let tasks = Vec::from([runner, worker_runner]);
+
+        Ok((
+            Self {
+                controller_id: keys.key_identifier().to_string(),
+                peer_id,
+                request: request_actor,
+                auth: auth_actor,
+                node: node_actor,
+                query: query_actor,
+                register: register_actor,
+                monitor: newtork_monitor_actor,
+                manual_dis: manual_dis_actor,
+            },
+            tasks,
+        ))
     }
 
     pub fn peer_id(&self) -> String {

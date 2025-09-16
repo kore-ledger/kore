@@ -49,6 +49,7 @@ COPY ./rush-rs/store/Cargo.toml ./rush-rs/store/Cargo.toml
 COPY ./rush-rs/Cargo.toml ./rush-rs/Cargo.toml
 
 WORKDIR /kore/kore-http
+RUN cargo update -p 'yamux@0.13.6' --precise 0.13.5
 RUN cargo build --target x86_64-unknown-linux-gnu --release
 
 # Etapa de compilación para ARM64
@@ -99,6 +100,7 @@ COPY ./rush-rs/store/Cargo.toml ./rush-rs/store/Cargo.toml
 COPY ./rush-rs/Cargo.toml ./rush-rs/Cargo.toml
 
 WORKDIR /kore/kore-http
+RUN cargo update -p 'yamux@0.13.6' --precise 0.13.5
 RUN cargo build --target aarch64-unknown-linux-gnu --release
 
 # Imagen final para AMD64

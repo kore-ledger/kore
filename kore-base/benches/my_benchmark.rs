@@ -47,7 +47,6 @@ pub async fn create_node(
         vec![listen_address.to_owned()],
         vec![],
         peers,
-        false,
     );
 
     let config = Config {
@@ -68,9 +67,10 @@ pub async fn create_node(
     let mut registry = Registry::default();
     let token = CancellationToken::new();
 
-    Api::new(keys, config, &mut registry, "kore", &token)
+    Api::build(keys, config, &mut registry, "kore", &token)
         .await
         .unwrap()
+        .0
 }
 
 async fn governance_copy_benchmark() {

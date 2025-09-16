@@ -22,9 +22,7 @@ pub use codec::cbor;
 #[cfg(feature = "json")]
 pub use codec::json;
 
-use cache::PeerAddresses;
-
-use crate::handler::OutboundMessage;
+use crate::{cache::PeerAddresses, handler::OutboundMessage};
 
 use libp2p::{
     Multiaddr, PeerId,
@@ -810,7 +808,7 @@ mod tests {
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     struct Ping(Vec<u8>);
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_ping_protocol() {
         use crate::codec::binary::Behaviour;
         use rand::Rng;
@@ -898,11 +896,11 @@ mod tests {
                 }
             }
         };
-        async_std::task::spawn(Box::pin(peer1));
+        tokio::spawn(Box::pin(peer1));
         peer2.await;
     }
 
-    #[async_std::test]
+    #[tokio::test]
     async fn test_pending_outbound() {
         use crate::codec::binary::Behaviour;
         let _ = tracing_subscriber::fmt()

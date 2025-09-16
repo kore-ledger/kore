@@ -28,13 +28,12 @@ sqlite_db = { path = "../../rush-rs/databases/sqlite_db", optional = true }
 store = { path = "../../rush-rs/store" }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["std"] }
-tokio = { workspace = true, features = ["rt", "macros", "sync", "time"] }
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "fs"] }
 tracing = { workspace = true }
 network = { path = "../network" }
 rmp-serde = { workspace = true }
-wasmtime = {version = "32.0.0"}
-async-std = "1.13.1"
-rusqlite = { version = "0.35.0", features = ["bundled"], optional = true}
+wasmtime = {version = "36.0.2"}
+rusqlite = { version = "0.37.0", features = ["bundled"], optional = true}
 once_cell = { workspace = true }
 base64 = { workspace = true }
 prometheus-client = { workspace = true }
@@ -46,14 +45,13 @@ rand = { workspace = true }
 test-log = { workspace = true } 
 tempfile = { workspace = true }
 tracing-subscriber = { workspace = true }
-criterion = { version = "0.5.1", features = ["async_tokio"]}
+criterion = { version = "0.7.0", features = ["async_tokio"]}
 tokio = { workspace = true, features = ["full"] }
 futures ={ version = "0.3.31"}
-kore-base = { path = ".", features = ["rocksdb", "ext-sqlite", "test"] }
 network = { path = "../network", features = ["test"]}
 
 [features]
-default = ["rocksdb", "ext-sqlite"]
+default = ["sqlite", "ext-sqlite"]
 rocksdb = ["rocksdb_db"]
 sqlite = ["sqlite_db"]
 ext-sqlite = ["rusqlite"]

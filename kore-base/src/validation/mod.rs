@@ -231,7 +231,7 @@ pub enum ValidationMessage {
     Create {
         request_id: String,
         version: u64,
-        info: ValidationInfo,
+        info: Box<ValidationInfo>,
         last_proof: Box<Option<ValidationProof>>,
         prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
@@ -282,7 +282,7 @@ impl Handler<Validation> for Validation {
             } => {
                 let validation_req = match self
                     .create_validation_req(
-                        info.clone(),
+                        *info.clone(),
                         *last_proof,
                         prev_event_validation_response,
                     )
@@ -594,7 +594,7 @@ pub mod tests {
         DigestIdentifier,
     ) {
         let node_keys = KeyPair::Ed25519(Ed25519KeyPair::new());
-        let system = create_system().await;
+        let (system, ..) = create_system().await;
 
         let node = Node::new(&node_keys).unwrap();
         let node_actor = system.create_root_actor("node", node).await.unwrap();

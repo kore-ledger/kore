@@ -4,17 +4,25 @@
 //! # Network worker.
 //!
 
-// TODO: revisar eventos de la network. Ya no se los lanza a message receiver ahora debería manejarlos ella misma
 use crate::{
     Command, CommandHelper, Config, Error, Event as NetworkEvent, Monitor,
     MonitorMessage, NodeType,
     behaviour::{Behaviour, Event as BehaviourEvent, ReqResMessage},
     service::NetworkService,
     transport::build_transport,
-    utils::convert_addresses,
+    utils::{
+        Action, Due, Fact, MessagesHelper, MetricLabels, NetworkState,
+        RetryKind, RetryState, ScheduleType, convert_addresses,
+        convert_boot_nodes,
+    },
 };
 
-use std::{fmt::Debug, time::Duration};
+use std::{
+    collections::{BinaryHeap, HashSet},
+    fmt::Debug,
+    pin::Pin,
+    time::Duration,
+};
 
 use actor::ActorRef;
 use identity::{
@@ -23,23 +31,24 @@ use identity::{
 };
 
 use libp2p::{
-    Multiaddr, PeerId, Swarm,
-    core::ConnectedPoint,
+    Multiaddr, PeerId, StreamProtocol, Swarm,
     identity::{Keypair, ed25519, secp256k1},
-    request_response::{self, OutboundRequestId, ResponseChannel},
+    request_response::{self, ResponseChannel},
     swarm::{self, DialError, SwarmEvent, dial_opts::DialOpts},
 };
 
 use futures::StreamExt;
 use prometheus_client::{
-    encoding::{EncodeLabelSet, EncodeLabelValue},
     metrics::{counter::Counter, family::Family},
     registry::Registry,
 };
-use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use serde::Serialize;
+use tokio::{
+    sync::mpsc,
+    time::{Instant, Sleep, sleep_until},
+};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use std::collections::{HashMap, VecDeque};
 
@@ -81,16 +90,17 @@ where
     node_type: NodeType,
 
     /// List of boot noodes.
-    boot_nodes: Vec<(PeerId, Vec<Multiaddr>)>,
+    boot_nodes: HashMap<PeerId, Vec<Multiaddr>>,
 
     /// nodes with which it has not been possible to establish a connection by keepAliveTimeout in pre-routing.
-    retry_boot_nodes: Vec<(PeerId, Vec<Multiaddr>)>,
+    retry_boot_nodes: HashMap<PeerId, Vec<Multiaddr>>,
+
+    retrys: u8,
 
     /// Pendings outbound messages to the peer
     pending_outbound_messages: HashMap<PeerId, VecDeque<Vec<u8>>>,
 
-    /// Requests sent to the peer
-    request_sent: HashMap<PeerId, Vec<OutboundRequestId>>,
+    pending_inbound_messages: HashMap<PeerId, VecDeque<Vec<u8>>>,
 
     /// Ephemeral responses.
     ephemeral_responses:
@@ -101,6 +111,18 @@ where
 
     /// Successful dials
     successful_dials: u64,
+
+    protocols: HashSet<StreamProtocol>,
+
+    peer_identify: HashSet<PeerId>,
+
+    retry_by_peer: HashMap<PeerId, RetryState>,
+
+    retry_queue: BinaryHeap<Due>,
+
+    retry_timer: Option<Pin<Box<Sleep>>>,
+
+    peer_action: HashMap<PeerId, Action>,
 }
 
 impl<T: Debug + Serialize> NetworkWorker<T> {
@@ -146,6 +168,8 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         // Generate the `PeerId` from the public key.
         let local_peer_id = key.public().to_peer_id();
 
+        let boot_nodes = convert_boot_nodes(&config.boot_nodes);
+
         // Create the listen addressess.
         let addresses = convert_addresses(&config.listen_addresses)?;
 
@@ -156,28 +180,19 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         let node_type = config.node_type.clone();
 
         // Build transport.
-        let transport = build_transport(registry, &key, config.port_reuse)?;
+        let transport = build_transport(registry, &key)?;
+
+        let (behaviour, protocols) =
+            Behaviour::build(&key.public(), config.clone(), cancel.clone());
 
         // Create the swarm.
         let mut swarm = Swarm::new(
             transport,
-            Behaviour::new(&key.public(), config.clone()),
+            behaviour,
             local_peer_id,
             swarm::Config::with_tokio_executor()
-                .with_idle_connection_timeout(Duration::from_secs(3)),
+                .with_idle_connection_timeout(Duration::from_secs(5)),
         );
-
-        // Add confirmed external addresses.
-        match config.node_type {
-            NodeType::Bootstrap | NodeType::Addressable => {
-                for addr in addresses.iter() {
-                    swarm.add_external_address(addr.clone());
-                }
-            }
-            _ => {}
-        }
-
-        let boot_nodes = swarm.behaviour_mut().boot_nodes();
 
         // Register metrics
         let messages_metric = Family::default();
@@ -219,25 +234,125 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             }
         }
 
-        info!(TARGET_WORKER, "LOCAL PEERID {}", local_peer_id);
+        info!(TARGET_WORKER, "LOCAL PEER-ID {}", local_peer_id);
+
         Ok(Self {
             local_peer_id,
             service,
             swarm,
             state: NetworkState::Start,
+            retrys: 0,
             command_receiver,
             helper_sender: None,
             monitor,
             cancel,
             node_type,
             boot_nodes,
-            retry_boot_nodes: vec![],
+            retry_boot_nodes: HashMap::new(),
             pending_outbound_messages: HashMap::default(),
-            request_sent: HashMap::default(),
+            pending_inbound_messages: HashMap::default(),
             ephemeral_responses: HashMap::default(),
             messages_metric,
             successful_dials: 0,
+            protocols,
+            peer_identify: HashSet::new(),
+            retry_by_peer: HashMap::new(),
+            retry_queue: BinaryHeap::new(),
+            retry_timer: None,
+            peer_action: HashMap::new(),
         })
+    }
+
+    fn schedule_retry(&mut self, peer: PeerId, schedule_type: ScheduleType) {
+        if self.peer_action.contains_key(&peer) {
+            return;
+        }
+
+        let (kind, addrs) = match schedule_type {
+            ScheduleType::Discover => (RetryKind::Discover, vec![]),
+            ScheduleType::Dial(multiaddrs) => (RetryKind::Dial, multiaddrs),
+        };
+
+        let now = Instant::now();
+        let base = Duration::from_millis(250);
+        let cap = Duration::from_secs(4);
+
+        let entry = self.retry_by_peer.entry(peer).or_insert(RetryState {
+            attempts: 0,
+            when: now,
+            kind,
+            addrs: vec![],
+        });
+
+        let when = if let (RetryKind::Discover, RetryKind::Dial) =
+            (entry.kind, kind)
+        {
+            now
+        } else {
+            if entry.attempts >= 4 {
+                self.clear_pending_messages(&peer);
+                return;
+            }
+
+            let exp = 1u32 << entry.attempts.min(5); // 1,2,4,8,16
+            let mut delay = base * exp; // 0,250 seconds until 4s
+            if delay > cap {
+                delay = cap;
+            }
+
+            // jitter 80–120% determinista por peer (sin RNG externo)
+            let j = 80 + (peer.to_bytes()[0] as u32 % 41);
+            delay = delay * j / 100;
+
+            now + delay
+        };
+
+        entry.when = when;
+        entry.kind = kind;
+        entry.addrs = addrs;
+
+        self.peer_action.insert(peer, Action::from(kind));
+
+        self.retry_queue.push(Due(peer, entry.when));
+        self.arm_retry_timer();
+    }
+
+    fn arm_retry_timer(&mut self) {
+        if let Some(next) = self.retry_queue.peek() {
+            match &mut self.retry_timer {
+                Some(timer) => timer.as_mut().reset(next.1),
+                None => self.retry_timer = Some(Box::pin(sleep_until(next.1))),
+            }
+        }
+    }
+
+    fn drain_due_retries(
+        &mut self,
+    ) -> Vec<(PeerId, RetryKind, Vec<Multiaddr>)> {
+        let now = Instant::now();
+        let mut out = Vec::new();
+        while let Some(Due(peer, when)) = self.retry_queue.peek().cloned() {
+            if when > now {
+                break;
+            }
+
+            self.retry_queue.pop();
+            if let Some(retry) = self.retry_by_peer.get(&peer).cloned()
+                && retry.when <= now
+            {
+                self.retry_by_peer
+                    .entry(peer)
+                    .and_modify(|x| x.attempts += 1);
+                out.push((peer, retry.kind, retry.addrs));
+            }
+        }
+
+        if self.retry_queue.is_empty() {
+            self.retry_timer = None;
+        } else {
+            self.arm_retry_timer();
+        }
+        out
     }
 
     /// Add sender helper
@@ -253,76 +368,62 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         self.local_peer_id
     }
 
-    /// Add known peer.
-    pub fn add_known_peer(&mut self, peer: PeerId, address: Multiaddr) {
-        self.swarm.behaviour_mut().add_known_address(peer, address);
-    }
-
-    /// Remove boot node.
-    pub fn remove_boot_node(&mut self, peer: PeerId) {
-        if let Some(pos) = self.boot_nodes.iter().position(|val| val.0 == peer)
-        {
-            self.boot_nodes.remove(pos);
-        }
-    }
-
     /// Send message to a peer.
-    ///
-    ///
     fn send_message(
         &mut self,
         peer: PeerId,
         message: Vec<u8>,
     ) -> Result<(), Error> {
-        // Checks if the peer has a response channel.
         if let Some(responses) = self.ephemeral_responses.get_mut(&peer) {
-            if let Some(response_channel) = responses.pop_front() {
-                if responses.is_empty() {
-                    self.ephemeral_responses.remove(&peer);
-                }
-                return self
+            while let Some(response_channel) = responses.pop_front() {
+                if let Err(e) = self
                     .swarm
                     .behaviour_mut()
-                    .send_response(response_channel, message);
+                    .send_response(response_channel, message.clone())
+                {
+                    warn!(
+                        TARGET_WORKER,
+                        "Can not send response to {}: {}", peer, e
+                    )
+                } else {
+                    self.messages_metric
+                        .get_or_create(&MetricLabels {
+                            fact: Fact::Sent,
+                            peer_id: peer.to_string(),
+                        })
+                        .inc();
+
+                    break;
+                }
+            }
+
+            if responses.is_empty() {
+                self.ephemeral_responses.remove(&peer);
+            }
+        } else {
+            self.add_pending_outbound_message(peer, message.clone());
+
+            if self.swarm.behaviour_mut().is_known_peer(&peer) {
+                if let Some(Action::Identified(..)) =
+                    self.peer_action.get(&peer)
+                {
+                    self.send_pending_outbound_messages(peer);
+                } else {
+                    self.schedule_retry(peer, ScheduleType::Dial(vec![]));
+                }
+            } else {
+                self.schedule_retry(peer, ScheduleType::Discover);
             }
         }
-        // Add message to pending messages.
-        self.add_pending_outbound_message(peer, message.clone());
-        // Send pending messages.
-        self.send_pending_outbound_messages(peer);
+
         Ok(())
     }
 
     /// Add pending message to peer.
     fn add_pending_outbound_message(&mut self, peer: PeerId, message: Vec<u8>) {
-        let pending_messages =
+        let pending_messages: &mut VecDeque<Vec<u8>> =
             self.pending_outbound_messages.entry(peer).or_default();
         pending_messages.push_back(message);
-    }
-
-    /// Add request sent to peer.
-    fn add_request_sent(
-        &mut self,
-        peer: PeerId,
-        request_id: OutboundRequestId,
-    ) {
-        let requests = self.request_sent.entry(peer).or_default();
-        requests.push(request_id);
-    }
-
-    /// Remove request sent to peer.
-    fn remove_request_sent(
-        &mut self,
-        peer: PeerId,
-        request_id: OutboundRequestId,
-    ) {
-        if let Some(requests) = self.request_sent.get_mut(&peer) {
-            if let Some(pos) =
-                requests.iter().position(|val| *val == request_id)
-            {
-                requests.remove(pos);
-            }
-        }
     }
 
     /// Add ephemeral response.
@@ -331,44 +432,30 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         peer: PeerId,
         response_channel: ResponseChannel<ReqResMessage>,
     ) {
-        let responses = self.ephemeral_responses.entry(peer).or_default();
-        responses.push_back(response_channel);
+        self.ephemeral_responses
+            .entry(peer)
+            .or_default()
+            .push_back(response_channel);
     }
 
     /// Send pending messages to peer.
     fn send_pending_outbound_messages(&mut self, peer: PeerId) {
-        if self.swarm.behaviour_mut().is_known_peer(&peer) {
-            if let Some(messages) = self.pending_outbound_messages.remove(&peer)
-            {
-                for message in messages.iter() {
-                    if self.node_type == NodeType::Ephemeral {
-                        let id = self
-                            .swarm
-                            .behaviour_mut()
-                            .send_request(&peer, message.clone());
-                        self.add_request_sent(peer, id);
-                    } else {
-                        self.swarm
-                            .behaviour_mut()
-                            .send_tell(&peer, message.clone());
-                    }
-                }
-            } else {
-                trace!(
-                    TARGET_WORKER,
-                    "Pending messages queue is empty for peer {}.", peer
-                );
+        if let Some(messages) = self.pending_outbound_messages.remove(&peer) {
+            for message in messages.iter() {
+                self.swarm
+                    .behaviour_mut()
+                    .send_message(&peer, message.clone());
             }
-        } else {
-            trace!(
-                TARGET_WORKER,
-                "Peer {} is not known. Pending messages will be sent when the peer is identified.",
-                peer
-            );
-            // TODO: After three attempts, remove the peer from the pending messages and
-            // send a netwokr event `PeerDisconnected`.
-            self.swarm.behaviour_mut().discover(&peer);
         }
+
+        self.retry_by_peer.remove(&peer);
+
+        self.messages_metric
+            .get_or_create(&MetricLabels {
+                fact: Fact::Sent,
+                peer_id: peer.to_string(),
+            })
+            .inc();
     }
 
     /// Get the network service.
@@ -385,14 +472,14 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
 
     /// Send event
     async fn send_event(&mut self, event: NetworkEvent) {
-        if let Some(monitor) = self.monitor.clone() {
-            if monitor.tell(MonitorMessage::Network(event)).await.is_err() {
-                error!(
-                    TARGET_WORKER,
-                    "Can't send network event to monitor actor."
-                );
-                self.cancel.cancel();
-            }
+        if let Some(monitor) = self.monitor.clone()
+            && let Err(e) = monitor.tell(MonitorMessage::Network(event)).await
+        {
+            error!(
+                TARGET_WORKER,
+                "Can't send network event to monitor actor: {}", e
+            );
+            self.cancel.cancel();
         }
     }
 
@@ -407,7 +494,8 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
             return;
         }
 
-        self.send_event(NetworkEvent::Running).await;
+        self.send_event(NetworkEvent::StateChanged(NetworkState::Running))
+            .await;
 
         // Finish pre routing state, activating random walk (if node is a bootstrap).
         self.swarm.behaviour_mut().finish_prerouting_state();
@@ -418,11 +506,13 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
     /// Run connection to bootstrap node.
     pub async fn run_connection(&mut self) -> Result<(), Error> {
         info!(TARGET_WORKER, "Running connection loop");
-        let mut result = Ok(());
         // If is the first node of kore network.
         if self.node_type == NodeType::Bootstrap && self.boot_nodes.is_empty() {
             self.change_state(NetworkState::Running).await;
+            Ok(())
         } else {
+            self.change_state(NetworkState::Dial).await;
+
             loop {
                 match self.state {
                     NetworkState::Dial => {
@@ -443,35 +533,38 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             self.change_state(NetworkState::Disconnected).await;
                         } else {
                             let copy_boot_nodes = self.boot_nodes.clone();
-                            for node in copy_boot_nodes {
-                                if self
-                                    .swarm
-                                    .dial(
-                                        DialOpts::peer_id(node.0)
-                                            .addresses(node.1.clone())
-                                            .build(),
-                                    )
-                                    .is_err()
-                                {
-                                    error!(
-                                        TARGET_WORKER,
-                                        "Error dialing boot node {}", node.0
-                                    );
-                                    self.swarm
-                                        .behaviour_mut()
-                                        .remove_node(&node.0, &node.1);
-                                    if let Some(pos) =
-                                        self.boot_nodes.iter().position(|val| {
-                                            val.clone()
-                                                == (node.0, node.1.clone())
-                                        })
-                                    {
-                                        self.boot_nodes.remove(pos);
+
+                            for (peer, addresses) in copy_boot_nodes {
+                                if let Err(e) = self.swarm.dial(
+                                    DialOpts::peer_id(peer)
+                                        .addresses(addresses.clone())
+                                        .build(),
+                                ) {
+                                    let (add_to_retry, new_addresses) =
+                                        Self::init_dial_error_manager(
+                                            e,
+                                            peer,
+                                            self.retrys,
+                                        );
+                                    self.boot_nodes.remove(&peer);
+                                    if add_to_retry {
+                                        if new_addresses.is_empty() {
+                                            self.retry_boot_nodes
+                                                .insert(peer, addresses);
+                                        } else {
+                                            self.retry_boot_nodes
+                                                .insert(peer, new_addresses);
+                                        }
                                     }
                                 }
                             }
-
-                            self.change_state(NetworkState::Dialing).await;
+                            if !self.boot_nodes.is_empty() {
+                                self.change_state(NetworkState::Dialing).await;
+                            } else {
+                                error!(TARGET_WORKER, "All dials fails");
+                                self.change_state(NetworkState::Disconnected)
+                                    .await;
+                            }
                         }
                     }
                     NetworkState::Dialing => {
@@ -479,9 +572,16 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         if self.boot_nodes.is_empty()
                             && self.successful_dials == 0
                             && !self.retry_boot_nodes.is_empty()
+                            && self.retrys < 3
                         {
+                            info!(
+                                TARGET_WORKER,
+                                "Making a new retry: {}", self.retrys
+                            );
+
+                            self.retrys += 1;
                             self.boot_nodes.clone_from(&self.retry_boot_nodes);
-                            self.retry_boot_nodes = vec![];
+                            self.retry_boot_nodes.clear();
                             self.change_state(NetworkState::Dial).await;
                         }
                         // No more bootnodes to send dial and none was successful
@@ -491,17 +591,16 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             self.change_state(NetworkState::Disconnected).await;
                         // No more bootnodes to send dial and one or more was successful
                         } else if self.boot_nodes.is_empty() {
-                            break;
+                            return Ok(());
                         }
                     }
                     NetworkState::Running => {
-                        break;
+                        return Ok(());
                     }
                     NetworkState::Disconnected => {
-                        result = Err(Error::Network(
+                        return Err(Error::Network(
                             "Can't connect to kore network".to_owned(),
                         ));
-                        break;
                     }
                     _ => {}
                 }
@@ -511,13 +610,171 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             self.handle_connection_events(event).await;
                         }
                         _ = self.cancel.cancelled() => {
-                            break;
+                            return Err(Error::Network("Token cancellled".to_owned()));
                         }
                     }
                 }
             }
         }
-        result
+    }
+
+    fn init_dial_error_manager(
+        e: DialError,
+        peer: PeerId,
+        retrys: u8,
+    ) -> (bool, Vec<Multiaddr>) {
+        match e {
+            DialError::LocalPeerId { .. } => {
+                error!(
+                    TARGET_WORKER,
+                    "Error dialing, try: {}, peer-id: {}, The peer identity obtained on the connection matches the local peer.",
+                    retrys,
+                    peer
+                );
+            }
+            DialError::NoAddresses => {
+                error!(
+                    TARGET_WORKER,
+                    "Error dialing, try: {}, peer-id: {}, No addresses have been provided.",
+                    retrys,
+                    peer
+                );
+            }
+            DialError::DialPeerConditionFalse(peer_condition) => {
+                error!(
+                    TARGET_WORKER,
+                    "Error dialing, try: {}, peer-id: {}, The provided {:?} evaluated to false and this the dial was aborted.",
+                    retrys,
+                    peer,
+                    peer_condition
+                );
+            }
+            DialError::Denied { cause } => {
+                error!(
+                    TARGET_WORKER,
+                    "Error dialing, try: {}, peer-id: {}, One of the NetworkBehaviours rejected the outbound connection: {}",
+                    retrys,
+                    peer,
+                    cause
+                );
+            }
+            DialError::Aborted => {
+                if retrys == 0 {
+                    warn!(
+                        TARGET_WORKER,
+                        "Error dialing, try: {}, peer-id: {}, Pending connection attempt has been aborted, retry one more time",
+                        retrys,
+                        peer
+                    );
+
+                    return (true, vec![]);
+                } else {
+                    error!(
+                        TARGET_WORKER,
+                        "Error dialing, try: {}, peer-id: {}, Pending connection attempt has been aborted",
+                        retrys,
+                        peer
+                    );
+                }
+            }
+            DialError::WrongPeerId { obtained, .. } => {
+                error!(
+                    TARGET_WORKER,
+                    "Error dialing, try: {}, peer-id: {}, The peer identity obtained on the connection did not match the one that was expected: obtained peer-id -> {}",
+                    retrys,
+                    peer,
+                    obtained
+                );
+            }
+            DialError::Transport(items) => {
+                error!(
+                    TARGET_WORKER,
+                    "Error dialing, try: {}, peer-id: {}, Transport error, evaluating the error for each address",
+                    retrys,
+                    peer
+                );
+
+                let mut new_addresses = vec![];
+
+                for (address, error) in items {
+                    warn!(
+                        TARGET_WORKER,
+                        "Error: {:?}, address: {}", error, address,
+                    );
+
+                    if let libp2p::TransportError::Other(e) = error {
+                        match e.kind() {
+                            std::io::ErrorKind::ConnectionRefused
+                            | std::io::ErrorKind::TimedOut
+                            | std::io::ErrorKind::ConnectionAborted
+                            | std::io::ErrorKind::NotConnected
+                            | std::io::ErrorKind::BrokenPipe
+                            | std::io::ErrorKind::Interrupted
+                            | std::io::ErrorKind::HostUnreachable
+                            | std::io::ErrorKind::NetworkUnreachable => {
+                                new_addresses.push(address);
+                            }
+                            _ => {}
+                        }
+                    };
+                }
+                if !new_addresses.is_empty() {
+                    return (true, new_addresses);
+                }
+            }
+        }
+
+        (false, vec![])
+    }
+
+    fn dial_error_manager(
+        &mut self,
+        e: DialError,
+        peer_id: &PeerId,
+    ) -> Option<(bool, Vec<Multiaddr>)> {
+        match e {
+            DialError::LocalPeerId { .. } | DialError::WrongPeerId { .. } => {
+                self.retry_by_peer.remove(peer_id);
+                self.swarm
+                    .behaviour_mut()
+                    .clean_hard_peer_to_remove(peer_id);
+                return None;
+            }
+            DialError::NoAddresses => {}
+            DialError::DialPeerConditionFalse(..) => {
+                return None;
+            }
+            DialError::Denied { .. } => {}
+            DialError::Aborted => {
+                return Some((true, vec![]));
+            }
+            DialError::Transport(items) => {
+                let mut new_addresses = vec![];
+
+                for (address, error) in items {
+                    if let libp2p::TransportError::Other(e) = error {
+                        match e.kind() {
+                            std::io::ErrorKind::ConnectionRefused
+                            | std::io::ErrorKind::TimedOut
+                            | std::io::ErrorKind::ConnectionAborted
+                            | std::io::ErrorKind::NotConnected
+                            | std::io::ErrorKind::BrokenPipe
+                            | std::io::ErrorKind::Interrupted
+                            | std::io::ErrorKind::HostUnreachable
+                            | std::io::ErrorKind::NetworkUnreachable => {
+                                new_addresses.push(address);
+                            }
+                            _ => {}
+                        }
+                    };
+                }
+                if !new_addresses.is_empty() {
+                    return Some((true, new_addresses));
+                }
+            }
+        }
+
+        Some((false, vec![]))
     }
 
     /// Handle connection events.
@@ -525,99 +782,109 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         &mut self,
         event: SwarmEvent<BehaviourEvent>,
     ) {
-        info!(TARGET_WORKER, "Handle connection event: {:?}", event);
         match event {
-            SwarmEvent::NewListenAddr { address, .. } => {
-                info!(TARGET_WORKER, "Listening on {:?}", address);
-                if self.state == NetworkState::Start {
-                    trace!(TARGET_WORKER, "Bootstrap to the kore network");
-                    self.change_state(NetworkState::Dial).await;
-                }
+            SwarmEvent::ConnectionClosed { peer_id, .. } => {
+                self.boot_nodes.remove(&peer_id);
             }
             SwarmEvent::OutgoingConnectionError {
-                connection_id: _,
                 peer_id: Some(peer_id),
-                error: _,
-            } => {
-                error!(TARGET_WORKER, "Error dialing peer {}", peer_id);
-                if let Some(pos) =
-                    self.boot_nodes.iter().position(|val| val.0 == peer_id)
-                {
-                    self.swarm
-                        .behaviour_mut()
-                        .remove_node(&peer_id, &self.boot_nodes[pos].1);
-                    self.boot_nodes.remove(pos);
-                }
-            }
-            SwarmEvent::IncomingConnection {
-                local_addr,
-                send_back_addr,
+                error,
                 ..
             } => {
-                info!(
-                    TARGET_WORKER,
-                    "Incoming connection from {} to {}.",
-                    send_back_addr,
-                    local_addr
-                );
+                let (add_to_retry, new_addresses) =
+                    Self::init_dial_error_manager(error, peer_id, self.retrys);
+
+                if let Some(addresses) = self.boot_nodes.remove(&peer_id)
+                    && add_to_retry
+                {
+                    if new_addresses.is_empty() {
+                        self.retry_boot_nodes.insert(peer_id, addresses);
+                    } else {
+                        self.retry_boot_nodes.insert(peer_id, new_addresses);
+                    }
+                }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identified {
                 peer_id,
                 info,
+                connection_id,
             }) => {
-                info!(TARGET_WORKER, "Identified peer {}", peer_id);
-                // Add identified peer to the behaviour.
-                self.swarm
-                    .behaviour_mut()
-                    .add_identified_peer(peer_id, *info.clone());
-
-                // If the identified peer is the current dialing, send event and change the state to running.
-
-                trace!(
-                    TARGET_WORKER,
-                    "Connected to bootstrap node {}", peer_id
-                );
-                self.send_event(NetworkEvent::ConnectedToBootstrap {
-                    peer: peer_id.to_string(),
-                })
-                .await;
-
-                if let Some(pos) =
-                    self.boot_nodes.iter().position(|val| val.0 == peer_id)
+                if !self
+                    .check_protocols(&info.protocol_version, &info.protocols)
                 {
-                    self.successful_dials += 1;
-                    self.boot_nodes.remove(pos);
-                }
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::Discovered(_)) => {}
-            SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                info!(TARGET_WORKER, "Connection closed to peer {}", peer_id);
-                if let Some(cause) = cause {
-                    match cause {
-                        swarm::ConnectionError::KeepAliveTimeout => {
-                            if let Some(pos) = self
-                                .boot_nodes
-                                .iter()
-                                .position(|val| val.0 == peer_id)
-                            {
-                                self.retry_boot_nodes
-                                    .push(self.boot_nodes[pos].clone());
-                                self.boot_nodes.remove(pos);
-                            }
+                    warn!(
+                        TARGET_WORKER,
+                        "Invalid protocols, peer-id: {}, protocols: {:?}, protocol-version: {}",
+                        peer_id,
+                        info.protocols,
+                        info.protocol_version
+                    );
+
+                    self.swarm
+                        .behaviour_mut()
+                        .close_connections(&peer_id, Some(connection_id));
+                } else {
+                    self.peer_action
+                        .insert(peer_id, Action::Identified(connection_id));
+
+                    let mut any_address_is_valid = false;
+                    for addr in info.listen_addrs {
+                        if self
+                            .swarm
+                            .behaviour_mut()
+                            .add_self_reported_address(&peer_id, &addr)
+                        {
+                            any_address_is_valid = true;
                         }
-                        swarm::ConnectionError::IO(e) => {
-                            self.remove_boot_node(peer_id);
-                            error!("Error in Dialing with {}, {}", peer_id, e);
-                        }
+                    }
+
+                    if any_address_is_valid {
+                        self.successful_dials += 1;
+                        self.peer_identify.insert(peer_id);
+                        self.boot_nodes.remove(&peer_id);
+                    } else {
+                        warn!(
+                            TARGET_WORKER,
+                            "No bootstrap node address was found to be valid, peer-id: {}",
+                            peer_id
+                        );
+
+                        self.swarm
+                            .behaviour_mut()
+                            .close_connections(&peer_id, Some(connection_id));
                     }
                 }
             }
-            e => {
-                trace!(TARGET_WORKER, "Event: {:?}", e);
-                //self.change_state(NetworkState::Disconnected).await;
-            }
+            _ => {}
         }
     }
+
+    fn clear_pending_messages(&mut self, peer_id: &PeerId) {
+        warn!(
+            TARGET_WORKER,
+            "The maximum number of attempts to dial the node has been reached: {}",
+            peer_id
+        );
+
+        self.pending_outbound_messages.remove(peer_id);
+        self.peer_action.remove(peer_id);
+        self.retry_by_peer.remove(peer_id);
+    }
+
+    fn check_protocols(
+        &self,
+        protocol_version: &str,
+        protocols: &[StreamProtocol],
+    ) -> bool {
+        let supp_protocols: HashSet<StreamProtocol> = protocols
+            .iter()
+            .cloned()
+            .collect::<HashSet<StreamProtocol>>();
+
+        protocol_version == "/kore/1.0.0"
+            && self.protocols.is_subset(&supp_protocols)
+    }
+
     /// Run network worker.
     pub async fn run_main(&mut self) {
         info!(TARGET_WORKER, "Running main loop");
@@ -634,6 +901,54 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                     // Handle events.
                     self.handle_event(event).await;
                 }
+                _ = async {
+                    if let Some(t) = &mut self.retry_timer {
+                        t.as_mut().await;
+                    }
+                }, if self.retry_timer.is_some() => {
+                    for (peer, kind, addrs) in self.drain_due_retries() {
+                        if let Some(action) = self.peer_action.get(&peer) {
+                            match (action, kind) {
+                                (Action::Discover, RetryKind::Discover) => {
+                                    self.swarm.behaviour_mut().discover(&peer);
+                                },
+                                (Action::Dial, RetryKind::Dial) => {
+                                    if let Err(error) = self.swarm.dial(
+                                        DialOpts::peer_id(peer)
+                                            .addresses(addrs)
+                                            .extend_addresses_through_behaviour()
+                                            .build()
+                                    ) && let Some((retry, new_address)) =
+                                        self.dial_error_manager(error, &peer) {
+
+                                        self.peer_action.remove(&peer);
+                                        if retry {
+                                            let addr = new_address
+                                                    .iter()
+                                                    .filter(|x| {
+                                                        !self
+                                                        .swarm
+                                                        .behaviour()
+                                                        .is_invalid_address(x)
+                                                    })
+                                                    .cloned()
+                                                    .collect::<Vec<Multiaddr>>();
+
+                                                if addr.is_empty() {
+                                                    self.schedule_retry(peer, ScheduleType::Discover);
+                                                } else {
+                                                    self.schedule_retry(peer, ScheduleType::Dial(addr.clone()));
+                                                }
+                                        } else {
+                                            self.schedule_retry(peer, ScheduleType::Discover);
+                                        }
+                                };
+                                },
+                                _ => {}
+                            }
+                        };
+                    }
+                },
                 _ = self.cancel.cancelled() => {
                     break;
                 }
@@ -652,159 +967,164 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
         }
     }
 
-    async fn handle_event(&mut self, event: SwarmEvent<BehaviourEvent>) {
-        match event {
-            SwarmEvent::NewListenAddr { address, .. } => {
-                info!(TARGET_WORKER, "Listening on {:?}", address);
-                if self.node_type == NodeType::Bootstrap {
-                    trace!(TARGET_WORKER, "Bootstrap to the kore network");
-                    if self.swarm.behaviour_mut().bootstrap().is_err() {
-                        warn!(TARGET_WORKER, "Empty boot nodes list.");
-                        self.change_state(NetworkState::Running).await;
-                    } else {
-                        self.change_state(NetworkState::Dialing).await;
-                    }
-                }
-            }
-            SwarmEvent::ConnectionEstablished {
-                peer_id, endpoint, ..
-            } => match endpoint {
-                ConnectedPoint::Dialer { address, .. } => {
-                    info!(
-                        TARGET_WORKER,
-                        "Connection established to peer {} with address {}.",
-                        peer_id,
-                        address
-                    );
-                }
-                ConnectedPoint::Listener { send_back_addr, .. } => {
-                    info!(
-                        TARGET_WORKER,
-                        "Connection established from address {}.",
-                        send_back_addr,
-                    );
-                }
-            },
-            SwarmEvent::Behaviour(BehaviourEvent::PeersFounded(key, peers)) => {
-                if peers.contains(&key) {
-                    info!(TARGET_WORKER, "Peer {} found in the network", key);
-                    self.send_pending_outbound_messages(key);
-                }
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::Identified {
-                peer_id,
-                info,
-            }) => {
-                // Send identified peer event.
-                let addresses = info
-                    .listen_addrs
-                    .iter()
-                    .map(|addr| addr.to_string())
-                    .collect();
-
-                self.send_event(NetworkEvent::PeerIdentified {
-                    peer: peer_id.to_string(),
-                    addresses,
-                })
-                .await;
-
-                // Add identified peer to the behaviour.
-                info!(TARGET_WORKER, "Identified peer {}", peer_id);
-                self.swarm
-                    .behaviour_mut()
-                    .add_identified_peer(peer_id, *info.clone());
-
-                // Send pending messages.
-                if self.pending_outbound_messages.contains_key(&peer_id) {
-                    trace!(
-                        TARGET_WORKER,
-                        "Sending pending messages to peer {}.", peer_id
-                    );
-                    self.send_pending_outbound_messages(peer_id);
-                }
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::TellMessage {
-                peer_id,
-                message,
-            }) => {
-                //trace!(TARGET_WORKER, "Message received from peer {}", peer_id);
-                let result =
-                    if let Some(helper_sender) = self.helper_sender.as_ref() {
-                        helper_sender
+    async fn message_to_helper(&mut self, message: MessagesHelper) {
+        'Send: {
+            if let Some(helper_sender) = self.helper_sender.as_ref() {
+                match message {
+                    MessagesHelper::Single(items) => {
+                        if helper_sender
                             .send(CommandHelper::ReceivedMessage {
-                                message: message.message,
+                                message: items,
                             })
                             .await
-                    } else {
-                        error!(TARGET_WORKER, "Could not get network helper");
-                        self.cancel.cancel();
-                        return;
-                    };
-                if result.is_err() {
-                    error!(
-                        TARGET_WORKER,
-                        "Could not send message to network helper"
-                    );
-                    self.cancel.cancel();
-                } else {
-                    trace!(
-                        TARGET_WORKER,
-                        "Message received from peer {}.", peer_id
-                    );
-                    self.messages_metric
-                        .get_or_create(&MetricLabels {
-                            fact: Fact::Received,
-                            peer_id: peer_id.to_string(),
-                        })
-                        .inc();
-                }
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::ReqresMessage {
-                peer_id,
-                message,
-            }) => {
-                debug!(
-                    TARGET_WORKER,
-                    "Request-response message received from peer {}", peer_id
-                );
-                match message {
-                    request_response::Message::Request {
-                        request,
-                        channel,
-                        ..
-                    } => {
-                        self.add_ephemeral_response(peer_id, channel);
-                        self.send_event(NetworkEvent::MessageReceived {
-                            peer: peer_id.to_string(),
-                            message: request.0.clone(),
-                        })
-                        .await;
-
-                        trace!(
-                            TARGET_WORKER,
-                            "Request received from peer {}.", peer_id
-                        );
-
-                        let result = if let Some(helper_sender) =
-                            self.helper_sender.as_ref()
+                            .is_err()
                         {
-                            helper_sender
+                            break 'Send;
+                        }
+                    }
+                    MessagesHelper::Vec(items) => {
+                        for item in items {
+                            if helper_sender
                                 .send(CommandHelper::ReceivedMessage {
-                                    message: request.0,
+                                    message: item,
                                 })
                                 .await
+                                .is_err()
+                            {
+                                break 'Send;
+                            }
+                        }
+                    }
+                }
+
+                return;
+            }
+        }
+
+        error!(TARGET_WORKER, "Could not send message to network helper");
+        self.cancel.cancel();
+    }
+
+    async fn handle_event(&mut self, event: SwarmEvent<BehaviourEvent>) {
+        match event {
+            SwarmEvent::Behaviour(event) => {
+                match event {
+                    BehaviourEvent::Identified {
+                        peer_id,
+                        info,
+                        connection_id,
+                    } => {
+                        if !self.check_protocols(
+                            &info.protocol_version,
+                            &info.protocols,
+                        ) {
+                            warn!(
+                                TARGET_WORKER,
+                                "Invalid protocols, peer-id: {}, protocols: {:?}, protocol-version: {}",
+                                peer_id,
+                                info.protocols,
+                                info.protocol_version
+                            );
+
+                            self.clear_pending_messages(&peer_id);
+
+                            self.swarm
+                                .behaviour_mut()
+                                .clean_hard_peer_to_remove(&peer_id);
+
+                            self.swarm.behaviour_mut().close_connections(
+                                &peer_id,
+                                Some(connection_id),
+                            );
                         } else {
-                            self.cancel.cancel();
-                            return;
+                            self.peer_action.insert(
+                                peer_id,
+                                Action::Identified(connection_id),
+                            );
+
+                            self.swarm
+                                .behaviour_mut()
+                                .clean_peer_to_remove(&peer_id);
+                            for addr in info.listen_addrs {
+                                self.swarm
+                                    .behaviour_mut()
+                                    .add_self_reported_address(&peer_id, &addr);
+                            }
+
+                            self.peer_identify.insert(peer_id);
+
+                            if let Some(messages) =
+                                self.pending_inbound_messages.get(&peer_id)
+                            {
+                                self.message_to_helper(MessagesHelper::Vec(
+                                    messages.clone(),
+                                ))
+                                .await;
+                            };
+
+                            self.send_pending_outbound_messages(peer_id);
+                        }
+                    }
+                    BehaviourEvent::IdentifyError { peer_id, error } => {
+                        error!(
+                            TARGET_WORKER,
+                            "IdentifyError with peer_id: {}, error: {}",
+                            peer_id,
+                            error
+                        );
+
+                        match error {
+                            swarm::StreamUpgradeError::Timeout => {
+                                // We do not clean since we will try to open the connection when it is
+                                // confirmed that it has been closed in SwarmEvent::ConnectionClosed
+                            }
+                            swarm::StreamUpgradeError::Apply(..)
+                            | swarm::StreamUpgradeError::NegotiationFailed
+                            | swarm::StreamUpgradeError::Io(..) => {
+                                self.clear_pending_messages(&peer_id);
+                            }
+                        }
+
+                        self.swarm
+                            .behaviour_mut()
+                            .close_connections(&peer_id, None);
+                    }
+                    BehaviourEvent::ReqresMessage { peer_id, message } => {
+                        let message_data = match message {
+                            request_response::Message::Request {
+                                request,
+                                channel,
+                                ..
+                            } => {
+                                info!(
+                                    TARGET_WORKER,
+                                    "A Request was received from {}", peer_id,
+                                );
+                                self.add_ephemeral_response(peer_id, channel);
+                                request.0
+                            }
+                            request_response::Message::Response {
+                                response,
+                                ..
+                            } => {
+                                info!(
+                                    TARGET_WORKER,
+                                    "A Response was received from {}", peer_id,
+                                );
+                                response.0
+                            }
                         };
 
-                        if result.is_err() {
-                            error!(
-                                TARGET_WORKER,
-                                "Could not send message to network helper"
-                            );
-                            self.cancel.cancel();
-                            return;
+                        if self.peer_identify.contains(&peer_id) {
+                            self.message_to_helper(MessagesHelper::Single(
+                                message_data,
+                            ))
+                            .await;
+                        } else {
+                            self.pending_inbound_messages
+                                .entry(peer_id)
+                                .or_default()
+                                .push_back(message_data);
                         }
 
                         self.messages_metric
@@ -814,252 +1134,173 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                             })
                             .inc();
                     }
-                    request_response::Message::Response {
-                        request_id,
-                        response,
-                    } => {
-                        if let Some(reqs) = self.request_sent.get_mut(&peer_id)
-                        {
-                            if let Some(pos) =
-                                reqs.iter().position(|x| *x == request_id)
-                            {
-                                reqs.remove(pos);
-                                debug!(
-                                    TARGET_WORKER,
-                                    "Message response from peer {}", peer_id
-                                );
-                                self.send_event(
-                                    NetworkEvent::MessageReceived {
-                                        peer: peer_id.to_string(),
-                                        message: response.0.clone(),
-                                    },
-                                )
-                                .await;
-
-                                let result = if let Some(helper_sender) =
-                                    self.helper_sender.as_ref()
-                                {
-                                    helper_sender
-                                        .send(CommandHelper::ReceivedMessage {
-                                            message: response.0,
-                                        })
-                                        .await
-                                } else {
-                                    self.cancel.cancel();
-                                    return;
-                                };
-
-                                if result.is_err() {
-                                    error!(
-                                        TARGET_WORKER,
-                                        "Could not send message to network helper"
-                                    );
-                                    self.cancel.cancel();
-                                }
-                            } else {
-                                error!(
-                                    TARGET_WORKER,
-                                    "Request outbound for peer {} not found.",
-                                    peer_id
-                                );
-                                self.send_event(NetworkEvent::Error(
-                                    Error::Worker(format!(
-                                    "Request outbound for peer {} not found.",
-                                    peer_id
-                                )),
-                                ))
-                                .await;
-                            }
-                        } else {
-                            error!(
-                                TARGET_WORKER,
-                                "There are no pending responses for peer {}.",
-                                peer_id
-                            );
-                            self.send_event(NetworkEvent::Error(
-                                Error::Worker(format!(
-                                "There are no pending responses for peer {}.",
-                                peer_id
-                            )),
+                    BehaviourEvent::TellMessage { peer_id, message } => {
+                        info!(
+                            TARGET_WORKER,
+                            "A tell was received from {}", peer_id,
+                        );
+                        if self.peer_identify.contains(&peer_id) {
+                            self.message_to_helper(MessagesHelper::Single(
+                                message.message,
                             ))
                             .await;
+                        } else {
+                            self.pending_inbound_messages
+                                .entry(peer_id)
+                                .or_default()
+                                .push_back(message.message);
+                        }
+
+                        self.messages_metric
+                            .get_or_create(&MetricLabels {
+                                fact: Fact::Received,
+                                peer_id: peer_id.to_string(),
+                            })
+                            .inc();
+                    }
+                    BehaviourEvent::ClosestPeer { peer_id, info } => {
+                        if let Some(Action::Discover) =
+                            self.peer_action.get(&peer_id)
+                        {
+                            self.peer_action.remove(&peer_id);
+                            if let Some(info) = info {
+                                let addr = info
+                                    .addrs
+                                    .iter()
+                                    .filter(|x| {
+                                        !self
+                                            .swarm
+                                            .behaviour()
+                                            .is_invalid_address(x)
+                                    })
+                                    .cloned()
+                                    .collect::<Vec<Multiaddr>>();
+
+                                if addr.is_empty() {
+                                    self.schedule_retry(
+                                        peer_id,
+                                        ScheduleType::Discover,
+                                    );
+                                } else {
+                                    self.schedule_retry(
+                                        peer_id,
+                                        ScheduleType::Dial(addr.clone()),
+                                    );
+                                }
+                            } else {
+                                self.schedule_retry(
+                                    peer_id,
+                                    ScheduleType::Discover,
+                                );
+                            };
                         }
                     }
-                }
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::TellMessageSent {
-                peer_id,
-                ..
-            })
-            | SwarmEvent::Behaviour(BehaviourEvent::ReqresMessageSent {
-                peer_id,
-                ..
-            }) => {
-                trace!(TARGET_WORKER, "Message sent to peer {}", peer_id);
-
-                self.messages_metric
-                    .get_or_create(&MetricLabels {
-                        fact: Fact::Sent,
-                        peer_id: peer_id.to_string(),
-                    })
-                    .inc();
-
-                self.send_event(NetworkEvent::MessageSent {
-                    peer: peer_id.to_string(),
-                })
-                .await;
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::TellMessageProcessed {
-                peer_id,
-                ..
-            }) => {
-                trace!(
-                    TARGET_WORKER,
-                    "Message processed from peer {}", peer_id
-                );
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::TellOutboundFailure {
-                peer_id,
-                error,
-                ..
-            }) => {
-                warn!(
-                    TARGET_WORKER,
-                    "Error sending message to peer {}: {}", peer_id, error
-                );
-                self.send_event(NetworkEvent::Error(Error::Network(format!(
-                    "Error sending message to peer {}: {}",
-                    peer_id, error
-                ))))
-                .await;
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::ReqresOutboundFailure {
-                peer_id,
-                outbound_id,
-                error,
-            }) => {
-                warn!(
-                    TARGET_WORKER,
-                    "Error sending message to peer {}: {}", peer_id, error
-                );
-                self.send_event(NetworkEvent::Error(Error::Network(format!(
-                    "Error sending message to peer {}: {}",
-                    peer_id, error
-                ))))
-                .await;
-                self.remove_request_sent(peer_id, outbound_id);
-            }
-            SwarmEvent::Behaviour(BehaviourEvent::TellInboundFailure {
-                peer_id,
-                error,
-                ..
-            })
-            | SwarmEvent::Behaviour(BehaviourEvent::ReqresInboundFailure {
-                peer_id,
-                error,
-                ..
-            }) => {
-                warn!(
-                    TARGET_WORKER,
-                    "Error receiving message from peer {}: {}", peer_id, error
-                );
-                self.send_event(NetworkEvent::Error(Error::Network(format!(
-                    "Error receiving message from peer {}: {}",
-                    peer_id, error
-                ))))
-                .await;
-            }
-            SwarmEvent::NewExternalAddrCandidate { address } => {
-                info!(
-                    TARGET_WORKER,
-                    "New external address candidate: {}.", address
-                );
-                if self.node_type == NodeType::Addressable {
-                    debug!(
-                        TARGET_WORKER,
-                        "Adding external address for addressable node: {}.",
-                        address
-                    );
-                    self.swarm.add_external_address(address);
+                    BehaviourEvent::Dummy => {
+                        // For contron_list, ReqRes, Tell events
+                    }
                 }
             }
             SwarmEvent::OutgoingConnectionError {
                 error,
+                peer_id: Some(peer_id),
+                ..
+            } => {
+                if let Some(Action::Dial) = self.peer_action.get(&peer_id) {
+                    self.peer_action.remove(&peer_id);
+
+                    self.swarm.behaviour_mut().add_peer_to_remove(&peer_id);
+
+                    if let Some((retry, new_address)) =
+                        self.dial_error_manager(error, &peer_id)
+                    {
+                        if retry {
+                            let addr = new_address
+                                .iter()
+                                .filter(|x| {
+                                    !self
+                                        .swarm
+                                        .behaviour()
+                                        .is_invalid_address(x)
+                                })
+                                .cloned()
+                                .collect::<Vec<Multiaddr>>();
+
+                            if addr.is_empty() {
+                                self.schedule_retry(
+                                    peer_id,
+                                    ScheduleType::Discover,
+                                );
+                            } else {
+                                self.schedule_retry(
+                                    peer_id,
+                                    ScheduleType::Dial(addr.clone()),
+                                );
+                            }
+                        } else {
+                            self.schedule_retry(
+                                peer_id,
+                                ScheduleType::Discover,
+                            );
+                        }
+                    };
+                }
+            }
+            SwarmEvent::ConnectionClosed {
                 peer_id,
                 connection_id,
-            } => match error {
-                DialError::Transport(errors) => {
-                    for (address, error) in errors {
-                        // TODO: revisar si se debe enviar un evento de error por puertos ocupados
-                        warn!(
-                            TARGET_WORKER,
-                            "Error dialing peer {:?} with error {:?} peer_id {:?} connection_id {:?}",
-                            address,
-                            error,
+                ..
+            } => {
+                if let Some(Action::Identified(id)) =
+                    self.peer_action.get(&peer_id)
+                    && connection_id == *id
+                {
+                    self.peer_action.remove(&peer_id);
+
+                    self.peer_identify.remove(&peer_id);
+                    self.pending_inbound_messages.remove(&peer_id);
+                    self.ephemeral_responses.remove(&peer_id);
+
+                    self.retry_by_peer.remove(&peer_id);
+
+                    if self.pending_outbound_messages.contains_key(&peer_id) {
+                        self.schedule_retry(
                             peer_id,
-                            connection_id
+                            ScheduleType::Dial(vec![]),
                         );
                     }
-                    self.send_event(NetworkEvent::Error(Error::Transport(
-                        "Transport error when dialing".to_owned(),
-                    )))
-                    .await;
                 }
-                _ => {
-                    error!(TARGET_WORKER, "Error dialing peer: {:?}", error);
-                    self.send_event(NetworkEvent::Error(Error::Network(
-                        format!("Error dialing peer: {:?}", error),
-                    )))
-                    .await;
-                }
-            },
-            _ => {}
+            }
+            SwarmEvent::IncomingConnectionError { .. } => {
+                // We are not interested in this event at the moment.
+                // The logs generate many false positives and cannot be associated with a
+                // node since I do not have the peer-id. The best solution to avoid
+                // confusion for the user is not to filter these errors.
+            }
+            SwarmEvent::ExpiredListenAddr { address, .. } => {
+                warn!(
+                    TARGET_WORKER,
+                    "Listening address {} is no longer available", address
+                );
+            }
+            SwarmEvent::ListenerError { error, .. } => {
+                error!(TARGET_WORKER, "ListenerError, {}", error);
+            }
+            SwarmEvent::IncomingConnection { .. }
+            | SwarmEvent::ConnectionEstablished { .. }
+            | SwarmEvent::ListenerClosed { .. }
+            | SwarmEvent::Dialing { .. }
+            | SwarmEvent::NewExternalAddrCandidate { .. }
+            | SwarmEvent::ExternalAddrConfirmed { .. }
+            | SwarmEvent::ExternalAddrExpired { .. }
+            | SwarmEvent::NewExternalAddrOfPeer { .. }
+            | SwarmEvent::NewListenAddr { .. } => {
+                // We are not interested in this event at the moment.
+            }
+            _ => {
+                warn!(TARGET_WORKER, "Unmatched event type {:?}", event)
+            }
         }
     }
-}
-
-/// Network state.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum NetworkState {
-    /// Start.
-    Start,
-    /// Dial.
-    Dial,
-    /// Dialing boot node.
-    Dialing,
-    /// Running.
-    Running,
-    /// Disconnected.
-    Disconnected,
-}
-
-/// Network errors.
-#[derive(Debug, Clone, PartialEq)]
-pub enum NetworkError {
-    /// Error dialing peer.
-    Dialing(String),
-    /// Error relay
-    Relay(String),
-    /// Error sending message.
-    Sending(String),
-}
-
-/// Metric labels for the messages.
-#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
-struct MetricLabels {
-    /// Fact.
-    fact: Fact,
-    /// Peer ID.
-    peer_id: String,
-}
-
-/// Fact related to the message (sent or received).
-#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelValue)]
-enum Fact {
-    /// Message sent.
-    Sent,
-    /// Message received.
-    Received,
 }
 
 #[cfg(test)]
@@ -1068,13 +1309,67 @@ mod tests {
     use crate::routing::RoutingNode;
 
     use super::*;
+    use serde::Deserialize;
     use test_log::test;
 
     use identity::keys::KeyPair;
 
     use serial_test::serial;
 
-    //use tracing_test::traced_test;
+    #[derive(Debug, Serialize, Deserialize)]
+    pub struct Dummy;
+
+    // Build a relay server.
+    fn build_worker(
+        boot_nodes: Vec<RoutingNode>,
+        random_walk: bool,
+        node_type: NodeType,
+        token: CancellationToken,
+        memory_addr: String,
+    ) -> NetworkWorker<Dummy> {
+        let config = create_config(
+            boot_nodes,
+            random_walk,
+            node_type,
+            vec![memory_addr],
+        );
+        let keys = KeyPair::default();
+        let mut registry = Registry::default();
+
+        NetworkWorker::new(
+            &mut registry,
+            keys,
+            config,
+            None,
+            KeyDerivator::Ed25519,
+            token,
+        )
+        .unwrap()
+    }
+
+    // Create a config
+    fn create_config(
+        boot_nodes: Vec<RoutingNode>,
+        random_walk: bool,
+        node_type: NodeType,
+        listen_addresses: Vec<String>,
+    ) -> Config {
+        let config = crate::routing::Config::new()
+            .with_allow_local_address_in_dht(true)
+            .with_discovery_limit(50)
+            .with_dht_random_walk(random_walk);
+
+        Config {
+            boot_nodes,
+            node_type,
+            tell: Default::default(),
+            req_res: Default::default(),
+            routing: config,
+            external_addresses: vec![],
+            listen_addresses,
+            control_list: Default::default(),
+        }
+    }
 
     #[test(tokio::test)]
     #[serial]
@@ -1083,13 +1378,13 @@ mod tests {
         let token = CancellationToken::new();
 
         // Build a node.
-        let node_addr = "/memory/1001";
+        let node_addr = "/memory/3000";
         let mut node = build_worker(
             boot_nodes.clone(),
             false,
             NodeType::Addressable,
             token.clone(),
-            Some(node_addr.to_owned()),
+            node_addr.to_owned(),
         );
         if let Err(e) = node.run_connection().await {
             assert_eq!(
@@ -1109,7 +1404,7 @@ mod tests {
 
         // Build a fake bootstrap node.
         let fake_boot_peer = PeerId::random();
-        let fake_boot_addr = "/memory/1005";
+        let fake_boot_addr = "/memory/3001";
         let fake_node = RoutingNode {
             peer_id: fake_boot_peer.to_string(),
             address: vec![fake_boot_addr.to_owned()],
@@ -1117,13 +1412,13 @@ mod tests {
         boot_nodes.push(fake_node);
 
         // Build a node.
-        let node_addr = "/memory/1004";
+        let node_addr = "/memory/3002";
         let mut node = build_worker(
             boot_nodes.clone(),
             false,
             NodeType::Addressable,
             token.clone(),
-            Some(node_addr.to_owned()),
+            node_addr.to_owned(),
         );
 
         if let Err(e) = node.run_connection().await {
@@ -1144,33 +1439,31 @@ mod tests {
         let token = CancellationToken::new();
 
         // Build a bootstrap node.
-        let boot_addr = "/memory/1000";
+        let boot_addr = "/memory/3003";
         let mut boot = build_worker(
             boot_nodes.clone(),
             false,
             NodeType::Bootstrap,
             token.clone(),
-            Some(boot_addr.to_owned()),
+            boot_addr.to_owned(),
         );
+
         let boot_node = RoutingNode {
             peer_id: boot.local_peer_id().to_string(),
             address: vec![boot_addr.to_owned()],
         };
+
         boot_nodes.push(boot_node);
-        let boot_peer_id = boot.local_peer_id().to_string();
-        println!("Boot peer id: {}", boot_peer_id);
 
         // Build a node.
-        let node_addr = "/memory/1002";
+        let node_addr = "/memory/3004";
         let mut node = build_worker(
             boot_nodes,
             false,
             NodeType::Ephemeral,
             token.clone(),
-            Some(node_addr.to_owned()),
+            node_addr.to_owned(),
         );
-        let node_peer_id = node.local_peer_id().to_string();
-        println!("Node peer id: {}", node_peer_id);
 
         // Spawn the boot node
         tokio::spawn(async move {
@@ -1179,229 +1472,5 @@ mod tests {
 
         // Wait for connection.
         node.run_connection().await.unwrap();
-    }
-
-    /*
-        #[test(tokio::test)]
-        #[ignore]
-        async fn test_network_worker() {
-            let mut boot_nodes = vec![];
-
-            let token = CancellationToken::new();
-
-            // Build a bootstrap node.
-            let boot_addr = "/memory/54421";
-            let (mut boot, mut boot_receiver) = build_worker(
-                boot_nodes.clone(),
-                false,
-                NodeType::Bootstrap,
-                token.clone(),
-                Some(boot_addr.to_owned()),
-            );
-            let boot_node = RoutingNode {
-                peer_id: boot.local_peer_id().to_string(),
-                address: vec![boot_addr.to_owned()],
-            };
-            boot_nodes.push(boot_node);
-
-            // Build a ephemeral node.
-            let ephemeral_addr = "/memory/54422";
-            let (mut ephemeral, mut ephemeral_receiver) = build_worker(
-                boot_nodes.clone(),
-                false,
-                NodeType::Ephemeral,
-                token.clone(),
-                Some(ephemeral_addr.to_owned()),
-            );
-            let mut ephemeral_service = ephemeral.service();
-            let ephemeral_peer_id = ephemeral.local_peer_id();
-
-            // Build a addressable node.
-            let addressable_addr = "/memory/54423";
-            let (mut addressable, mut addresable_receiver) = build_worker(
-                boot_nodes.clone(),
-                false,
-                NodeType::Addressable,
-                token.clone(),
-                Some(addressable_addr.to_owned()),
-            );
-            let mut addressable_service = addressable.service();
-            let addressable_peer_id = addressable.local_peer_id();
-
-            // Wait for connect boot node.
-            if boot.run_connection().await.is_err() {
-                error!(TARGET_WORKER, "Error connecting to the network");
-            }
-
-            // Spawn the boot node
-            tokio::spawn(async move {
-                boot.run_main().await;
-            });
-
-            // Wait for connect ephemeral node.
-            if ephemeral.run_connection().await.is_err() {
-                error!(TARGET_WORKER, "Error connecting to the network");
-            }
-
-            // Wait for connect addressable node.
-            if addressable.run_connection().await.is_err() {
-                error!(TARGET_WORKER, "Error connecting to the network");
-            }
-
-            // Spawn the ephemeral node
-            tokio::spawn(async move {
-                ephemeral.run_main().await;
-            });
-
-            // Spawn the addressable node
-            tokio::spawn(async move {
-                addressable.run_main().await;
-            });
-
-            let mut ephemeral_identified = false;
-            let mut addressable_identified = false;
-            let mut sent = false;
-            let mut received = false;
-            let mut response = false;
-
-            // loop to receive events
-            loop {
-                if ephemeral_identified && addressable_identified && !sent {
-                    ephemeral_service
-                        .send_command(Command::SendMessage {
-                            peer: addressable_peer_id.to_bytes().to_vec(),
-                            message: b"Hello Addressable".to_vec(),
-                        })
-                        .await
-                        .unwrap();
-                    sent = true;
-                }
-                if received && !response {
-                    addressable_service
-                        .send_command(Command::SendMessage {
-                            peer: ephemeral_peer_id.to_bytes().to_vec(),
-                            message: b"Hello Ephemeral".to_vec(),
-                        })
-                        .await
-                        .unwrap();
-                    response = true;
-                }
-                tokio::select! {
-                    event = boot_receiver.recv() => {
-                        if let Some(event) = event {
-                            match event {
-                                NetworkEvent::PeerIdentified { peer, .. } => {
-                                    if peer == ephemeral_peer_id.to_string() {
-                                        ephemeral_identified = true;
-                                    } else if peer == addressable_peer_id.to_string() {
-                                        addressable_identified = true;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    event = ephemeral_receiver.recv() => {
-                        if let Some(event) = event {
-                            match event {
-                                NetworkEvent::MessageSent { peer } => {
-                                    assert_eq!(peer, addressable_peer_id.to_string());
-                                }
-                                NetworkEvent::MessageReceived { peer, message } => {
-                                    assert_eq!(peer, addressable_peer_id.to_string());
-                                    assert_eq!(message, b"Hello Ephemeral".to_vec());
-                                    break;
-                                }
-                              _ => {}
-                            }
-                        }
-                    }
-                    event = addresable_receiver.recv() => {
-                        if let Some(event) = event {
-                            match event {
-                                NetworkEvent::MessageReceived { peer, message } => {
-                                    assert_eq!(peer, ephemeral_peer_id.to_string());
-                                    assert_eq!(message, b"Hello Addressable".to_vec());
-                                    received = true;
-                                }
-                                NetworkEvent::Error(error) => {
-                                    error!(TARGET_WORKER, "Error: {:?}", error);
-                                    break;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ = token.cancelled() => {
-                        break;
-                    }
-                }
-            }
-
-            token.cancel();
-        }
-    */
-
-    #[derive(Debug, Serialize, Deserialize)]
-    pub struct Dummy {}
-
-    // Build a relay server.
-    fn build_worker(
-        boot_nodes: Vec<RoutingNode>,
-        random_walk: bool,
-        node_type: NodeType,
-        token: CancellationToken,
-        tcp_addr: Option<String>,
-    ) -> NetworkWorker<Dummy> {
-        let listen_addresses = if let Some(addr) = tcp_addr {
-            vec![addr]
-        } else {
-            vec![]
-        };
-        let config = create_config(
-            boot_nodes,
-            random_walk,
-            node_type,
-            listen_addresses,
-            false,
-        );
-        let keys = KeyPair::default();
-        let mut registry = Registry::default();
-        NetworkWorker::new(
-            &mut registry,
-            keys,
-            config,
-            None,
-            KeyDerivator::Ed25519,
-            token,
-        )
-        .unwrap()
-    }
-
-    // Create a config
-    fn create_config(
-        boot_nodes: Vec<RoutingNode>,
-        random_walk: bool,
-        node_type: NodeType,
-        listen_addresses: Vec<String>,
-        port_reuse: bool,
-    ) -> Config {
-        let config = crate::routing::Config::new(boot_nodes.clone())
-            .with_allow_non_globals_in_dht(true)
-            .with_allow_private_ip(true)
-            .with_discovery_limit(50)
-            .with_mdns(false)
-            .with_dht_random_walk(random_walk);
-
-        Config {
-            user_agent: "kore::node".to_owned(),
-            node_type,
-            tell: Default::default(),
-            routing: config,
-            external_addresses: vec![],
-            listen_addresses,
-            port_reuse,
-            control_list: Default::default(),
-        }
     }
 }

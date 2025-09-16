@@ -19,3 +19,8 @@ kore-base/contracts
 
 **/*.profraw
 coverage
+
+# ./kore-http
+keys
+db
+contracts

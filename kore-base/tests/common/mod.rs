@@ -24,6 +24,7 @@ use kore_base::{
 use network::{Config as NetworkConfig, MonitorNetworkState, RoutingNode};
 use prometheus_client::registry::Registry;
 use std::{collections::BTreeMap, fs, str::FromStr, time::Duration};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 pub fn create_temp_dir() -> String {
@@ -45,28 +46,35 @@ pub async fn create_node(
     listen_address: &str,
     peers: Vec<RoutingNode>,
     always_accept: bool,
-) -> Api {
+    paths: Option<(String, String)>,
+) -> (Api, String, String, CancellationToken, Vec<JoinHandle<()>>) {
     let keys = KeyPair::Ed25519(Ed25519KeyPair::new());
 
-    let dir = tempfile::tempdir().expect("Can not create temporal directory.");
-    let path = dir.path().to_str().unwrap();
+    let (local_db, ext_db) = if let Some((local_db, ext_db)) = paths {
+        (local_db, ext_db)
+    } else {
+        let dir =
+            tempfile::tempdir().expect("Can not create temporal directory.");
+        let local_db = dir.path().to_str().unwrap();
+
+        let dir =
+            tempfile::tempdir().expect("Can not create temporal directory.");
+        let ext_db = dir.path().to_str().unwrap();
+        (local_db.to_owned(), ext_db.to_owned())
+    };
 
     let network_config = NetworkConfig::new(
         node_type,
         vec![listen_address.to_owned()],
         vec![],
         peers,
-        false,
     );
 
     let config = Config {
         key_derivator: KeyDerivator::Ed25519,
         digest_derivator: DigestDerivator::Blake3_256,
-        kore_db: KoreDbConfig::build(path),
-        external_db: ExternalDbConfig::build(&format!(
-            "{}/database.db",
-            create_temp_dir()
-        )),
+        kore_db: KoreDbConfig::build(&local_db),
+        external_db: ExternalDbConfig::build(&ext_db),
         network: network_config,
         contracts_dir: create_temp_dir(),
         always_accept,
@@ -77,9 +85,12 @@ pub async fn create_node(
     let mut registry = Registry::default();
     let token = CancellationToken::new();
 
-    Api::new(keys, config, &mut registry, "kore", &token)
-        .await
-        .unwrap()
+    let (api, runners) =
+        Api::build(keys, config, &mut registry, "kore", &token)
+            .await
+            .unwrap();
+
+    (api, local_db, ext_db, token.clone(), runners)
 }
 
 pub async fn create_nodes_and_connections(
@@ -106,11 +117,12 @@ pub async fn create_nodes_and_connections(
             })
             .collect();
 
-        let node = create_node(
+        let (node, ..) = create_node(
             network::NodeType::Bootstrap,
             &listen_address,
             peers,
             always_accept,
+            None,
         )
         .await;
 
@@ -130,11 +142,12 @@ pub async fn create_nodes_and_connections(
             })
             .collect();
 
-        let node = create_node(
+        let (node, ..) = create_node(
             network::NodeType::Addressable,
             &listen_address,
             peers,
             always_accept,
+            None,
         )
         .await;
 
@@ -153,11 +166,12 @@ pub async fn create_nodes_and_connections(
             })
             .collect();
 
-        let node = create_node(
+        let (node, ..) = create_node(
             network::NodeType::Ephemeral,
             &listen_address,
             peers,
             always_accept,
+            None,
         )
         .await;
 
@@ -166,99 +180,6 @@ pub async fn create_nodes_and_connections(
     }
 
     nodes
-}
-
-#[allow(dead_code)]
-pub async fn create_nodes_massive(
-    size_bootstrap: usize,
-    size_addressable: usize,
-    size_ephemeral: usize,
-    initial_port: u32,
-    always_accept: bool,
-) -> [Vec<(Api, String)>; 3] {
-    let mut bootstrap_nodes = Vec::new();
-    let mut addressable_nodes = Vec::new();
-    let mut ephemeral_nodes = Vec::new();
-
-    // Helper closure to generate node address
-    let get_node_address =
-        |index: u32| -> String { format!("/memory/{}", initial_port + index) };
-
-    // Create Bootstrap nodes and interconnect them
-    for i in 0..size_bootstrap {
-        let listen_address = get_node_address(i as u32);
-
-        // Connect to all previously created Bootstrap nodes
-        let peers = bootstrap_nodes
-            .iter()
-            .map(|(node, address): &(Api, String)| RoutingNode {
-                peer_id: node.peer_id().clone(),
-                address: vec![address.clone()],
-            })
-            .collect::<Vec<RoutingNode>>();
-
-        let node = create_node(
-            network::NodeType::Bootstrap,
-            &listen_address,
-            peers,
-            always_accept,
-        )
-        .await;
-
-        bootstrap_nodes.push((node, listen_address));
-    }
-
-    tokio::time::sleep(Duration::from_secs(8)).await;
-
-    // Create Addressable nodes and connect them to all Bootstrap nodes
-    for i in 0..size_addressable {
-        let listen_address = get_node_address(size_bootstrap as u32 + i as u32);
-
-        let peers = bootstrap_nodes
-            .iter()
-            .map(|(node, address)| RoutingNode {
-                peer_id: node.peer_id().clone(),
-                address: vec![address.clone()],
-            })
-            .collect();
-
-        let node = create_node(
-            network::NodeType::Addressable,
-            &listen_address,
-            peers,
-            always_accept,
-        )
-        .await;
-
-        addressable_nodes.push((node, listen_address));
-    }
-
-    // Create Ephemeral nodes and connect them to all Bootstrap nodes
-    for i in 0..size_ephemeral {
-        let listen_address = get_node_address(
-            (size_bootstrap + size_addressable) as u32 + i as u32,
-        );
-
-        let peers = bootstrap_nodes
-            .iter()
-            .map(|(node, address)| RoutingNode {
-                peer_id: node.peer_id().clone(),
-                address: vec![address.clone()],
-            })
-            .collect();
-
-        let node = create_node(
-            network::NodeType::Ephemeral,
-            &listen_address,
-            peers,
-            always_accept,
-        )
-        .await;
-
-        ephemeral_nodes.push((node, listen_address));
-    }
-
-    [bootstrap_nodes, addressable_nodes, ephemeral_nodes]
 }
 
 /// Crea una governance en `owner_node` y lo autoriza en `other_nodes`.
@@ -442,6 +363,8 @@ pub async fn check_transfer(
 
         tokio::time::sleep(Duration::from_secs(1)).await
     }
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
     Ok(())
 }
 

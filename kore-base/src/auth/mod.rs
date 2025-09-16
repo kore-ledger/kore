@@ -10,7 +10,7 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, vec};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::{
@@ -454,7 +454,7 @@ impl Handler<Auth> for Auth {
         event: AuthEvent,
         ctx: &mut ActorContext<Auth>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(TARGET_AUTH, "OnEvent, can not persist information: {}", e);
             emit_fail(ctx, e).await;
         };
@@ -473,6 +473,8 @@ impl Handler<Auth> for Auth {
 
 #[async_trait]
 impl PersistentActor for Auth {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {

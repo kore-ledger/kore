@@ -43,8 +43,8 @@ pub enum ActorMessage {
         res: Box<Signed<ApprovalRes>>,
     },
     DistributionLastEventReq {
-        ledger: Signed<Ledger>,
-        event: Signed<KoreEvent>,
+        ledger: Box<Signed<Ledger>>,
+        event: Box<Signed<KoreEvent>>,
         last_proof: ValidationProof,
         prev_event_validation_response: Vec<ProtocolsSignatures>,
     },
@@ -58,7 +58,7 @@ pub enum ActorMessage {
     },
     DistributionLedgerRes {
         ledger: Vec<Signed<Ledger>>,
-        last_event: Option<Signed<KoreEvent>>,
+        last_event: Box<Option<Signed<KoreEvent>>>,
         last_proof: Option<ValidationProof>,
         namespace: String,
         schema_id: String,

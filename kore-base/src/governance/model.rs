@@ -1016,12 +1016,10 @@ pub enum Quorum {
 
 impl Quorum {
     pub fn check_values(&self) -> Result<(), String> {
-        if let Quorum::Percentage(percentage) = self {
-            if *percentage == 0_u8 || *percentage > 100_u8 {
-                return Err(
-                    "the percentage must be between 1 and 100".to_owned()
-                );
-            }
+        if let Quorum::Percentage(percentage) = self
+            && (*percentage == 0_u8 || *percentage > 100_u8)
+        {
+            return Err("the percentage must be between 1 and 100".to_owned());
         }
 
         Ok(())

@@ -3,7 +3,7 @@
 
 use actor::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
-    Event, Handler, Message, Response, Sink, SystemEvent,
+    Event, Handler, Message, Response, Sink,
 };
 use async_trait::async_trait;
 use identity::identifier::{
@@ -12,7 +12,7 @@ use identity::identifier::{
 use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use store::store::PersistentActor;
+use store::store::{LightPersistence, PersistentActor};
 use tracing::{error, info};
 use types::ReqManInitMessage;
 
@@ -180,7 +180,7 @@ impl RequestHandler {
                 TARGET_REQUEST,
                 "PopQueue, Can not enqueue next event: {}", e
             );
-            ctx.system().send_event(SystemEvent::StopSystem).await;
+            ctx.system().stop_system();
             return Err(e);
         }
 
@@ -444,7 +444,7 @@ impl Handler<RequestHandler> for RequestHandler {
                             "ChangeApprovalState, can not send message to Approver actor: {}",
                             e
                         );
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        ctx.system().stop_system();
                         return Err(e);
                     }
                 } else {
@@ -509,27 +509,22 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 let metadata = match request.content.clone() {
                     EventRequest::Create(create_request) => {
-                        if let Some(name) = create_request.name.clone() {
-                            if name.is_empty() || name.len() > 100 {
-                                let e = "The subject name must be less than 100 characters or not be empty.";
-                                error!(TARGET_REQUEST, "NewRequest, {}", e);
-                                return Err(ActorError::Functional(
-                                    e.to_owned(),
-                                ));
-                            }
+                        if let Some(name) = create_request.name.clone()
+                            && (name.is_empty() || name.len() > 100)
+                        {
+                            let e = "The subject name must be less than 100 characters or not be empty.";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
                         }
 
                         if let Some(description) =
                             create_request.description.clone()
+                            && (description.is_empty()
+                                || description.len() > 200)
                         {
-                            if description.is_empty() || description.len() > 200
-                            {
-                                let e = "The subject description must be less than 200 characters or not be empty.";
-                                error!(TARGET_REQUEST, "NewRequest, {}", e);
-                                return Err(ActorError::Functional(
-                                    e.to_owned(),
-                                ));
-                            }
+                            let e = "The subject description must be less than 200 characters or not be empty.";
+                            error!(TARGET_REQUEST, "NewRequest, {}", e);
+                            return Err(ActorError::Functional(e.to_owned()));
                         }
 
                         // verificar que el firmante sea el nodo.
@@ -648,9 +643,7 @@ impl Handler<RequestHandler> for RequestHandler {
                                 TARGET_REQUEST,
                                 "NewRequest, Can not enqueue new event: {}", e
                             );
-                            ctx.system()
-                                .send_event(SystemEvent::StopSystem)
-                                .await;
+                            ctx.system().stop_system();
                             return Err(e);
                         }
 
@@ -836,20 +829,18 @@ impl Handler<RequestHandler> for RequestHandler {
                 .await;
 
                 if !self.handling.contains_key(&metadata.subject_id.to_string())
-                {
-                    if let Err(e) = RequestHandler::queued_event(
+                    && let Err(e) = RequestHandler::queued_event(
                         ctx,
                         &metadata.subject_id.to_string(),
                     )
                     .await
-                    {
-                        error!(
-                            TARGET_REQUEST,
-                            "NewRequest, Can not enqueue new event: {}", e
-                        );
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
-                        return Err(e);
-                    }
+                {
+                    error!(
+                        TARGET_REQUEST,
+                        "NewRequest, Can not enqueue new event: {}", e
+                    );
+                    ctx.system().stop_system();
+                    return Err(e);
                 }
 
                 Ok(RequestHandlerResponse::Ok(RequestData {
@@ -891,7 +882,7 @@ impl Handler<RequestHandler> for RequestHandler {
                             "Can not obtain request id hash id: {}",
                             e
                         ));
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        ctx.system().stop_system();
                         return Err(e);
                     }
                 };
@@ -905,7 +896,7 @@ impl Handler<RequestHandler> for RequestHandler {
                             TARGET_REQUEST,
                             "PopQueue, Can not obtain subject metadata: {}", e
                         );
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        ctx.system().stop_system();
                         return Err(e);
                     }
                 };
@@ -940,8 +931,8 @@ impl Handler<RequestHandler> for RequestHandler {
 
                 let (message, command) = match event.content.clone() {
                     EventRequest::Create(create_request) => {
-                        if create_request.schema_id != "governance" {
-                            if let Err(e) = self
+                        if create_request.schema_id != "governance"
+                            && let Err(e) = self
                                 .check_creations(
                                     "PopQueue",
                                     ctx,
@@ -951,16 +942,15 @@ impl Handler<RequestHandler> for RequestHandler {
                                     gov,
                                 )
                                 .await
-                            {
-                                return self
-                                    .error(
-                                        ctx,
-                                        &e.to_string(),
-                                        &subject_id,
-                                        &request_id,
-                                    )
-                                    .await;
-                            };
+                        {
+                            return self
+                                .error(
+                                    ctx,
+                                    &e.to_string(),
+                                    &subject_id,
+                                    &request_id,
+                                )
+                                .await;
                         }
                         (
                             RequestManagerMessage::Validate,
@@ -970,13 +960,13 @@ impl Handler<RequestHandler> for RequestHandler {
 
                     EventRequest::Confirm(confirm_req) => {
                         if metadata.governance_id.is_empty() {
-                            if let Some(name) = confirm_req.name_old_owner {
-                                if name.is_empty() {
-                                    let e = "Name of old owner can not be a empty String";
-                                    return self
-                                        .error(ctx, e, &subject_id, &request_id)
-                                        .await;
-                                }
+                            if let Some(name) = confirm_req.name_old_owner
+                                && name.is_empty()
+                            {
+                                let e = "Name of old owner can not be a empty String";
+                                return self
+                                    .error(ctx, e, &subject_id, &request_id)
+                                    .await;
                             }
                             (
                                 RequestManagerMessage::Evaluate,
@@ -1045,7 +1035,7 @@ impl Handler<RequestHandler> for RequestHandler {
                             "PopQueue, Can not create request manager actor: {}",
                             e
                         );
-                        ctx.system().send_event(SystemEvent::StopSystem).await;
+                        ctx.system().stop_system();
                         return Err(e);
                     }
                 };
@@ -1057,7 +1047,7 @@ impl Handler<RequestHandler> for RequestHandler {
                         TARGET_REQUEST,
                         "PopQueue, Can not obtaint ext_db helper"
                     );
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    ctx.system().stop_system();
                     return Err(ActorError::NotHelper("ext_db".to_owned()));
                 };
 
@@ -1074,7 +1064,7 @@ impl Handler<RequestHandler> for RequestHandler {
                         "PopQueue, Can not send message to request manager actor: {}",
                         e
                     );
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    ctx.system().stop_system();
                     return Err(e);
                 };
 
@@ -1107,7 +1097,7 @@ impl Handler<RequestHandler> for RequestHandler {
                         TARGET_REQUEST,
                         "EndHandling, Can not enqueue next event: {}", e
                     );
-                    ctx.system().send_event(SystemEvent::StopSystem).await;
+                    ctx.system().stop_system();
                     return Err(e);
                 }
 
@@ -1122,7 +1112,7 @@ impl Handler<RequestHandler> for RequestHandler {
         ctx: &mut ActorContext<RequestHandler>,
     ) -> ChildAction {
         error!(TARGET_REQUEST, "OnChildFault, {}", error);
-        ctx.system().send_event(SystemEvent::StopSystem).await;
+        ctx.system().stop_system();
         ChildAction::Stop
     }
 
@@ -1131,12 +1121,12 @@ impl Handler<RequestHandler> for RequestHandler {
         event: RequestHandlerEvent,
         ctx: &mut ActorContext<RequestHandler>,
     ) {
-        if let Err(e) = self.persist_light(&event, ctx).await {
+        if let Err(e) = self.persist(&event, ctx).await {
             error!(
                 TARGET_REQUEST,
                 "OnEvent, can not persist information: {}", e
             );
-            ctx.system().send_event(SystemEvent::StopSystem).await;
+            ctx.system().stop_system();
         };
 
         if let Err(e) = ctx.publish_event(event).await {
@@ -1144,7 +1134,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 TARGET_REQUEST,
                 "PublishEvent, can not publish event: {}", e
             );
-            ctx.system().send_event(SystemEvent::StopSystem).await;
+            ctx.system().stop_system();
         }
     }
 }
@@ -1154,6 +1144,8 @@ impl Storable for RequestHandler {}
 
 #[async_trait]
 impl PersistentActor for RequestHandler {
+    type Persistence = LightPersistence;
+
     /// Change node state.
     fn apply(&mut self, event: &Self::Event) -> Result<(), ActorError> {
         match event {
