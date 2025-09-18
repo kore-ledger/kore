@@ -38,13 +38,13 @@ use identity::{
     keys::KeyPair,
 };
 
-use actor::{
-    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event,
+use rush::{
+    Actor, ActorContext, ActorPath, ChildAction, ActorError, Event,
     Handler, Message, Response, Sink,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use store::store::{LightPersistence, PersistentActor};
+use rush::{LightPersistence, PersistentActor};
 
 pub mod nodekey;
 pub mod register;
@@ -369,7 +369,7 @@ impl Actor for Node {
 
     async fn pre_start(
         &mut self,
-        ctx: &mut actor::ActorContext<Self>,
+        ctx: &mut rush::ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Self::build_compilation_dir(ctx).await?;
         // Start store
@@ -465,7 +465,7 @@ impl Handler<Node> for Node {
         &mut self,
         _sender: ActorPath,
         msg: NodeMessage,
-        ctx: &mut actor::ActorContext<Node>,
+        ctx: &mut rush::ActorContext<Node>,
     ) -> Result<NodeResponse, ActorError> {
         match msg {
             NodeMessage::UpDistributor(subject_id) => {
@@ -852,7 +852,7 @@ impl Handler<Node> for Node {
                 ))
             }
             NodeMessage::IsAuthorized(subject_id) => {
-                let auth: Option<actor::ActorRef<Auth>> =
+                let auth: Option<rush::ActorRef<Auth>> =
                     ctx.get_child("auth").await;
                 let authorized_subjects = if let Some(auth) = auth {
                     let res = match auth.ask(AuthMessage::GetAuths).await {

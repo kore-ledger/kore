@@ -12,7 +12,6 @@ keywords.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-actor = { workspace = true }
 async-trait = { workspace = true }
 bincode = { workspace = true }
 borsh = { workspace = true }
@@ -21,11 +20,9 @@ identity = { path = "../identity"}
 json-patch = { version = "4.0.0" }
 lazy_static = { workspace = true }
 memsecurity = { version = "3.5.2", features = ["encryption"]}
-rocksdb_db = { path = "../../rush-rs/databases/rocksdb_db", optional = true }
+rush = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-sqlite_db = { path = "../../rush-rs/databases/sqlite_db", optional = true }
-store = { path = "../../rush-rs/store" }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "fs"] }
@@ -52,7 +49,6 @@ network = { path = "../network", features = ["test"]}
 
 [features]
 default = ["sqlite", "ext-sqlite"]
-rocksdb = ["rocksdb_db"]
-sqlite = ["sqlite_db"]
+rocksdb = ["rush/rocksdb"]
+sqlite = ["rush/sqlite"]
 ext-sqlite = ["rusqlite"]
-test = []

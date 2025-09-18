@@ -23,7 +23,7 @@ pub(crate) mod system;
 pub mod update;
 pub mod validation;
 
-use actor::{ActorPath, ActorRef, Sink};
+use rush::{ActorPath, ActorRef, Sink};
 use approval::approver::ApprovalStateRes;
 use auth::{Auth, AuthMessage, AuthResponse, AuthWitness};
 use config::Config as KoreBaseConfig;
@@ -70,6 +70,15 @@ use lazy_static::lazy_static;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+
+#[cfg(all(feature = "sqlite", feature = "rocksdb"))]
+compile_error!("Select only one: 'sqlite' or 'rocksdb'.");
+
+#[cfg(not(any(feature = "sqlite", feature = "rocksdb")))]
+compile_error!("You must enable 'sqlite' or 'rocksdb'.");
+
+#[cfg(not(feature = "ext-sqlite"))]
+compile_error!("You must enable 'ext-sqlite'.");
 
 const TARGET_API: &str = "Kore-Api";
 

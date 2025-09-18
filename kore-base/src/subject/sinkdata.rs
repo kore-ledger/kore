@@ -1,8 +1,8 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorError, Event, Handler,
     Message, Response,
 };
 use async_trait::async_trait;
@@ -74,7 +74,7 @@ impl Handler<SinkData> for SinkData {
         &mut self,
         _sender: ActorPath,
         msg: SinkDataMessage,
-        ctx: &mut actor::ActorContext<SinkData>,
+        ctx: &mut rush::ActorContext<SinkData>,
     ) -> Result<SinkDataResponse, ActorError> {
         match msg {
             SinkDataMessage::UpdateState(metadata) => {

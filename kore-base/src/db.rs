@@ -6,15 +6,15 @@
 
 use crate::{config::KoreDbConfig, helpers::encrypted_pass::EncryptedPass};
 
-use actor::{ActorContext, Error as ActorError};
+use rush::{ActorContext, ActorError};
 #[cfg(feature = "rocksdb")]
-use rocksdb_db::{RocksDbManager, RocksDbStore};
+use rush::{RocksDbManager, RocksDbStore};
 #[cfg(feature = "sqlite")]
-use sqlite_db::SqliteManager;
-use store::{
-    Error as StoreError,
-    database::{Collection, DbManager, State},
-    store::PersistentActor,
+use rush::SqliteManager;
+use rush::{
+    StoreError,
+    Collection, DbManager, State,
+    PersistentActor,
 };
 
 use async_trait::async_trait;
@@ -88,7 +88,7 @@ pub enum DbCollection {
     #[cfg(feature = "rocksdb")]
     RocksDb(RocksDbStore),
     #[cfg(feature = "sqlite")]
-    SQLite(sqlite_db::SqliteCollection),
+    SQLite(rush::SqliteCollection),
 }
 
 impl Collection for DbCollection {
@@ -101,7 +101,7 @@ impl Collection for DbCollection {
         }
     }
 
-    fn get(&self, key: &str) -> Result<Vec<u8>, store::Error> {
+    fn get(&self, key: &str) -> Result<Vec<u8>, StoreError> {
         match self {
             #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => Collection::get(store, key),
@@ -110,7 +110,7 @@ impl Collection for DbCollection {
         }
     }
 
-    fn put(&mut self, key: &str, data: &[u8]) -> Result<(), store::Error> {
+    fn put(&mut self, key: &str, data: &[u8]) -> Result<(), StoreError> {
         match self {
             #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => Collection::put(store, key, data),
@@ -119,7 +119,7 @@ impl Collection for DbCollection {
         }
     }
 
-    fn del(&mut self, key: &str) -> Result<(), store::Error> {
+    fn del(&mut self, key: &str) -> Result<(), StoreError> {
         match self {
             #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => Collection::del(store, key),
@@ -160,7 +160,7 @@ impl State for DbCollection {
         }
     }
 
-    fn get(&self) -> Result<Vec<u8>, store::Error> {
+    fn get(&self) -> Result<Vec<u8>, StoreError> {
         match self {
             #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => State::get(store),
@@ -169,7 +169,7 @@ impl State for DbCollection {
         }
     }
 
-    fn put(&mut self, data: &[u8]) -> Result<(), store::Error> {
+    fn put(&mut self, data: &[u8]) -> Result<(), StoreError> {
         match self {
             #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => State::put(store, data),
@@ -178,7 +178,7 @@ impl State for DbCollection {
         }
     }
 
-    fn del(&mut self) -> Result<(), store::Error> {
+    fn del(&mut self) -> Result<(), StoreError> {
         match self {
             #[cfg(feature = "rocksdb")]
             DbCollection::RocksDb(store) => State::del(store),

@@ -1,8 +1,8 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{
-    Actor, ActorContext, ActorPath, ChildAction, Error as ActorError, Event,
+use rush::{
+    Actor, ActorContext, ActorPath, ChildAction, ActorError, Event,
     Handler, Message, Response,
 };
 use async_trait::async_trait;
@@ -10,7 +10,7 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, vec};
-use store::store::{LightPersistence, PersistentActor};
+use rush::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::{
@@ -199,7 +199,7 @@ impl Handler<Auth> for Auth {
         &mut self,
         _sender: ActorPath,
         msg: AuthMessage,
-        ctx: &mut actor::ActorContext<Auth>,
+        ctx: &mut rush::ActorContext<Auth>,
     ) -> Result<AuthResponse, ActorError> {
         match msg {
             AuthMessage::CheckTransfer { subject_id } => {

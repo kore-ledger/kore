@@ -31,8 +31,8 @@ use identity::identifier::{
 use json_patch::diff;
 use network::ComunicateInfo;
 
-use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
     Strategy,
 };

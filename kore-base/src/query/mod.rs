@@ -1,8 +1,8 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorError, Handler, Message,
     Response,
 };
 use async_trait::async_trait;
@@ -86,7 +86,7 @@ impl Actor for Query {
 
     async fn pre_start(
         &mut self,
-        _ctx: &mut actor::ActorContext<Self>,
+        _ctx: &mut rush::ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }
@@ -105,7 +105,7 @@ impl Handler<Query> for Query {
         &mut self,
         _sender: ActorPath,
         msg: QueryMessage,
-        ctx: &mut actor::ActorContext<Query>,
+        ctx: &mut rush::ActorContext<Query>,
     ) -> Result<QueryResponse, ActorError> {
         let Some(helper): Option<ExternalDB> =
             ctx.system().get_helper("ext_db").await

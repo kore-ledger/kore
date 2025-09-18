@@ -12,11 +12,11 @@ keywords.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-kore-base = { path = "../kore-base"}
+kore-base = { path = "../kore-base", default-features = false}
 network = { path = "../network" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-prometheus-client = { workspace = true }
+prometheus-client = { workspace = true}
 tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "signal"] }
 tokio-util = { workspace = true }
 identity = { path = "../identity"}
@@ -33,7 +33,10 @@ tempfile = { workspace = true }
 serial_test = { workspace = true }
 
 [features]
-default = ["prometheus"]
+default = ["prometheus", "sqlite", "ext-sqlite"]
+rocksdb = ["kore-base/rocksdb"]
+sqlite = ["kore-base/sqlite"]
+ext-sqlite = ["kore-base/ext-sqlite"]
 prometheus = ["axum"]
 
 [lib]

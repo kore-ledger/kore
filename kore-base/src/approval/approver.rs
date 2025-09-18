@@ -18,16 +18,16 @@ use crate::{
     },
     subject::Subject,
 };
-use actor::{
+use rush::{
     Actor, ActorContext, ActorPath, ActorRef, ChildAction,
-    CustomIntervalStrategy, Error as ActorError, Event, Handler, Message,
+    CustomIntervalStrategy, ActorError, Event, Handler, Message,
     RetryActor, RetryMessage, Strategy,
 };
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
-use store::store::{LightPersistence, PersistentActor};
+use rush::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use super::{

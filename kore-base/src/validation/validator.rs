@@ -31,8 +31,8 @@ use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 
-use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
     Strategy,
 };

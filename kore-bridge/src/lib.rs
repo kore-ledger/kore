@@ -37,7 +37,6 @@ pub use network::{
     Config as NetworkConfig, ControlListConfig, RoutingConfig, RoutingNode,
     TellConfig,
 };
-use prometheus::run_prometheus;
 use prometheus_client::registry::Registry;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -48,7 +47,19 @@ pub mod model;
 pub mod settings;
 pub mod utils;
 pub use clap;
+#[cfg(feature = "prometheus")]
 pub mod prometheus;
+#[cfg(feature = "prometheus")]
+use prometheus::run_prometheus;
+
+#[cfg(all(feature = "sqlite", feature = "rocksdb"))]
+compile_error!("Select only one: 'sqlite' or 'rocksdb'.");
+
+#[cfg(not(any(feature = "sqlite", feature = "rocksdb")))]
+compile_error!("You must enable 'sqlite' or 'rocksdb'.");
+
+#[cfg(not(feature = "ext-sqlite"))]
+compile_error!("You must enable 'ext-sqlite'.");
 
 #[derive(Clone)]
 pub struct Bridge {

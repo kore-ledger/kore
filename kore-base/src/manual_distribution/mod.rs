@@ -1,8 +1,8 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
     Handler, Message,
 };
 use async_trait::async_trait;
@@ -89,7 +89,7 @@ impl Actor for ManualDistribution {
 
     async fn pre_start(
         &mut self,
-        _ctx: &mut actor::ActorContext<Self>,
+        _ctx: &mut rush::ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }
@@ -108,7 +108,7 @@ impl Handler<ManualDistribution> for ManualDistribution {
         &mut self,
         _sender: ActorPath,
         msg: ManualDistributionMessage,
-        ctx: &mut actor::ActorContext<ManualDistribution>,
+        ctx: &mut rush::ActorContext<ManualDistribution>,
     ) -> Result<(), ActorError> {
         match msg {
             ManualDistributionMessage::Update(subject_id) => {

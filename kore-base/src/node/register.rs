@@ -1,14 +1,14 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Event, Handler,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorError, Event, Handler,
     Message, Response,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use store::store::{LightPersistence, PersistentActor};
+use rush::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::{db::Storable, model::common::emit_fail};
@@ -117,7 +117,7 @@ impl Handler<Register> for Register {
         &mut self,
         _sender: ActorPath,
         msg: RegisterMessage,
-        ctx: &mut actor::ActorContext<Register>,
+        ctx: &mut rush::ActorContext<Register>,
     ) -> Result<RegisterResponse, ActorError> {
         match msg {
             RegisterMessage::GetGovs { active } => {

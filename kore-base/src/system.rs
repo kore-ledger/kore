@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{ActorSystem, SystemRef};
+use rush::{ActorSystem, SystemRef};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 

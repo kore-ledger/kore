@@ -1,8 +1,8 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
     Event, Handler, Message, Response, Sink,
 };
 use async_trait::async_trait;
@@ -12,7 +12,7 @@ use identity::identifier::{
 use manager::{RequestManager, RequestManagerMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use store::store::{LightPersistence, PersistentActor};
+use rush::{LightPersistence, PersistentActor};
 use tracing::{error, info};
 use types::ReqManInitMessage;
 
@@ -63,7 +63,7 @@ impl RequestHandler {
         subject_id: &str,
     ) -> Result<(), ActorError> {
         let request_path = ActorPath::from("/user/request");
-        let request_actor: Option<actor::ActorRef<RequestHandler>> =
+        let request_actor: Option<rush::ActorRef<RequestHandler>> =
             ctx.system().get_actor(&request_path).await;
 
         if let Some(request_actor) = request_actor {
@@ -124,7 +124,7 @@ impl RequestHandler {
         };
 
         let node_path = ActorPath::from("/user/node");
-        let node_actor: Option<actor::ActorRef<Node>> =
+        let node_actor: Option<rush::ActorRef<Node>> =
             ctx.system().get_actor(&node_path).await;
 
         let response = if let Some(node_actor) = node_actor {
@@ -373,7 +373,7 @@ impl Handler<RequestHandler> for RequestHandler {
         &mut self,
         _sender: ActorPath,
         msg: RequestHandlerMessage,
-        ctx: &mut actor::ActorContext<RequestHandler>,
+        ctx: &mut rush::ActorContext<RequestHandler>,
     ) -> Result<RequestHandlerResponse, ActorError> {
         match msg {
             RequestHandlerMessage::AbortRequest {
@@ -849,6 +849,11 @@ impl Handler<RequestHandler> for RequestHandler {
                 }))
             }
             RequestHandlerMessage::PopQueue { subject_id } => {
+                if self.handling.contains_key(&subject_id) {
+                    // Se está manejando otro evento para este sujeto.
+                    return Ok(RequestHandlerResponse::None);
+                }
+
                 let derivator = if let Ok(derivator) = DIGEST_DERIVATOR.lock() {
                     *derivator
                 } else {
@@ -857,7 +862,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 };
 
                 let event = if let Some(events) = self.in_queue.get(&subject_id)
-                {
+                { 
                     if let Some(event) = events.clone().pop_front() {
                         event
                     } else {

@@ -3,8 +3,8 @@
 
 use std::collections::HashSet;
 
-use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
     Handler, Message,
 };
 

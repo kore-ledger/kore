@@ -1,8 +1,8 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorError, Handler, Message,
     Response,
 };
 use async_trait::async_trait;
@@ -42,7 +42,7 @@ impl Actor for NodeKey {
 
     async fn pre_start(
         &mut self,
-        _ctx: &mut actor::ActorContext<Self>,
+        _ctx: &mut rush::ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }
@@ -61,7 +61,7 @@ impl Handler<NodeKey> for NodeKey {
         &mut self,
         _sender: ActorPath,
         msg: NodeKeyMessage,
-        _ctx: &mut actor::ActorContext<NodeKey>,
+        _ctx: &mut rush::ActorContext<NodeKey>,
     ) -> Result<NodeKeyResponse, ActorError> {
         match msg {
             NodeKeyMessage::GetKeyIdentifier => {

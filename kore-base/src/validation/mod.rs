@@ -25,8 +25,8 @@ use crate::{
     request::manager::{RequestManager, RequestManagerMessage},
     subject::Metadata,
 };
-use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
     Handler, Message,
 };
 
@@ -562,7 +562,7 @@ pub mod tests {
     use std::time::Duration;
     use test_log::test;
 
-    use actor::{ActorPath, ActorRef, Sink, SystemRef};
+    use rush::{ActorPath, ActorRef, Sink, SystemRef};
     use identity::{
         identifier::DigestIdentifier,
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},

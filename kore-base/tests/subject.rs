@@ -10,7 +10,7 @@ use common::{
 use identity::identifier::KeyIdentifier;
 use kore_base::{
     auth::AuthWitness,
-    model::request::{ConfirmRequest, EventRequest},
+    model::{request::{ConfirmRequest, EventRequest, FactRequest}, ValueWrapper},
 };
 use serde_json::json;
 use test_log::test;
@@ -1767,8 +1767,6 @@ async fn test_subject_transfer_event_3() {
         .await
         .unwrap();
 
-    tokio::time::sleep(Duration::from_secs(10)).await;
-
     let transfer_data = old_owner.get_pending_transfers().await.unwrap();
     assert!(transfer_data.is_empty());
 
@@ -3243,6 +3241,133 @@ async fn test_no_subject_issuer() {
         state.properties,
         json!({
             "one": 0, "three": 0, "two": 0
+        })
+    );
+}
+
+#[test(tokio::test)]
+// Testear 1000 eventos sin cooldown para un sujeto
+async fn test_1000_events() {
+    let nodes = create_nodes_and_connections(
+        vec![vec![]],
+        vec![],
+        vec![],
+        true,
+        46140,
+    )
+    .await;
+
+    let owner_governance = &nodes[0];
+
+    let governance_id = create_and_authorize_governance(
+        owner_governance,
+        vec![],
+        "",
+    )
+    .await;
+
+    // add node bootstrap and ephemeral to governance
+    let json = json!({
+        "schemas": {
+            "add": [
+                {
+                    "id": "Example",
+                    "contract": "dXNlIHNlcmRlOjp7U2VyaWFsaXplLCBEZXNlcmlhbGl6ZX07CnVzZSBrb3JlX2NvbnRyYWN0X3NkayBhcyBzZGs7CgovLy8gRGVmaW5lIHRoZSBzdGF0ZSBvZiB0aGUgY29udHJhY3QuIAojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplLCBDbG9uZSldCnN0cnVjdCBTdGF0ZSB7CiAgcHViIG9uZTogdTMyLAogIHB1YiB0d286IHUzMiwKICBwdWIgdGhyZWU6IHUzMgp9CgojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplKV0KZW51bSBTdGF0ZUV2ZW50IHsKICBNb2RPbmUgeyBkYXRhOiB1MzIgfSwKICBNb2RUd28geyBkYXRhOiB1MzIgfSwKICBNb2RUaHJlZSB7IGRhdGE6IHUzMiB9LAogIE1vZEFsbCB7IG9uZTogdTMyLCB0d286IHUzMiwgdGhyZWU6IHUzMiB9Cn0KCiNbdW5zYWZlKG5vX21hbmdsZSldCnB1YiB1bnNhZmUgZm4gbWFpbl9mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMiwgaW5pdF9zdGF0ZV9wdHI6IGkzMiwgZXZlbnRfcHRyOiBpMzIsIGlzX293bmVyOiBpMzIpIC0+IHUzMiB7CiAgc2RrOjpleGVjdXRlX2NvbnRyYWN0KHN0YXRlX3B0ciwgaW5pdF9zdGF0ZV9wdHIsIGV2ZW50X3B0ciwgaXNfb3duZXIsIGNvbnRyYWN0X2xvZ2ljKQp9CgojW3Vuc2FmZShub19tYW5nbGUpXQpwdWIgdW5zYWZlIGZuIGluaXRfY2hlY2tfZnVuY3Rpb24oc3RhdGVfcHRyOiBpMzIpIC0+IHUzMiB7CiAgc2RrOjpjaGVja19pbml0X2RhdGEoc3RhdGVfcHRyLCBpbml0X2xvZ2ljKQp9CgpmbiBpbml0X2xvZ2ljKAogIF9zdGF0ZTogJlN0YXRlLAogIGNvbnRyYWN0X3Jlc3VsdDogJm11dCBzZGs6OkNvbnRyYWN0SW5pdENoZWNrLAopIHsKICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0KCmZuIGNvbnRyYWN0X2xvZ2ljKAogIGNvbnRleHQ6ICZzZGs6OkNvbnRleHQ8U3RhdGVFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICBsZXQgc3RhdGUgPSAmbXV0IGNvbnRyYWN0X3Jlc3VsdC5zdGF0ZTsKICBtYXRjaCBjb250ZXh0LmV2ZW50IHsKICAgICAgU3RhdGVFdmVudDo6TW9kT25lIHsgZGF0YSB9ID0+IHsKICAgICAgICBzdGF0ZS5vbmUgPSBkYXRhOwogICAgICB9LAogICAgICBTdGF0ZUV2ZW50OjpNb2RUd28geyBkYXRhIH0gPT4gewogICAgICAgIHN0YXRlLnR3byA9IGRhdGE7CiAgICAgIH0sCiAgICAgIFN0YXRlRXZlbnQ6Ok1vZFRocmVlIHsgZGF0YSB9ID0+IHsKICAgICAgICBpZiBkYXRhID09IDUwIHsKICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDYW4gbm90IGNoYW5nZSB0aHJlZSB2YWx1ZSwgNTAgaXMgYSBpbnZhbGlkIHZhbHVlIi50b19vd25lZCgpOwogICAgICAgICAgcmV0dXJuCiAgICAgICAgfQogICAgICAgIAogICAgICAgIHN0YXRlLnRocmVlID0gZGF0YTsKICAgICAgfSwKICAgICAgU3RhdGVFdmVudDo6TW9kQWxsIHsgb25lLCB0d28sIHRocmVlIH0gPT4gewogICAgICAgIHN0YXRlLm9uZSA9IG9uZTsKICAgICAgICBzdGF0ZS50d28gPSB0d287CiAgICAgICAgc3RhdGUudGhyZWUgPSB0aHJlZTsKICAgICAgfQogIH0KICBjb250cmFjdF9yZXN1bHQuc3VjY2VzcyA9IHRydWU7Cn0=",
+                    "initial_value": {
+                        "one": 0,
+                        "two": 0,
+                        "three": 0
+                    }
+                }
+            ]
+        },
+        "roles": {
+            "schema":
+                [
+                {
+                    "schema_id": "Example",
+                    "roles": {
+                        "add": {
+                            "evaluator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "validator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "witness": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ],
+                            "creator": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": [],
+                                    "quantity": 1
+                                }
+                            ],
+                            "issuer": [
+                                {
+                                    "name": "Owner",
+                                    "namespace": []
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    });
+
+    emit_fact(owner_governance, governance_id.clone(), json, true)
+        .await
+        .unwrap();
+
+    let subject_id_1 =
+        create_subject(owner_governance, governance_id.clone(), "Example", "", true)
+            .await
+            .unwrap();
+
+    
+    for i in 0..1000 {
+        // emit event to subject
+        let json = json!({
+            "ModOne": {
+                "data": 1 + i,
+            }
+        });
+
+        let request = EventRequest::Fact(FactRequest {
+            subject_id: subject_id_1.clone(),
+            payload: ValueWrapper(json),
+        });
+        let _response = owner_governance.own_request(request).await.unwrap();
+    }
+
+    let state = get_subject(owner_governance, subject_id_1.clone(), Some(1000))
+        .await
+        .unwrap();
+    assert_eq!(state.subject_id, subject_id_1.to_string());
+    assert_eq!(state.governance_id, governance_id.to_string());
+    assert_eq!(state.genesis_gov_version, 1);
+    assert_eq!(state.namespace, "");
+    assert_eq!(state.schema_id, "Example");
+    assert_eq!(state.owner, owner_governance.controller_id());
+    assert_eq!(state.new_owner, None);
+    assert_eq!(state.creator, owner_governance.controller_id());
+    assert_eq!(state.active, true);
+    assert_eq!(state.sn, 1000);
+    assert_eq!(
+        state.properties,
+        json!({
+            "one": 1000, "three": 0, "two": 0
         })
     );
 }

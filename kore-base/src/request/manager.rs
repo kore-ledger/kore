@@ -1,8 +1,8 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
     Event, Handler, Message,
 };
 use async_trait::async_trait;
@@ -12,7 +12,7 @@ use identity::identifier::{
 use network::ComunicateInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use store::store::{
+use rush::{
     LightPersistence, PersistentActor, Store, StoreCommand, StoreResponse,
 };
 use tracing::{error, info, warn};
@@ -910,7 +910,7 @@ impl Handler<RequestManager> for RequestManager {
         &mut self,
         _sender: ActorPath,
         msg: RequestManagerMessage,
-        ctx: &mut actor::ActorContext<RequestManager>,
+        ctx: &mut rush::ActorContext<RequestManager>,
     ) -> Result<(), ActorError> {
         match msg {
             RequestManagerMessage::Reboot { governance_id } => {

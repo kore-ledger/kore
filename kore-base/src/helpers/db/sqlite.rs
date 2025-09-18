@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-use actor::{ActorRef, Subscriber};
+use rush::{ActorRef, Subscriber};
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use rusqlite::{Connection, OpenFlags, params};

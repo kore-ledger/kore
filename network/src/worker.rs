@@ -24,7 +24,7 @@ use std::{
     time::Duration,
 };
 
-use actor::ActorRef;
+use rush::ActorRef;
 use identity::{
     identifier::derive::KeyDerivator,
     keys::{KeyMaterial, KeyPair},

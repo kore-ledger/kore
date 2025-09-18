@@ -19,7 +19,7 @@ use crate::{
 
 use super::ActorMessage;
 use super::{NetworkMessage, service::HelperService};
-use actor::{ActorPath, ActorRef, Error as ActorError, SystemRef};
+use rush::{ActorPath, ActorRef, ActorError, SystemRef};
 use identity::identifier::derive::KeyDerivator;
 use network::Command as NetworkCommand;
 use network::CommandHelper as Command;

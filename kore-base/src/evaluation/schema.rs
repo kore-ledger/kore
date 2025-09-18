@@ -3,8 +3,8 @@
 
 use std::collections::HashSet;
 
-use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorError, Handler, Message,
 };
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;

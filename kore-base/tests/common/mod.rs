@@ -351,7 +351,13 @@ pub async fn check_transfer(
 ) -> Result<(), Box<dyn std::error::Error>> {
     node.check_transfer(subject_id.clone()).await.unwrap();
 
+    let mut count = 0;
     loop {
+        if count == 3 {
+            node.update_subject(subject_id.clone()).await.unwrap();
+            count = 0;
+        }
+
         let transfer_data = node.get_pending_transfers().await.unwrap();
         if transfer_data
             .iter()
@@ -361,10 +367,10 @@ pub async fn check_transfer(
             break;
         }
 
-        tokio::time::sleep(Duration::from_secs(1)).await
+        count +=1;
+        tokio::time::sleep(Duration::from_secs(2)).await
     }
-
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    
     Ok(())
 }
 

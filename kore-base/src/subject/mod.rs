@@ -52,8 +52,8 @@ use crate::{
     },
 };
 
-use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
     Event, Handler, Message, Response, Sink,
 };
 use event::LedgerEvent;
@@ -67,7 +67,7 @@ use json_patch::{Patch, patch};
 use serde::{Deserialize, Serialize};
 use serde_json::to_value;
 use sinkdata::{SinkData, SinkDataMessage};
-use store::store::{
+use rush::{
     FullPersistence, PersistentActor, Store, StoreCommand, StoreResponse,
 };
 use tracing::{error, warn};
@@ -1645,7 +1645,7 @@ impl Subject {
     ) -> Result<(), ActorError> {
         let tranfer_register_path =
             ActorPath::from("/user/node/transfer_register");
-        let transfer_register_actor: Option<actor::ActorRef<TransferRegister>> =
+        let transfer_register_actor: Option<rush::ActorRef<TransferRegister>> =
             ctx.system().get_actor(&tranfer_register_path).await;
 
         let Some(transfer_register_actor) = transfer_register_actor else {
@@ -2891,7 +2891,7 @@ mod tests {
         }
     }
 
-    use actor::SystemRef;
+    use rush::SystemRef;
     use event::LedgerEventMessage;
     use identity::{
         identifier::derive::digest::DigestDerivator,

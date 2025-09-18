@@ -12,7 +12,7 @@ use crate::{
     model::{Namespace, wrapper::ValueWrapper},
 };
 
-use actor::Error as ActorError;
+use rush::ActorError;
 use model::{
     CreatorQuantity, HashThisRole, PolicyGov, PolicySchema, ProtocolTypes,
     RoleGovIssuer, RoleSchemaIssuer, RoleTypes, RolesAllSchemas, RolesGov,

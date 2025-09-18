@@ -1,8 +1,8 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use actor::{
-    Actor, ActorContext, ActorPath, Error as ActorError, Handler, Message,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorError, Handler, Message,
     Response,
 };
 
@@ -74,7 +74,7 @@ impl Actor for Monitor {
 
     async fn pre_start(
         &mut self,
-        _ctx: &mut actor::ActorContext<Self>,
+        _ctx: &mut rush::ActorContext<Self>,
     ) -> Result<(), ActorError> {
         Ok(())
     }
@@ -93,7 +93,7 @@ impl Handler<Monitor> for Monitor {
         &mut self,
         _sender: ActorPath,
         msg: MonitorMessage,
-        _ctx: &mut actor::ActorContext<Monitor>,
+        _ctx: &mut rush::ActorContext<Monitor>,
     ) -> Result<MonitorResponse, ActorError> {
         match msg {
             MonitorMessage::Network(event) => {

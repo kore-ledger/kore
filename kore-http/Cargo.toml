@@ -12,7 +12,7 @@ keywords.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-kore-bridge = { path = "../kore-bridge" }
+kore-bridge = { path = "../kore-bridge" , default-features = false }
 
 tokio = {  workspace = true }
 
@@ -36,5 +36,10 @@ utoipa = { version = "5.3.1", features = ["axum_extras"]}
 utoipa-rapidoc = { version = "6.0.0", features = ["axum"]}
 zip = "5.1.1"
 bytes = "1.10.0"
+
 [features]
-default = []
+default = ["prometheus", "sqlite", "ext-sqlite"]
+rocksdb = ["kore-bridge/rocksdb"]
+sqlite = ["kore-bridge/sqlite"]
+ext-sqlite = ["kore-bridge/ext-sqlite"]
+prometheus = ["kore-bridge/prometheus"]

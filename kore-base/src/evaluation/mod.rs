@@ -29,8 +29,8 @@ use crate::{
     request::manager::{RequestManager, RequestManagerMessage},
     subject::Metadata,
 };
-use actor::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, Error as ActorError,
+use rush::{
+    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
     Event, Handler, Message,
 };
 
@@ -798,7 +798,7 @@ impl Handler<Evaluation> for Evaluation {
 mod tests {
     use std::{str::FromStr, time::Duration};
 
-    use actor::{ActorPath, ActorRef, SystemRef};
+    use rush::{ActorPath, ActorRef, SystemRef};
     use identity::{
         identifier::{DigestIdentifier, derive::digest::DigestDerivator},
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
