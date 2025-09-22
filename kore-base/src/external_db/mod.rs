@@ -3,13 +3,13 @@
 
 use std::time::Duration;
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ActorError, Event,
-    Handler, Message,
-};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, Event, Handler,
+    Message,
+};
 use rush::{LightPersistence, PersistentActor};
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::{

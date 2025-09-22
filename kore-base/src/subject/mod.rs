@@ -1313,67 +1313,64 @@ impl Subject {
         Ok(())
     }
 
-    async fn event_to_sink(&self, ctx: &mut ActorContext<Subject>, event: &EventRequest, issuer: &str) -> Result<(), ActorError> {
-                let gov_id = if self.governance_id.is_empty() {
-                    None
-                } else {
-                    Some(self.governance_id.to_string())
-                };
-                let sub_id = self.subject_id.to_string();
-                let owner = self.owner.to_string();
-                let schema_id = self.schema_id.clone();
+    async fn event_to_sink(
+        &self,
+        ctx: &mut ActorContext<Subject>,
+        event: &EventRequest,
+        issuer: &str,
+    ) -> Result<(), ActorError> {
+        let gov_id = if self.governance_id.is_empty() {
+            None
+        } else {
+            Some(self.governance_id.to_string())
+        };
+        let sub_id = self.subject_id.to_string();
+        let owner = self.owner.to_string();
+        let schema_id = self.schema_id.clone();
 
-                let event_to_sink = match event.clone() {
-                    EventRequest::Create( .. ) => {
-                        SinkDataMessage::Create {
-                            governance_id: gov_id,
-                            subject_id: sub_id,
-                            owner,
-                            schema_id,
-                            namespace: self.namespace.to_string(),
-                        }
-                    }
-                    EventRequest::Fact(fact_request) => SinkDataMessage::Fact {
-                        governance_id: gov_id,
-                        subject_id: sub_id,
-                        issuer: issuer.to_string(),
-                        owner,
-                        payload: fact_request.payload.clone(),
-                        schema_id,
-                    },
-                    EventRequest::Transfer(transfer_request) => {
-                        SinkDataMessage::Transfer {
-                            governance_id: gov_id,
-                            subject_id: sub_id,
-                            owner,
-                            new_owner: transfer_request.new_owner.to_string(),
-                            schema_id,
-                        }
-                    }
-                    EventRequest::Confirm( .. ) => {
-                        SinkDataMessage::Confirm {
-                            governance_id: gov_id,
-                            subject_id: sub_id,
-                            schema_id,
-                        }
-                    }
-                    EventRequest::Reject( .. ) => {
-                        SinkDataMessage::Reject {
-                            governance_id: gov_id,
-                            subject_id: sub_id,
-                            schema_id,
-                        }
-                    },
-                    EventRequest::EOL( .. ) => {
-                        SinkDataMessage::EOL {
-                            governance_id: gov_id,
-                            subject_id: sub_id,
-                            schema_id,
-                        }
-                    },
-                };
+        let event_to_sink = match event.clone() {
+            EventRequest::Create(..) => SinkDataMessage::Create {
+                governance_id: gov_id,
+                subject_id: sub_id,
+                owner,
+                schema_id,
+                namespace: self.namespace.to_string(),
+            },
+            EventRequest::Fact(fact_request) => SinkDataMessage::Fact {
+                governance_id: gov_id,
+                subject_id: sub_id,
+                issuer: issuer.to_string(),
+                owner,
+                payload: fact_request.payload.clone(),
+                schema_id,
+            },
+            EventRequest::Transfer(transfer_request) => {
+                SinkDataMessage::Transfer {
+                    governance_id: gov_id,
+                    subject_id: sub_id,
+                    owner,
+                    new_owner: transfer_request.new_owner.to_string(),
+                    schema_id,
+                }
+            }
+            EventRequest::Confirm(..) => SinkDataMessage::Confirm {
+                governance_id: gov_id,
+                subject_id: sub_id,
+                schema_id,
+            },
+            EventRequest::Reject(..) => SinkDataMessage::Reject {
+                governance_id: gov_id,
+                subject_id: sub_id,
+                schema_id,
+            },
+            EventRequest::EOL(..) => SinkDataMessage::EOL {
+                governance_id: gov_id,
+                subject_id: sub_id,
+                schema_id,
+            },
+        };
 
-                Self::publish_sink(ctx, event_to_sink).await
+        Self::publish_sink(ctx, event_to_sink).await
     }
 
     async fn verify_new_ledger_events_gov(
@@ -1449,11 +1446,12 @@ impl Subject {
                     _ => {}
                 };
 
-                                self.event_to_sink(ctx, &event.content.event_request.content, &event.content
-                        .event_request
-                            .signature
-                            .signer
-                            .to_string()).await?;
+                self.event_to_sink(
+                    ctx,
+                    &event.content.event_request.content,
+                    &event.content.event_request.signature.signer.to_string(),
+                )
+                .await?;
             }
 
             // Aplicar evento.
@@ -1669,11 +1667,12 @@ impl Subject {
                     _ => {}
                 };
 
-                                                self.event_to_sink(ctx, &event.content.event_request.content, &event.content
-                        .event_request
-                            .signature
-                            .signer
-                            .to_string()).await?;
+                self.event_to_sink(
+                    ctx,
+                    &event.content.event_request.content,
+                    &event.content.event_request.signature.signer.to_string(),
+                )
+                .await?;
             }
 
             // Aplicar evento.

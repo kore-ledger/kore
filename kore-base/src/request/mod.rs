@@ -1,18 +1,18 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
-    Event, Handler, Message, Response, Sink,
-};
 use async_trait::async_trait;
 use identity::identifier::{
     DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
 };
 use manager::{RequestManager, RequestManagerMessage};
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, ChildAction, Event,
+    Handler, Message, Response, Sink,
+};
+use rush::{LightPersistence, PersistentActor};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use rush::{LightPersistence, PersistentActor};
 use tracing::{error, info};
 use types::ReqManInitMessage;
 
@@ -862,7 +862,7 @@ impl Handler<RequestHandler> for RequestHandler {
                 };
 
                 let event = if let Some(events) = self.in_queue.get(&subject_id)
-                { 
+                {
                     if let Some(event) = events.clone().pop_front() {
                         event
                     } else {

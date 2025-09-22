@@ -1,10 +1,10 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use rush::{Actor, ActorContext, ActorPath, ActorError, Handler};
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::KeyIdentifier;
+use rush::{Actor, ActorContext, ActorError, ActorPath, Handler};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 

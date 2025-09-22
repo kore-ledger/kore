@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, ChildAction,
     FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
     Strategy,
 };

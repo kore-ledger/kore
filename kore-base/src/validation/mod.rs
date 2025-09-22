@@ -26,8 +26,8 @@ use crate::{
     subject::Metadata,
 };
 use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
-    Handler, Message,
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, ChildAction, Handler,
+    Message,
 };
 
 use async_trait::async_trait;
@@ -562,11 +562,11 @@ pub mod tests {
     use std::time::Duration;
     use test_log::test;
 
-    use rush::{ActorPath, ActorRef, Sink, SystemRef};
     use identity::{
         identifier::DigestIdentifier,
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
+    use rush::{ActorPath, ActorRef, Sink, SystemRef};
 
     use crate::{
         CreateRequest, EOLRequest, EventRequest, Governance, HashId, Node,

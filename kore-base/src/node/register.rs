@@ -1,14 +1,14 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorError, Event, Handler,
-    Message, Response,
-};
 use async_trait::async_trait;
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, Event, Handler, Message,
+    Response,
+};
+use rush::{LightPersistence, PersistentActor};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use rush::{LightPersistence, PersistentActor};
 use tracing::{error, warn};
 
 use crate::{db::Storable, model::common::emit_fail};

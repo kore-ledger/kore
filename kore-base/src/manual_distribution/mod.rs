@@ -1,12 +1,12 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
-    Handler, Message,
-};
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, ChildAction, Handler,
+    Message,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 

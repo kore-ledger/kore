@@ -19,7 +19,10 @@ use futures::future::join_all;
 use kore_bridge::{
     Bridge,
     clap::Parser,
-    settings::{build_config, build_file_path, build_password, build_sink_password, command::Args},
+    settings::{
+        build_config, build_file_path, build_password, build_sink_password,
+        command::Args,
+    },
 };
 use middleware::tower_trace;
 use server::build_routes;
@@ -72,8 +75,6 @@ async fn main() {
         file_path = build_file_path();
     }
 
-
-
     let https_address = build_address_https();
 
     let listener_http = tokio::net::TcpListener::bind(build_address_http())
@@ -95,7 +96,9 @@ async fn main() {
     let _log_handle = logging::init_logging(&config.logging).await;
 
     let (bridge, runners) =
-        Bridge::build(config, &password, &password_sink, None).await.unwrap();
+        Bridge::build(config, &password, &password_sink, None)
+            .await
+            .unwrap();
 
     if !https_address.is_empty() {
         let https_address = https_address.parse::<SocketAddr>().unwrap();

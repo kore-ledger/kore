@@ -3,17 +3,15 @@
 
 use std::collections::HashSet;
 
-use rush::{
-    Actor, ActorContext, ChildAction, ActorError, Handler, Message,
-};
-use rush::{ActorPath, ActorRef, Event};
 use approver::{Approver, ApproverMessage, VotationType};
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use request::ApprovalReq;
 use response::ApprovalRes;
-use serde::{Deserialize, Serialize};
+use rush::{Actor, ActorContext, ActorError, ChildAction, Handler, Message};
+use rush::{ActorPath, ActorRef, Event};
 use rush::{LightPersistence, PersistentActor};
+use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 
 use crate::evaluation::response::EvalLedgerResponse;

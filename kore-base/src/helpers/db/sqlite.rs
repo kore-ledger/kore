@@ -5,9 +5,9 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-use rush::{ActorRef, Subscriber};
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
+use rush::{ActorRef, Subscriber};
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::{Value, json};
 use tracing::error;

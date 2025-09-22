@@ -38,13 +38,13 @@ use identity::{
     keys::KeyPair,
 };
 
-use rush::{
-    Actor, ActorContext, ActorPath, ChildAction, ActorError, Event,
-    Handler, Message, Response, Sink,
-};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, ChildAction, Event, Handler,
+    Message, Response, Sink,
+};
 use rush::{LightPersistence, PersistentActor};
+use serde::{Deserialize, Serialize};
 
 pub mod nodekey;
 pub mod register;

@@ -10,7 +10,10 @@ use common::{
 use identity::identifier::KeyIdentifier;
 use kore_base::{
     auth::AuthWitness,
-    model::{request::{ConfirmRequest, EventRequest, FactRequest}, ValueWrapper},
+    model::{
+        ValueWrapper,
+        request::{ConfirmRequest, EventRequest, FactRequest},
+    },
 };
 use serde_json::json;
 use test_log::test;
@@ -3248,23 +3251,14 @@ async fn test_no_subject_issuer() {
 #[test(tokio::test)]
 // Testear 1000 eventos sin cooldown para un sujeto
 async fn test_1000_events() {
-    let nodes = create_nodes_and_connections(
-        vec![vec![]],
-        vec![],
-        vec![],
-        true,
-        46140,
-    )
-    .await;
+    let nodes =
+        create_nodes_and_connections(vec![vec![]], vec![], vec![], true, 46140)
+            .await;
 
     let owner_governance = &nodes[0];
 
-    let governance_id = create_and_authorize_governance(
-        owner_governance,
-        vec![],
-        "",
-    )
-    .await;
+    let governance_id =
+        create_and_authorize_governance(owner_governance, vec![], "").await;
 
     // add node bootstrap and ephemeral to governance
     let json = json!({
@@ -3330,12 +3324,16 @@ async fn test_1000_events() {
         .await
         .unwrap();
 
-    let subject_id_1 =
-        create_subject(owner_governance, governance_id.clone(), "Example", "", true)
-            .await
-            .unwrap();
+    let subject_id_1 = create_subject(
+        owner_governance,
+        governance_id.clone(),
+        "Example",
+        "",
+        true,
+    )
+    .await
+    .unwrap();
 
-    
     for i in 0..1000 {
         // emit event to subject
         let json = json!({

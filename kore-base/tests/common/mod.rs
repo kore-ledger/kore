@@ -9,12 +9,17 @@ use identity::{
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
 use kore_base::{
-    approval::approver::ApprovalStateRes, config::{Config, ExternalDbConfig, KoreDbConfig, SinkAuth}, helpers::db::common::{SignaturesInfo, SubjectInfo}, model::{
+    Api,
+    approval::approver::ApprovalStateRes,
+    config::{Config, ExternalDbConfig, KoreDbConfig, SinkAuth},
+    helpers::db::common::{SignaturesInfo, SubjectInfo},
+    model::{
+        Namespace, ValueWrapper,
         request::{
             ConfirmRequest, CreateRequest, EventRequest, FactRequest,
             RejectRequest, TransferRequest,
-        }, Namespace, ValueWrapper
-    }, Api
+        },
+    },
 };
 use network::{Config as NetworkConfig, MonitorNetworkState, RoutingNode};
 use prometheus_client::registry::Registry;
@@ -79,10 +84,16 @@ pub async fn create_node(
     let mut registry = Registry::default();
     let token = CancellationToken::new();
 
-    let (api, runners) =
-        Api::build(keys, config, SinkAuth::default(), &mut registry, "kore", &token)
-            .await
-            .unwrap();
+    let (api, runners) = Api::build(
+        keys,
+        config,
+        SinkAuth::default(),
+        &mut registry,
+        "kore",
+        &token,
+    )
+    .await
+    .unwrap();
 
     (api, local_db, ext_db, token.clone(), runners)
 }
@@ -361,10 +372,10 @@ pub async fn check_transfer(
             break;
         }
 
-        count +=1;
+        count += 1;
         tokio::time::sleep(Duration::from_secs(2)).await
     }
-    
+
     Ok(())
 }
 

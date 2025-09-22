@@ -3,14 +3,14 @@
 
 use std::{str::FromStr, time::Duration};
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
-    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
-    Strategy,
-};
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, ChildAction,
+    FixedIntervalStrategy, Handler, Message, RetryActor, RetryMessage,
+    Strategy,
+};
 
 use crate::{
     ActorMessage, Event as KoreEvent, EventRequest, NetworkMessage, Node,

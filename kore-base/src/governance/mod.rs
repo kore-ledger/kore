@@ -12,12 +12,12 @@ use crate::{
     model::{Namespace, wrapper::ValueWrapper},
 };
 
-use rush::ActorError;
 use model::{
     CreatorQuantity, HashThisRole, PolicyGov, PolicySchema, ProtocolTypes,
     RoleGovIssuer, RoleSchemaIssuer, RoleTypes, RolesAllSchemas, RolesGov,
     RolesSchema, SchemaKeyCreators, SignersType, WitnessesData,
 };
+use rush::ActorError;
 
 pub use model::{Member, Quorum, Role, Schema};
 

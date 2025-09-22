@@ -23,7 +23,6 @@ pub(crate) mod system;
 pub mod update;
 pub mod validation;
 
-use rush::{ActorPath, ActorRef, Sink};
 use approval::approver::ApprovalStateRes;
 use auth::{Auth, AuthMessage, AuthResponse, AuthWitness};
 use config::Config as KoreBaseConfig;
@@ -46,6 +45,7 @@ use model::event::Event;
 use model::signature::*;
 use model::{SignTypesNode, request::*};
 use network::{Monitor, MonitorMessage, MonitorResponse, NetworkWorker};
+use rush::{ActorPath, ActorRef, Sink};
 use tokio::sync::RwLock;
 
 pub use network::MonitorNetworkState;

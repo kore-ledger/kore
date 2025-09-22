@@ -24,11 +24,11 @@ use std::{
     time::Duration,
 };
 
-use rush::ActorRef;
 use identity::{
     identifier::derive::KeyDerivator,
     keys::{KeyMaterial, KeyPair},
 };
+use rush::ActorRef;
 
 use libp2p::{
     Multiaddr, PeerId, StreamProtocol, Swarm,

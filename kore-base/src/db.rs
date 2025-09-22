@@ -6,16 +6,12 @@
 
 use crate::{config::KoreDbConfig, helpers::encrypted_pass::EncryptedPass};
 
-use rush::{ActorContext, ActorError};
-#[cfg(feature = "rocksdb")]
-use rush::{RocksDbManager, RocksDbStore};
 #[cfg(feature = "sqlite")]
 use rush::SqliteManager;
-use rush::{
-    StoreError,
-    Collection, DbManager, State,
-    PersistentActor,
-};
+use rush::{ActorContext, ActorError};
+use rush::{Collection, DbManager, PersistentActor, State, StoreError};
+#[cfg(feature = "rocksdb")]
+use rush::{RocksDbManager, RocksDbStore};
 
 use async_trait::async_trait;
 

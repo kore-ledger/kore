@@ -4,8 +4,8 @@
 use std::collections::HashSet;
 
 use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
-    Handler, Message,
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, ChildAction, Handler,
+    Message,
 };
 
 use async_trait::async_trait;

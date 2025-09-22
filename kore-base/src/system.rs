@@ -6,7 +6,11 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    config::SinkAuth, db::Database, external_db::DBManager, helpers::{db::ExternalDB, encrypted_pass::EncryptedPass, sink::KoreSink}, Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR
+    DIGEST_DERIVATOR, Error, KEY_DERIVATOR, KoreBaseConfig,
+    config::SinkAuth,
+    db::Database,
+    external_db::DBManager,
+    helpers::{db::ExternalDB, encrypted_pass::EncryptedPass, sink::KoreSink},
 };
 
 pub async fn system(
@@ -34,7 +38,13 @@ pub async fn system(
     system.add_helper("store", db).await;
 
     // Build sink manager.
-    let kore_sink = KoreSink::new(sink_auth.sink.sinks,sink_auth.token, &sink_auth.sink.auth, &sink_auth.sink.username, &sink_auth.password);
+    let kore_sink = KoreSink::new(
+        sink_auth.sink.sinks,
+        sink_auth.token,
+        &sink_auth.sink.auth,
+        &sink_auth.sink.username,
+        &sink_auth.password,
+    );
     system.add_helper("sink", kore_sink).await;
 
     // Helper memory encryption for passwords to be used in secure stores.
@@ -122,9 +132,14 @@ pub mod tests {
             garbage_collector: Duration::from_secs(500),
         };
 
-        let sys = system(config.clone(), SinkAuth::default(),"password", CancellationToken::new())
-            .await
-            .unwrap();
+        let sys = system(
+            config.clone(),
+            SinkAuth::default(),
+            "password",
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
         sys
     }
 }

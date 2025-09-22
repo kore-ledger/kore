@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use rush::{
-    Actor, ActorContext, ActorPath, ActorError, Handler, Message,
-    Response,
+    Actor, ActorContext, ActorError, ActorPath, Handler, Message, Response,
 };
 
 use crate::{Event as NetworkEvent, NetworkState};

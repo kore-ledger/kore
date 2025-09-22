@@ -3,7 +3,11 @@
 
 //! # Configuration module
 
-use std::{collections::{BTreeMap, BTreeSet}, fmt, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    time::Duration,
+};
 
 use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
 use network::Config as NetworkConfig;
@@ -233,19 +237,19 @@ pub struct SinkServer {
     pub server: String,
     pub events: BTreeSet<SinkTypes>,
     pub url: String,
-    pub auth: bool
+    pub auth: bool,
 }
 
 #[derive(Default)]
 pub struct SinkAuth {
     pub sink: SinkConfig,
     pub token: Option<TokenResponse>,
-    pub password: String
+    pub password: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct SinkConfig {
-    pub sinks: BTreeMap<String,  Vec<SinkServer>>,
+    pub sinks: BTreeMap<String, Vec<SinkServer>>,
     pub auth: String,
-    pub username: String
+    pub username: String,
 }

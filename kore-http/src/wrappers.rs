@@ -19,11 +19,11 @@ use kore_bridge::{
     RoutingConfig as RoutingConfigBridge, RoutingNode as RoutingNodeBridge,
     SignatureInfo as SignatureInfoBridge,
     SignaturesInfo as SignaturesInfoBridge, SignedInfo as SignedInfoBridge,
-    SubjectInfo as SubjectInfoBridge, TellConfig as TellConfigBridge,
+    SinkConfig as SinkConfigBridge, SubjectInfo as SubjectInfoBridge,
+    TellConfig as TellConfigBridge,
     TimeOutResponseInfo as TimeOutResponseInfoBridge,
     TransferRequestInfo as TransferRequestInfoBridge,
     TransferSubject as TransferSubjectBridge, config::Config as ConfigBridge,
-    SinkConfig as SinkConfigBridge
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -569,7 +569,7 @@ pub struct Config {
     pub keys_path: String,
     pub prometheus: String,
     pub logging: Logging,
-    pub sink: SinkConfig
+    pub sink: SinkConfig,
 }
 
 impl From<ConfigBridge> for Config {
@@ -579,7 +579,7 @@ impl From<ConfigBridge> for Config {
             keys_path: value.keys_path,
             prometheus: value.prometheus,
             logging: Logging::from(value.logging),
-            sink: SinkConfig::from(value.sink)
+            sink: SinkConfig::from(value.sink),
         }
     }
 }
@@ -671,7 +671,14 @@ impl From<SinkConfigBridge> for SinkConfig {
                     event_string.remove(0);
                 }
 
-                sinks = format!(",{}|{}|{}|{}|{}", sink_server.server, schema_id, event_string, sink_server.url, sink_server.auth);    
+                sinks = format!(
+                    ",{}|{}|{}|{}|{}",
+                    sink_server.server,
+                    schema_id,
+                    event_string,
+                    sink_server.url,
+                    sink_server.auth
+                );
             }
         }
 
@@ -679,7 +686,11 @@ impl From<SinkConfigBridge> for SinkConfig {
             sinks.remove(0);
         }
 
-        Self { sinks, auth: value.auth, username: value.username }
+        Self {
+            sinks,
+            auth: value.auth,
+            username: value.username,
+        }
     }
 }
 

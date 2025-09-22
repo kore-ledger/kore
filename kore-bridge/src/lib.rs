@@ -5,7 +5,6 @@ use std::{future::Future, str::FromStr};
 
 use config::Config;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
-use kore_base::{config::SinkAuth, helpers::sink::obtain_token};
 pub use kore_base::{
     Api as KoreApi,
     approval::approver::ApprovalStateRes,
@@ -32,11 +31,12 @@ pub use kore_base::{
     },
     request::RequestData,
 };
+use kore_base::{config::SinkAuth, helpers::sink::obtain_token};
 use model::BridgeSignedEventRequest;
 pub use network::MonitorNetworkState;
 pub use network::{
     Config as NetworkConfig, ControlListConfig, RoutingConfig, RoutingNode,
-    TellConfig
+    TellConfig,
 };
 use prometheus_client::registry::Registry;
 use tokio::task::JoinHandle;
@@ -79,12 +79,19 @@ impl Bridge {
         let keys = key_pair(&settings, password)?;
 
         let auth_token = if !settings.sink.auth.is_empty() {
-            Some(obtain_token(&settings.sink.auth, &settings.sink.username, password_sink).await?)
+            Some(
+                obtain_token(
+                    &settings.sink.auth,
+                    &settings.sink.username,
+                    password_sink,
+                )
+                .await?,
+            )
         } else {
             None
         };
 
-        let mut registry = <Registry>::default();        
+        let mut registry = <Registry>::default();
 
         let token = if let Some(token) = token {
             token

@@ -3,12 +3,10 @@
 
 use std::collections::HashSet;
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorError, Handler, Message,
-};
 use async_trait::async_trait;
 use identity::identifier::KeyIdentifier;
 use network::ComunicateInfo;
+use rush::{Actor, ActorContext, ActorError, ActorPath, Handler, Message};
 use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 

@@ -5,13 +5,13 @@ use crate::{
     model::{common::emit_fail, event::ProtocolsSignatures},
     validation::proof::ValidationProof,
 };
-use rush::{
-    Actor, ActorContext, ActorPath, ActorError, Event, Handler,
-    Message, Response,
-};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, Event, Handler, Message,
+    Response,
+};
 use rush::{LightPersistence, PersistentActor};
+use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::db::Storable;

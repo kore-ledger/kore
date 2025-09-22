@@ -16,12 +16,12 @@ use crate::{
 
 use crate::config::ExternalDbConfig;
 
-use rush::{ActorRef, Subscriber};
 use async_trait::async_trait;
 use common::{
     ApproveInfo, EventInfo, PaginatorEvents, RequestInfo, SignaturesInfo,
     SubjectInfo,
 };
+use rush::{ActorRef, Subscriber};
 #[cfg(feature = "ext-sqlite")]
 use sqlite::SqliteLocal;
 use std::path::Path;

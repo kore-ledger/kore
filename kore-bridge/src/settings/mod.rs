@@ -60,10 +60,16 @@ pub fn build_file_path() -> String {
 #[cfg(test)]
 mod tests {
     use core::panic;
-    use std::{collections::{BTreeMap, BTreeSet}, time::Duration};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        time::Duration,
+    };
 
     use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
-    use kore_base::{config::{LoggingOutput, LoggingRotation, SinkServer}, subject::sinkdata::SinkTypes};
+    use kore_base::{
+        config::{LoggingOutput, LoggingRotation, SinkServer},
+        subject::sinkdata::SinkTypes,
+    };
     use network::{NodeType, RoutingNode};
     use serial_test::serial;
 
@@ -222,13 +228,48 @@ mod tests {
         //Server3|key2|Transfer|https://www.kore-ledger.net/community/|true,
         //Server4|key2|Confirm|https://www.kore-ledger.net/community/issue|false",
 
-        sink_map.insert("key1".to_owned(), vec![SinkServer { server: "Sever1".to_owned(), events: BTreeSet::from([SinkTypes::All]), url: "https://www.kore-ledger.net/build/".to_owned(), auth: true }]);
-        sink_map.insert("key2".to_owned(), vec![SinkServer { server: "Server2".to_owned(), events: BTreeSet::from([SinkTypes::Create, SinkTypes::Fact]), url: "https://www.kore-ledger.net/community/".to_owned(), auth: false },
-        SinkServer { server: "Server3".to_owned(), events: BTreeSet::from([SinkTypes::Transfer]), url: "https://www.kore-ledger.net/community/".to_owned(), auth: true },
-        SinkServer { server: "Server4".to_owned(), events: BTreeSet::from([SinkTypes::Confirm]), url: "https://www.kore-ledger.net/community/issue".to_owned(), auth: false }]);
-        assert_eq!(config.sink.sinks,  sink_map);
+        sink_map.insert(
+            "key1".to_owned(),
+            vec![SinkServer {
+                server: "Sever1".to_owned(),
+                events: BTreeSet::from([SinkTypes::All]),
+                url: "https://www.kore-ledger.net/build/".to_owned(),
+                auth: true,
+            }],
+        );
+        sink_map.insert(
+            "key2".to_owned(),
+            vec![
+                SinkServer {
+                    server: "Server2".to_owned(),
+                    events: BTreeSet::from([
+                        SinkTypes::Create,
+                        SinkTypes::Fact,
+                    ]),
+                    url: "https://www.kore-ledger.net/community/".to_owned(),
+                    auth: false,
+                },
+                SinkServer {
+                    server: "Server3".to_owned(),
+                    events: BTreeSet::from([SinkTypes::Transfer]),
+                    url: "https://www.kore-ledger.net/community/".to_owned(),
+                    auth: true,
+                },
+                SinkServer {
+                    server: "Server4".to_owned(),
+                    events: BTreeSet::from([SinkTypes::Confirm]),
+                    url: "https://www.kore-ledger.net/community/issue"
+                        .to_owned(),
+                    auth: false,
+                },
+            ],
+        );
+        assert_eq!(config.sink.sinks, sink_map);
 
-        assert_eq!(config.sink.auth, "https://www.kore-ledger.net/build/".to_string());
+        assert_eq!(
+            config.sink.auth,
+            "https://www.kore-ledger.net/build/".to_string()
+        );
 
         let boot_nodes = vec![
             RoutingNode {
@@ -255,24 +296,16 @@ mod tests {
         );
 
         for node in config.kore_config.network.boot_nodes.iter() {
-            if node.peer_id == "12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B" {
-                assert_eq!(
-                    boot_nodes[0].peer_id,
-                    node.peer_id
-                );
-                assert_eq!(
-                    boot_nodes[0].address,
-                    node.address
-                );
-            } else if node.peer_id == "12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze" {
-                assert_eq!(
-                    boot_nodes[1].peer_id,
-                    node.peer_id
-                );
-                assert_eq!(
-                    boot_nodes[1].address,
-                    node.address
-                );
+            if node.peer_id
+                == "12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B"
+            {
+                assert_eq!(boot_nodes[0].peer_id, node.peer_id);
+                assert_eq!(boot_nodes[0].address, node.address);
+            } else if node.peer_id
+                == "12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze"
+            {
+                assert_eq!(boot_nodes[1].peer_id, node.peer_id);
+                assert_eq!(boot_nodes[1].address, node.address);
             } else {
                 println!("{}", node.peer_id);
                 panic!("Invalid peer_id");

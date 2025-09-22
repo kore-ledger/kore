@@ -3,11 +3,9 @@
 
 use std::time::Duration;
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorError, Handler, Message,
-};
 use async_trait::async_trait;
 use identity::identifier::DigestIdentifier;
+use rush::{Actor, ActorContext, ActorError, ActorPath, Handler, Message};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 

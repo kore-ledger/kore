@@ -30,8 +30,8 @@ use crate::{
     subject::Metadata,
 };
 use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
-    Event, Handler, Message,
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, ChildAction, Event,
+    Handler, Message,
 };
 
 use async_trait::async_trait;
@@ -798,11 +798,11 @@ impl Handler<Evaluation> for Evaluation {
 mod tests {
     use std::{str::FromStr, time::Duration};
 
-    use rush::{ActorPath, ActorRef, SystemRef};
     use identity::{
         identifier::{DigestIdentifier, derive::digest::DigestDerivator},
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
+    use rush::{ActorPath, ActorRef, SystemRef};
     use serde_json::json;
     use test_log::test;
 

@@ -5,9 +5,7 @@ use rand::rng;
 use rand::seq::IteratorRandom;
 use std::collections::{HashMap, HashSet};
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ActorError, Handler,
-};
+use rush::{Actor, ActorContext, ActorError, ActorPath, ActorRef, Handler};
 
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;

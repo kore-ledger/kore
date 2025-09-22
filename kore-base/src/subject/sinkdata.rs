@@ -3,15 +3,18 @@
 
 use std::fmt::Display;
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorError, Event, Handler,
-    Message, Response,
-};
 use async_trait::async_trait;
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, Event, Handler, Message,
+    Response,
+};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use crate::{model::{common::emit_fail, ValueWrapper}, subject::Metadata};
+use crate::{
+    model::{ValueWrapper, common::emit_fail},
+    subject::Metadata,
+};
 const TARGET_SINKDATA: &str = "Kore-Subject-Sinkdata";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -56,10 +59,12 @@ pub enum SinkDataMessage {
         governance_id: Option<String>,
         subject_id: String,
         schema_id: String,
-    }
+    },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, Ord, PartialEq, PartialOrd,)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Eq, Ord, PartialEq, PartialOrd,
+)]
 pub enum SinkTypes {
     Create,
     Fact,
@@ -67,7 +72,7 @@ pub enum SinkTypes {
     Confirm,
     Reject,
     EOL,
-    All
+    All,
 }
 
 impl Display for SinkTypes {
@@ -89,7 +94,9 @@ impl TryFrom<SinkDataMessage> for SinkTypes {
 
     fn try_from(value: SinkDataMessage) -> Result<Self, Self::Error> {
         match value {
-            SinkDataMessage::UpdateState( .. ) => Err("UpdateState cannot be converted to SinkTypes"),
+            SinkDataMessage::UpdateState(..) => {
+                Err("UpdateState cannot be converted to SinkTypes")
+            }
             SinkDataMessage::Create { .. } => Ok(SinkTypes::Create),
             SinkDataMessage::Fact { .. } => Ok(SinkTypes::Fact),
             SinkDataMessage::Transfer { .. } => Ok(SinkTypes::Transfer),
@@ -109,7 +116,7 @@ impl From<String> for SinkTypes {
             "Confirm" => Self::Confirm,
             "Reject" => Self::Reject,
             "EOL" => Self::EOL,
-            _ => Self::All
+            _ => Self::All,
         }
     }
 }
@@ -117,13 +124,39 @@ impl From<String> for SinkTypes {
 impl SinkDataMessage {
     pub fn get_subject_schema(&self) -> (String, String) {
         match self {
-            SinkDataMessage::UpdateState(metadata) => (metadata.subject_id.to_string(), metadata.schema_id.clone()),
-            SinkDataMessage::Create { subject_id, schema_id, ..} 
-            | SinkDataMessage::Fact { subject_id, schema_id, .. }
-            | SinkDataMessage::Transfer {  subject_id, schema_id, .. }
-            | SinkDataMessage::Confirm {  subject_id, schema_id, .. } 
-            | SinkDataMessage::Reject {  subject_id, schema_id, .. } 
-            | SinkDataMessage::EOL {  subject_id, schema_id, .. } => (subject_id.clone(), schema_id.clone())
+            SinkDataMessage::UpdateState(metadata) => {
+                (metadata.subject_id.to_string(), metadata.schema_id.clone())
+            }
+            SinkDataMessage::Create {
+                subject_id,
+                schema_id,
+                ..
+            }
+            | SinkDataMessage::Fact {
+                subject_id,
+                schema_id,
+                ..
+            }
+            | SinkDataMessage::Transfer {
+                subject_id,
+                schema_id,
+                ..
+            }
+            | SinkDataMessage::Confirm {
+                subject_id,
+                schema_id,
+                ..
+            }
+            | SinkDataMessage::Reject {
+                subject_id,
+                schema_id,
+                ..
+            }
+            | SinkDataMessage::EOL {
+                subject_id,
+                schema_id,
+                ..
+            } => (subject_id.clone(), schema_id.clone()),
         }
     }
 }

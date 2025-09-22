@@ -27,26 +27,34 @@ pub struct TokenResponse {
     pub scope: Option<String>,
 }
 
-pub async fn obtain_token(auth: &str, username: &str, password: &str) -> Result<TokenResponse, Error> {
+pub async fn obtain_token(
+    auth: &str,
+    username: &str,
+    password: &str,
+) -> Result<TokenResponse, Error> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()
-        .map_err(|e| Error::Sink(format!("Can not build reqwest client: {e}")))?; 
+        .map_err(|e| {
+            Error::Sink(format!("Can not build reqwest client: {e}"))
+        })?;
 
     let res = client
         .post(auth)
-        .json(&serde_json::json!({ "username": username, "password": password }))
+        .json(
+            &serde_json::json!({ "username": username, "password": password }),
+        )
         .send()
         .await
         .map_err(|e| Error::Sink(format!("Can not obtain auth token: {e}")))?;
 
-    let res = res
-        .error_for_status()
-        .map_err(|e| Error::Sink(format!("Auth token endpoint returned error: {e}")))?;
+    let res = res.error_for_status().map_err(|e| {
+        Error::Sink(format!("Auth token endpoint returned error: {e}"))
+    })?;
 
-    res.json::<TokenResponse>()
-        .await
-        .map_err(|e| Error::Sink(format!("Can not parse OAuth 2.0 token response: {e}")))
+    res.json::<TokenResponse>().await.map_err(|e| {
+        Error::Sink(format!("Can not parse OAuth 2.0 token response: {e}"))
+    })
 }
 
 #[derive(Clone)]
@@ -75,7 +83,10 @@ impl KoreSink {
         }
     }
 
-    fn server_wants_event(server: &SinkServer, event: &SinkDataMessage) -> bool {
+    fn server_wants_event(
+        server: &SinkServer,
+        event: &SinkDataMessage,
+    ) -> bool {
         server.events.contains(&SinkTypes::All)
             || SinkTypes::try_from(event.clone())
                 .map(|t| server.events.contains(&t))
@@ -151,20 +162,33 @@ impl KoreSink {
                         401 if server_requires_auth && self.token.is_some() => {
                             warn!(target: TARGET_SINK, "Authentication error on sink; trying to refresh token");
                             // 2) Refrescar token y reintentar una vez
-                            if let Some(new_token) = self.refresh_token().await {
+                            if let Some(new_token) = self.refresh_token().await
+                            {
                                 if let Some(arc) = &self.token {
                                     *arc.write().await = new_token.clone();
                                 }
                                 info!(target: TARGET_SINK, "A new token has been obtained, retrying the original request.");
-                                let new_header =
-                                    format!("{} {}", new_token.token_type, new_token.access_token);
+                                let new_header = format!(
+                                    "{} {}",
+                                    new_token.token_type,
+                                    new_token.access_token
+                                );
 
-                                match Self::send_once(client, url, event, Some(&new_header)).await {
+                                match Self::send_once(
+                                    client,
+                                    url,
+                                    event,
+                                    Some(&new_header),
+                                )
+                                .await
+                                {
                                     Ok(_) => {
                                         info!(target: TARGET_SINK, "The information was sent to the sink");
                                     }
                                     Err(e2) => {
-                                        if e2.status().map(|s| s.as_u16()) == Some(422) {
+                                        if e2.status().map(|s| s.as_u16())
+                                            == Some(422)
+                                        {
                                             warn!(target: TARGET_SINK, "The sink was expecting another type of data");
                                         } else {
                                             error!(target: TARGET_SINK, "The information was not sent to the sink: {e2}");

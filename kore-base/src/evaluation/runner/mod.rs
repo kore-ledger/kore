@@ -3,14 +3,14 @@
 
 use std::collections::HashSet;
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorError, Event, Handler,
-    Message, Response,
-};
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, to_vec};
 use identity::identifier::KeyIdentifier;
 use json_patch::diff;
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, Event, Handler, Message,
+    Response,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::to_value;
 use tracing::error;

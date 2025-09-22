@@ -5,13 +5,13 @@ use crate::{
     EventRequestType,
     model::common::{emit_fail, verify_protocols_state},
 };
-use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ActorError, Event,
-    Handler, Message, Response,
-};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, Event, Handler,
+    Message, Response,
+};
 use rush::{LightPersistence, PersistentActor};
+use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 
 use crate::{

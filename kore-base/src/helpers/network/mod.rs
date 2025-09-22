@@ -1,9 +1,9 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use rush::Message;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
+use rush::Message;
 use serde::{Deserialize, Serialize};
 
 use crate::{

@@ -15,7 +15,7 @@ pub struct Config {
     /// Logging parameters.
     pub logging: Logging,
     /// Sink parameters.
-    pub sink: SinkConfig
+    pub sink: SinkConfig,
 }
 
 impl Config {

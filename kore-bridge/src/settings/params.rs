@@ -6,7 +6,8 @@ use std::{collections::BTreeMap, time::Duration};
 
 use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
 use kore_base::config::{
-    ExternalDbConfig, KoreDbConfig, LoggingOutput, LoggingRotation, SinkConfig, SinkServer
+    ExternalDbConfig, KoreDbConfig, LoggingOutput, LoggingRotation, SinkConfig,
+    SinkServer,
 };
 use kore_base::error::Error;
 use kore_base::subject::sinkdata::SinkTypes;
@@ -112,11 +113,11 @@ impl From<Params> for Config {
                 always_accept: params.kore.base.always_accept,
                 garbage_collector: params.kore.base.garbage_collector,
             },
-            sink: SinkConfig { 
-                sinks: params.kore.sink.sinks, 
+            sink: SinkConfig {
+                sinks: params.kore.sink.sinks,
                 auth: params.kore.sink.auth,
-                username: params.kore.sink.username
-            }
+                username: params.kore.sink.username,
+            },
         }
     }
 }
@@ -134,7 +135,7 @@ struct KoreParams {
     #[serde(default)]
     logging: LoggingParams,
     #[serde(default)]
-    sink: SinkParams
+    sink: SinkParams,
 }
 
 impl KoreParams {
@@ -161,7 +162,7 @@ impl KoreParams {
             keys_path: kore_params.keys_path,
             prometheus: kore_params.prometheus,
             logging: LoggingParams::from_env(&format!("{parent}_"))?,
-            sink: SinkParams::from_env(&format!("{parent}_"))?
+            sink: SinkParams::from_env(&format!("{parent}_"))?,
         })
     }
 
@@ -183,7 +184,7 @@ impl KoreParams {
             keys_path,
             prometheus,
             logging: self.logging.mix_config(other_config.logging),
-            sink: self.sink.mix_config(other_config.sink)
+            sink: self.sink.mix_config(other_config.sink),
         }
     }
 }
@@ -196,7 +197,7 @@ impl Default for KoreParams {
             keys_path: default_keys_path(),
             prometheus: default_prometheus(),
             logging: LoggingParams::default(),
-            sink: SinkParams::default()
+            sink: SinkParams::default(),
         }
     }
 }
@@ -926,11 +927,11 @@ fn default_discovery_only_if_under_num() -> u64 {
 #[derive(Debug, Deserialize, Default)]
 struct SinkParams {
     #[serde(default, deserialize_with = "deserialize_sinks")]
-    sinks: BTreeMap<String,  Vec<SinkServer>>,
+    sinks: BTreeMap<String, Vec<SinkServer>>,
     #[serde(default)]
     auth: String,
     #[serde(default)]
-    username: String
+    username: String,
 }
 
 impl SinkParams {
@@ -978,7 +979,7 @@ impl SinkParams {
         Self {
             sinks,
             auth,
-            username
+            username,
         }
     }
 }
@@ -1111,7 +1112,10 @@ where
 
     let mut map: BTreeMap<String, Vec<SinkServer>> = BTreeMap::new();
     for element in v.iter() {
-        let data = element.split('|').map(|x| x.to_string()).collect::<Vec<String>>();
+        let data = element
+            .split('|')
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
         if data.len() != 5 {
             continue;
         }
@@ -1122,7 +1126,10 @@ where
 
         let server = data[0].clone();
         let schema_id = data[1].clone();
-        let events = data[2].split(" ").map(|x| SinkTypes::from(x.to_string())).collect::<BTreeSet<SinkTypes>>();
+        let events = data[2]
+            .split(" ")
+            .map(|x| SinkTypes::from(x.to_string()))
+            .collect::<BTreeSet<SinkTypes>>();
         let url = data[3].clone();
         let auth = if data[4] == "true" {
             true
@@ -1132,7 +1139,12 @@ where
             continue;
         };
 
-        map.entry(schema_id).or_default().push(SinkServer {server,events,url, auth });
+        map.entry(schema_id).or_default().push(SinkServer {
+            server,
+            events,
+            url,
+            auth,
+        });
     }
 
     Ok(map)

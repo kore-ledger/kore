@@ -66,10 +66,17 @@ pub async fn create_node(
     let mut registry = Registry::default();
     let token = CancellationToken::new();
 
-    Api::build(keys, config, SinkAuth::default(), &mut registry, "kore", &token)
-        .await
-        .unwrap()
-        .0
+    Api::build(
+        keys,
+        config,
+        SinkAuth::default(),
+        &mut registry,
+        "kore",
+        &token,
+    )
+    .await
+    .unwrap()
+    .0
 }
 
 async fn governance_copy_benchmark() {
