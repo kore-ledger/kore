@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 /// Error type.
 #[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
+    /// Sink error.
+    #[error("Sink error: {0}")]
+    Sink(String),
     /// HashID error.
     #[error("HashID error: {0}")]
     HashID(String),

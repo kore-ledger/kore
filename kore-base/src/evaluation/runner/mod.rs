@@ -241,9 +241,9 @@ impl Runner {
                 ));
             }
 
-            if old_owner_name.len() > 50 {
+            if old_owner_name.len() > 100 {
                 return Err(Error::Runner(format!(
-                    "The size of the new name of the old owner must be less than or equal to 50 characters: {}",
+                    "The size of the new name of the old owner must be less than or equal to 100 characters: {}",
                     old_owner_name
                 )));
             }
@@ -690,9 +690,9 @@ impl Runner {
                     ));
                 }
 
-                if new_schema.id.len() > 50 {
+                if new_schema.id.len() > 100 {
                     return Err(Error::Runner(format!(
-                        "The size of the schema ID must be less than or equal to 50 characters: {}",
+                        "The size of the schema ID must be less than or equal to 100 characters: {}",
                         new_schema.id
                     )));
                 }
@@ -846,9 +846,9 @@ impl Runner {
                     ));
                 }
 
-                if new_member.name.len() > 50 {
+                if new_member.name.len() > 100 {
                     return Err(Error::Runner(format!(
-                        "The size of the member name be less than or equal to 50 characters: {}",
+                        "The size of the member name be less than or equal to 100 characters: {}",
                         new_member.name
                     )));
                 }
@@ -960,9 +960,9 @@ impl Runner {
                         )));
                     }
 
-                    if new_name.len() > 50 {
+                    if new_name.len() > 100 {
                         return Err(Error::Runner(format!(
-                            "The size of the new name must be less than or equal to 50 characters: {}",
+                            "The size of the new name must be less than or equal to 100 characters: {}",
                             actual_member_name
                         )));
                     }

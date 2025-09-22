@@ -52,24 +52,24 @@ use crate::{
     },
 };
 
-use rush::{
-    Actor, ActorContext, ActorPath, ActorRef, ChildAction, ActorError,
-    Event, Handler, Message, Response, Sink,
-};
 use event::LedgerEvent;
 use identity::identifier::{
     DigestIdentifier, KeyIdentifier, derive::digest::DigestDerivator,
+};
+use rush::{
+    Actor, ActorContext, ActorError, ActorPath, ActorRef, ChildAction, Event,
+    Handler, Message, Response, Sink,
 };
 
 use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use json_patch::{Patch, patch};
-use serde::{Deserialize, Serialize};
-use serde_json::to_value;
-use sinkdata::{SinkData, SinkDataMessage};
 use rush::{
     FullPersistence, PersistentActor, Store, StoreCommand, StoreResponse,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::to_value;
+use sinkdata::{SinkData, SinkDataMessage};
 use tracing::{error, warn};
 use transfer::{TransferRegister, TransferRegisterMessage};
 use validata::ValiData;
@@ -1313,6 +1313,69 @@ impl Subject {
         Ok(())
     }
 
+    async fn event_to_sink(&self, ctx: &mut ActorContext<Subject>, event: &EventRequest, issuer: &str) -> Result<(), ActorError> {
+                let gov_id = if self.governance_id.is_empty() {
+                    None
+                } else {
+                    Some(self.governance_id.to_string())
+                };
+                let sub_id = self.subject_id.to_string();
+                let owner = self.owner.to_string();
+                let schema_id = self.schema_id.clone();
+
+                let event_to_sink = match event.clone() {
+                    EventRequest::Create( .. ) => {
+                        SinkDataMessage::Create {
+                            governance_id: gov_id,
+                            subject_id: sub_id,
+                            owner,
+                            schema_id,
+                            namespace: self.namespace.to_string(),
+                        }
+                    }
+                    EventRequest::Fact(fact_request) => SinkDataMessage::Fact {
+                        governance_id: gov_id,
+                        subject_id: sub_id,
+                        issuer: issuer.to_string(),
+                        owner,
+                        payload: fact_request.payload.clone(),
+                        schema_id,
+                    },
+                    EventRequest::Transfer(transfer_request) => {
+                        SinkDataMessage::Transfer {
+                            governance_id: gov_id,
+                            subject_id: sub_id,
+                            owner,
+                            new_owner: transfer_request.new_owner.to_string(),
+                            schema_id,
+                        }
+                    }
+                    EventRequest::Confirm( .. ) => {
+                        SinkDataMessage::Confirm {
+                            governance_id: gov_id,
+                            subject_id: sub_id,
+                            schema_id,
+                        }
+                    }
+                    EventRequest::Reject( .. ) => {
+                        SinkDataMessage::Reject {
+                            governance_id: gov_id,
+                            subject_id: sub_id,
+                            schema_id,
+                        }
+                    },
+                    EventRequest::EOL( .. ) => {
+                        SinkDataMessage::EOL {
+                            governance_id: gov_id,
+                            subject_id: sub_id,
+                            schema_id,
+                        }
+                    },
+                };
+
+                Self::publish_sink(ctx, event_to_sink).await
+    }
+
     async fn verify_new_ledger_events_gov(
         &mut self,
         ctx: &mut ActorContext<Subject>,
@@ -1385,23 +1448,16 @@ impl Subject {
                     }
                     _ => {}
                 };
+
+                                self.event_to_sink(ctx, &event.content.event_request.content, &event.content
+                        .event_request
+                            .signature
+                            .signer
+                            .to_string()).await?;
             }
 
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
-            if let EventRequest::Fact(fact_req) =
-                event.content.event_request.content.clone()
-                && last_event_is_ok
-            {
-                Self::publish_sink(
-                    ctx,
-                    SinkDataMessage::PublishFact {
-                        schema_id: self.schema_id.clone(),
-                        fact_req,
-                    },
-                )
-                .await?;
-            };
 
             // Acutalizar último evento.
             last_ledger = event.clone();
@@ -1612,23 +1668,16 @@ impl Subject {
                     }
                     _ => {}
                 };
+
+                                                self.event_to_sink(ctx, &event.content.event_request.content, &event.content
+                        .event_request
+                            .signature
+                            .signer
+                            .to_string()).await?;
             }
 
             // Aplicar evento.
             self.on_event(event.clone(), ctx).await;
-            if let EventRequest::Fact(fact_req) =
-                event.content.event_request.content.clone()
-                && last_event_is_ok
-            {
-                Self::publish_sink(
-                    ctx,
-                    SinkDataMessage::PublishFact {
-                        schema_id: self.schema_id.clone(),
-                        fact_req,
-                    },
-                )
-                .await?;
-            };
 
             // Acutalizar último evento.
             last_ledger = event.clone();
@@ -2891,12 +2940,12 @@ mod tests {
         }
     }
 
-    use rush::SystemRef;
     use event::LedgerEventMessage;
     use identity::{
         identifier::derive::digest::DigestDerivator,
         keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
     };
+    use rush::SystemRef;
     use serde_json::{Value, json};
     use test_log::test;
 

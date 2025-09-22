@@ -1,9 +1,9 @@
-#docker build --platform linux/arm64 -t koreledgerhub/kore-http:arm64-rockdb-prometheus --target arm64 -f ./kore-http/docker/Dockerfile.rockdb .
-#docker build --platform linux/amd64 -t koreledgerhub/kore-http:amd64-rockdb-prometheus --target amd64 -f ./kore-http/docker/Dockerfile.rockdb .
+#docker build --platform linux/arm64 --build-arg FEATURES="sqlite prometheus ext-sqlite" -t koreledgerhub/kore-http:arm64-sqlite-prometheus --target arm64 -f ./kore-http/docker/Dockerfile.sqlite .
+#docker build --platform linux/amd64 --build-arg FEATURES="sqlite prometheus ext-sqlite" -t koreledgerhub/kore-http:amd64-sqlite-prometheus --target amd64 -f ./kore-http/docker/Dockerfile.sqlite .
 
 # Etapa de compilación para AMD64
-FROM rust:1.89-slim-bullseye AS builder-amd64
-RUN apt-get update && apt-get install --no-install-recommends -y build-essential cmake pkg-config libssl-dev clang libclang-dev llvm-dev libc6-dev gcc libsqlite3-dev \
+FROM rust:1.90-slim-bullseye AS builder-amd64
+RUN apt-get update && apt-get install --no-install-recommends -y pkg-config libssl-dev \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 RUN rustup target add x86_64-unknown-linux-gnu
@@ -50,12 +50,11 @@ COPY ./rush-rs/src ./rush-rs/src
 COPY ./rush-rs/Cargo.toml ./rush-rs/Cargo.toml
 
 WORKDIR /kore/kore-http
-RUN cargo update -p 'yamux@0.13.6' --precise 0.13.5
-RUN cargo build --target x86_64-unknown-linux-gnu --release
+RUN cargo build --target x86_64-unknown-linux-gnu --release --no-default-features --features "$CARGO_FEATURES"
 
 # Etapa de compilación para ARM64
-FROM rust:1.89-slim-bullseye AS builder-arm64
-RUN apt-get update && apt-get install --no-install-recommends -y build-essential cmake pkg-config libssl-dev clang libclang-dev llvm-dev libc6-dev gcc libsqlite3-dev \
+FROM rust:1.90-slim-bullseye AS builder-arm64
+RUN apt-get update && apt-get install --no-install-recommends -y pkg-config libssl-dev \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 RUN rustup target add aarch64-unknown-linux-gnu
@@ -102,11 +101,10 @@ COPY ./rush-rs/store/Cargo.toml ./rush-rs/store/Cargo.toml
 COPY ./rush-rs/Cargo.toml ./rush-rs/Cargo.toml
 
 WORKDIR /kore/kore-http
-RUN cargo update -p 'yamux@0.13.6' --precise 0.13.5
-RUN cargo build --target aarch64-unknown-linux-gnu --release
+RUN cargo build --target aarch64-unknown-linux-gnu --release --no-default-features --features "$CARGO_FEATURES"
 
 # Imagen final para AMD64
-FROM rust:1.89-slim-bullseye AS amd64
+FROM rust:1.90-slim-bullseye AS amd64
 RUN apt-get update && apt-get install --no-install-recommends -y libsqlite3-dev
 COPY --from=builder-amd64 ./kore/target/x86_64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-http
 RUN rustup target add wasm32-unknown-unknown
@@ -114,7 +112,7 @@ RUN rustup target add wasm32-unknown-unknown
 CMD ["kore-http"]
 
 # Imagen final para ARM64
-FROM rust:1.89-slim-bullseye AS arm64
+FROM rust:1.90-slim-bullseye AS arm64
 RUN apt-get update && apt-get install --no-install-recommends -y libsqlite3-dev
 COPY --from=builder-arm64 ./kore/target/aarch64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-http
 RUN rustup target add wasm32-unknown-unknown

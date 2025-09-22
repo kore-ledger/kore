@@ -124,8 +124,8 @@ impl GovRoleEvent {
                         ));
                     }
 
-                    if approver.len() > 50 {
-                        return Err(Error::Runner("Approver name len in governance roles must be less than or equal to 50".to_owned()));
+                    if approver.len() > 100 {
+                        return Err(Error::Runner("Approver name len in governance roles must be less than or equal to 100".to_owned()));
                     }
 
                     if !members.contains(&approver) {
@@ -157,8 +157,8 @@ impl GovRoleEvent {
                         ));
                     }
 
-                    if evaluator.len() > 50 {
-                        return Err(Error::Runner("Evaluator name len in governance roles must be less than or equal to 50".to_owned()));
+                    if evaluator.len() > 100 {
+                        return Err(Error::Runner("Evaluator name len in governance roles must be less than or equal to 100".to_owned()));
                     }
 
                     if !members.contains(&evaluator) {
@@ -190,8 +190,8 @@ impl GovRoleEvent {
                         ));
                     }
 
-                    if validator.len() > 50 {
-                        return Err(Error::Runner("Validator name len in governance roles must be less than or equal to 50".to_owned()));
+                    if validator.len() > 100 {
+                        return Err(Error::Runner("Validator name len in governance roles must be less than or equal to 100".to_owned()));
                     }
 
                     if !members.contains(&validator) {
@@ -223,8 +223,8 @@ impl GovRoleEvent {
                         ));
                     }
 
-                    if witness.len() > 50 {
-                        return Err(Error::Runner("Witness name len in governance roles must be less than or equal to 50".to_owned()));
+                    if witness.len() > 100 {
+                        return Err(Error::Runner("Witness name len in governance roles must be less than or equal to 100".to_owned()));
                     }
 
                     if !members.contains(&witness) {
@@ -259,8 +259,8 @@ impl GovRoleEvent {
                         ));
                     }
 
-                    if issuer.len() > 50 {
-                        return Err(Error::Runner("Issuer name len in governance roles must be less than or equal to 50".to_owned()));
+                    if issuer.len() > 100 {
+                        return Err(Error::Runner("Issuer name len in governance roles must be less than or equal to 100".to_owned()));
                     }
 
                     if issuer != "Any" {
@@ -464,9 +464,9 @@ impl SchemaRoleEvent {
                         )));
                     }
 
-                    if evaluator.name.len() > 50 {
+                    if evaluator.name.len() > 100 {
                         return Err(Error::Runner(format!(
-                            "Evaluator name len in schema {} roles must be less than or equal to 50",
+                            "Evaluator name len in schema {} roles must be less than or equal to 100",
                             schema_id
                         )));
                     }
@@ -512,9 +512,9 @@ impl SchemaRoleEvent {
                         )));
                     }
 
-                    if validator.name.len() > 50 {
+                    if validator.name.len() > 100 {
                         return Err(Error::Runner(format!(
-                            "Validator name len in schema {} roles must be less than or equal to 50",
+                            "Validator name len in schema {} roles must be less than or equal to 100",
                             schema_id
                         )));
                     }
@@ -560,9 +560,9 @@ impl SchemaRoleEvent {
                         )));
                     }
 
-                    if witness.name.len() > 50 {
+                    if witness.name.len() > 100 {
                         return Err(Error::Runner(format!(
-                            "Witness name len in schema {} roles must be less than or equal to 50",
+                            "Witness name len in schema {} roles must be less than or equal to 100",
                             schema_id
                         )));
                     }
@@ -608,9 +608,9 @@ impl SchemaRoleEvent {
                         )));
                     }
 
-                    if creator.name.len() > 50 {
+                    if creator.name.len() > 100 {
                         return Err(Error::Runner(format!(
-                            "Creator name len in schema {} roles must be less than or equal to 50",
+                            "Creator name len in schema {} roles must be less than or equal to 100",
                             schema_id
                         )));
                     }
@@ -673,9 +673,9 @@ impl SchemaRoleEvent {
                         )));
                     }
 
-                    if issuer.name.len() > 50 {
+                    if issuer.name.len() > 100 {
                         return Err(Error::Runner(format!(
-                            "Issuer name len in schema {} roles must be less than or equal to 50",
+                            "Issuer name len in schema {} roles must be less than or equal to 100",
                             schema_id
                         )));
                     }

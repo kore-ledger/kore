@@ -23,6 +23,7 @@ use kore_bridge::{
     TimeOutResponseInfo as TimeOutResponseInfoBridge,
     TransferRequestInfo as TransferRequestInfoBridge,
     TransferSubject as TransferSubjectBridge, config::Config as ConfigBridge,
+    SinkConfig as SinkConfigBridge
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -568,6 +569,7 @@ pub struct Config {
     pub keys_path: String,
     pub prometheus: String,
     pub logging: Logging,
+    pub sink: SinkConfig
 }
 
 impl From<ConfigBridge> for Config {
@@ -577,6 +579,7 @@ impl From<ConfigBridge> for Config {
             keys_path: value.keys_path,
             prometheus: value.prometheus,
             logging: Logging::from(value.logging),
+            sink: SinkConfig::from(value.sink)
         }
     }
 }
@@ -646,6 +649,40 @@ impl From<LoggingBridge> for Logging {
         }
     }
 }
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
+pub struct SinkConfig {
+    pub sinks: String,
+    pub auth: String,
+    pub username: String,
+}
+
+impl From<SinkConfigBridge> for SinkConfig {
+    fn from(value: SinkConfigBridge) -> Self {
+        let mut sinks = String::default();
+        for (schema_id, val) in value.sinks.iter() {
+            for sink_server in val {
+                let mut event_string = String::default();
+                for event in sink_server.events.iter() {
+                    event_string = format!("{} ", event);
+                }
+
+                if !event_string.is_empty() {
+                    event_string.remove(0);
+                }
+
+                sinks = format!(",{}|{}|{}|{}|{}", sink_server.server, schema_id, event_string, sink_server.url, sink_server.auth);    
+            }
+        }
+
+        if !sinks.is_empty() {
+            sinks.remove(0);
+        }
+
+        Self { sinks, auth: value.auth, username: value.username }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct KoreConfig {
     pub key_derivator: String,
@@ -656,22 +693,10 @@ pub struct KoreConfig {
     pub contracts_dir: String,
     pub always_accept: bool,
     pub garbage_collector: u64,
-    pub sink: String,
 }
 
 impl From<KoreConfigBridge> for KoreConfig {
     fn from(value: KoreConfigBridge) -> Self {
-        let mut sink = String::default();
-        for (key, val) in value.sink.iter() {
-            sink = format!("{},{}:{}", sink, key, val);
-        }
-
-        if !sink.is_empty() {
-            sink.remove(0);
-        }
-
-        sink = format!("{{{}}}", sink);
-
         Self {
             key_derivator: value.key_derivator.to_string(),
             digest_derivator: value.digest_derivator.to_string(),
@@ -681,7 +706,6 @@ impl From<KoreConfigBridge> for KoreConfig {
             contracts_dir: value.contracts_dir,
             always_accept: value.always_accept,
             garbage_collector: value.garbage_collector.as_secs(),
-            sink,
         }
     }
 }

@@ -2,12 +2,14 @@
 
 DOCKER_USERNAME="koreledgerhub"
 DOCKER_REPO="kore-http"
-TAG_ARRAY=("0.7.3-rockdb-prometheus")
-DOCKERFILE_ARRAY=("./kore/kore-http/docker/Dockerfile.rockdb")
+TAG_ARRAY=("0.7.4-sqlite-prometheus" "0.7.4-rocksdb-prometheus")
+DOCKERFILE_ARRAY=("./kore/kore-http/docker/Dockerfile.sqlite" "./kore/kore-http/docker/Dockerfile.rocksdb")
+FEATURES_ARRAY=("ext-sqlite sqlite prometheus" "ext-sqlite rocksdb prometheus")
 
-
-    TAG="${TAG_ARRAY[0]}"
-    DOCKERFILE="${DOCKERFILE_ARRAY[0]}"
+for i in "${!FEATURES_ARRAY[@]}"; do
+    FEATURES="${FEATURES_ARRAY[i]}"
+    TAG="${TAG_ARRAY[i]}"
+    DOCKERFILE="${DOCKERFILE_ARRAY[i]}"
 
     echo "######################################################################"
     echo "########################## $TAG #########################"
@@ -15,13 +17,13 @@ DOCKERFILE_ARRAY=("./kore/kore-http/docker/Dockerfile.rockdb")
 
     # Construir la imagen para ARM64
     echo ""
-    echo "Construyendo la imagen para ARM64"
-    docker build --no-cache --platform linux/arm64 -t ${DOCKER_USERNAME}/${DOCKER_REPO}:arm64-${TAG} --target arm64 -f $DOCKERFILE .
+    echo "Construyendo la imagen para ARM64 con características: $FEATURES.."
+    docker build --no-cache --platform linux/arm64 --build-arg FEATURES="$FEATURES" -t ${DOCKER_USERNAME}/${DOCKER_REPO}:arm64-${TAG} --target arm64 -f $DOCKERFILE .
 
     # Construir la imagen para AMD64
     echo ""
-    echo "Construyendo la imagen para AMD64"
-    docker build --no-cache --platform linux/amd64 -t ${DOCKER_USERNAME}/${DOCKER_REPO}:amd64-${TAG} --target amd64 -f $DOCKERFILE .
+    echo "Construyendo la imagen para AMD64 con características: $FEATURES.."
+    docker build --no-cache --platform linux/amd64 --build-arg FEATURES="$FEATURES" -t ${DOCKER_USERNAME}/${DOCKER_REPO}:amd64-${TAG} --target amd64 -f $DOCKERFILE .
 
     echo ""
     echo "Subiendo las imágenes a Docker Hub..."
@@ -45,10 +47,15 @@ DOCKERFILE_ARRAY=("./kore/kore-http/docker/Dockerfile.rockdb")
     echo "Subiendo el manifiesto a Docker Hub..."
     docker manifest push ${DOCKER_USERNAME}/${DOCKER_REPO}:${TAG}
 
-    echo "Las imágenes han sido subidas a Docker Hub."
+    echo "Proceso completado para características: $FEATURES. Las imágenes han sido subidas a Docker Hub."
+done
+
 
 echo "######################################################################"
 echo "############################## LIMPIANDO #############################"
 echo "######################################################################"
 
-docker rmi ${DOCKER_USERNAME}/${DOCKER_REPO}:arm64-${TAG} ${DOCKER_USERNAME}/${DOCKER_REPO}:amd64-${TAG}
+for i in "${!TAG_ARRAY[@]}"; do
+    TAG="${TAG_ARRAY[i]}"
+    docker rmi ${DOCKER_USERNAME}/${DOCKER_REPO}:arm64-${TAG} ${DOCKER_USERNAME}/${DOCKER_REPO}:amd64-${TAG}
+done

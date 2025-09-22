@@ -6,14 +6,12 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    DIGEST_DERIVATOR, Error, KEY_DERIVATOR, KoreBaseConfig,
-    db::Database,
-    external_db::DBManager,
-    helpers::{db::ExternalDB, encrypted_pass::EncryptedPass, sink::KoreSink},
+    config::SinkAuth, db::Database, external_db::DBManager, helpers::{db::ExternalDB, encrypted_pass::EncryptedPass, sink::KoreSink}, Error, KoreBaseConfig, DIGEST_DERIVATOR, KEY_DERIVATOR
 };
 
 pub async fn system(
     config: KoreBaseConfig,
+    sink_auth: SinkAuth,
     password: &str,
     token: CancellationToken,
 ) -> Result<(SystemRef, JoinHandle<()>), Error> {
@@ -36,7 +34,7 @@ pub async fn system(
     system.add_helper("store", db).await;
 
     // Build sink manager.
-    let kore_sink = KoreSink::new(config.sink);
+    let kore_sink = KoreSink::new(sink_auth.sink.sinks,sink_auth.token, &sink_auth.sink.auth, &sink_auth.sink.username, &sink_auth.password);
     system.add_helper("sink", kore_sink).await;
 
     // Helper memory encryption for passwords to be used in secure stores.
@@ -67,7 +65,7 @@ pub mod tests {
     use crate::config::{ExternalDbConfig, KoreDbConfig};
     use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
     use network::Config as NetworkConfig;
-    use std::{collections::BTreeMap, fs, time::Duration};
+    use std::{fs, time::Duration};
     use test_log::test;
 
     use super::*;
@@ -122,10 +120,9 @@ pub mod tests {
             contracts_dir: create_temp_dir(),
             always_accept: false,
             garbage_collector: Duration::from_secs(500),
-            sink: BTreeMap::new(),
         };
 
-        let sys = system(config.clone(), "password", CancellationToken::new())
+        let sys = system(config.clone(), SinkAuth::default(),"password", CancellationToken::new())
             .await
             .unwrap();
         sys

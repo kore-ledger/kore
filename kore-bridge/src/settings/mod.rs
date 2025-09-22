@@ -49,16 +49,21 @@ pub fn build_password() -> String {
     env::var("KORE_PASSWORD").unwrap_or("kore".to_owned())
 }
 
+pub fn build_sink_password() -> String {
+    env::var("KORE_SINK_PASSWORD").unwrap_or_default()
+}
+
 pub fn build_file_path() -> String {
     env::var("KORE_FILE_PATH").unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use core::panic;
+    use std::{collections::{BTreeMap, BTreeSet}, time::Duration};
 
     use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
-    use kore_base::config::{LoggingOutput, LoggingRotation};
+    use kore_base::{config::{LoggingOutput, LoggingRotation, SinkServer}, subject::sinkdata::SinkTypes};
     use network::{NodeType, RoutingNode};
     use serial_test::serial;
 
@@ -80,7 +85,7 @@ mod tests {
             );
             std::env::set_var(
                 "KORE_NETWORK_BOOT_NODES",
-                "/ip4/172.17.0.1/tcp/50000_/ip4/127.0.0.1/tcp/60001/p2p/12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B,/ip4/11.11.0.11/tcp/10000_/ip4/12.22.33.44/tcp/55511/p2p/12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze",
+                "/ip4/172.17.0.1/tcp/50000/p2p/12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B,/ip4/127.0.0.1/tcp/60001/p2p/12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B,/ip4/11.11.0.11/tcp/10000/p2p/12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze,/ip4/12.22.33.44/tcp/55511/p2p/12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze",
             );
             std::env::set_var("KORE_NETWORK_ROUTING_DHT_RANDOM_WALK", "true");
             std::env::set_var(
@@ -112,8 +117,12 @@ mod tests {
             std::env::set_var("KORE_BASE_EXTERNAL_DB", "./fake/db/path");
             std::env::set_var("KORE_BASE_GARBAGE_COLLECTOR", "1000");
             std::env::set_var(
-                "KORE_BASE_SINK",
-                "key1:https://www.kore-ledger.net/build/,key2:https://www.kore-ledger.net/community/",
+                "KORE_SINK_SINKS",
+                "Sever1|key1|All|https://www.kore-ledger.net/build/|true,Server2|key2|Create Fact|https://www.kore-ledger.net/community/|false,Server3|key2|Transfer|https://www.kore-ledger.net/community/|true,Server4|key2|Confirm|https://www.kore-ledger.net/community/issue|false",
+            );
+            std::env::set_var(
+                "KORE_SINK_AUTH",
+                "https://www.kore-ledger.net/build/",
             );
 
             std::env::set_var("KORE_NETWORK_NODE_TYPE", "Addressable");
@@ -163,24 +172,6 @@ mod tests {
 
         let config = build_config(true, "").unwrap();
 
-        let boot_nodes = vec![
-            RoutingNode {
-                address: vec![
-                    "/ip4/172.17.0.1/tcp/50000".to_owned(),
-                    "/ip4/127.0.0.1/tcp/60001".to_owned(),
-                ],
-                peer_id: "12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B"
-                    .to_owned(),
-            },
-            RoutingNode {
-                address: vec![
-                    "/ip4/11.11.0.11/tcp/10000".to_owned(),
-                    "/ip4/12.22.33.44/tcp/55511".to_owned(),
-                ],
-                peer_id: "12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze"
-                    .to_owned(),
-            },
-        ];
         let log = &config.logging;
         assert_eq!(
             log.output,
@@ -223,24 +214,70 @@ mod tests {
             Duration::from_secs(1000)
         );
         assert_eq!(config.kore_config.contracts_dir, "./fake_route");
-        assert_eq!(config.kore_config.sink.len(), 2);
+        assert_eq!(config.sink.sinks.len(), 2);
+        let mut sink_map = BTreeMap::new();
+
+        //"Sever1|key1|All|https://www.kore-ledger.net/build/|true,
+        //Server2|key2|Create Fact|https://www.kore-ledger.net/community/|false,
+        //Server3|key2|Transfer|https://www.kore-ledger.net/community/|true,
+        //Server4|key2|Confirm|https://www.kore-ledger.net/community/issue|false",
+
+        sink_map.insert("key1".to_owned(), vec![SinkServer { server: "Sever1".to_owned(), events: BTreeSet::from([SinkTypes::All]), url: "https://www.kore-ledger.net/build/".to_owned(), auth: true }]);
+        sink_map.insert("key2".to_owned(), vec![SinkServer { server: "Server2".to_owned(), events: BTreeSet::from([SinkTypes::Create, SinkTypes::Fact]), url: "https://www.kore-ledger.net/community/".to_owned(), auth: false },
+        SinkServer { server: "Server3".to_owned(), events: BTreeSet::from([SinkTypes::Transfer]), url: "https://www.kore-ledger.net/community/".to_owned(), auth: true },
+        SinkServer { server: "Server4".to_owned(), events: BTreeSet::from([SinkTypes::Confirm]), url: "https://www.kore-ledger.net/community/issue".to_owned(), auth: false }]);
+        assert_eq!(config.sink.sinks,  sink_map);
+
+        assert_eq!(config.sink.auth, "https://www.kore-ledger.net/build/".to_string());
+
+        let boot_nodes = vec![
+            RoutingNode {
+                address: vec![
+                    "/ip4/172.17.0.1/tcp/50000".to_owned(),
+                    "/ip4/127.0.0.1/tcp/60001".to_owned(),
+                ],
+                peer_id: "12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B"
+                    .to_owned(),
+            },
+            RoutingNode {
+                address: vec![
+                    "/ip4/11.11.0.11/tcp/10000".to_owned(),
+                    "/ip4/12.22.33.44/tcp/55511".to_owned(),
+                ],
+                peer_id: "12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze"
+                    .to_owned(),
+            },
+        ];
 
         assert_eq!(
-            config.kore_config.network.boot_nodes[0].peer_id,
-            boot_nodes[0].peer_id
+            config.kore_config.network.boot_nodes.len(),
+            boot_nodes.len()
         );
-        assert_eq!(
-            config.kore_config.network.boot_nodes[0].address,
-            boot_nodes[0].address
-        );
-        assert_eq!(
-            config.kore_config.network.boot_nodes[1].peer_id,
-            boot_nodes[1].peer_id
-        );
-        assert_eq!(
-            config.kore_config.network.boot_nodes[1].address,
-            boot_nodes[1].address
-        );
+
+        for node in config.kore_config.network.boot_nodes.iter() {
+            if node.peer_id == "12D3KooWLXexpg81PjdjnrhmHUxN7U5EtfXJgr9cahei1SJ9Ub3B" {
+                assert_eq!(
+                    boot_nodes[0].peer_id,
+                    node.peer_id
+                );
+                assert_eq!(
+                    boot_nodes[0].address,
+                    node.address
+                );
+            } else if node.peer_id == "12D3KooWRS3QVwqBtNp7rUCG4SF3nBrinQqJYC1N5qc1Wdr4jrze" {
+                assert_eq!(
+                    boot_nodes[1].peer_id,
+                    node.peer_id
+                );
+                assert_eq!(
+                    boot_nodes[1].address,
+                    node.address
+                );
+            } else {
+                println!("{}", node.peer_id);
+                panic!("Invalid peer_id");
+            }
+        }
 
         assert_eq!(
             config.kore_config.network.routing.get_dht_random_walk(),
@@ -380,7 +417,8 @@ mod tests {
             std::env::remove_var("KORE_BASE_KORE_DB");
             std::env::remove_var("KORE_BASE_EXTERNAL_DB");
             std::env::remove_var("KORE_BASE_GARBAGE_COLLECTOR");
-            std::env::remove_var("KORE_BASE_SINK");
+            std::env::remove_var("KORE_SINK_SINKS");
+            std::env::remove_var("KORE_SINK_AUTH");
             std::env::remove_var("KORE_PROMETHEUS");
             std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ENABLE");
             std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ALLOW_LIST");

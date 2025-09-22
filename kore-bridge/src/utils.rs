@@ -16,6 +16,8 @@ use std::fs;
 
 use crate::config::Config;
 
+
+
 pub fn key_pair(config: &Config, password: &str) -> Result<KeyPair, Error> {
     if fs::metadata(&config.keys_path).is_err() {
         fs::create_dir_all(&config.keys_path).map_err(|error| {

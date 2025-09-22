@@ -22,7 +22,7 @@ use crate::request::RequestHandlerEvent;
 use crate::request::manager::RequestManagerEvent;
 use crate::request::types::RequestManagerState;
 use crate::subject::event::LedgerEventEvent;
-use crate::subject::sinkdata::SinkDataEvent;
+use crate::subject::sinkdata::{SinkDataEvent, SinkDataMessage};
 use crate::subject::validata::ValiDataEvent;
 
 use super::common::{
@@ -182,7 +182,7 @@ impl Querys for SqliteLocal {
                 )));
             }
 
-            let mut pages = if total % quantity == 0 {
+            let mut pages = if total.is_multiple_of(quantity) {
                 total / quantity
             } else {
                 total / quantity + 1
@@ -1045,7 +1045,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
 #[async_trait]
 impl Subscriber<SinkDataEvent> for SqliteLocal {
     async fn notify(&self, event: SinkDataEvent) {
-        let SinkDataEvent::UpdateState(metadata) = event else {
+        let SinkDataMessage::UpdateState(metadata) = event.0 else {
             return;
         };
 

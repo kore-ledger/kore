@@ -4,6 +4,7 @@ use identity::{
     identifier::derive::{KeyDerivator, digest::DigestDerivator},
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
+use kore_base::config::SinkAuth;
 use kore_base::model::request::CreateRequest;
 use kore_base::model::request::EventRequest;
 use kore_base::{
@@ -12,7 +13,6 @@ use kore_base::{
 };
 use network::{Config as NetworkConfig, RoutingNode};
 use prometheus_client::registry::Registry;
-use std::collections::BTreeMap;
 use std::{fs, time::Duration};
 use tokio::runtime::Runtime;
 use tokio_util::sync::CancellationToken;
@@ -61,13 +61,12 @@ pub async fn create_node(
         contracts_dir: create_temp_dir(),
         always_accept,
         garbage_collector: Duration::from_secs(500),
-        sink: BTreeMap::new(),
     };
 
     let mut registry = Registry::default();
     let token = CancellationToken::new();
 
-    Api::build(keys, config, &mut registry, "kore", &token)
+    Api::build(keys, config, SinkAuth::default(), &mut registry, "kore", &token)
         .await
         .unwrap()
         .0

@@ -1,13 +1,15 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use std::collections::{BTreeSet, HashMap};
 use std::{collections::BTreeMap, time::Duration};
 
 use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
 use kore_base::config::{
-    ExternalDbConfig, KoreDbConfig, LoggingOutput, LoggingRotation,
+    ExternalDbConfig, KoreDbConfig, LoggingOutput, LoggingRotation, SinkConfig, SinkServer
 };
 use kore_base::error::Error;
+use kore_base::subject::sinkdata::SinkTypes;
 use network::{NodeType, RoutingNode};
 use serde::de::Error as SerdeError;
 use serde::{Deserialize, Deserializer};
@@ -109,8 +111,12 @@ impl From<Params> for Config {
                 contracts_dir: params.kore.base.contracts_dir,
                 always_accept: params.kore.base.always_accept,
                 garbage_collector: params.kore.base.garbage_collector,
-                sink: params.kore.base.sink,
             },
+            sink: SinkConfig { 
+                sinks: params.kore.sink.sinks, 
+                auth: params.kore.sink.auth,
+                username: params.kore.sink.username
+            }
         }
     }
 }
@@ -127,6 +133,8 @@ struct KoreParams {
     prometheus: String,
     #[serde(default)]
     logging: LoggingParams,
+    #[serde(default)]
+    sink: SinkParams
 }
 
 impl KoreParams {
@@ -153,6 +161,7 @@ impl KoreParams {
             keys_path: kore_params.keys_path,
             prometheus: kore_params.prometheus,
             logging: LoggingParams::from_env(&format!("{parent}_"))?,
+            sink: SinkParams::from_env(&format!("{parent}_"))?
         })
     }
 
@@ -174,6 +183,7 @@ impl KoreParams {
             keys_path,
             prometheus,
             logging: self.logging.mix_config(other_config.logging),
+            sink: self.sink.mix_config(other_config.sink)
         }
     }
 }
@@ -186,6 +196,7 @@ impl Default for KoreParams {
             keys_path: default_keys_path(),
             prometheus: default_prometheus(),
             logging: LoggingParams::default(),
+            sink: SinkParams::default()
         }
     }
 }
@@ -544,14 +555,8 @@ impl ControlListParams {
             config::Environment::with_prefix(&format!("{parent}CONTROL_LIST"))
                 .list_separator(",")
                 .with_list_parse_key("allow_list")
-                .try_parsing(true)
-                .list_separator(",")
                 .with_list_parse_key("block_list")
-                .try_parsing(true)
-                .list_separator(",")
                 .with_list_parse_key("service_allow_list")
-                .try_parsing(true)
-                .list_separator(",")
                 .with_list_parse_key("service_block_list")
                 .try_parsing(true),
         );
@@ -888,24 +893,24 @@ where
     D: Deserializer<'de>,
 {
     let v: Vec<String> = Vec::deserialize(deserializer)?;
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+    for element in v.iter() {
+        if let Some(pos) = element.find("/p2p/") {
+            // La parte antes de "/p2p/" (no incluye "/p2p/")
+            let address = &element[..pos].to_owned();
+            // La parte después de "/p2p/"
+            let peer_id = &element[pos + 5..].to_owned();
+            map.entry(peer_id.clone())
+                .or_default()
+                .push(address.clone());
+        }
+    }
 
-    Ok(v.into_iter()
-        .map(|element| {
-            if let Some(pos) = element.find("/p2p/") {
-                // La parte antes de "/p2p/" (no incluye "/p2p/")
-                let address = &element[..pos].to_owned();
-                // La parte después de "/p2p/"
-                let peer_id = &element[pos + 5..].to_owned();
-                RoutingNode {
-                    address: address.split('_').map(|e| e.to_owned()).collect(),
-                    peer_id: peer_id.clone(),
-                }
-            } else {
-                RoutingNode {
-                    address: vec![],
-                    peer_id: String::default(),
-                }
-            }
+    Ok(map
+        .iter()
+        .map(|(peer_id, address)| RoutingNode {
+            address: address.clone(),
+            peer_id: peer_id.clone(),
         })
         .collect())
 }
@@ -916,6 +921,66 @@ fn default_true() -> bool {
 
 fn default_discovery_only_if_under_num() -> u64 {
     u64::MAX
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct SinkParams {
+    #[serde(default, deserialize_with = "deserialize_sinks")]
+    sinks: BTreeMap<String,  Vec<SinkServer>>,
+    #[serde(default)]
+    auth: String,
+    #[serde(default)]
+    username: String
+}
+
+impl SinkParams {
+    fn from_env(parent: &str) -> Result<Self, Error> {
+        let mut config = config::Config::builder();
+        config = config.add_source(
+            config::Environment::with_prefix(&format!("{parent}SINK"))
+                .list_separator(",")
+                .with_list_parse_key("sinks")
+                .try_parsing(true),
+        );
+
+        let config = config.build().map_err(|e| {
+            let e = format!("Error building config: {}", e);
+            error!(TARGET_PARAMS, e);
+            Error::Bridge(e)
+        })?;
+
+        config.try_deserialize().map_err(|e| {
+            let e = format!("Error try deserialize config: {}", e);
+            error!(TARGET_PARAMS, "{}", e);
+            Error::Bridge(e)
+        })
+    }
+
+    fn mix_config(&self, other_config: SinkParams) -> Self {
+        let sinks = if !other_config.sinks.is_empty() {
+            other_config.sinks
+        } else {
+            self.sinks.clone()
+        };
+
+        let auth = if !other_config.auth.is_empty() {
+            other_config.auth
+        } else {
+            self.auth.clone()
+        };
+
+        let username = if !other_config.username.is_empty() {
+            other_config.username
+        } else {
+            self.username.clone()
+        };
+
+        Self {
+            sinks,
+            auth,
+            username
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -937,16 +1002,15 @@ struct BaseParams {
     kore_db: KoreDbConfig,
     #[serde(default, deserialize_with = "ExternalDbConfig::deserialize_db")]
     external_db: ExternalDbConfig,
-    #[serde(default, deserialize_with = "deserialize_sinks")]
-    sink: BTreeMap<String, String>,
 }
 
 impl BaseParams {
     fn from_env(parent: &str) -> Result<Self, Error> {
         let mut config = config::Config::builder();
-        config = config.add_source(config::Environment::with_prefix(&format!(
-            "{parent}BASE"
-        )));
+        config = config.add_source(
+            config::Environment::with_prefix(&format!("{parent}BASE"))
+                .try_parsing(true),
+        );
 
         let config = config.build().map_err(|e| {
             let e = format!("Error building config: {}", e);
@@ -1010,12 +1074,6 @@ impl BaseParams {
             self.kore_db.clone()
         };
 
-        let sink = if !other_config.sink.is_empty() {
-            other_config.sink
-        } else {
-            self.sink.clone()
-        };
-
         Self {
             key_derivator,
             digest_derivator,
@@ -1024,7 +1082,6 @@ impl BaseParams {
             garbage_collector,
             external_db,
             kore_db,
-            sink,
         }
     }
 }
@@ -1039,31 +1096,46 @@ impl Default for BaseParams {
             garbage_collector: default_garbage_collector_secs(),
             kore_db: Default::default(),
             external_db: Default::default(),
-            sink: Default::default(),
         }
     }
 }
 
 fn deserialize_sinks<'de, D>(
     deserializer: D,
-) -> Result<BTreeMap<String, String>, D::Error>
+) -> Result<BTreeMap<String, Vec<SinkServer>>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let u: String = String::deserialize(deserializer)?;
-    let elements = u.split(",").collect::<Vec<&str>>();
-    let vec = elements
-        .iter()
-        .map(|x| match x.split_once(":") {
-            Some((k, v)) => (k.to_owned(), v.to_owned()),
-            None => (String::default(), String::default()),
-        })
-        .collect::<Vec<(String, String)>>();
+    let v: Vec<String> = Vec::deserialize(deserializer)?;
+    // Server2|key2|Create Fact|https://www.kore-ledger.net/community/|false
 
-    let mut btreemap = BTreeMap::from_iter(vec.iter().cloned());
-    btreemap.remove("");
+    let mut map: BTreeMap<String, Vec<SinkServer>> = BTreeMap::new();
+    for element in v.iter() {
+        let data = element.split('|').map(|x| x.to_string()).collect::<Vec<String>>();
+        if data.len() != 5 {
+            continue;
+        }
 
-    Ok(btreemap)
+        if data.iter().any(|x| x.is_empty()) {
+            continue;
+        }
+
+        let server = data[0].clone();
+        let schema_id = data[1].clone();
+        let events = data[2].split(" ").map(|x| SinkTypes::from(x.to_string())).collect::<BTreeSet<SinkTypes>>();
+        let url = data[3].clone();
+        let auth = if data[4] == "true" {
+            true
+        } else if data[4] == "false" {
+            false
+        } else {
+            continue;
+        };
+
+        map.entry(schema_id).or_default().push(SinkServer {server,events,url, auth });
+    }
+
+    Ok(map)
 }
 
 fn default_garbage_collector_secs() -> Duration {

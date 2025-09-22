@@ -3,11 +3,13 @@
 
 //! # Configuration module
 
-use std::{collections::BTreeMap, fmt, time::Duration};
+use std::{collections::{BTreeMap, BTreeSet}, fmt, time::Duration};
 
 use identity::identifier::derive::{KeyDerivator, digest::DigestDerivator};
 use network::Config as NetworkConfig;
 use serde::{Deserialize, Deserializer};
+
+use crate::{helpers::sink::TokenResponse, subject::sinkdata::SinkTypes};
 
 /// Node configuration.
 #[derive(Clone, Debug, Deserialize)]
@@ -28,7 +30,6 @@ pub struct Config {
     pub always_accept: bool,
     /// Garbage collector acts
     pub garbage_collector: Duration,
-    pub sink: BTreeMap<String, String>,
 }
 
 impl Config {
@@ -61,7 +62,7 @@ impl Default for KoreDbConfig {
     fn default() -> Self {
         #[cfg(feature = "rocksdb")]
         return KoreDbConfig::Rocksdb {
-            path: "db/local/rockdb".to_owned(),
+            path: "db/local/rocksdb".to_owned(),
         };
         #[cfg(feature = "sqlite")]
         return KoreDbConfig::Sqlite {
@@ -225,4 +226,26 @@ impl Logging {
     pub fn logs(&self) -> bool {
         self.output.api || self.output.file || self.output.stdout
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Default, Eq, PartialEq)]
+pub struct SinkServer {
+    pub server: String,
+    pub events: BTreeSet<SinkTypes>,
+    pub url: String,
+    pub auth: bool
+}
+
+#[derive(Default)]
+pub struct SinkAuth {
+    pub sink: SinkConfig,
+    pub token: Option<TokenResponse>,
+    pub password: String
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+pub struct SinkConfig {
+    pub sinks: BTreeMap<String,  Vec<SinkServer>>,
+    pub auth: String,
+    pub username: String
 }

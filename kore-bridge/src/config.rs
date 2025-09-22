@@ -1,7 +1,7 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use kore_base::config::{Config as KoreConfig, Logging};
+use kore_base::config::{Config as KoreConfig, Logging, SinkConfig};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -14,6 +14,8 @@ pub struct Config {
     pub prometheus: String,
     /// Logging parameters.
     pub logging: Logging,
+    /// Sink parameters.
+    pub sink: SinkConfig
 }
 
 impl Config {

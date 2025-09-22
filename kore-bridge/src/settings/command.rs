@@ -17,4 +17,8 @@ pub struct Args {
     /// Password to be used for the creation of the cryptographic material, if not specified, the password of the environment variable 'KORE_PASSWORD' will be used.
     #[arg(short, long, default_value_t = String::default())]
     pub password: String,
+
+    /// Password to be used to auth for sinks.
+    #[arg(short, long, default_value_t = String::default())]
+    pub password_sink: String,
 }

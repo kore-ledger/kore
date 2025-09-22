@@ -9,21 +9,16 @@ use identity::{
     keys::{Ed25519KeyPair, KeyGenerator, KeyPair},
 };
 use kore_base::{
-    Api,
-    approval::approver::ApprovalStateRes,
-    config::{Config, ExternalDbConfig, KoreDbConfig},
-    helpers::db::common::{SignaturesInfo, SubjectInfo},
-    model::{
-        Namespace, ValueWrapper,
+    approval::approver::ApprovalStateRes, config::{Config, ExternalDbConfig, KoreDbConfig, SinkAuth}, helpers::db::common::{SignaturesInfo, SubjectInfo}, model::{
         request::{
             ConfirmRequest, CreateRequest, EventRequest, FactRequest,
             RejectRequest, TransferRequest,
-        },
-    },
+        }, Namespace, ValueWrapper
+    }, Api
 };
 use network::{Config as NetworkConfig, MonitorNetworkState, RoutingNode};
 use prometheus_client::registry::Registry;
-use std::{collections::BTreeMap, fs, str::FromStr, time::Duration};
+use std::{fs, str::FromStr, time::Duration};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -79,14 +74,13 @@ pub async fn create_node(
         contracts_dir: create_temp_dir(),
         always_accept,
         garbage_collector: Duration::from_secs(500),
-        sink: BTreeMap::new(),
     };
 
     let mut registry = Registry::default();
     let token = CancellationToken::new();
 
     let (api, runners) =
-        Api::build(keys, config, &mut registry, "kore", &token)
+        Api::build(keys, config, SinkAuth::default(), &mut registry, "kore", &token)
             .await
             .unwrap();
 

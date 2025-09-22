@@ -71,6 +71,8 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::config::SinkAuth;
+
 #[cfg(all(feature = "sqlite", feature = "rocksdb"))]
 compile_error!("Select only one: 'sqlite' or 'rocksdb'.");
 
@@ -113,6 +115,7 @@ impl Api {
     pub async fn build(
         keys: KeyPair,
         config: KoreBaseConfig,
+        sink_auth: SinkAuth,
         registry: &mut Registry,
         password: &str,
         token: &CancellationToken,
@@ -120,7 +123,7 @@ impl Api {
         info!(TARGET_API, "Creating Api");
 
         let (system, runner) =
-            system(config.clone(), password, token.clone()).await?;
+            system(config.clone(), sink_auth, password, token.clone()).await?;
 
         let newtork_monitor = Monitor::default();
         let newtork_monitor_actor = system
