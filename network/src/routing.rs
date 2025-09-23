@@ -27,7 +27,7 @@ use std::{
 
 use crate::{
     NodeType,
-    utils::{is_dns, is_global, is_local, is_loop_back, is_tcp},
+    utils::{is_dns, is_global, is_private, is_loop_back, is_tcp},
 };
 
 /// The discovery behaviour.
@@ -52,10 +52,8 @@ pub struct Behaviour {
     /// Number of active connections over which we interrupt the discovery process.
     discovery_only_if_under_num: u64,
 
-    /// Whether to allow non-global addresses in the DHT.
-    allow_local_address_in_dht: bool,
+    allow_private_address_in_dht: bool,
 
-    /// Whether to allow non-global addresses in the DHT.
     allow_dns_address_in_dht: bool,
 
     allow_loop_back_address_in_dht: bool,
@@ -78,7 +76,7 @@ impl Behaviour {
             dht_random_walk,
             discovery_only_if_under_num,
             allow_dns_address_in_dht,
-            allow_local_address_in_dht,
+            allow_private_address_in_dht,
             allow_loop_back_address_in_dht,
             kademlia_disjoint_query_paths,
         } = config;
@@ -112,7 +110,7 @@ impl Behaviour {
             num_connections: 0,
             discovery_only_if_under_num,
             allow_dns_address_in_dht,
-            allow_local_address_in_dht,
+            allow_private_address_in_dht,
             allow_loop_back_address_in_dht,
             close_connections: VecDeque::new(),
             pre_routing: true,
@@ -191,8 +189,8 @@ impl Behaviour {
                 return true;
             }
 
-            if is_local(addr) {
-                return !self.allow_local_address_in_dht;
+            if is_private(addr) {
+                return !self.allow_private_address_in_dht;
             }
 
             if is_loop_back(addr) {
@@ -569,10 +567,8 @@ pub struct Config {
     /// Number of active connections over which we interrupt the discovery process.
     discovery_only_if_under_num: u64,
 
-    /// Whether to allow non-global addresses in the DHT.
-    allow_local_address_in_dht: bool,
+    allow_private_address_in_dht: bool,
 
-    /// Whether to allow non-global addresses in the DHT.
     allow_dns_address_in_dht: bool,
 
     allow_loop_back_address_in_dht: bool,
@@ -587,7 +583,7 @@ impl Config {
         Self {
             dht_random_walk: false,
             discovery_only_if_under_num: u64::MAX,
-            allow_local_address_in_dht: false,
+            allow_private_address_in_dht: false,
             allow_dns_address_in_dht: false,
             allow_loop_back_address_in_dht: false,
             kademlia_disjoint_query_paths: true,
@@ -617,13 +613,13 @@ impl Config {
     }
 
     /// Get allow_local_address_in_dht.
-    pub fn get_allow_local_address_in_dht(&self) -> bool {
-        self.allow_local_address_in_dht
+    pub fn get_allow_private_address_in_dht(&self) -> bool {
+        self.allow_private_address_in_dht
     }
 
     /// Whether to allow local addresses in the DHT.
-    pub fn with_allow_local_address_in_dht(mut self, allow: bool) -> Self {
-        self.allow_local_address_in_dht = allow;
+    pub fn with_allow_private_address_in_dht(mut self, allow: bool) -> Self {
+        self.allow_private_address_in_dht = allow;
         self
     }
 
@@ -700,7 +696,6 @@ mod tests {
         let mut boot_nodes = vec![];
 
         let config = Config::new()
-            .with_allow_local_address_in_dht(true)
             .with_discovery_limit(100)
             .with_dht_random_walk(true);
 
@@ -719,7 +714,6 @@ mod tests {
         let mut swarms = (1..10)
             .map(|x| {
                 let config = Config::new()
-                    .with_allow_local_address_in_dht(true)
                     .with_discovery_limit(100);
                 let (swarm, addr) =
                     build_node(config, 2000 + x, boot_nodes.clone());

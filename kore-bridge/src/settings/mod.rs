@@ -99,7 +99,7 @@ mod tests {
                 "55",
             );
             std::env::set_var(
-                "KORE_NETWORK_ROUTING_ALLOW_LOCAL_ADDRESS_IN_DHT",
+                "KORE_NETWORK_ROUTING_ALLOW_PRIVATE_ADDRESS_IN_DHT",
                 "true",
             );
             std::env::set_var(
@@ -325,7 +325,7 @@ mod tests {
                 .kore_config
                 .network
                 .routing
-                .get_allow_local_address_in_dht(),
+                .get_allow_private_address_in_dht(),
             true
         );
         assert_eq!(
@@ -428,7 +428,7 @@ mod tests {
                 "KORE_NETWORK_ROUTING_DISCOVERY_ONLY_IF_UNDER_NUM",
             );
             std::env::remove_var(
-                "KORE_NETWORK_ROUTING_ALLOW_LOCAL_ADDRESS_IN_DHT",
+                "KORE_NETWORK_ROUTING_ALLOW_PRIVATE_ADDRESS_IN_DHT",
             );
             std::env::remove_var(
                 "KORE_NETWORK_ROUTING_ALLOW_DNS_ADDRESS_IN_DHT",

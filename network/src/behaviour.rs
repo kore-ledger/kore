@@ -669,7 +669,6 @@ mod tests {
         node_type: NodeType,
     ) -> Config {
         let config = crate::routing::Config::new()
-            .with_allow_local_address_in_dht(true)
             .with_discovery_limit(50)
             .with_dht_random_walk(random_walk);
 

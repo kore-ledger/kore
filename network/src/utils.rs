@@ -266,10 +266,10 @@ pub fn is_global(addr: &Multiaddr) -> bool {
     })
 }
 
-pub fn is_local(addr: &Multiaddr) -> bool {
+pub fn is_private(addr: &Multiaddr) -> bool {
     addr.iter().any(|p| match p {
-        Protocol::Ip4(ip) => ip.is_link_local(),
-        Protocol::Ip6(ip) => ip.is_unicast_link_local(),
+        Protocol::Ip4(ip) => ip.is_private(),
+        Protocol::Ip6(ip) => ip.is_unique_local(),
         _ => false,
     })
 }
