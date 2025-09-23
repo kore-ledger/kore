@@ -130,6 +130,10 @@ mod tests {
                 "KORE_SINK_AUTH",
                 "https://www.kore-ledger.net/build/",
             );
+            std::env::set_var(
+                "KORE_SINK_USERNAME",
+                "Sink-service",
+            );
 
             std::env::set_var("KORE_NETWORK_NODE_TYPE", "Addressable");
             std::env::set_var(
@@ -269,6 +273,11 @@ mod tests {
         assert_eq!(
             config.sink.auth,
             "https://www.kore-ledger.net/build/".to_string()
+        );
+
+        assert_eq!(
+            config.sink.username,
+            "Sink-service".to_string()
         );
 
         let boot_nodes = vec![
@@ -452,6 +461,7 @@ mod tests {
             std::env::remove_var("KORE_BASE_GARBAGE_COLLECTOR");
             std::env::remove_var("KORE_SINK_SINKS");
             std::env::remove_var("KORE_SINK_AUTH");
+            std::env::remove_var("KORE_SINK_USERNAME");
             std::env::remove_var("KORE_PROMETHEUS");
             std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ENABLE");
             std::env::remove_var("KORE_NETWORK_CONTROL_LIST_ALLOW_LIST");
