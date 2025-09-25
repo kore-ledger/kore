@@ -1,7 +1,6 @@
 // Copyright 2025 Kore Ledger, SL
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use hex_literal::hex;
 use identity::{
     identifier::derive::KeyDerivator,
     keys::{
@@ -13,8 +12,11 @@ use kore_base::error::Error;
 use pkcs8::{Document, EncryptedPrivateKeyInfo, PrivateKeyInfo, pkcs5};
 
 use std::fs;
+use getrandom::fill;
 
 use crate::config::Config;
+
+const PBKDF2_ITERATIONS: u32 = 200_000;
 
 pub fn key_pair(config: &Config, password: &str) -> Result<KeyPair, Error> {
     if fs::metadata(&config.keys_path).is_err() {
@@ -78,10 +80,22 @@ pub fn key_pair(config: &Config, password: &str) -> Result<KeyPair, Error> {
                         error
                     ))
                 })?;
+            let mut salt = [0u8; 32];
+            let mut iv = [0u8; 16];
+            fill(&mut salt).map_err(|error| {
+                Error::Bridge(format!("Error generating encryption salt: {}", error))
+            })?;
+            fill(&mut iv).map_err(|error| {
+                Error::Bridge(format!(
+                    "Error generating encryption initialization vector: {}",
+                    error
+                ))
+            })?;
+
             let params = pkcs5::pbes2::Parameters::pbkdf2_sha256_aes256cbc(
-                2048,
-                &hex!("79d982e70df91a88"),
-                &hex!("b2d02d78b2efd9dff694cf8e0af40925"),
+                PBKDF2_ITERATIONS,
+                &salt,
+                &iv,
             )
             .map_err(|error| {
                 Error::Bridge(format!(

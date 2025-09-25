@@ -1045,7 +1045,7 @@ impl Subscriber<Signed<Ledger>> for SqliteLocal {
 #[async_trait]
 impl Subscriber<SinkDataEvent> for SqliteLocal {
     async fn notify(&self, event: SinkDataEvent) {
-        let SinkDataMessage::UpdateState(metadata) = event.0 else {
+        let SinkDataMessage::UpdateState(metadata) = event.event else {
             return;
         };
 

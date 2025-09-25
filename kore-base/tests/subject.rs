@@ -7,6 +7,7 @@ use common::{
     create_nodes_and_connections, create_subject, emit_confirm, emit_fact,
     emit_reject, emit_transfer, get_signatures, get_subject,
 };
+use futures::future::join_all;
 use identity::identifier::KeyIdentifier;
 use kore_base::{
     auth::AuthWitness,
@@ -25,8 +26,7 @@ use crate::common::{create_node, node_running};
 async fn test_prueba() {
     let listen_address = format!("/memory/46000");
 
-    let (local_db, ext_db, governance_id) = {
-        let (owner_governance, local_db, ext_db, token) = create_node(
+        let (owner_governance, local_db, ext_db, token, runners) = create_node(
             network::NodeType::Bootstrap,
             &listen_address,
             vec![],
@@ -115,20 +115,38 @@ async fn test_prueba() {
         .await
         .unwrap();
 
-        let subjects = owner_governance
-            .all_subjs(governance_id.clone(), None, None)
+            // emit event to subject
+        let json = json!({
+            "ModOne": {
+                "data": 100,
+            }
+        });
+        emit_fact(&owner_governance, subject_id.clone(), json, true)
             .await
             .unwrap();
-        println!("Mostrando sujetos: {:#?}", subjects);
-        token.cancel();
-        tokio::time::sleep(Duration::from_secs(3)).await;
 
-        (local_db, ext_db, governance_id.clone())
-    };
+        let json = json!({
+            "ModOne": {
+                "data": 101,
+            }
+        });
+        emit_fact(&owner_governance, subject_id.clone(), json, true)
+            .await
+            .unwrap();
+
+        let state = get_subject(&owner_governance, subject_id.clone(), Some(2))
+        .await
+        .unwrap();
+        println!("{}", state.sn);
+
+        token.cancel();
+
+        join_all(runners).await;
+
 
     let listen_address = format!("/memory/46001");
 
-    let (owner_governance, local_db, ext_db, token) = create_node(
+    let (owner_governance, local_db, ext_db, token, joins) = create_node(
         network::NodeType::Bootstrap,
         &listen_address,
         vec![],
@@ -137,15 +155,25 @@ async fn test_prueba() {
     )
     .await;
 
-    let subjects = owner_governance
-        .all_subjs(governance_id.clone(), None, None)
+    let json = json!({
+            "ModOne": {
+                "data": 102,
+            }
+        });
+
+    emit_fact(&owner_governance, subject_id.clone(), json, true)
         .await
         .unwrap();
 
-    println!("Mostrando sujetos: {:#?}", subjects);
+        
+    let state = get_subject(&owner_governance, subject_id.clone(), Some(3))
+        .await
+        .unwrap();
+    
+    println!("{}", state.sn);
+
 }
 */
-
 #[test(tokio::test)]
 // Testear limitaciones en la creación de sujetos INFINITY - QUANTITY
 async fn test_limits_in_subjects() {

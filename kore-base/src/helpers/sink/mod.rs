@@ -83,12 +83,9 @@ impl KoreSink {
         }
     }
 
-    fn server_wants_event(
-        server: &SinkServer,
-        event: &SinkDataMessage,
-    ) -> bool {
+    fn server_wants_event(server: &SinkServer, event: &SinkDataEvent) -> bool {
         server.events.contains(&SinkTypes::All)
-            || SinkTypes::try_from(event.clone())
+            || SinkTypes::try_from(event.event.clone())
                 .map(|t| server.events.contains(&t))
                 .unwrap_or_else(|_| {
                     unreachable!("We return early on UpdateState; other variants must be supported")
@@ -120,7 +117,7 @@ impl KoreSink {
     async fn send_once(
         client: &Client,
         url: &str,
-        event: &SinkDataMessage,
+        event: &SinkDataEvent,
         auth_header: Option<&str>,
     ) -> Result<(), reqwest::Error> {
         let req = if let Some(h) = auth_header {
@@ -138,7 +135,7 @@ impl KoreSink {
         &self,
         client: &Client,
         url: &str,
-        event: &SinkDataMessage,
+        event: &SinkDataEvent,
         server_requires_auth: bool,
     ) {
         // 1) Primer intento (con header si tenemos token)
@@ -213,13 +210,11 @@ impl KoreSink {
 #[async_trait]
 impl Subscriber<SinkDataEvent> for KoreSink {
     async fn notify(&self, event: SinkDataEvent) {
-        let event = event.0;
-
-        if matches!(event, SinkDataMessage::UpdateState(..)) {
+        if matches!(event.event, SinkDataMessage::UpdateState(..)) {
             return;
         }
 
-        let (subject_id, schema_id) = event.get_subject_schema();
+        let (subject_id, schema_id) = event.event.get_subject_schema();
         let Some(servers) = self.sinks.get(&schema_id) else {
             return;
         };

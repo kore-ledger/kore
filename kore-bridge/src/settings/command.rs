@@ -19,6 +19,6 @@ pub struct Args {
     pub password: String,
 
     /// Password to be used to auth for sinks.
-    #[arg(short, long, default_value_t = String::default())]
+    #[arg(short = 's', long, default_value_t = String::default())]
     pub password_sink: String,
 }

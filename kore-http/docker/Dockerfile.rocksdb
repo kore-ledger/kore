@@ -1,5 +1,5 @@
-#docker build --platform linux/arm64 --build-arg FEATURES="rocksdb prometheus ext-sqlite" -t koreledgerhub/kore-http:arm64-rocksdb-prometheus --target arm64 -f ./kore-http/docker/Dockerfile.rocksdb .
-#docker build --platform linux/amd64 --build-arg FEATURES="rocksdb prometheus ext-sqlite" -t koreledgerhub/kore-http:amd64-rocksdb-prometheus --target amd64 -f ./kore-http/docker/Dockerfile.rocksdb .
+#docker build --platform linux/arm64 --build-arg FEATURES="rocksdb prometheus ext-sqlite" -t koreledgerhub/kore-http:arm64-rocksdb-prometheus --target arm64 -f ./kore/kore-http/docker/Dockerfile.rocksdb .
+#docker build --platform linux/amd64 --build-arg FEATURES="rocksdb prometheus ext-sqlite" -t koreledgerhub/kore-http:amd64-rocksdb-prometheus --target amd64 -f ./kore/kore-http/docker/Dockerfile.rocksdb .
 
 # Etapa de compilación para AMD64
 FROM rust:1.90-slim-bullseye AS builder-amd64

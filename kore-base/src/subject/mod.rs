@@ -1341,7 +1341,7 @@ impl Subject {
                 subject_id: sub_id,
                 issuer: issuer.to_string(),
                 owner,
-                payload: fact_request.payload.clone(),
+                payload: fact_request.payload.0.clone(),
                 schema_id,
             },
             EventRequest::Transfer(transfer_request) => {
@@ -2384,7 +2384,14 @@ impl Actor for Subject {
             }
         }
 
-        let sink_actor = ctx.create_child("sink_data", SinkData).await?;
+        let sink_actor = ctx
+            .create_child(
+                "sink_data",
+                SinkData {
+                    controller_id: our_key.to_string(),
+                },
+            )
+            .await?;
         let sink = Sink::new(sink_actor.subscribe(), ext_db.get_sink_data());
         ctx.system().run_sink(sink).await;
 

@@ -20,13 +20,13 @@ prometheus-client = { workspace = true}
 tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "signal"] }
 tokio-util = { workspace = true }
 identity = { path = "../identity"}
-hex-literal = "1.0.0"
 pkcs8 = { version = "0.10.2", features = ["encryption"]}
 borsh = { workspace = true }
 config = { workspace = true }
 clap = { version = "4.5.35", features = ["derive"] }
 axum = { version = "0.8.1", optional = true }
 tracing = { workspace = true }
+getrandom = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

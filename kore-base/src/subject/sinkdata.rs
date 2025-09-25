@@ -9,16 +9,16 @@ use rush::{
     Response,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tracing::error;
 
-use crate::{
-    model::{ValueWrapper, common::emit_fail},
-    subject::Metadata,
-};
+use crate::{model::common::emit_fail, subject::Metadata};
 const TARGET_SINKDATA: &str = "Kore-Subject-Sinkdata";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SinkData;
+pub struct SinkData {
+    pub controller_id: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SinkDataMessage {
@@ -36,7 +36,7 @@ pub enum SinkDataMessage {
         schema_id: String,
         issuer: String,
         owner: String,
-        payload: ValueWrapper,
+        payload: Value,
     },
     Transfer {
         governance_id: Option<String>,
@@ -171,7 +171,10 @@ pub enum SinkDataResponse {
 impl Response for SinkDataResponse {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SinkDataEvent(pub SinkDataMessage);
+pub struct SinkDataEvent {
+    pub event: SinkDataMessage,
+    pub controller_id: String,
+}
 
 impl Event for SinkDataEvent {}
 
@@ -204,7 +207,14 @@ impl Handler<SinkData> for SinkData {
         msg: SinkDataMessage,
         ctx: &mut rush::ActorContext<SinkData>,
     ) -> Result<SinkDataResponse, ActorError> {
-        self.on_event(SinkDataEvent(msg), ctx).await;
+        self.on_event(
+            SinkDataEvent {
+                event: msg,
+                controller_id: self.controller_id.clone(),
+            },
+            ctx,
+        )
+        .await;
 
         Ok(SinkDataResponse::None)
     }
