@@ -29,6 +29,7 @@ pub enum SinkDataMessage {
         owner: String,
         schema_id: String,
         namespace: String,
+        sn: u64
     },
     Fact {
         governance_id: Option<String>,
@@ -37,6 +38,7 @@ pub enum SinkDataMessage {
         issuer: String,
         owner: String,
         payload: Value,
+        sn: u64
     },
     Transfer {
         governance_id: Option<String>,
@@ -44,21 +46,25 @@ pub enum SinkDataMessage {
         schema_id: String,
         owner: String,
         new_owner: String,
+        sn: u64
     },
     Confirm {
         governance_id: Option<String>,
         subject_id: String,
         schema_id: String,
+        sn: u64
     },
     Reject {
         governance_id: Option<String>,
         subject_id: String,
         schema_id: String,
+        sn: u64
     },
     EOL {
         governance_id: Option<String>,
         subject_id: String,
         schema_id: String,
+        sn: u64
     },
 }
 
