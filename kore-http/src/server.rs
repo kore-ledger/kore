@@ -1,7 +1,4 @@
-use std::{
-    io::{Cursor, Write},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use crate::{
     enviroment::build_doc,
@@ -25,7 +22,6 @@ use kore_bridge::{Bridge, model::BridgeSignedEventRequest};
 use serde::Deserialize;
 use tower::ServiceBuilder;
 use utoipa::ToSchema;
-use zip::{CompressionMethod, ZipWriter, write::FileOptions};
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct SubjectQuery {
@@ -1015,7 +1011,7 @@ async fn get_keys(
 ) -> impl IntoResponse {
     let keys_path = format!("{}/node_private.der", bridge.config().keys_path);
 
-    // Lee el archivo como bytes en lugar de String
+    // Lee el archivo como bytes
     let keys = match std::fs::read(&keys_path) {
         Ok(k) => k,
         Err(e) => {
@@ -1027,46 +1023,16 @@ async fn get_keys(
         }
     };
 
-    let mut buf = Vec::new();
-    {
-        let mut zip = ZipWriter::new(Cursor::new(&mut buf));
-        let options: FileOptions<()> = FileOptions::default()
-            .compression_method(CompressionMethod::Deflated);
-
-        if let Err(e) = zip.start_file("private_key.der", options) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Error creating zip file: {}", e),
-            )
-                .into_response();
-        }
-
-        if let Err(e) = zip.write_all(&keys) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Error writing keys to zip: {}", e),
-            )
-                .into_response();
-        }
-
-        if let Err(e) = zip.finish() {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Error finishing zip: {}", e),
-            )
-                .into_response();
-        }
-    }
-
-    let body = Bytes::from(buf);
+    // Devuelve el archivo DER encriptado directamente
+    let body = Bytes::from(keys);
     let mut response = Response::new(Body::from(body));
     *response.status_mut() = StatusCode::OK;
     response
         .headers_mut()
-        .insert(header::CONTENT_TYPE, "application/zip".parse().unwrap());
+        .insert(header::CONTENT_TYPE, "application/pkcs8".parse().unwrap());
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
-        "attachment; filename=\"keys.zip\"".parse().unwrap(),
+        "attachment; filename=\"node_private.der\"".parse().unwrap(),
     );
     response
 }
