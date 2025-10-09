@@ -123,6 +123,43 @@ impl Config {
     }
 }
 
+
+
+async fn update_and_send_lists(
+    service_allow: &[String],
+    service_block: &[String],
+    sender: &mpsc::Sender<Event>,
+) {
+    let (
+        (vec_allow_peers, vec_block_peers),
+        (successful_allow, successful_block),
+    ) = request_update_lists(service_allow, service_block).await;
+
+    // If at least 1 update of the list was possible
+    if successful_allow != 0 {
+        if let Err(e) = sender.send(Event::AllowListUpdated(vec_allow_peers)).await {
+            error!(TARGET_CONTROL_LIST, "Can not send Event::AllowListUpdated, {}", e)
+        }
+    } else {
+        warn!(
+            TARGET_CONTROL_LIST,
+            "No get to the services providing the list of allowed peers was performed."
+        );
+    }
+
+    // If at least 1 update of the list was possible
+    if successful_block != 0 {
+        if let Err(e) = sender.send(Event::BlockListUpdated(vec_block_peers)).await {
+            error!(TARGET_CONTROL_LIST, "Can not send Event::BlockListUpdated, {}", e)
+        }
+    } else {
+        warn!(
+            TARGET_CONTROL_LIST,
+            "No get to the services providing the list of block peers was performed."
+        );
+    }
+}
+
 pub fn build_control_lists_updaters(
     config: &Config,
     token: CancellationToken,
@@ -136,41 +173,14 @@ pub fn build_control_lists_updaters(
         let service_block = config.service_block_list.clone();
 
         tokio::spawn(async move {
+            // Execute initial request_update_lists
+            update_and_send_lists(&service_allow, &service_block, &sender).await;
+
+            // Then repeat at intervals
             loop {
                 tokio::select! {
                     _ = sleep(interval) => {
-                        let (
-                    (vec_allow_peers, vec_block_peers),
-                    (successful_allow, successful_block),
-                ) = request_update_lists(
-                    &service_allow,
-                    &service_block,
-                )
-                .await;
-
-                // If at least 1 update of the list was possible
-                if successful_allow != 0 {
-                    if let Err(e) = sender.send(Event::AllowListUpdated(vec_allow_peers)).await {
-                        error!(TARGET_CONTROL_LIST, "Can not send Event::AllowListUpdated, {}", e)
-                    }
-                } else {
-                    warn!(
-                        TARGET_CONTROL_LIST,
-                        "No get to the services providing the list of allowed peers was performed."
-                    );
-                }
-
-                // If at least 1 update of the list was possible
-                if successful_block != 0 {
-                    if let Err(e) = sender.send(Event::BlockListUpdated(vec_block_peers)).await {
-                        error!(TARGET_CONTROL_LIST, "Can not send Event::BlockListUpdated, {}", e)
-                    }
-                } else {
-                    warn!(
-                        TARGET_CONTROL_LIST,
-                        "No get to the services providing the list of block peers was performed."
-                    );
-                }
+                        update_and_send_lists(&service_allow, &service_block, &sender).await;
                     }
                     _ = token.cancelled() => {
                         info!(TARGET_CONTROL_LIST, "Control list updater cancelled.");
