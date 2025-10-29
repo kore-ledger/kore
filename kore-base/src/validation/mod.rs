@@ -1,5 +1,3 @@
-
-
 //! # Validation module.
 //!
 

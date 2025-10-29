@@ -1,5 +1,3 @@
-
-
 use std::str::FromStr;
 
 use identity::identifier::{Derivable, DigestIdentifier, KeyIdentifier};

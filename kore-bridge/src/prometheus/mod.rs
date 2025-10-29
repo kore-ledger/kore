@@ -1,5 +1,3 @@
-
-
 use std::sync::Arc;
 
 use axum::{Extension, Router, response::IntoResponse, routing::get};

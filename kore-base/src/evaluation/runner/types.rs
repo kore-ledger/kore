@@ -1,5 +1,3 @@
-
-
 use borsh::{BorshDeserialize, BorshSerialize};
 use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};

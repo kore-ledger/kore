@@ -1,5 +1,3 @@
-
-
 use super::{HashId, TimeStamp};
 
 use crate::Error;

@@ -1,5 +1,3 @@
-
-
 use futures_timer::Delay;
 
 use libp2p::{
@@ -26,7 +24,7 @@ use std::{
 
 use crate::{
     NodeType,
-    utils::{is_dns, is_global, is_private, is_loop_back, is_tcp},
+    utils::{is_dns, is_global, is_loop_back, is_private, is_tcp},
 };
 
 /// The discovery behaviour.
@@ -712,8 +710,7 @@ mod tests {
 
         let mut swarms = (1..10)
             .map(|x| {
-                let config = Config::new()
-                    .with_discovery_limit(100);
+                let config = Config::new().with_discovery_limit(100);
                 let (swarm, addr) =
                     build_node(config, 2000 + x, boot_nodes.clone());
                 boot_swarm

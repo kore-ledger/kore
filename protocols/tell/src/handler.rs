@@ -1,5 +1,3 @@
-
-
 //! # Handler
 //!
 //! This module contains the `Handler` struct for handling inbound and outbound

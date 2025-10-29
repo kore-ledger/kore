@@ -1,5 +1,3 @@
-
-
 use crate::{
     model::{common::emit_fail, event::ProtocolsSignatures},
     validation::proof::ValidationProof,

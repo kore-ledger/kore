@@ -1,5 +1,3 @@
-
-
 /// A "tell" behaviour using [`serde_json`] for serializing and deserializing the
 /// messages.
 ///

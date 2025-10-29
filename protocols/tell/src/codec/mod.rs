@@ -1,5 +1,3 @@
-
-
 //! # Codec
 //! This module contains the codec trait for encoding and decoding messages.
 //!

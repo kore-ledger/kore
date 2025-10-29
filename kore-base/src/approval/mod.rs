@@ -1,5 +1,3 @@
-
-
 use std::collections::HashSet;
 
 use approver::{Approver, ApproverMessage, VotationType};

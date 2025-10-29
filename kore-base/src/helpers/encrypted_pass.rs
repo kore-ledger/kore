@@ -1,5 +1,3 @@
-
-
 use generic_array::{GenericArray, typenum::U32};
 use identity::identifier::derive::digest::DigestDerivator;
 use memsecurity::EncryptedMem;

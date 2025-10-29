@@ -1,5 +1,3 @@
-
-
 //! # Binary Codec
 //! A "tell" codec using binary data for messasges.
 

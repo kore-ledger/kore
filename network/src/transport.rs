@@ -1,5 +1,3 @@
-
-
 //! Transport layer.
 //!
 

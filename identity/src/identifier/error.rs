@@ -1,5 +1,3 @@
-
-
 use ed25519_dalek::ed25519;
 use std::convert::Infallible;
 use thiserror::Error;

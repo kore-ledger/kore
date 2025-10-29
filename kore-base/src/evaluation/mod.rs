@@ -1,5 +1,3 @@
-
-
 //! # Evaluation module.
 //! This module contains the evaluation logic for the Kore protocol.
 //!

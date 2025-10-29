@@ -1,5 +1,3 @@
-
-
 use std::env;
 
 use config::Config;
@@ -129,10 +127,7 @@ mod tests {
                 "KORE_SINK_AUTH",
                 "https://www.kore-ledger.net/build/",
             );
-            std::env::set_var(
-                "KORE_SINK_USERNAME",
-                "Sink-service",
-            );
+            std::env::set_var("KORE_SINK_USERNAME", "Sink-service");
 
             std::env::set_var("KORE_NETWORK_NODE_TYPE", "Addressable");
             std::env::set_var(
@@ -274,10 +269,7 @@ mod tests {
             "https://www.kore-ledger.net/build/".to_string()
         );
 
-        assert_eq!(
-            config.sink.username,
-            "Sink-service".to_string()
-        );
+        assert_eq!(config.sink.username, "Sink-service".to_string());
 
         let boot_nodes = vec![
             RoutingNode {

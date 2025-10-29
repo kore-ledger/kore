@@ -1,5 +1,3 @@
-
-
 use async_trait::async_trait;
 use rush::{
     Actor, ActorContext, ActorError, ActorPath, Event, Handler, Message,

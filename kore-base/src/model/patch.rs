@@ -1,5 +1,3 @@
-
-
 use json_patch::{Patch, patch};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

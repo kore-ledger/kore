@@ -1,5 +1,3 @@
-
-
 use super::error::Error;
 use crate::identifier::derive::{Derivator, digest::DigestDerivator};
 use base64::{Engine as _, engine::general_purpose};

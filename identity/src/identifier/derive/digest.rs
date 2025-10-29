@@ -1,5 +1,3 @@
-
-
 //! Digest derive
 //!
 

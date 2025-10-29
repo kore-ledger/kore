@@ -1,5 +1,3 @@
-
-
 use super::proof::ValidationProof;
 
 use crate::{

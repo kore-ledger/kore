@@ -1,5 +1,3 @@
-
-
 use crate::{
     EventRequestType,
     model::common::{emit_fail, verify_protocols_state},

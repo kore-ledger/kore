@@ -1,5 +1,3 @@
-
-
 //! Cache for peers in the "tell" protocol.
 //! This is a simple LRU cache that stores the last N peers that we have
 //! communicated with.

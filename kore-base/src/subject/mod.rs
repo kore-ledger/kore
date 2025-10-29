@@ -1,5 +1,3 @@
-
-
 //! # Subject module.
 //!
 
@@ -1334,7 +1332,7 @@ impl Subject {
                 owner,
                 schema_id,
                 namespace: self.namespace.to_string(),
-                sn: self.sn
+                sn: self.sn,
             },
             EventRequest::Fact(fact_request) => SinkDataMessage::Fact {
                 governance_id: gov_id,
@@ -1343,7 +1341,7 @@ impl Subject {
                 owner,
                 payload: fact_request.payload.0.clone(),
                 schema_id,
-                sn: self.sn
+                sn: self.sn,
             },
             EventRequest::Transfer(transfer_request) => {
                 SinkDataMessage::Transfer {
@@ -1352,26 +1350,26 @@ impl Subject {
                     owner,
                     new_owner: transfer_request.new_owner.to_string(),
                     schema_id,
-                    sn: self.sn
+                    sn: self.sn,
                 }
             }
             EventRequest::Confirm(..) => SinkDataMessage::Confirm {
                 governance_id: gov_id,
                 subject_id: sub_id,
                 schema_id,
-                sn: self.sn
+                sn: self.sn,
             },
             EventRequest::Reject(..) => SinkDataMessage::Reject {
                 governance_id: gov_id,
                 subject_id: sub_id,
                 schema_id,
-                sn: self.sn
+                sn: self.sn,
             },
             EventRequest::EOL(..) => SinkDataMessage::EOL {
                 governance_id: gov_id,
                 subject_id: sub_id,
                 schema_id,
-                sn: self.sn
+                sn: self.sn,
             },
         };
 

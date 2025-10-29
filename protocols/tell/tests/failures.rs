@@ -1,5 +1,3 @@
-
-
 use tell::{
     InboundFailure, InboundTellId, OutboundFailure, OutboundTellId,
     ProtocolSupport,

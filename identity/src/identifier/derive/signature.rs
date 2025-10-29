@@ -1,5 +1,3 @@
-
-
 //! Self Signing derivation module
 //!
 

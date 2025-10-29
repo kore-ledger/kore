@@ -1,5 +1,3 @@
-
-
 use crate::{
     Error,
     model::{HashId, ValueWrapper, request::EventRequest, signature::Signed},

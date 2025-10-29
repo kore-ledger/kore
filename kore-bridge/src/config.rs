@@ -1,5 +1,3 @@
-
-
 use kore_base::config::{Config as KoreConfig, Logging, SinkConfig};
 use serde::Deserialize;
 

@@ -1,5 +1,3 @@
-
-
 //! # Request data model.
 //!
 

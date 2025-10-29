@@ -1,5 +1,3 @@
-
-
 //! # Network service
 //!
 

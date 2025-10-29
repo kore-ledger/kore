@@ -1,5 +1,3 @@
-
-
 use std::{collections::VecDeque, fmt::Display, time::Duration};
 
 use crate::{

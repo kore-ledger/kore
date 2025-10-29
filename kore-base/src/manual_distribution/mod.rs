@@ -1,5 +1,3 @@
-
-
 use async_trait::async_trait;
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use rush::{

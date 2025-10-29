@@ -1,5 +1,3 @@
-
-
 use crate::{
     Error,
     approval::approver::{Approver, ApproverMessage},

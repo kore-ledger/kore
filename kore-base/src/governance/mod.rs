@@ -1,5 +1,3 @@
-
-
 //! # Governance module.
 //!
 

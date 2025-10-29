@@ -1,5 +1,3 @@
-
-
 //! # Data model for Kore base.
 //!
 //! This module contains the data model for the Kore base.

@@ -165,11 +165,11 @@ async fn test_prueba() {
         .await
         .unwrap();
 
-        
+
     let state = get_subject(&owner_governance, subject_id.clone(), Some(3))
         .await
         .unwrap();
-    
+
     println!("{}", state.sn);
 
 }

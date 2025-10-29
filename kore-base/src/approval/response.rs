@@ -1,5 +1,3 @@
-
-
 use crate::{
     Error, Signature,
     model::{HashId, network::TimeOutResponse},

@@ -1,5 +1,3 @@
-
-
 use crate::{Error, routing::RoutingNode};
 use ip_network::IpNetwork;
 use libp2p::{Multiaddr, PeerId, multiaddr::Protocol, swarm::ConnectionId};

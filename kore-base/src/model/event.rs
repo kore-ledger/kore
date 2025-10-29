@@ -1,5 +1,3 @@
-
-
 //! # Event data model.
 //!
 

@@ -1,5 +1,3 @@
-
-
 use clap::{Parser, command};
 
 #[derive(Parser, Debug)]

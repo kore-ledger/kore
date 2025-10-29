@@ -1,5 +1,3 @@
-
-
 //! # Network package.
 
 #![warn(missing_docs)]

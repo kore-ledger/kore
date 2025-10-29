@@ -1,5 +1,3 @@
-
-
 use identity::{
     identifier::{
         DigestIdentifier, KeyIdentifier,

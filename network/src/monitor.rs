@@ -1,5 +1,3 @@
-
-
 use rush::{
     Actor, ActorContext, ActorError, ActorPath, Handler, Message, Response,
 };

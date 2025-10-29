@@ -1,5 +1,3 @@
-
-
 //! KeyIdentifier module
 
 use base64::{Engine as _, engine::general_purpose};

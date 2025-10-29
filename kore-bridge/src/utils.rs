@@ -1,5 +1,3 @@
-
-
 use identity::{
     identifier::derive::KeyDerivator,
     keys::{
@@ -10,8 +8,8 @@ use identity::{
 use kore_base::error::Error;
 use pkcs8::{Document, EncryptedPrivateKeyInfo, PrivateKeyInfo, pkcs5};
 
-use std::fs;
 use getrandom::fill;
+use std::fs;
 
 use crate::config::Config;
 
@@ -82,7 +80,10 @@ pub fn key_pair(config: &Config, password: &str) -> Result<KeyPair, Error> {
             let mut salt = [0u8; 32];
             let mut iv = [0u8; 16];
             fill(&mut salt).map_err(|error| {
-                Error::Bridge(format!("Error generating encryption salt: {}", error))
+                Error::Bridge(format!(
+                    "Error generating encryption salt: {}",
+                    error
+                ))
             })?;
             fill(&mut iv).map_err(|error| {
                 Error::Bridge(format!(

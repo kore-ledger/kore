@@ -1,5 +1,3 @@
-
-
 use identity::identifier::{DigestIdentifier, KeyIdentifier};
 use network::ComunicateInfo;
 use rush::Message;
