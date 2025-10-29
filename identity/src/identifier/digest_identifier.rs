@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: AGPL-3.0-or-later
+
 
 use super::error::Error;
 use crate::identifier::derive::{Derivator, digest::DigestDerivator};

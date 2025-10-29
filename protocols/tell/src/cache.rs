@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: AGPL-3.0-or-later
+
 
 //! Cache for peers in the "tell" protocol.
 //! This is a simple LRU cache that stores the last N peers that we have

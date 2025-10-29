@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: AGPL-3.0-or-later
+
 
 /// A "tell" behaviour using [`serde_json`] for serializing and deserializing the
 /// messages.

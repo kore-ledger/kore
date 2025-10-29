@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: AGPL-3.0-or-later
+
 
 //! # Binary Codec
 //! A "tell" codec using binary data for messasges.

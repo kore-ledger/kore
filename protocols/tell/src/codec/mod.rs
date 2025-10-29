@@ -1,5 +1,4 @@
-// Copyright 2025 Kore Ledger, SL
-// SPDX-License-Identifier: AGPL-3.0-or-later
+
 
 //! # Codec
 //! This module contains the codec trait for encoding and decoding messages.
