@@ -40,7 +40,7 @@ pub struct SchemaKeyCreators {
     pub evaluation: Option<HashSet<KeyIdentifier>>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
 pub struct RolesGov {
     pub approver: BTreeSet<MemberName>,
     pub evaluator: BTreeSet<MemberName>,
@@ -914,7 +914,7 @@ impl PartialEq for RoleCreator {
 
 impl Eq for RoleCreator {}
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct RoleGovIssuer {
     pub users: BTreeSet<MemberName>,
     pub any: bool,
@@ -1055,7 +1055,7 @@ impl Quorum {
 }
 
 /// Governance policy.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct PolicyGov {
     /// Approve quorum
     pub approve: Quorum,

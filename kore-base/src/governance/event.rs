@@ -4,10 +4,14 @@ use identity::identifier::KeyIdentifier;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{error::Error, model::Namespace};
+use crate::{
+    error::Error,
+    governance::model::{Quorum, Role},
+    model::Namespace,
+};
 
 use super::{
-    Governance, Quorum, Role,
+    data::GovernanceData,
     model::{
         CreatorQuantity, RoleCreator, RolesAllSchemas, RolesGov, RolesSchema,
     },
@@ -95,7 +99,7 @@ impl GovRoleEvent {
 
     pub fn check_data(
         &self,
-        governance: &Governance,
+        governance: &GovernanceData,
         new_roles: &mut RolesGov,
     ) -> Result<(), Error> {
         if let Some(add) = self.add.clone() {
@@ -406,7 +410,7 @@ pub struct SchemaRoleEvent {
 impl AllSchemasRoleEvent {
     pub fn check_data(
         &self,
-        governance: &Governance,
+        governance: &GovernanceData,
         roles_not_gov: RolesAllSchemas,
         schema_id: &str,
     ) -> Result<RolesAllSchemas, Error> {
@@ -432,7 +436,7 @@ impl From<AllSchemasRoleEvent> for SchemaRoleEvent {
 impl SchemaRoleEvent {
     pub fn check_data(
         &self,
-        governance: &Governance,
+        governance: &GovernanceData,
         roles_schema: &mut RolesSchema,
         schema_id: &str,
     ) -> Result<(), Error> {
