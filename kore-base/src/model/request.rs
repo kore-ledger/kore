@@ -1,6 +1,8 @@
 //! # Request data model.
 //!
 
+
+// TODO: Decouple the types from the internal functions of Kore Ledger.
 use std::collections::HashSet;
 
 use super::{HashId, Namespace, signature::Signed, wrapper::ValueWrapper};

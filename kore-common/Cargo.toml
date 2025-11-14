@@ -1,0 +1,13 @@
+[package]
+name = "kore-common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+borsh = { workspace = true }
+identity = { path = "../identity"}
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true, features = ["std"] }
+tracing = { workspace = true }
