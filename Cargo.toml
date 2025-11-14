@@ -3,6 +3,7 @@ members = [
     "identity",
     "kore-base",
     "kore-bridge",
+    "kore-common",
     "network",
     "protocols/tell",
     "kore-http"
