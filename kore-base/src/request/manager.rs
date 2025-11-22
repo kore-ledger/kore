@@ -703,11 +703,11 @@ impl RequestManager {
             AuthWitness::One(key_identifier) => {
 
                 let info = ComunicateInfo {
-                    reciver: key_identifier.clone(),
+                    receiver: key_identifier.clone(),
                     sender: self.our_key.clone(),
                     version: 0,
                     request_id: String::default(),
-                    reciver_actor: format!(
+                    receiver_actor: format!(
                         "/user/node/distributor_{}",
                         governance_string
                     )

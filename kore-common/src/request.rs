@@ -200,24 +200,20 @@ impl HashId for Signed<EventRequest> {
     }
 }
 
-/* State of Even Request only for internal processing in Kore Ledger
-/// Indicates the current status of an event request.
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    Eq,
-    PartialEq,
-    BorshSerialize,
-    BorshDeserialize,
-)]
-pub enum RequestState {
-    Finished,
-    Error,
-    Processing,
+/// Data returned by request handler
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RequestHandlerResponse {
+    Ok(RequestData),
+    Response(String),
+    None,
 }
-*/
+
+/// Data contained in a successful request handler response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequestData {
+    pub request_id: String,
+    pub subject_id: String,
+}
 
 #[cfg(test)]
 mod tests {

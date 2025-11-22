@@ -275,7 +275,7 @@ pub enum RequestHandlerMessage {
 
 impl Message for RequestHandlerMessage {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RequestHandlerResponse {
     Ok(RequestData),
     Response(String),

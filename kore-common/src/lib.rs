@@ -3,11 +3,13 @@
 
 pub mod error;
 mod namespace;
+mod network;
 mod request;
 mod signature;
 mod wrapper;
 
 pub use namespace::Namespace;
+pub use network::{ActorMessage, ComunicateInfo, NetworkMessage};
 pub use request::{
     CreateRequest, 
     FactRequest, 
@@ -16,6 +18,8 @@ pub use request::{
     RejectRequest, 
     EOLRequest, 
     EventRequest,
+    RequestHandlerResponse,
+    RequestData,
 };
 pub use signature::Signature;
 pub use signature::Signed;

@@ -273,7 +273,7 @@ impl Distributor {
         ledger: Ledger,
         auth_data: AuthGovData,
     ) -> Result<(), ActorError> {
-        let our_key = info.reciver.clone();
+        let our_key = info.receiver.clone();
         let subject_id = ledger.subject_id.clone();
         // Si está auth o si soy el dueño del sujeto.
         let (owned, auth, know) =
@@ -406,11 +406,11 @@ impl Distributor {
             std::cmp::Ordering::Less => {
                 // Mi version es menor, me actualizo. y no le envío nada
                 let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver,
+                    receiver: info.sender,
+                    sender: info.receiver,
                     request_id: info.request_id,
                     version: info.version,
-                    reciver_actor: format!(
+                    receiver_actor: format!(
                         "/user/node/distributor_{}",
                         governance_id_string
                     ),
@@ -446,11 +446,11 @@ impl Distributor {
                 // a mi distributor gov.
                 if schema_id != "governance" {
                     let new_info = ComunicateInfo {
-                        reciver: info.reciver,
+                        receiver: info.receiver,
                         sender: info.sender,
                         request_id: info.request_id,
                         version: info.version,
-                        reciver_actor: format!(
+                        receiver_actor: format!(
                             "/user/node/distributor_{}",
                             governance_id_string
                         ),
@@ -754,13 +754,13 @@ impl Handler<Distributor> for Distributor {
                 };
 
                 let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver.clone(),
+                    receiver: info.sender,
+                    sender: info.receiver.clone(),
                     request_id: info.request_id,
                     version: info.version,
-                    reciver_actor: format!(
+                    receiver_actor: format!(
                         "/user/node/auth/transfer_{}/{}",
-                        subject_id, info.reciver
+                        subject_id, info.receiver
                     ),
                 };
 
@@ -870,13 +870,13 @@ impl Handler<Distributor> for Distributor {
                 }
 
                 let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver.clone(),
+                    receiver: info.sender,
+                    sender: info.receiver.clone(),
                     request_id: info.request_id,
                     version: info.version,
-                    reciver_actor: format!(
+                    receiver_actor: format!(
                         "/user/node/auth/{}/{}",
-                        subject_id, info.reciver
+                        subject_id, info.receiver
                     ),
                 };
 
@@ -984,11 +984,11 @@ impl Handler<Distributor> for Distributor {
                     };
 
                 let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver,
+                    receiver: info.sender,
+                    sender: info.receiver,
                     request_id: info.request_id,
                     version: info.version,
-                    reciver_actor: format!(
+                    receiver_actor: format!(
                         "/user/node/distributor_{}",
                         subject_id
                     ),
@@ -1048,7 +1048,7 @@ impl Handler<Distributor> for Distributor {
                 last_proof,
                 prev_event_validation_response,
             } => {
-                let reciver_actor = format!(
+                let receiver_actor = format!(
                     "/user/node/distributor_{}",
                     event.content.subject_id
                 );
@@ -1058,8 +1058,8 @@ impl Handler<Distributor> for Distributor {
                         request_id,
                         version: 0,
                         sender: our_key,
-                        reciver: node_key,
-                        reciver_actor,
+                        receiver: node_key,
+                        receiver_actor,
                     },
                     message: ActorMessage::DistributionLastEventReq {
                         ledger: Box::new(ledger),
@@ -1309,11 +1309,11 @@ impl Handler<Distributor> for Distributor {
                                 let our_gov_version = gov.version;
 
                                 let new_info = ComunicateInfo {
-                                    reciver: info.sender,
-                                    sender: info.reciver,
+                                    receiver: info.sender,
+                                    sender: info.receiver,
                                     request_id: info.request_id,
                                     version: info.version,
-                                    reciver_actor: format!(
+                                    receiver_actor: format!(
                                         "/user/node/distributor_{}",
                                         subject_id
                                     ),
@@ -1438,14 +1438,14 @@ impl Handler<Distributor> for Distributor {
                     };
 
                     let new_info = ComunicateInfo {
-                        reciver: info.sender,
-                        sender: info.reciver.clone(),
+                        receiver: info.sender,
+                        sender: info.receiver.clone(),
                         request_id: info.request_id,
                         version: info.version,
-                        reciver_actor: format!(
+                        receiver_actor: format!(
                             "/user/{}/{}",
                             objetive,
-                            info.reciver.clone()
+                            info.receiver.clone()
                         ),
                     };
 
@@ -1467,7 +1467,7 @@ impl Handler<Distributor> for Distributor {
                                 info: new_info,
                                 message:
                                     ActorMessage::DistributionLastEventRes {
-                                        signer: info.reciver,
+                                        signer: info.receiver,
                                     },
                             },
                         })
@@ -1790,11 +1790,11 @@ impl Handler<Distributor> for Distributor {
                     };
 
                     let new_info = ComunicateInfo {
-                        reciver: info.sender,
-                        sender: info.reciver.clone(),
+                        receiver: info.sender,
+                        sender: info.receiver.clone(),
                         request_id: info.request_id,
                         version: info.version,
-                        reciver_actor: format!(
+                        receiver_actor: format!(
                             "/user/node/distributor_{}",
                             subject_id
                         ),

@@ -1,0 +1,26 @@
+[package]
+name = "kore-client"
+version = "0.1.0"
+edition = "2021"
+description = "A client library for Kore p2p network"
+
+[dependencies]
+async-trait = { workspace = true }
+identity = { path = "../identity" }
+kore-common = { path = "../kore-common" }
+network = { path = "../network" }
+prometheus-client = { workspace = true }
+rush = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+
+
+[dev-dependencies]
+
+[lib]
+name = "kore_client"
+path = "src/lib.rs" 
