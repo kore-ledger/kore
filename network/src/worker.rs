@@ -29,6 +29,7 @@ use rush::ActorRef;
 
 use libp2p::{
     Multiaddr, PeerId, StreamProtocol, Swarm,
+    metrics::Registry,
     identity::{Keypair, ed25519, secp256k1},
     request_response::{self, ResponseChannel},
     swarm::{self, DialError, SwarmEvent, dial_opts::DialOpts},
@@ -37,7 +38,6 @@ use libp2p::{
 use futures::StreamExt;
 use prometheus_client::{
     metrics::{counter::Counter, family::Family},
-    registry::Registry,
 };
 use serde::Serialize;
 use tokio::{

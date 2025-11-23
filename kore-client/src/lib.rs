@@ -2,30 +2,34 @@
 
 mod config;
 mod error;
-mod manager;
 mod service;
 
 pub use config::Config;
 pub use error::Error;
 
+use identity::{keys::{KeyPair, KeyMaterial}, identifier::{KeyIdentifier, derive::KeyDerivator}};
+use network::{NetworkWorker, CommandHelper};
+use kore_common::{ActorMessage, EventRequest, NetworkMessage, ComunicateInfo, Signed};
 
-
-
-use identity::{keys::KeyPair, identifier::derive::KeyDerivator};
-use network::NetworkWorker;
-use kore_common::NetworkMessage;
-use rush::{ActorSystem, SystemRef, SqliteCollection, SqliteManager};
-
-use tokio::task::JoinHandle;
+use tokio::sync::{mpsc::Sender, oneshot};
 use tokio_util::sync::CancellationToken;
 use prometheus_client::registry::Registry;
+
+use std::{
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 /// The Kore Client API.
 /// 
 pub struct Api {
+    /// The client's identifier.
+    client_id: KeyIdentifier,
     /// The network configuration.
     pub config: Config,
-
+    /// The request counter.
+    request_counter: AtomicU64,
+    /// The client service sender.
+    client_service: Sender<CommandHelper<NetworkMessage>>,
 }
 
 impl Api {
@@ -37,39 +41,106 @@ impl Api {
         cancellation_token: CancellationToken,
     ) -> Result<Self, Error> {
 
-        // Create the actor system.
-        let (system, system_runner) = system(cancellation_token.clone(), &config.db_path)
-            .await
-            .expect("Failed to create actor system");
+        let client_id = match &keys {
+            KeyPair::Ed25519(key_pair) => {
+                KeyIdentifier::new(
+                    KeyDerivator::Ed25519,
+                    &key_pair.public_key_bytes(),
+                    
+                )
+            }
+            KeyPair::Secp256k1(key_pair) => {
+                KeyIdentifier::new(
+                    KeyDerivator::Secp256k1,
+                    &key_pair.public_key_bytes(),
+
+                )
+            }
+        };
 
         // Create the network worker.
-        let network_worker = NetworkWorker::<NetworkMessage>::new(
+        let mut network_worker = NetworkWorker::<NetworkMessage>::new(
             registry,
             keys,
             config.network_config.clone(),
             None,
             KeyDerivator::Ed25519,
             cancellation_token.clone()
-        ).map_err(|e| Error::Network(format!("Can't create network worker: {}", e)));
+        ).map_err(|e| Error::Network(format!("Can't create network worker: {}", e)))?;
 
-        Ok(Self { config })
+        // Get the local peer identifier.
+        let local_peer_id = network_worker.local_peer_id();
+
+        // Create the cliente service.
+        let client_service = service::ClientService::build(
+            local_peer_id,
+            network_worker.service().sender(),
+            cancellation_token.clone(),
+        );
+
+        // Add command helper to the network worker.
+        network_worker.add_helper_sender(client_service.clone());
+
+        Ok(Self { client_id, config, request_counter: AtomicU64::new(0), client_service })
+    }
+
+    /// Send an event request to a peer.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `receiver` - The receiver's key identifier.
+    /// * `request` - The signed event request.
+    /// 
+    /// # Returns
+    /// 
+    /// A result indicating success or failure.
+    /// 
+    pub async fn send_request(
+        &self, 
+        receiver: KeyIdentifier,
+        request: Signed<EventRequest>
+    ) -> Result<(), Error> {
+        let info = ComunicateInfo {
+            request_id: self.next_request_id(),
+            version: 0,
+            sender: self.client_id.clone(),
+            receiver,
+            receiver_actor: "event_handler".to_string(),
+        };
+        let message = NetworkMessage {
+            info,
+            message: ActorMessage::EventReq { request },
+        };
+
+        self.client_service.send(
+            CommandHelper::SendMessage { message }
+        )
+        .await
+        .map_err(|e| Error::Network(format!("Can't send request: {}", e)))?;
+        
+        Ok(())
+    }
+
+    /// Get the next unique request identifier.
+    /// 
+    /// # Returns
+    /// 
+    /// A unique request identifier.
+    /// 
+    pub fn next_request_id(&self) -> String {
+        let id =self.request_counter.fetch_add(1, Ordering::SeqCst);
+        format!("{}", id)
     }
 }
 
-/// Create the actor system for the Kore Client. 
-async fn system(cancellation_token: CancellationToken, db_path: &str) -> Result<(SystemRef, JoinHandle<()>), Error> {
-    // Create the actor system.
-    let (mut system_ref, mut system_runner) = ActorSystem::create(cancellation_token);
+/// A struct representing a client message.
+pub struct ClientMessage {
+    pub info: ComunicateInfo,
+    pub request: Signed<EventRequest>,
+    pub response_sender: oneshot::Sender<ClientResponse>,
+}
 
-    // Add the database helper.
-    let db = SqliteManager::new(db_path)
-        .map_err(|e| Error::Init(format!("Failed to create DB manager: {}", e)))?;
-    system_ref.add_helper("store", db).await;
-
-    // Run the system.
-    let runner = tokio::spawn(async move {
-        system_runner.run().await;
-    });
-
-    Ok((system_ref, runner))
+pub enum ClientResponse {
+    Successful,
+    Failed(String),
 }

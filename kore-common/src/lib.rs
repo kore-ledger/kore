@@ -20,6 +20,7 @@ pub use request::{
     EventRequest,
     RequestHandlerResponse,
     RequestData,
+    RequestId,
 };
 pub use signature::Signature;
 pub use signature::Signed;

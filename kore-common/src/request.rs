@@ -9,6 +9,8 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+use std::fmt;
+
 const TARGET_REQUEST: &str = "Kore-Request";
 
 // Only for internal processing in Kore Ledger
@@ -213,6 +215,16 @@ pub enum RequestHandlerResponse {
 pub struct RequestData {
     pub request_id: String,
     pub subject_id: String,
+}
+
+/// A unique identifier for requests events.
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
+pub struct RequestId(u64);
+
+impl fmt::Display for RequestId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 #[cfg(test)]

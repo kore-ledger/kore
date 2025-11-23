@@ -10,6 +10,7 @@ identity = { path = "../identity" }
 kore-common = { path = "../kore-common" }
 network = { path = "../network" }
 prometheus-client = { workspace = true }
+rmp-serde = { workspace = true }
 rush = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
