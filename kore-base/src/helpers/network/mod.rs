@@ -4,14 +4,9 @@ use rush::Message;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Event as KoreEvent, Signed,
-    approval::{request::ApprovalReq, response::ApprovalRes},
-    evaluation::{request::EvaluationReq, response::EvaluationRes},
-    model::event::{Ledger, ProtocolsSignatures},
-    update::TransferResponse,
-    validation::{
+    Event as KoreEvent, EventRequest, Signed, approval::{request::ApprovalReq, response::ApprovalRes}, evaluation::{request::EvaluationReq, response::EvaluationRes}, model::event::{Ledger, ProtocolsSignatures}, request::RequestHandlerResponse, update::TransferResponse, validation::{
         proof::ValidationProof, request::ValidationReq, response::ValidationRes,
-    },
+    }
 };
 
 pub mod intermediary;
@@ -19,6 +14,12 @@ pub mod service;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ActorMessage {
+    EventReq {
+        request: Signed<EventRequest>,
+    },
+    EventRes {
+        response: RequestHandlerResponse,
+    },
     ValidationReq {
         req: Box<Signed<ValidationReq>>,
         schema_id: String,

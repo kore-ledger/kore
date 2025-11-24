@@ -213,14 +213,14 @@ impl Approver {
                 return Err(ActorError::NotHelper("network".to_string()));
             };
             let new_info = ComunicateInfo {
-                reciver: info.sender,
-                sender: info.reciver.clone(),
+                receiver: info.sender,
+                sender: info.receiver.clone(),
                 request_id: info.request_id,
                 version: info.version,
-                reciver_actor: format!(
+                receiver_actor: format!(
                     "/user/node/{}/approval/{}",
                     request.subject_id,
-                    info.reciver.clone()
+                    info.receiver.clone()
                 ),
             };
 
@@ -552,7 +552,7 @@ impl Handler<Approver> for Approver {
                     return Err(emit_fail(ctx, e).await);
                 };
 
-                let reciver_actor =
+                let receiver_actor =
                     format!("/user/node/{}/approver", subject_id);
 
                 // Lanzar evento donde lanzar los retrys
@@ -561,8 +561,8 @@ impl Handler<Approver> for Approver {
                         request_id: self.request_id.clone(),
                         version: self.version,
                         sender: our_key,
-                        reciver: node_key,
-                        reciver_actor,
+                        receiver: node_key,
+                        receiver_actor,
                     },
                     message: ActorMessage::ApprovalReq { req: approval_req },
                 };
@@ -692,7 +692,7 @@ impl Handler<Approver> for Approver {
             }
             ApproverMessage::NetworkRequest { approval_req, info } => {
                 let info_subject_path =
-                    ActorPath::from(info.reciver_actor.clone()).parent().key();
+                    ActorPath::from(info.receiver_actor.clone()).parent().key();
                 // Nos llegó una approvación donde en la request se indica un sujeto pero en el info otro
                 // Posible ataque.
                 if info_subject_path
@@ -732,7 +732,7 @@ impl Handler<Approver> for Approver {
                             ctx,
                             approval_req.content.subject_id.clone(),
                             approval_req.content.gov_version,
-                            info.reciver.clone(),
+                            info.receiver.clone(),
                         )
                         .await
                     {

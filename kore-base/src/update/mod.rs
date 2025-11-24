@@ -286,11 +286,11 @@ impl Handler<Update> for Update {
                     if self.witnesses.is_empty() {
                         if let Some(node) = self.better.clone() {
                             let info = ComunicateInfo {
-                                reciver: node,
+                                receiver: node,
                                 sender: self.our_key.clone(),
                                 request_id: String::default(),
                                 version: 0,
-                                reciver_actor: format!(
+                                receiver_actor: format!(
                                     "/user/node/distributor_{}",
                                     self.subject_id
                                 ),

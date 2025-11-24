@@ -111,6 +111,7 @@ where
             info: (),
         }: FullyNegotiatedInbound<
             <Self as ConnectionHandler>::InboundProtocol,
+            <Self as ConnectionHandler>::InboundOpenInfo,
         >,
     ) {
         let mut codec = self.codec.clone();
@@ -145,6 +146,7 @@ where
             info: (),
         }: FullyNegotiatedOutbound<
             <Self as ConnectionHandler>::OutboundProtocol,
+            <Self as ConnectionHandler>::InboundOpenInfo,
         >,
     ) {
         let message = self
@@ -302,7 +304,7 @@ where
     type OutboundOpenInfo = ();
     type InboundOpenInfo = ();
 
-    fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol> {
+    fn listen_protocol(&self) -> SubstreamProtocol<Self::InboundProtocol, Self::InboundOpenInfo> {
         SubstreamProtocol::new(
             TellProtocol {
                 protocols: self.inbound_protocols.clone(),
@@ -418,7 +420,12 @@ where
 
     fn on_connection_event(
         &mut self,
-        event: ConnectionEvent<Self::InboundProtocol, Self::OutboundProtocol>,
+        event: ConnectionEvent<
+            Self::InboundProtocol,
+            Self::OutboundProtocol,
+            Self::InboundOpenInfo,
+            Self::OutboundOpenInfo,
+        >,
     ) {
         match event {
             ConnectionEvent::FullyNegotiatedInbound(

@@ -303,7 +303,7 @@ impl Handler<Validator> for Validator {
                 node_key,
                 our_key,
             } => {
-                let reciver_actor = if schema_id == "governance" {
+                let receiver_actor = if schema_id == "governance" {
                     format!(
                         "/user/node/{}/validator",
                         validation_req.content.proof.subject_id
@@ -321,8 +321,8 @@ impl Handler<Validator> for Validator {
                         request_id: self.request_id.to_owned(),
                         version: self.version,
                         sender: our_key,
-                        reciver: node_key,
-                        reciver_actor,
+                        receiver: node_key,
+                        receiver_actor,
                     },
                     message: ActorMessage::ValidationReq {
                         req: Box::new(validation_req),
@@ -458,7 +458,7 @@ impl Handler<Validator> for Validator {
                 schema_id,
             } => {
                 let info_subject_path =
-                    ActorPath::from(info.reciver_actor.clone()).parent().key();
+                    ActorPath::from(info.receiver_actor.clone()).parent().key();
                 let governance_id =
                     if validation_req.content.proof.governance_id.is_empty() {
                         validation_req.content.proof.subject_id.clone()
@@ -496,7 +496,7 @@ impl Handler<Validator> for Validator {
                         ctx,
                         governance_id,
                         validation_req.content.proof.governance_version,
-                        info.reciver.clone(),
+                        info.receiver.clone(),
                     )
                     .await
                 {
@@ -545,14 +545,14 @@ impl Handler<Validator> for Validator {
                 };
 
                 let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver.clone(),
+                    receiver: info.sender,
+                    sender: info.receiver.clone(),
                     request_id: info.request_id,
                     version: info.version,
-                    reciver_actor: format!(
+                    receiver_actor: format!(
                         "/user/node/{}/validation/{}",
                         validation_req.content.proof.subject_id,
-                        info.reciver.clone()
+                        info.receiver.clone()
                     ),
                 };
 

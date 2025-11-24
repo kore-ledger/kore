@@ -144,8 +144,8 @@ impl Handler<Updater> for Updater {
                         request_id: String::default(),
                         version: 0,
                         sender: our_key,
-                        reciver: node_key,
-                        reciver_actor: "/user/node/distributor".to_string(),
+                        receiver: node_key,
+                        receiver_actor: "/user/node/distributor".to_string(),
                     },
                     message: ActorMessage::Transfer { subject_id },
                 };
@@ -193,8 +193,8 @@ impl Handler<Updater> for Updater {
                         request_id: String::default(),
                         version: 0,
                         sender: our_key,
-                        reciver: node_key,
-                        reciver_actor: "/user/node/distributor".to_string(),
+                        receiver: node_key,
+                        receiver_actor: "/user/node/distributor".to_string(),
                     },
                     message: ActorMessage::DistributionGetLastSn { subject_id },
                 };

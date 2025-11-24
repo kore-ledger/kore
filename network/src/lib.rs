@@ -157,7 +157,7 @@ pub struct ComunicateInfo {
     /// The sender key identifier.
     pub sender: KeyIdentifier,
     /// The receiver key identifier.
-    pub reciver: KeyIdentifier,
+    pub receiver: KeyIdentifier,
     /// The receiver actor.
-    pub reciver_actor: String,
+    pub receiver_actor: String,
 }

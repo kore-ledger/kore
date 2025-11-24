@@ -576,7 +576,7 @@ impl Handler<Evaluator> for Evaluator {
                 node_key,
                 our_key,
             } => {
-                let reciver_actor = if schema_id == "governance" {
+                let receiver_actor = if schema_id == "governance" {
                     format!(
                         "/user/node/{}/evaluator",
                         evaluation_req.content.context.subject_id
@@ -594,8 +594,8 @@ impl Handler<Evaluator> for Evaluator {
                         request_id: self.request_id.clone(),
                         version: self.version,
                         sender: our_key,
-                        reciver: node_key,
-                        reciver_actor,
+                        receiver: node_key,
+                        receiver_actor,
                     },
                     message: ActorMessage::EvaluationReq {
                         req: evaluation_req,
@@ -725,7 +725,7 @@ impl Handler<Evaluator> for Evaluator {
                 schema_id,
             } => {
                 let info_subject_path =
-                    ActorPath::from(info.reciver_actor.clone()).parent().key();
+                    ActorPath::from(info.receiver_actor.clone()).parent().key();
                 // Nos llegó una eval donde en la request se indica un sujeto pero en el info otro
                 // Posible ataque.
                 let governance_id = if evaluation_req
@@ -772,7 +772,7 @@ impl Handler<Evaluator> for Evaluator {
                         ctx,
                         governance_id.clone(),
                         evaluation_req.content.gov_version,
-                        info.reciver.clone(),
+                        info.receiver.clone(),
                     )
                     .await
                 {
@@ -841,14 +841,14 @@ impl Handler<Evaluator> for Evaluator {
                 };
 
                 let new_info = ComunicateInfo {
-                    reciver: info.sender,
-                    sender: info.reciver.clone(),
+                    receiver: info.sender,
+                    sender: info.receiver.clone(),
                     request_id: info.request_id,
                     version: info.version,
-                    reciver_actor: format!(
+                    receiver_actor: format!(
                         "/user/node/{}/evaluation/{}",
                         evaluation_req.content.context.subject_id,
-                        info.reciver.clone()
+                        info.receiver.clone()
                     ),
                 };
 

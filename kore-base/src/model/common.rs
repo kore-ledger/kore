@@ -743,11 +743,11 @@ where
     };
 
     let info = ComunicateInfo {
-        reciver: data.other_node,
+        receiver: data.other_node,
         sender: data.our_node,
         request_id: String::default(),
         version: 0,
-        reciver_actor: format!("/user/node/distributor_{}", subject_string),
+        receiver_actor: format!("/user/node/distributor_{}", subject_string),
     };
 
     let helper: Option<Intermediary> = ctx.system().get_helper("network").await;

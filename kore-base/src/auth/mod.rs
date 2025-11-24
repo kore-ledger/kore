@@ -358,11 +358,11 @@ impl Handler<Auth> for Auth {
                     match witness {
                         AuthWitness::One(key_identifier) => {
                             let info = ComunicateInfo {
-                                reciver: key_identifier.clone(),
+                                receiver: key_identifier.clone(),
                                 sender: self.our_node.clone(),
                                 request_id: String::default(),
                                 version: 0,
-                                reciver_actor: format!(
+                                receiver_actor: format!(
                                     "/user/node/distributor_{}",
                                     subject_id
                                 ),
