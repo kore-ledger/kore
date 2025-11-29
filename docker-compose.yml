@@ -1,0 +1,40 @@
+services:
+  kore-node:
+      image: kore-node:arm64
+      container_name: node
+      restart: unless-stopped
+      ports:
+        - "3000:3000"
+        - "3051:3051"
+        - "50000:50000"
+      environment:
+        # Dirección donde escucha la api
+        - KORE_HTTP_ADDRESS=0.0.0.0:3000
+        - RUST_LOG=info
+        - KORE_PASSWORD=36aXAn9SA7
+        - KORE_BASE_ALWAYS_ACCEPT=true
+        - KORE_NETWORK_NODE_TYPE=Bootstrap
+        - KORE_NETWORK_ROUTING_DHT_RANDOM_WALK=false
+        # Dirección donde escucha el nodo
+        - KORE_NETWORK_ROUTING_ALLOW_PRIVATE_ADDRESS_IN_DHT=true
+        - KORE_NETWORK_LISTEN_ADDRESSES=/ip4/0.0.0.0/tcp/50000
+        # Añadir persistencia de datos
+        - KORE_DB_PATH=/persist/db/
+        - KORE_KEYS_PATH=/persist/keys
+        - KORE_BASE_EXTERNAL_DB=/persist/api_db
+        - KORE_BASE_KORE_DB=/persist/kore_db
+        - KORE_BASE_CONTRACTS_DIR=/persist/contracts
+      volumes:
+        # Persistencia continua usando directorio local
+        - ./kore-node-data:/persist
+      logging:
+        driver: json-file
+        options:
+          max-size: "10m"
+          max-file: "3"
+      networks:
+        - network-local
+
+networks:
+  network-local:
+    driver: bridge

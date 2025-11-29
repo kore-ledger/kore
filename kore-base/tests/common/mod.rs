@@ -347,6 +347,7 @@ pub async fn node_running(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn check_transfer(
     node: &Api,
     subject_id: DigestIdentifier,
@@ -399,6 +400,7 @@ pub async fn emit_transfer(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn emit_approve(
     node: &Api,
     governance_id: DigestIdentifier,
@@ -450,6 +452,7 @@ pub async fn emit_confirm(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn emit_reject(
     node: &Api,
     subject_id: DigestIdentifier,

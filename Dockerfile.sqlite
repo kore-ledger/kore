@@ -1,0 +1,92 @@
+
+# 1.- Compile stage for AMD64
+FROM rust:1.91-slim-bullseye AS builder-amd64
+RUN apt-get update && apt-get install --no-install-recommends -y pkg-config libssl-dev \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+RUN rustup target add x86_64-unknown-linux-gnu
+
+## Builder argument to features
+ARG FEATURES=""
+ENV CARGO_FEATURES=$FEATURES
+
+## Kore copying
+COPY ./kore-http/src ./kore-http/src
+COPY ./kore-http/Cargo.toml ./kore-http/Cargo.toml
+
+COPY ./identity/src ./identity/src
+COPY ./identity/Cargo.toml ./identity/Cargo.toml
+COPY ./kore-base/src ./kore-base/src
+COPY ./kore-base/Cargo.toml ./kore-base/Cargo.toml
+
+COPY ./kore-common/src ./kore-common/src
+COPY ./kore-common/Cargo.toml ./kore-common/Cargo.toml
+
+COPY ./kore-bridge/src ./kore-bridge/src
+COPY ./kore-bridge/Cargo.toml ./kore-bridge/Cargo.toml
+
+COPY ./network/src ./network/src
+COPY ./network/Cargo.toml ./network/Cargo.toml
+
+COPY ./protocols/tell/src ./protocols/tell/src
+COPY ./protocols/tell/Cargo.toml ./protocols/tell/Cargo.toml
+
+COPY ./Cargo.toml ./Cargo.toml
+
+## Cargo build
+WORKDIR /kore-http
+RUN cargo build --target x86_64-unknown-linux-gnu --release --no-default-features --features "$CARGO_FEATURES"
+
+# 2.- Compile stage for ARM64
+FROM rust:1.90-slim-bullseye AS builder-arm64
+RUN apt-get update && apt-get install --no-install-recommends -y pkg-config libssl-dev \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+RUN rustup target add aarch64-unknown-linux-gnu
+
+## Builder argument to features
+ARG FEATURES=""
+ENV CARGO_FEATURES=$FEATURES
+
+## Kore copying
+COPY ./kore-http/src ./kore-http/src
+COPY ./kore-http/Cargo.toml ./kore-http/Cargo.toml
+
+COPY ./identity/src ./identity/src
+COPY ./identity/Cargo.toml ./identity/Cargo.toml
+COPY ./kore-base/src ./kore-base/src
+COPY ./kore-base/Cargo.toml ./kore-base/Cargo.toml
+
+COPY ./kore-common/src ./kore-common/src
+COPY ./kore-common/Cargo.toml ./kore-common/Cargo.toml
+
+COPY ./kore-bridge/src ./kore-bridge/src
+COPY ./kore-bridge/Cargo.toml ./kore-bridge/Cargo.toml
+
+COPY ./network/src ./network/src
+COPY ./network/Cargo.toml ./network/Cargo.toml
+
+COPY ./protocols/tell/src ./protocols/tell/src
+COPY ./protocols/tell/Cargo.toml ./protocols/tell/Cargo.toml
+
+COPY ./Cargo.toml ./Cargo.toml
+
+## Cargo build
+WORKDIR /kore-http
+RUN cargo build --target aarch64-unknown-linux-gnu --release --no-default-features --features "$CARGO_FEATURES"
+
+# Final image for AMD64
+FROM rust:1.90-slim-bullseye AS amd64
+RUN apt-get update && apt-get install --no-install-recommends -y libsqlite3-dev
+COPY --from=builder-amd64 ./target/x86_64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-node
+RUN rustup target add wasm32-unknown-unknown
+
+CMD ["kore-node"]
+
+# Final image for ARM64
+FROM rust:1.90-slim-bullseye AS arm64
+RUN apt-get update && apt-get install --no-install-recommends -y libsqlite3-dev
+COPY --from=builder-arm64 ./target/aarch64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-node
+RUN rustup target add wasm32-unknown-unknown
+
+CMD ["kore-node"]
