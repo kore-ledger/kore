@@ -1,8 +1,8 @@
 #!/bin/bash
 
-DOCKER_USERNAME="koreledgerhub"
-DOCKER_REPO="kore-http"
-TAG_ARRAY=("0.7.4-sqlite-prometheus" "0.7.4-rocksdb-prometheus")
+DOCKER_USERNAME="koreadmin"
+DOCKER_REPO="kore-node"
+TAG_ARRAY=("0.8.2-sqlite-prometheus" "0.8.2-rocksdb-prometheus")
 DOCKERFILE_ARRAY=("./kore/kore-http/docker/Dockerfile.sqlite" "./kore/kore-http/docker/Dockerfile.rocksdb")
 FEATURES_ARRAY=("ext-sqlite sqlite prometheus" "ext-sqlite rocksdb prometheus")
 
