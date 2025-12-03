@@ -22,6 +22,9 @@ COPY ./kore/identity/Cargo.toml ./kore/identity/Cargo.toml
 COPY ./kore/kore-base/src ./kore/kore-base/src
 COPY ./kore/kore-base/Cargo.toml ./kore/kore-base/Cargo.toml
 
+COPY ./kore/kore-common/src ./kore/kore-common/src
+COPY ./kore/kore-common/Cargo.toml ./kore/kore-common/Cargo.toml
+
 COPY ./kore/kore-bridge/src ./kore/kore-bridge/src
 COPY ./kore/kore-bridge/Cargo.toml ./kore/kore-bridge/Cargo.toml
 
@@ -32,22 +35,6 @@ COPY ./kore/protocols/tell/src ./kore/protocols/tell/src
 COPY ./kore/protocols/tell/Cargo.toml ./kore/protocols/tell/Cargo.toml
 
 COPY ./kore/Cargo.toml ./kore/Cargo.toml
-
-# Rush-rs
-COPY ./rush-rs/actor/src ./rush-rs/actor/src
-COPY ./rush-rs/actor/Cargo.toml  ./rush-rs/actor/Cargo.toml 
-
-COPY ./rush-rs/databases/rocksdb_db/src ./rush-rs/databases/rocksdb_db/src
-COPY ./rush-rs/databases/rocksdb_db/Cargo.toml ./rush-rs/databases/rocksdb_db/Cargo.toml
-
-COPY ./rush-rs/databases/sqlite_db/src ./rush-rs/databases/sqlite_db/src
-COPY ./rush-rs/databases/sqlite_db/Cargo.toml ./rush-rs/databases/sqlite_db/Cargo.toml
-
-COPY ./rush-rs/store/src ./rush-rs/store/src
-COPY ./rush-rs/store/Cargo.toml ./rush-rs/store/Cargo.toml
-
-COPY ./rush-rs/src ./rush-rs/src
-COPY ./rush-rs/Cargo.toml ./rush-rs/Cargo.toml
 
 WORKDIR /kore/kore-http
 RUN cargo build --target x86_64-unknown-linux-gnu --release --no-default-features --features "$CARGO_FEATURES"
@@ -73,6 +60,9 @@ COPY ./kore/identity/Cargo.toml ./kore/identity/Cargo.toml
 COPY ./kore/kore-base/src ./kore/kore-base/src
 COPY ./kore/kore-base/Cargo.toml ./kore/kore-base/Cargo.toml
 
+COPY ./kore/kore-common/src ./kore/kore-common/src
+COPY ./kore/kore-common/Cargo.toml ./kore/kore-common/Cargo.toml
+
 COPY ./kore/kore-bridge/src ./kore/kore-bridge/src
 COPY ./kore/kore-bridge/Cargo.toml ./kore/kore-bridge/Cargo.toml
 
@@ -82,39 +72,23 @@ COPY ./kore/network/Cargo.toml ./kore/network/Cargo.toml
 COPY ./kore/protocols/tell/src ./kore/protocols/tell/src
 COPY ./kore/protocols/tell/Cargo.toml ./kore/protocols/tell/Cargo.toml
 
-COPY ./rush-rs/src ./rush-rs/src
 COPY ./kore/Cargo.toml ./kore/Cargo.toml
-
-# Rush-rs
-COPY ./rush-rs/actor/src ./rush-rs/actor/src
-COPY ./rush-rs/actor/Cargo.toml  ./rush-rs/actor/Cargo.toml 
-
-COPY ./rush-rs/databases/rocksdb_db/src ./rush-rs/databases/rocksdb_db/src
-COPY ./rush-rs/databases/rocksdb_db/Cargo.toml ./rush-rs/databases/rocksdb_db/Cargo.toml
-
-COPY ./rush-rs/databases/sqlite_db/src ./rush-rs/databases/sqlite_db/src
-COPY ./rush-rs/databases/sqlite_db/Cargo.toml ./rush-rs/databases/sqlite_db/Cargo.toml
-
-COPY ./rush-rs/store/src ./rush-rs/store/src
-COPY ./rush-rs/store/Cargo.toml ./rush-rs/store/Cargo.toml
-
-COPY ./rush-rs/Cargo.toml ./rush-rs/Cargo.toml
 
 WORKDIR /kore/kore-http
 RUN cargo build --target aarch64-unknown-linux-gnu --release --no-default-features --features "$CARGO_FEATURES"
 
 # Imagen final para AMD64
 FROM rust:1.90-slim-bullseye AS amd64
-RUN apt-get update && apt-get install --no-install-recommends -y libsqlite3-dev
-COPY --from=builder-amd64 ./kore/target/x86_64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-http
+    RUN apt-get update && apt-get install --no-install-recommends -y libsqlite3-dev
+    COPY --from=builder-amd64 ./kore/target/x86_64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-node
 RUN rustup target add wasm32-unknown-unknown
 
-CMD ["kore-http"]
+CMD ["kore-node"]
 
 # Imagen final para ARM64
 FROM rust:1.90-slim-bullseye AS arm64
 RUN apt-get update && apt-get install --no-install-recommends -y libsqlite3-dev
-COPY --from=builder-arm64 ./kore/target/aarch64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-http
+COPY --from=builder-arm64 ./kore/target/aarch64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-node
 RUN rustup target add wasm32-unknown-unknown
 
-CMD ["kore-http"]
+CMD ["kore-node"]
