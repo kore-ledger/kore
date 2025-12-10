@@ -34,7 +34,7 @@ mod tests {
 
         let config = Config {
             db_path: "/tmp/kore-client".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config: network_config.clone(),
         };
 
@@ -61,7 +61,7 @@ mod tests {
 
         let config = Config {
             db_path: "/var/lib/kore".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config,
         };
 
@@ -91,7 +91,7 @@ mod tests {
 
         let config = Config {
             db_path: "/tmp/ephemeral-node".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config,
         };
 
@@ -114,7 +114,7 @@ mod tests {
 
         let config = Config {
             db_path: "/tmp/kore-client".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config,
         };
 
@@ -132,7 +132,7 @@ mod tests {
         let network_config = NetworkConfig::default();
         let config = Config {
             db_path: "/tmp/test".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config,
         };
 
@@ -145,7 +145,7 @@ mod tests {
     fn test_config_deserialization() {
         let json = r#"{
             "db_path": "/tmp/kore",
-            "node_id": "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA",
+            "node_id": "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "network_config": {
                 "node_type": "Addressable",
                 "listen_addresses": ["/ip4/127.0.0.1/tcp/50000"],
@@ -200,7 +200,7 @@ mod tests {
         let network_config = NetworkConfig::default();
         let config = Config {
             db_path: String::new(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config,
         };
 
@@ -229,7 +229,7 @@ mod tests {
 
             let config = Config {
                 db_path: "/tmp/test".to_string(),
-                node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+                node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
                 network_config,
             };
 

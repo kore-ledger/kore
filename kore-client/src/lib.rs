@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use prometheus_client::registry::Registry;
 
 use std::{
-    fmt, sync::atomic::{AtomicU64, Ordering}
+    fmt, sync::atomic::{AtomicU64, Ordering}, str::FromStr,
 };
 
 /// The Kore Client API.
@@ -25,6 +25,8 @@ use std::{
 pub struct Api {
     /// The client's identifier.
     client_id: KeyIdentifier,
+    /// The node's identifier.
+    node_id: KeyIdentifier,
     /// The network configuration.
     pub config: Config,
     /// The request counter.
@@ -41,6 +43,11 @@ impl Api {
         registry: &mut Registry,
         cancellation_token: CancellationToken,
     ) -> Result<Self, Error> {
+
+        // Get the node identifier.
+        let node_id = KeyIdentifier::from_str(&config.node_id)
+            .map_err(|e| Error::Network(format!("Invalid node ID: {}", e)))?;
+
 
         let client_id = match &keys {
             KeyPair::Ed25519(key_pair) => {
@@ -81,7 +88,7 @@ impl Api {
         // Add command helper to the network worker.
         network_worker.add_helper_sender(client_service);
 
-        Ok(Self { client_id, config: config.clone(), request_counter: AtomicU64::new(0), api_sender })
+        Ok(Self { client_id, node_id, config: config.clone(), request_counter: AtomicU64::new(0), api_sender })
     }
 
     /// Send an event request to a peer.
@@ -96,8 +103,7 @@ impl Api {
     /// A result indicating success or failure.
     /// 
     pub async fn send_request(
-        &self, 
-        receiver: KeyIdentifier,
+        &self,
         request: Signed<EventRequest>
     ) -> Result<ClientResponse, Error> {
         // Create the communication info.
@@ -105,7 +111,7 @@ impl Api {
             request_id: self.next_request_id(),
             version: 0,
             sender: self.client_id.clone(),
-            receiver,
+            receiver: self.node_id.clone(),
             receiver_actor: "event_handler".to_string(),
         };
 
@@ -196,12 +202,16 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config: network::Config::default(),
         };
 
+        let node_id = KeyIdentifier::from_str(&config.node_id)
+            .expect("Invalid node ID");
+
         let api = Api {
             client_id,
+            node_id,
             config,
             request_counter: AtomicU64::new(0),
             api_sender,
@@ -227,12 +237,16 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config: network::Config::default(),
         };
 
+        let node_id = KeyIdentifier::from_str(&config.node_id)
+            .expect("Invalid node ID");
+
         let api = Api {
             client_id,
+            node_id,
             config,
             request_counter: AtomicU64::new(0),
             api_sender,
@@ -261,12 +275,16 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config: network::Config::default(),
         };
 
+        let node_id = KeyIdentifier::from_str(&config.node_id)
+            .expect("Invalid node ID");
+
         let api = Api {
             client_id,
+            node_id,
             config,
             request_counter: AtomicU64::new(100),
             api_sender,
@@ -392,12 +410,16 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config: network::Config::default(),
         };
 
+        let node_id = KeyIdentifier::from_str(&config.node_id)
+            .expect("Invalid node ID");
+
         let api = Api {
             client_id: expected_id.clone(),
+            node_id,
             config,
             request_counter: AtomicU64::new(0),
             api_sender,
@@ -418,12 +440,16 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config: network::Config::default(),
         };
 
+        let node_id = KeyIdentifier::from_str(&config.node_id)
+            .expect("Invalid node ID");
+
         let api = Api {
             client_id: expected_id.clone(),
+            node_id,
             config,
             request_counter: AtomicU64::new(0),
             api_sender,
@@ -444,12 +470,16 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/var/lib/kore".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config: network::Config::default(),
         };
 
+        let node_id = KeyIdentifier::from_str(&config.node_id)
+            .expect("Invalid node ID");
+
         let api = Api {
             client_id,
+            node_id,
             config: config.clone(),
             request_counter: AtomicU64::new(0),
             api_sender,
@@ -485,12 +515,16 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
-            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
+            node_id: "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
             network_config: network::Config::default(),
         };
 
+        let node_id = KeyIdentifier::from_str(&config.node_id)
+            .expect("Invalid node ID");
+
         let api = Arc::new(Api {
             client_id,
+            node_id,
             config,
             request_counter: AtomicU64::new(0),
             api_sender,
@@ -529,5 +563,15 @@ mod tests {
         numbers.dedup();
         
         assert_eq!(numbers.len(), 50, "All IDs should be unique");
+    }
+
+    #[test]
+    fn test_node_id_parsing() {
+        let node_id = KeyIdentifier::default();
+        //let valid_node_id = "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        //let key_identifier = KeyIdentifier::from_str(valid_node_id);
+        //assert!(key_identifier.is_ok());    
+        assert_eq!(node_id.derivator, KeyDerivator::Ed25519);
+        println!("Default node ID: {}", node_id);
     }
 }
