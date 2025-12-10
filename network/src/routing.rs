@@ -178,8 +178,12 @@ impl Behaviour {
         true
     }
 
+    /// Check if an address is invalid according to the current configuration.
+    /// 
+    /// TODO: Review conditions for test environment
+    /// TODO: Fix error 
     pub fn is_invalid_address(&self, addr: &Multiaddr) -> bool {
-        #[cfg(not(feature = "test"))]
+        #[cfg(not(feature = "production"))]
         {
             // Our transport is TPC only
             if !is_tcp(addr) {
@@ -202,7 +206,8 @@ impl Behaviour {
         }
 
         #[cfg(feature = "test")]
-        return false;
+        return false;        
+
     }
 
     /// Discover closet peers to the given `PeerId`.
@@ -686,6 +691,24 @@ mod tests {
 
     use futures::prelude::*;
     use serial_test::serial;
+
+    #[test]
+    fn test_is_invalid_address() {
+        let address = Multiaddr::try_from("/ip4/51.49.220.43/tcp/50000/p2p/12D3KooWAWPFfhuBGYvoCTPpU4jgVLXERRX657ikF97ScDE5sn6t");
+        assert!(address.is_ok());
+        let address = address.unwrap();
+        let config = Config::new()
+            .with_allow_private_address_in_dht(false)
+            .with_allow_dns_address_in_dht(false)
+            .with_allow_loop_back_address_in_dht(false);
+        let behaviour = Behaviour::new(
+            PeerId::random(),
+            config,
+            StreamProtocol::new("/kore/routing/1.0.0"),
+            NodeType::Bootstrap,
+        );
+        assert!(!behaviour.is_invalid_address(&address));
+    }
 
     #[test(tokio::test)]
     #[serial]

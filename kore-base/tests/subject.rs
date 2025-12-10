@@ -7,7 +7,7 @@ use common::{
     create_nodes_and_connections, create_subject, emit_confirm, emit_fact,
     emit_reject, emit_transfer, get_signatures, get_subject,
 };
-//use futures::future::join_all;
+use futures::future::join_all;
 use identity::identifier::KeyIdentifier;
 use kore_base::{
     auth::AuthWitness,
@@ -19,9 +19,9 @@ use kore_base::{
 use serde_json::json;
 use test_log::test;
 
-//use crate::common::{create_node, node_running};
+use crate::common::{create_node, node_running};
 
-/*
+
 #[test(tokio::test)]
 async fn test_prueba() {
     let listen_address = format!("/memory/46000");
@@ -173,7 +173,7 @@ async fn test_prueba() {
     println!("{}", state.sn);
 
 }
-*/
+
 #[test(tokio::test)]
 // Testear limitaciones en la creación de sujetos INFINITY - QUANTITY
 async fn test_limits_in_subjects() {

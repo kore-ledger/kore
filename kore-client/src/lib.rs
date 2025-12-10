@@ -37,7 +37,7 @@ impl Api {
     /// Create a new API instance.
     pub async fn build(
         keys: KeyPair,
-        config: Config,
+        config: &Config,
         registry: &mut Registry,
         cancellation_token: CancellationToken,
     ) -> Result<Self, Error> {
@@ -81,7 +81,7 @@ impl Api {
         // Add command helper to the network worker.
         network_worker.add_helper_sender(client_service);
 
-        Ok(Self { client_id, config, request_counter: AtomicU64::new(0), api_sender })
+        Ok(Self { client_id, config: config.clone(), request_counter: AtomicU64::new(0), api_sender })
     }
 
     /// Send an event request to a peer.
@@ -132,7 +132,7 @@ impl Api {
     /// 
     /// A unique request identifier.
     /// 
-    pub fn next_request_id(&self) -> String {
+    fn next_request_id(&self) -> String {
         let id =self.request_counter.fetch_add(1, Ordering::SeqCst);
         format!("{}", id)
     }

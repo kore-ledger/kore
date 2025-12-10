@@ -34,6 +34,9 @@ COPY ./kore/network/Cargo.toml ./kore/network/Cargo.toml
 COPY ./kore/protocols/tell/src ./kore/protocols/tell/src
 COPY ./kore/protocols/tell/Cargo.toml ./kore/protocols/tell/Cargo.toml
 
+COPY ./kore/kore-client/src ./kore/kore-client/src
+COPY ./kore/kore-client/Cargo.toml ./kore/kore-client/Cargo.toml
+
 COPY ./kore/Cargo.toml ./kore/Cargo.toml
 
 WORKDIR /kore/kore-http
@@ -71,6 +74,9 @@ COPY ./kore/network/Cargo.toml ./kore/network/Cargo.toml
 
 COPY ./kore/protocols/tell/src ./kore/protocols/tell/src
 COPY ./kore/protocols/tell/Cargo.toml ./kore/protocols/tell/Cargo.toml
+
+COPY ./kore/kore-client/src ./kore/kore-client/src
+COPY ./kore/kore-client/Cargo.toml ./kore/kore-client/Cargo.toml
 
 COPY ./kore/Cargo.toml ./kore/Cargo.toml
 
