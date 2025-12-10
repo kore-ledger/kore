@@ -169,7 +169,7 @@ impl fmt::Display for ClientResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use identity::{
+    use identity::{  
         identifier::derive::KeyDerivator,
         keys::{KeyGenerator, Ed25519KeyPair, Secp256k1KeyPair},
     };
@@ -196,6 +196,7 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
+            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
             network_config: network::Config::default(),
         };
 
@@ -226,6 +227,7 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
+            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
             network_config: network::Config::default(),
         };
 
@@ -259,6 +261,7 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
+            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
             network_config: network::Config::default(),
         };
 
@@ -389,6 +392,7 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
+            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
             network_config: network::Config::default(),
         };
 
@@ -414,6 +418,7 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
+            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
             network_config: network::Config::default(),
         };
 
@@ -439,6 +444,7 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/var/lib/kore".to_string(),
+            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
             network_config: network::Config::default(),
         };
 
@@ -479,6 +485,7 @@ mod tests {
         let (api_sender, _) = mpsc::channel(100);
         let config = Config {
             db_path: "/tmp/test".to_string(),
+            node_id: "JqA4bewRn5H1dRDFBsZ9e1udwk28BUtUSHBwQ_BJYASA".to_owned(),
             network_config: network::Config::default(),
         };
 

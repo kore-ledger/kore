@@ -183,7 +183,7 @@ impl Behaviour {
     /// TODO: Review conditions for test environment
     /// TODO: Fix error 
     pub fn is_invalid_address(&self, addr: &Multiaddr) -> bool {
-        #[cfg(not(feature = "production"))]
+        #[cfg(not(feature = "test"))]
         {
             // Our transport is TPC only
             if !is_tcp(addr) {
