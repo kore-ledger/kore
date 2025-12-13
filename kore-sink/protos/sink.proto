@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package sink;
+
+// SinkService defines the gRPC service for querying subject events.
+service SinkService {
+    // GetSubjectEvents streams events for a given subject within a specified range.
+    rpc GetSubjectEvents(Subject) returns (stream Event);
+}
+
+// Subject represents an entity for which events can be queried.
+message Subject {
+    // Unique identifier for the subject
+    string id = 1;
+    // Last event received
+    uint64 from = 2;
+    // Up to which event to receive
+    optional uint64 to = 3;
+}
+
+// Event represents a single event associated with a subject.
+message Event {
+    bytes data = 1;
+}

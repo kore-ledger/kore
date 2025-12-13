@@ -5,6 +5,8 @@ members = [
     "kore-bridge",
     "kore-client",
     "kore-common",
+    "kore-sink/kore-sink-client",
+    "kore-sink/kore-sink-server",
     "network",
     "protocols/tell",
     "kore-http"
