@@ -27,6 +27,10 @@ use crate::{
     utils::{is_dns, is_global, is_loop_back, is_private, is_tcp},
 };
 
+use tracing::{debug, error, info};
+
+const TARGET_BEHAVIOUR: &str = "KoreNetwork-Behaviour";
+
 /// The discovery behaviour.
 pub struct Behaviour {
     /// Boolean that activates the random walk if the node has already finished the initial pre-routing phase.
@@ -171,9 +175,10 @@ impl Behaviour {
         addr: &Multiaddr,
     ) -> bool {
         if self.is_invalid_address(addr) {
+            debug!(TARGET_BEHAVIOUR, "Invalid address {} for Peer {}", addr, peer_id);
             return false;
         }
-
+        info!(TARGET_BEHAVIOUR, "Inserting address {} for Peer {} in DHT", addr, peer_id);
         self.kademlia.add_address(peer_id, addr.clone());
         true
     }

@@ -59,6 +59,13 @@ impl Compiler {
         .into()
     }
 
+    fn config_toml() -> String {
+        r#"
+    [target.wasm32-unknown-unknown]
+    rustflags = ["-C", "link-arg=--allow-undefined"]
+        "#.into()
+    }
+
     async fn compile_contract(
         contract: &str,
         contract_path: &str,
@@ -78,13 +85,28 @@ impl Compiler {
                     Error::Node(format!("Can not create src dir: {}", e))
                 })?;
         }
+        if !Path::new(&format!("{}/.cargo", contract_path)).exists() {
+            fs::create_dir_all(&format!("{}/.cargo", contract_path))
+                .await
+                .map_err(|e| {
+                    Error::Node(format!("Can not create .cargo dir: {}", e))
+            })?;
+        }
 
-        let toml: String = Self::compilation_toml();
         // We write cargo.toml
+        let toml: String = Self::compilation_toml();
         fs::write(format!("{}/Cargo.toml", contract_path), toml)
             .await
             .map_err(|e| {
                 Error::Node(format!("Can not create Cargo.toml file: {}", e))
+            })?;
+
+        // We write cofig.toml
+        let config = Self::config_toml();
+        fs::write(format!("{}/.cargo/config.toml", contract_path), config)
+            .await
+            .map_err(|e| {
+                Error::Node(format!("Can not create config.toml file: {}", e))
             })?;
 
         fs::write(format!("{}/src/lib.rs", contract_path), decode_base64)
@@ -395,5 +417,20 @@ impl Handler<Compiler> for Compiler {
                 Ok(())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_compilation() {
+        //let compiler = Compiler { contract: DigestIdentifier::default() };
+        let contract = "Ly8KCnVzZSBzZXJkZTo6e1NlcmlhbGl6ZSwgRGVzZXJpYWxpemV9Owp1c2Uga29yZV9jb250cmFjdF9zZGsgYXMgc2RrOwoKLy8vIERlZmluZSB0aGUgc3RhdGUgb2YgdGhlIGNvbnRyYWN0LiAKI1tkZXJpdmUoU2VyaWFsaXplLCBEZXNlcmlhbGl6ZSwgQ2xvbmUpXQpzdHJ1Y3QgU3RhdGUgewogICAgcHViIGNvdW50ZXI6IHUzMiwKfQoKLy8vIERlZmluZSB0aGUgZXZlbnRzIHRoYXQgY2FuIGJlIGVtaXR0ZWQgYnkgdGhlIGNvbnRyYWN0LgojW2Rlcml2ZShTZXJpYWxpemUsIERlc2VyaWFsaXplLCBDbG9uZSldCmVudW0gRXZlbnQgewogICAgSW5jcmVtZW50ZWQsCiAgICBEZWNyZW1lbnRlZCwKfQoKI1t1bnNhZmUobm9fbWFuZ2xlKV0KcHViIHVuc2FmZSBmbiBtYWluX2Z1bmN0aW9uKHN0YXRlX3B0cjogaTMyLCBpbml0X3N0YXRlX3B0cjogaTMyLCBldmVudF9wdHI6IGkzMiwgaXNfb3duZXI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmV4ZWN1dGVfY29udHJhY3Qoc3RhdGVfcHRyLCBpbml0X3N0YXRlX3B0ciwgZXZlbnRfcHRyLCBpc19vd25lciwgY29udHJhY3RfbG9naWMpCn0KCiNbdW5zYWZlKG5vX21hbmdsZSldCnB1YiB1bnNhZmUgZm4gaW5pdF9jaGVja19mdW5jdGlvbihzdGF0ZV9wdHI6IGkzMikgLT4gdTMyIHsKICBzZGs6OmNoZWNrX2luaXRfZGF0YShzdGF0ZV9wdHIsIGluaXRfbG9naWMpCn0KCmZuIGluaXRfbG9naWMoCiAgX3N0YXRlOiAmU3RhdGUsCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RJbml0Q2hlY2ssCikgewogIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQoKZm4gY29udHJhY3RfbG9naWMoCiAgY29udGV4dDogJnNkazo6Q29udGV4dDxFdmVudD4sCiAgY29udHJhY3RfcmVzdWx0OiAmbXV0IHNkazo6Q29udHJhY3RSZXN1bHQ8U3RhdGU+LAopIHsKICAgIGxldCBzdGF0ZSA9ICZtdXQgY29udHJhY3RfcmVzdWx0LnN0YXRlOwogICAgbWF0Y2ggY29udGV4dC5ldmVudCB7CiAgICAgICAgRXZlbnQ6OkluY3JlbWVudGVkID0+IHN0YXRlLmNvdW50ZXIgKz0gMSwKICAgICAgICBFdmVudDo6RGVjcmVtZW50ZWQgPT4gewogICAgICAgICAgICBpZiBzdGF0ZS5jb3VudGVyID09IDAgewogICAgICAgICAgICAgICAgY29udHJhY3RfcmVzdWx0LnN1Y2Nlc3MgPSBmYWxzZTsKICAgICAgICAgICAgICAgIGNvbnRyYWN0X3Jlc3VsdC5lcnJvciA9ICJDb3VudGVyIGNhbm5vdCBiZSBkZWNyZW1lbnRlZCBiZWxvdyB6ZXJvLiIudG9fb3duZWQoKTsKICAgICAgICAgICAgICAgIHJldHVybjsKICAgICAgICAgICAgfQogICAgICAgICAgICBzdGF0ZS5jb3VudGVyIC09IDEKICAgICAgICB9LAogICAgfQoKICAgIGNvbnRyYWN0X3Jlc3VsdC5zdWNjZXNzID0gdHJ1ZTsKfQo=";
+        let contract_path = "./contracts";
+        let result = Compiler::compile_contract(contract, contract_path).await;
+        assert!(result.is_ok());
     }
 }

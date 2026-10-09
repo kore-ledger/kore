@@ -2,8 +2,9 @@
 #docker build --platform linux/amd64 --build-arg FEATURES="sqlite prometheus ext-sqlite" -t koreledgerhub/kore-http:amd64-sqlite-prometheus --target amd64 -f ./kore/kore-http/docker/Dockerfile.sqlite .
 
 # Etapa de compilación para AMD64
-FROM rust:1.90-slim-bullseye AS builder-amd64
-RUN apt-get update && apt-get install --no-install-recommends -y pkg-config libssl-dev \
+FROM rust:1.99-bookworm AS builder-amd64
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libssl-dev \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 RUN rustup target add x86_64-unknown-linux-gnu
@@ -43,8 +44,8 @@ WORKDIR /kore/kore-http
 RUN cargo build --target x86_64-unknown-linux-gnu --release --no-default-features --features "$CARGO_FEATURES"
 
 # Etapa de compilación para ARM64
-FROM rust:1.90-slim-bullseye AS builder-arm64
-RUN apt-get update && apt-get install --no-install-recommends -y pkg-config libssl-dev \
+FROM rust:1.99-slim-bookworm AS builder-arm64
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libssl-dev \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 RUN rustup target add aarch64-unknown-linux-gnu
@@ -84,16 +85,20 @@ WORKDIR /kore/kore-http
 RUN cargo build --target aarch64-unknown-linux-gnu --release --no-default-features --features "$CARGO_FEATURES"
 
 # Imagen final para AMD64
-FROM rust:1.90-slim-bullseye AS amd64
-RUN apt-get update && apt-get install --no-install-recommends -y libsqlite3-dev
+FROM rust:1.99-bookworm AS amd64
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libsqlite3-0 ca-certificates \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=builder-amd64 ./kore/target/x86_64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-node
 RUN rustup target add wasm32-unknown-unknown
 
 CMD ["kore-node"]
 
 # Imagen final para ARM64
-FROM rust:1.90-slim-bullseye AS arm64
-RUN apt-get update && apt-get install --no-install-recommends -y libsqlite3-dev
+FROM rust:1.99-bookworm AS arm64
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libsqlite3-0 ca-certificates \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=builder-arm64 ./kore/target/aarch64-unknown-linux-gnu/release/kore-http /usr/local/bin/kore-node
 RUN rustup target add wasm32-unknown-unknown
 

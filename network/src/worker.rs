@@ -10,7 +10,7 @@ use crate::{
     utils::{
         Action, Due, Fact, MessagesHelper, MetricLabels, NetworkState,
         RetryKind, RetryState, ScheduleType, convert_addresses,
-        convert_boot_nodes,
+        convert_boot_nodes, is_global
     },
 };
 
@@ -45,7 +45,7 @@ use tokio::{
     time::{Instant, Sleep, sleep_until},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, trace, warn};
+use tracing::{error, info, trace, warn, debug};
 
 use std::collections::{HashMap, VecDeque};
 
@@ -1011,6 +1011,7 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                         info,
                         connection_id,
                     } => {
+                        debug!(TARGET_WORKER, "Indentified peer: {}", peer_id);
                         if !self.check_protocols(
                             &info.protocol_version,
                             &info.protocols,
@@ -1043,6 +1044,12 @@ impl<T: Debug + Serialize> NetworkWorker<T> {
                                 .behaviour_mut()
                                 .clean_peer_to_remove(&peer_id);
                             for addr in info.listen_addrs {
+                                debug!(TARGET_WORKER, "PeerId: {}; Address to insert: {}", peer_id, addr);
+                                #[cfg(not(test))] {
+                                    if is_global(&addr) {
+                                        self.swarm.add_peer_address(peer_id, addr.clone());
+                                    }
+                                }
                                 self.swarm
                                     .behaviour_mut()
                                     .add_self_reported_address(&peer_id, &addr);
